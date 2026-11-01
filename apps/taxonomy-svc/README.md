@@ -46,8 +46,19 @@ La suite crea esquema, roles y datos de prueba únicamente en el contenedor gest
 
 La prueba solo se ejecuta con `G6_READONLY_INTEGRATION=taxonomy` y requiere las variables `PG*`/`G6_*` de `apps/taxonomy-svc/.env.local` (ignorado por git; nunca se commitea) con `PGSSLMODE=verify-full`, el certificado raíz en `PGSSLROOTCERT` y la identidad `taxonomy_dev_login`. Solo hace `SELECT`; no apuntar pruebas destructivas a Supabase ni a bases compartidas.
 
-```sh
-npx vitest run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts
+El archivo `.env.local` se carga con `node --env-file` (Node interpreta correctamente las comillas del archivo) y la corrida debe declarar explícitamente `G6_READONLY_INTEGRATION=taxonomy`, generar el reporte JSON y fijar su ruta de salida. Sin esas tres piezas, vitest omite la suite y no produce evidencia.
+
+PowerShell (Windows):
+
+```powershell
+$env:G6_READONLY_INTEGRATION = 'taxonomy'
+node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts --reporter=json --outputFile=apps/taxonomy-svc/test/evidence/postgres-readonly-AAAA-MM-DD.json
 ```
 
-La evidencia de la corrida se guarda en `test/evidence/postgres-readonly-AAAA-MM-DD.json`. Esta prueba no acredita autorización G7, despliegue ni E2E.
+`sh` (Linux/macOS/Git Bash):
+
+```sh
+G6_READONLY_INTEGRATION=taxonomy node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts --reporter=json --outputFile=apps/taxonomy-svc/test/evidence/postgres-readonly-AAAA-MM-DD.json
+```
+
+La corrida debe reportar `2 passed` y escribir el JSON. La trazabilidad de la ejecución (SHA, fecha, versiones y comando) se registra en el sidecar `test/evidence/postgres-readonly-AAAA-MM-DD.md`. Esta prueba no acredita autorización G7, despliegue ni E2E.
