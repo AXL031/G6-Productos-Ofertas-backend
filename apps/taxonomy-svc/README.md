@@ -39,3 +39,15 @@ node scripts/ci/run-taxonomy-integration.mjs
 ```
 
 La suite crea esquema, roles y datos de prueba únicamente en el contenedor gestionado por el runner, verifica permisos efectivos (positivos y negativos), transacciones (commit/rollback), readiness y el camino `503`, y elimina contenedor y esquema al finalizar.
+
+## Prueba de solo lectura contra PostgreSQL real
+
+`test/postgres.readonly.e2e-spec.ts` ejecuta el handler HTTP real con el provider PostgreSQL/Drizzle instalado y comprueba, sin escribir, que la proyección de `GET /api/v1/categorias` y `GET /api/v1/marcas` coincide con los conteos de filas `ACTIVO` y solo expone campos contractuales, y que `GET /api/v1/categorias?estado=INACTIVO` responde `400 VALIDACION` con ese provider.
+
+La prueba solo se ejecuta con `G6_READONLY_INTEGRATION=taxonomy` y requiere las variables `PG*`/`G6_*` de `apps/taxonomy-svc/.env.local` (ignorado por git; nunca se commitea) con `PGSSLMODE=verify-full`, el certificado raíz en `PGSSLROOTCERT` y la identidad `taxonomy_dev_login`. Solo hace `SELECT`; no apuntar pruebas destructivas a Supabase ni a bases compartidas.
+
+```sh
+npx vitest run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts
+```
+
+La evidencia de la corrida se guarda en `test/evidence/postgres-readonly-AAAA-MM-DD.json`. Esta prueba no acredita autorización G7, despliegue ni E2E.
