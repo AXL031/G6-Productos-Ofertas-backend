@@ -280,3 +280,15 @@ acredita entrega de eventos, homologación de topología ni deploy Oracle.
 
 - Backend: `7a546e78629683c8258df1a6d9beab24e74ef136` (merge `5a8a92b`) — CI run 39524047809 SUCCESS: validación general, Inventory real PostgreSQL/RabbitMQ y Taxonomy real.
 - Frontend: `db7c2e67c575936aa14f6293f95392e708d1a8d2` (merge `master` + correcciones `"all"`, carga parcial del dashboard, distribución por `porUbicacion`, `TAC-P0-01`/`TAC-P0-02` con solicitud inmutable y protección de operaciones inciertas, `TAC-P0-05` con confirmación separada del enriquecimiento y `TAC-P1-07` con matriz de transición; 33/33 pruebas del adaptador y 60/60 Playwright MK-015/MK-016; `TAC-P0-06` documentado y BLOQUEADO_ESPECÍFICO). El CI de Frontend se ejecuta al abrir el PR `taco`→`master`.
+
+## Actualización 2026-11-01 — resolución de #29 y estado de validación AMQP
+
+Esta sección actualiza el estado operativo; los cortes anteriores de este documento se conservan como referencia histórica y sus menciones en inglés corresponden a la nomenclatura previa a la Resolución #29.
+
+- **Nomenclatura resuelta:** `apps/inventory-svc` usa exclusivamente `po.inventario.q` (consumo), `po.eventos.x` (eventos) y `po.resultados.x` (resultados) en `src/` y `test/`, alineado con AsyncAPI `0.6.0-rc.3`. No quedan referencias operativas en inglés en código ni en `README.md`/`CONFIGURACION.md`; solo se conservan como referencia histórica identificada.
+- **Integración:** el PR #10 se integró en `master` con merge `9f3982394244c39828ba3ba2faabe4382e326932`. El HEAD de `taco` usado como evidencia es `c090cee354adcca41bb7a9cf1378bf9b36bfa07a`.
+- **CI real:** [run 40377759886](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/40377759886) SUCCESS, 6/6 jobs, incluido `Inventory integration on disposable PostgreSQL and RabbitMQ` con el paso «must not be skipped» aprobado sobre los nombres físicos.
+- **Validación contra Oracle: NO EJECUTADA.** Al 2026-11-01 el broker no fue alcanzable desde el entorno local (`127.0.0.1:5675` cerrado). La URL, el vhost `g6-productos-ofertas` y el usuario `g6_inventario` fueron provisionados por Marco, pero falta la ruta de red/túnel y la autorización de uso. No se publicó ni consumió ningún mensaje real.
+- **Topología:** el servicio no crea ni modifica exchanges, colas, bindings ni ACL, y no implementa retry/DLX.
+- **Documentación de infraestructura pendiente (owner Marco):** `ops/oracle/servicios/inventory-svc.md` §E y `ops/oracle/ESTADO_SERVICIOS.md` todavía describen la incompatibilidad de nombres como bloqueo vigente. No se modifican desde `apps/inventory-svc` por pertenecer al paquete operativo de Marco.
+- **Estado:** PARTIAL sin cambios. Persisten los bloqueos externos de #14, #25, #30, #31, #99, #100, #101, #104, #105 y el tipado de payloads de #102.
