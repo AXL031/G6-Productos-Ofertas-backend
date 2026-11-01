@@ -50,7 +50,10 @@ function entornoValido(): Record<string, string | undefined> {
 
 describe('Taxonomy bootstrap configuration reconciled with López', () => {
   it('defaults to loopback and supports Docker binding and PORT fallback', () => {
-    expect(readHttpConfig({})).toEqual({ host: '127.0.0.1', port: 3006 });
+    expect(readHttpConfig({ NODE_ENV: 'test', PORT: '3006' })).toEqual({
+      host: '127.0.0.1',
+      port: 3006,
+    });
     expect(
       readHttpConfig({
         NODE_ENV: 'production',
@@ -63,14 +66,16 @@ describe('Taxonomy bootstrap configuration reconciled with López', () => {
   it.each(['0', '65536', 'abc', '1.5', ' 3006', 'Infinity'])(
     'rejects invalid port %s',
     (value) => {
-      expect(() => readHttpConfig({ TAXONOMY_SVC_PORT: value })).toThrow();
+      expect(() =>
+        readHttpConfig({ NODE_ENV: 'test', TAXONOMY_SVC_PORT: value }),
+      ).toThrow();
     },
   );
 
   it('rejects invalid environment without returning its value', () => {
-    expect(() => readHttpConfig({ NODE_ENV: 'private-secret' })).toThrow(
-      'Configuración HTTP taxonomy inválida',
-    );
+    expect(() =>
+      readHttpConfig({ NODE_ENV: 'private-secret', PORT: '3006' }),
+    ).toThrow('Configuración HTTP taxonomy inválida');
   });
 });
 
@@ -165,6 +170,36 @@ describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
     await expect(
       iniciarTaxonomySvc({ env: entornoRuntime({ NODE_ENV: 'staging' }) }),
     ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('rechaza NODE_ENV ausente', async () => {
+    await expect(
+      iniciarTaxonomySvc({ env: entornoRuntime({ NODE_ENV: undefined }) }),
+    ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('rechaza ambos puertos ausentes', async () => {
+    await expect(
+      iniciarTaxonomySvc({
+        env: entornoRuntime({ TAXONOMY_SVC_PORT: undefined, PORT: undefined }),
+      }),
+    ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('rechaza la ausencia de URL y parámetros PG requeridos', async () => {
+    await expect(
+      iniciarTaxonomySvc({
+        env: entornoRuntime({ DATABASE_URL: undefined, PGHOST: undefined }),
+      }),
+    ).rejects.toThrow('Configuración PostgreSQL taxonomy inválida');
+  });
+
+  it('rechaza DATABASE_URL malformada aunque existan parámetros PG', async () => {
+    await expect(
+      iniciarTaxonomySvc({
+        env: entornoRuntime({ DATABASE_URL: 'no-es-url' }),
+      }),
+    ).rejects.toThrow('Configuración PostgreSQL taxonomy inválida');
   });
 
   it('rechaza un puerto inválido antes de abrir el puerto', async () => {
