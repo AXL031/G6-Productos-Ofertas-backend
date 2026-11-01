@@ -62,3 +62,15 @@ G6_READONLY_INTEGRATION=taxonomy node --env-file=apps/taxonomy-svc/.env.local ./
 ```
 
 La corrida debe reportar `2 passed` y escribir el JSON. La trazabilidad de la ejecución (SHA, fecha, versiones y comando) se registra en el sidecar `test/evidence/postgres-readonly-AAAA-MM-DD.md`. Esta prueba no acredita autorización G7, despliegue ni E2E.
+
+## Verificación de configuración y probes (#34)
+
+Pruebas enfocadas de configuración fail-closed, redacción de secretos y separación liveness/readiness:
+
+```sh
+npm test -- apps/taxonomy-svc/src/config/environment.spec.ts apps/taxonomy-svc/src/bootstrap.spec.ts apps/taxonomy-svc/src/logging/sanitized-logger.spec.ts apps/taxonomy-svc/src/database.spec.ts
+npm run test:e2e -- apps/taxonomy-svc/test/readiness.e2e-spec.ts apps/taxonomy-svc/test/app.e2e-spec.ts
+npm run build:taxonomy-svc
+```
+
+El arranque real exige las variables privadas descritas arriba y verifica la identidad PostgreSQL antes de escuchar. La evidencia de una ejecución local (SHA, fecha, versiones, comandos y resultados) se registra en `test/evidence/config-health-readiness-2026-11-01.md`; no acredita despliegue Oracle, homologación externa ni E2E desplegado.

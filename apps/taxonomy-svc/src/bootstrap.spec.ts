@@ -1,6 +1,13 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { LoggerService } from '@nestjs/common';
-import { describe, expect, it } from 'vitest';
-import { crearAplicacion, readHttpConfig } from './bootstrap.js';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import {
+  crearAplicacion,
+  iniciarTaxonomySvc,
+  readHttpConfig,
+} from './bootstrap.js';
 import { ConfiguracionInvalidaError } from './config/environment.js';
 
 const CLAVE_FALSA = 'clave-de-prueba-no-real';
@@ -114,5 +121,78 @@ describe('crearAplicacion — fail-closed (#34)', () => {
         env: { ...entornoValido(), NODE_ENV: 'production' },
       }),
     ).rejects.toThrow(ConfiguracionInvalidaError);
+  });
+});
+
+describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
+  let caDir: string;
+  let caPath: string;
+
+  beforeAll(() => {
+    caDir = mkdtempSync(join(tmpdir(), 'taxonomy-ca-'));
+    caPath = join(caDir, 'ca.pem');
+    writeFileSync(
+      caPath,
+      '-----BEGIN CERTIFICATE-----\nprueba\n-----END CERTIFICATE-----\n',
+    );
+  });
+
+  afterAll(() => {
+    rmSync(caDir, { recursive: true, force: true });
+  });
+
+  function entornoRuntime(
+    overrides: Record<string, string | undefined> = {},
+  ): Record<string, string | undefined> {
+    return {
+      NODE_ENV: 'test',
+      TAXONOMY_SVC_PORT: '3006',
+      PGHOST: 'db.invalid',
+      PGPORT: '5432',
+      PGDATABASE: 'taxonomy',
+      PGUSER: 'taxonomy_dev_login',
+      PGPASSWORD: CLAVE_FALSA,
+      PGSSLMODE: 'verify-full',
+      PGSSLROOTCERT: caPath,
+      G6_DATABASE_SCHEMA: 'taxonomy',
+      G6_EXPECTED_ROLE: 'taxonomy_dev_login',
+      G6_CONNECTION_MODE: 'direct',
+      ...overrides,
+    };
+  }
+
+  it('rechaza un NODE_ENV inválido antes de abrir el puerto', async () => {
+    await expect(
+      iniciarTaxonomySvc({ env: entornoRuntime({ NODE_ENV: 'staging' }) }),
+    ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('rechaza un puerto inválido antes de abrir el puerto', async () => {
+    await expect(
+      iniciarTaxonomySvc({ env: entornoRuntime({ TAXONOMY_SVC_PORT: '0' }) }),
+    ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('rechaza PGSSLMODE distinto de verify-full', async () => {
+    await expect(
+      iniciarTaxonomySvc({ env: entornoRuntime({ PGSSLMODE: 'require' }) }),
+    ).rejects.toThrow('Configuración PostgreSQL taxonomy inválida');
+  });
+
+  it('no expone la contraseña cuando la configuración PostgreSQL es inválida', async () => {
+    const env = entornoRuntime({
+      DATABASE_URL: `postgresql://usuario:${CLAVE_FALSA}@db.invalid:5432/taxonomy`,
+    });
+    delete env.G6_EXPECTED_ROLE;
+
+    const error = await iniciarTaxonomySvc({ env }).catch(
+      (capturado) => capturado,
+    );
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe(
+      'Configuración PostgreSQL taxonomy inválida',
+    );
+    expect((error as Error).message).not.toContain(CLAVE_FALSA);
   });
 });
