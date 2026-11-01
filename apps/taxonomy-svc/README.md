@@ -73,4 +73,4 @@ npm run test:e2e -- apps/taxonomy-svc/test/readiness.e2e-spec.ts apps/taxonomy-s
 npm run build:taxonomy-svc
 ```
 
-El arranque real exige las variables privadas descritas arriba y verifica la identidad PostgreSQL antes de escuchar. La evidencia de una ejecución local (SHA, fecha, versiones, comandos y resultados) se registra en `test/evidence/config-health-readiness-2026-11-01.md`; no acredita despliegue Oracle, homologación externa ni E2E desplegado.
+El arranque real exige las variables privadas descritas arriba y verifica la identidad PostgreSQL antes de escuchar. Registra la evidencia de cada ejecución local con SHA, fecha, versiones, comandos y resultados; esta no acredita despliegue Oracle, homologación externa ni E2E desplegado.
