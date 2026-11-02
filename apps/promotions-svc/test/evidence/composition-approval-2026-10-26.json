@@ -1,0 +1,41 @@
+{
+  "result": "PASS",
+  "scope": "APPROVED_INTERNAL_V1_CONFORMANCE_ONLY",
+  "captured_at": "2026-10-26T18:30:25.720Z",
+  "tested_base_sha": "546bced6586ac7cfc275d452d35c3493a28f03c9",
+  "approval_source_sha256": "7b18ed7af01e96ea9c8cc08cfab9a34d1bb8957a897eccc3de09780dcac00542",
+  "approval": "Marco communication supplied by Axel; recording and internal verification authorized by Axel",
+  "command": "npm test -- apps/promotions-svc/test/proposals/combination-policy.spec.ts apps/promotions-svc/src/domain/benefit-money.spec.ts apps/promotions-svc/src/domain/promotion-rules.spec.ts apps/promotions-svc/src/coupons/coupon-runtime.spec.ts apps/promotions-svc/src/coupons/assigned-event-dispatcher.spec.ts",
+  "test_files": 5,
+  "passed": 85,
+  "failed": 0,
+  "composition_cases": 26,
+  "money_cases": 7,
+  "gate_and_domain_cases": 52,
+  "coverage": [
+    "Bilateral compatibility for every pair; disjoint scopes do not bypass it",
+    "Successive discounts on remaining eligible balances; priority and stable ID order",
+    "Fixed discount once, capped and proportionally allocated; exact conservation",
+    "Best compatible subset, Pricing-only alternative and deterministic ties",
+    "Primary first effective promotion; actual coupon identity remains separate",
+    "PEN explicit scale 2, half-up total, largest remainder and canonical line tie-break",
+    "Explicit scales and rejection of unrepresentable prices",
+    "Search budget exhaustion fails closed; no partial winner",
+    "HTTP stacking and coupon runtime gates remain protected"
+  ],
+  "source_sha256": {
+    "src/domain/benefit-composition.ts": "1706bdc2b571956817fea397bc97808ac70abe2b5678371a197a20a3e6913ced",
+    "src/domain/benefit-money.ts": "c5e9ecd31b62bad8824393098e9f009fb2c7663614d25c046ec7368a527e08e8",
+    "src/domain/basket-evaluation.ts": "ad7a8317d322d17d4ef27af6d2a589c5d90fc546aa1a2b4cdb79e47fb60ca751",
+    "test/proposals/combination-policy.spec.ts": "ffebb95c200f66c177aeef1b63b764c60b37a5e17055af85c5fe226ae9fb85f7",
+    "src/domain/benefit-money.spec.ts": "23d67ffa0b7e0633a85771c3d969d678c2ad95c129d105f05d3f1b53d822f05c",
+    "src/domain/promotion-rules.spec.ts": "08dc369d89c9d6eefb3b4feca0616302430e613b5f319d481329024055d8e15b",
+    "src/coupons/coupon-runtime.spec.ts": "f2ea915dbed463ddd1522614a368aba8997c60ae26ea329146d08acce88355a1",
+    "src/coupons/assigned-event-dispatcher.spec.ts": "341082304287f25c5e66101b808402683fcfb8f6f80665a19ab0309da4a6cd93"
+  },
+  "runtime_code_changed": false,
+  "http_stacking_enabled": false,
+  "consumer_compatibility": "PENDING_VERIFIABLE_ACCEPTANCE",
+  "shared_integration": "NOT_EXECUTED",
+  "deployment": "NOT_EXECUTED"
+}

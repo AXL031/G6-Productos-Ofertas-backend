@@ -1,0 +1,64 @@
+{
+  "result": "PASS",
+  "scope": "DISPOSABLE_LOCAL_PROPOSAL_ONLY",
+  "captured_at": "2026-10-26T18:27:19.571Z",
+  "tested_base_sha": "546bced6586ac7cfc275d452d35c3493a28f03c9",
+  "postgres_version": "17.11",
+  "normative_commit": "c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b",
+  "migrations": [
+    {
+      "name": "0001_promotions_persistence",
+      "git_blob": "3c1636e9738efd939d1e646be8059f4e9c0455bf",
+      "sha256": "ccb75886b2ff993717b46cb923e7983ab4af9038cb1db0af394f997962dac796"
+    },
+    {
+      "name": "0002_promotions_global_price_projection",
+      "git_blob": "c04397a73de76105f15386afd4adcd5bdb2df757",
+      "sha256": "ee6c36562c81b6a65682845b01d71c2e10763374c904ea5cb88c9b069f2a5f42"
+    },
+    {
+      "name": "0003_promotions_timestamps_and_delete_rules",
+      "git_blob": "77ba7d71c7337760eba3c31f4895e177d5398ef6",
+      "sha256": "2e3eaf61ffc96b02d6e6bd25c76dcaded3b9a0c6698e306914811c6c912b0eaa"
+    },
+    {
+      "name": "0004_coupon_idempotency_receipts",
+      "git_blob": "c3a255b08d6b0450998b77e21b90b9b6b53d27bb",
+      "sha256": "84a628ee569abbe62524e8874505f3440ce299487d4cba8d1b88647b8743e061"
+    }
+  ],
+  "source_sha256": {
+    "./seed-locking-proposal.mjs": "29e9b27b157b35dbff259668e71fd970c3df157a6a20e4e7e53f472d83b850dc",
+    "./support/seed-locking-proposal.sql": "4e8c2a8fe41af06c18c65594684aa191b2f532bbaa8c1db565058aa42b169887",
+    "../prepare-batch.mjs": "27cf9d8b99b408245727199fd02527d9534cc31c079169afe6b1fe6145cc4ab7",
+    "./support/bindings.mjs": "9c50a9729b553256da270f8cbe1608ec306075a8da0b1d48608b4249204fa541"
+  },
+  "checks": [
+    "Original SELECT/INSERT-only seed reproduces 42501 through unchanged invoker triggers; authenticated non-superuser login",
+    "Candidate grants UPDATE(id) only on two parents, no table UPDATE; original six-master preview succeeds as seed and fully rolls back",
+    "Restricted seed commits only synthetic masters inside disposable database; identical retry in a new transaction preserves all values/timestamps",
+    "Direct, zero-row, CTE, MERGE and UPSERT UPDATE rejected; inherited seed identity also rejected; DELETE/TRUNCATE/DDL/owner/replication bypass/technical access denied",
+    "Original child trigger keeps parent row lock: concurrent owner UPDATE on same parent times out (55P03), independent parent works; rollback preserves fixture",
+    "Official function definitions and foreign keys unchanged; new statement guard is SECURITY INVOKER with fixed pg_catalog search_path",
+    "Candidate ACL/triggers removed locally; original seed lock rejection restored without modifying master data or historical functions"
+  ],
+  "authenticated_login": "test_seed_login",
+  "effective_role": "po_promotions_seed",
+  "inherited_identity_tested": true,
+  "seed_table_update_granted": false,
+  "candidate_column_grants": [
+    "promotions.promotions.id",
+    "promotions.recommendation_rules.id"
+  ],
+  "candidate_security_definer": false,
+  "existing_function_definitions_unchanged": true,
+  "runtime_sql_changed": false,
+  "generator_sql_changed": false,
+  "synthetic_rows_in_disposable_database": 11,
+  "shared_connections": 0,
+  "shared_writes": false,
+  "shared_permissions_changed": false,
+  "approval": "PENDING_LOPEZ_BD_MARCO_REVIEW",
+  "production_seed_gate": "SEED_TRIGGER_LOCK_PRIVILEGE_UNRESOLVED",
+  "disposable_container_removed": true
+}

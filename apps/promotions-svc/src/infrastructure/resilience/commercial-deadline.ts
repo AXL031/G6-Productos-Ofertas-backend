@@ -1,5 +1,6 @@
 import {
   CommercialDependencyError,
+  CommercialInputError,
   type CommercialContext,
   type BasketRequest,
 } from '../../domain/commercial-context.js';
@@ -19,7 +20,11 @@ export class BoundedCommercialContext implements CommercialContext {
     try {
       return await withDeadline(work, this.milliseconds);
     } catch (error) {
-      if (error instanceof CommercialDependencyError) throw error;
+      if (
+        error instanceof CommercialDependencyError ||
+        error instanceof CommercialInputError
+      )
+        throw error;
       throw new CommercialDependencyError(
         operation,
         'Catálogo/Pricing/Inventario + integración G6/G7',

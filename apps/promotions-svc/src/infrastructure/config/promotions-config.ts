@@ -2,6 +2,13 @@ import { X509Certificate } from 'node:crypto';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
+import { internalOrigin, type Upstream } from '../http/internal-http.js';
+const upstreamVariables = {
+  catalog: 'GATEWAY_CATALOG_SVC_URL',
+  pricing: 'GATEWAY_PRICING_SVC_URL',
+  inventory: 'GATEWAY_INVENTORY_SVC_URL',
+  taxonomy: 'GATEWAY_TAXONOMY_SVC_URL',
+} as const;
 
 const requiredVariables = [
   'PGHOST',
@@ -23,12 +30,17 @@ type ConfigurationVariable =
   | 'PORT'
   | 'PROMOTIONS_DEPENDENCY_PROBES_ENABLED'
   | 'PROMOTIONS_COUPON_RUNTIME_ENABLED'
+  | 'GATEWAY_DEMO_NO_AUTH_ENABLED'
   | 'AUTH_ISSUER'
   | 'AUTH_JWKS_URL'
   | 'ENV_FILE';
 
 export class PromotionsConfigurationError extends Error {
-  constructor(readonly variables: readonly ConfigurationVariable[]) {
+  constructor(
+    readonly variables: readonly (
+      ConfigurationVariable | (typeof upstreamVariables)[Upstream]
+    )[],
+  ) {
     super(`Invalid promotions-svc configuration: ${variables.join(', ')}`);
     this.name = 'PromotionsConfigurationError';
   }
@@ -51,7 +63,10 @@ export interface PromotionsConfiguration {
   readonly rabbitmqUrl: string;
   readonly dependencyProbesEnabled: boolean;
   readonly couponRuntimeEnabled: boolean;
+  readonly localDemoEnabled: boolean;
+  readonly listenHost: '127.0.0.1' | '0.0.0.0' | '::';
   readonly auth?: Readonly<{ issuer: string; jwksUrl: string }>;
+  readonly upstreams: Readonly<Partial<Record<Upstream, string>>>;
 }
 
 function isPort(value: string): boolean {
@@ -66,7 +81,9 @@ function isPort(value: string): boolean {
 export function validatePromotionsConfiguration(
   environment: Readonly<NodeJS.ProcessEnv>,
 ): PromotionsConfiguration {
-  const invalid = new Set<ConfigurationVariable>();
+  const invalid = new Set<
+    ConfigurationVariable | (typeof upstreamVariables)[Upstream]
+  >();
   let auth: PromotionsConfiguration['auth'];
   if (
     environment.AUTH_ISSUER !== undefined ||
@@ -103,6 +120,28 @@ export function validatePromotionsConfiguration(
     'PROMOTIONS_DEPENDENCY_PROBES_ENABLED',
   );
   const couponRuntimeEnabled = enabled('PROMOTIONS_COUPON_RUNTIME_ENABLED');
+  const localDemoEnabled = enabled('GATEWAY_DEMO_NO_AUTH_ENABLED');
+  const upstreams: Partial<Record<Upstream, string>> = {};
+  for (const service of Object.keys(upstreamVariables) as Upstream[]) {
+    const variable = upstreamVariables[service],
+      value = environment[variable];
+    if (value === undefined) continue;
+    try {
+      if (value.trim() !== value) throw new Error();
+      upstreams[service] = internalOrigin(value, localDemoEnabled, service);
+    } catch {
+      invalid.add(variable);
+    }
+  }
+  // Explicit activation only. Production additionally requires the independently
+  // verified private Gateway perimeter; the guard checks its actual TCP peer.
+  if (
+    localDemoEnabled &&
+    environment.NODE_ENV !== 'development' &&
+    environment.NODE_ENV !== 'test' &&
+    environment.NODE_ENV !== 'production'
+  )
+    invalid.add('GATEWAY_DEMO_NO_AUTH_ENABLED');
   const required = Object.fromEntries(
     requiredVariables.map((name) => {
       const value = environment[name] ?? '';
@@ -182,7 +221,14 @@ export function validatePromotionsConfiguration(
     rabbitmqUrl: required.RABBITMQ_URL,
     dependencyProbesEnabled,
     couponRuntimeEnabled,
+    localDemoEnabled,
+    listenHost: localDemoEnabled
+      ? nodeEnvironment === 'production'
+        ? '0.0.0.0'
+        : '127.0.0.1'
+      : '::',
     auth,
+    upstreams: Object.freeze(upstreams),
   });
 }
 

@@ -1,4 +1,5 @@
 import { consumptionName, restorationName } from './coupon-command.js';
+import { setTimeout as delay } from 'node:timers/promises';
 import { promotionsBrokerBinding } from './event-contract.generated.js';
 import {
   CouponCommandDeliveryHandler,
@@ -33,6 +34,7 @@ export class CouponCommandConsumer {
   private started = false;
   private stopping = false;
   private readonly pending = new Set<Promise<void>>();
+  private readonly retryAbort = new AbortController();
 
   constructor(
     private readonly channel: ConsumerChannelPort,
@@ -59,7 +61,9 @@ export class CouponCommandConsumer {
             return;
           }
           if (this.stopping) return;
-          const processing = this.dispatch(message).catch(() => this.fail());
+          const processing = this.dispatchWithRetry(message).catch(() =>
+            this.fail(),
+          );
           this.pending.add(processing);
           void processing.then(() => this.pending.delete(processing));
         },
@@ -90,9 +94,31 @@ export class CouponCommandConsumer {
     }
   }
 
+  private async dispatchWithRetry(message: BrokerDelivery): Promise<void> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (this.stopping) return;
+      try {
+        await this.dispatch(message);
+        return;
+      } catch (error) {
+        const transient =
+          error instanceof Error &&
+          [
+            'COUPON_COMMAND_FAILED',
+            'PROMOTIONS_ASSIGNED_EVENT_FAILED',
+          ].includes(error.message);
+        if (!transient || attempt === 2) throw error;
+        await delay(100 * 2 ** attempt, undefined, {
+          signal: this.retryAbort.signal,
+        });
+      }
+    }
+  }
+
   private async fail(): Promise<void> {
     if (this.stopping) return;
     this.stopping = true;
+    this.retryAbort.abort();
     try {
       this.boundary.failed('COUPON_CONSUMER_STOPPED');
     } catch {
@@ -103,6 +129,7 @@ export class CouponCommandConsumer {
 
   async stop(): Promise<void> {
     this.stopping = true;
+    this.retryAbort.abort();
     if (this.consumerTag)
       await this.channel.cancel(this.consumerTag).catch(() => undefined);
     let timer: ReturnType<typeof setTimeout> | undefined;

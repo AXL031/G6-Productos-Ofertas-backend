@@ -40,11 +40,16 @@ export interface CommercialContext {
       Pick<
         RecommendationCandidate,
         'active' | 'channelEligible' | 'availability' | 'currentPrice'
-      >
+      > | null
     >
   >;
 }
 export const COMMERCIAL_CONTEXT = Symbol('COMMERCIAL_CONTEXT');
+export class CommercialInputError extends Error {
+  constructor() {
+    super('INCONSISTENT_BASKET_REFERENCE');
+  }
+}
 export class CommercialDependencyError extends Error {
   constructor(
     readonly operation: string,

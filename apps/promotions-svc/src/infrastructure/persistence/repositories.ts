@@ -238,6 +238,24 @@ export class PromotionsRepositories {
   }
 
   async price(sku: string, channelId: string | null) {
+    // Invalidation is durable in Inbox. A PRODUCTO price change conservatively
+    // invalidates the channel when a complete local product→SKU map is unavailable.
+    // A completed handled Inbox marker is a persistent tombstone: no version/time
+    // comparison or automatic revalidation occurs, even after projection updates.
+    // HTTP reads supply current business facts but do not clear this tombstone.
+    // See REVISION-PR143-TRANSPORTE-INVALIDACIONES.md before any Inbox retention.
+    const invalidated = await this.db
+      .select({ messageId: schema.inbox.messageId })
+      .from(schema.inbox)
+      .where(
+        sql`
+      ${schema.inbox.handler}='promotions-assigned-events-v1' AND ${schema.inbox.result}->>'handled'='true'
+      AND ${schema.inbox.completedAt} IS NOT NULL AND ${schema.inbox.result}->'invalidation'->>'domain'='price'
+      AND (${schema.inbox.result}->'invalidation'->>'channelId' IS NULL OR ${schema.inbox.result}->'invalidation'->>'channelId'=${channelId})
+      AND (${schema.inbox.result}->'invalidation'->>'targetType'='PRODUCTO' OR ${schema.inbox.result}->'invalidation'->>'targetId'=${sku})`,
+      )
+      .limit(1);
+    if (invalidated.length) return undefined;
     const [projection] = await this.db
       .select()
       .from(schema.priceProjection)
@@ -253,6 +271,20 @@ export class PromotionsRepositories {
   }
 
   async stock(sku: string) {
+    // Any completed stock invalidation hides this SKU's cached availability,
+    // regardless of location/version. Never aggregate locations or reconstruct
+    // commercial availability from the event; the marker survives ordinary reads.
+    const invalidated = await this.db
+      .select({ messageId: schema.inbox.messageId })
+      .from(schema.inbox)
+      .where(
+        sql`
+      ${schema.inbox.handler}='promotions-assigned-events-v1' AND ${schema.inbox.result}->>'handled'='true'
+      AND ${schema.inbox.completedAt} IS NOT NULL AND ${schema.inbox.result}->'invalidation'->>'domain'='stock'
+      AND ${schema.inbox.result}->'invalidation'->>'targetId'=${sku}`,
+      )
+      .limit(1);
+    if (invalidated.length) return undefined;
     const [projection] = await this.db
       .select()
       .from(schema.stockProjection)
@@ -269,6 +301,7 @@ export class PromotionsRepositories {
   }
 
   async inbox(messageId: string, handler: string) {
+    // Read-only receipt lookup: no ACK, replay, cache refresh or marker removal.
     const [entry] = await this.db
       .select()
       .from(schema.inbox)
