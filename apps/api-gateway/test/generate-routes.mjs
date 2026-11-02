@@ -4,6 +4,12 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
+const operationId = process.argv[3];
+if (!operationId)
+  throw new Error(
+    'An operationId is required; full contract route regeneration is disabled.',
+  );
+
 const spec = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 if (spec.info.version !== '0.6.0-rc.2' || spec.servers[0].url !== '/api/v1') {
   throw new Error('Unexpected contract version or base path');
@@ -42,6 +48,7 @@ for (const [path, item] of Object.entries(spec.paths)) {
       )
     )
       continue;
+    if (operation.operationId !== operationId) continue;
     const service = owners[path.split('/')[1]];
     if (
       !service ||
@@ -64,6 +71,30 @@ for (const [path, item] of Object.entries(spec.paths)) {
       ...(item.parameters || []),
       ...(operation.parameters || []),
     ].map(dereference);
+    const declaredErrorCodes = operation['x-error-codes'];
+    if (
+      !declaredErrorCodes ||
+      typeof declaredErrorCodes !== 'object' ||
+      Array.isArray(declaredErrorCodes)
+    ) {
+      throw new Error(`Missing x-error-codes for ${operationId}`);
+    }
+    for (const [status, codes] of Object.entries(declaredErrorCodes)) {
+      const rawResponse = operation.responses[status];
+      if (!rawResponse || !Array.isArray(codes) || codes.length === 0) {
+        throw new Error(`Invalid x-error-codes entry ${status} for ${operationId}`);
+      }
+      const response = dereference(rawResponse);
+      if (
+        !response.content?.['application/problem+json'] ||
+        codes.some(
+          (code) => typeof code !== 'string' || !/^[A-Z][A-Z0-9_]*$/.test(code),
+        ) ||
+        new Set(codes).size !== codes.length
+      ) {
+        throw new Error(`Invalid x-error-codes entry ${status} for ${operationId}`);
+      }
+    }
     routes.push({
       method: method.toUpperCase(),
       path: '/api/v1' + path,
@@ -89,12 +120,17 @@ for (const [path, item] of Object.entries(spec.paths)) {
       responses: Object.fromEntries(
         Object.entries(operation.responses).map(([status, raw]) => {
           const response = dereference(raw);
-          const declaredCodes = operation['x-error-codes']?.[status];
-          const codes = Array.isArray(declaredCodes)
-            ? declaredCodes.flatMap((entry) =>
-                Array.isArray(entry) ? entry : typeof entry === 'string' ? [entry] : [],
-              )
-            : [];
+          const codes = declaredErrorCodes[status] ?? [];
+          if (
+            status.startsWith('4') || status.startsWith('5')
+          ) {
+            if (
+              response.content?.['application/problem+json'] &&
+              (!Array.isArray(codes) || codes.length === 0)
+            ) {
+              throw new Error(`Missing x-error-codes entry ${status} for ${operationId}`);
+            }
+          }
           return [
             status,
             {
@@ -110,71 +146,52 @@ for (const [path, item] of Object.entries(spec.paths)) {
     });
   }
 }
-if (new Set(routes.map((r) => r.operationId)).size !== routes.length)
-  throw new Error('Duplicate operationIds');
+if (routes.length !== 1)
+  throw new Error(`Expected one operation ${operationId}; found ${routes.length}`);
 const output = fileURLToPath(
   new URL('../src/routing/contract-routes.ts', import.meta.url),
 );
-const operationId = process.argv[3];
-let generatedRoutes = routes;
-if (operationId) {
-  const existing = readFileSync(output, 'utf8');
-  const replacement = routes.find((route) => route.operationId === operationId);
-  const marker = `operationId: '${operationId}'`;
-  const operationPosition = existing.indexOf(marker);
-  if (!replacement || operationPosition < 0)
-    throw new Error(`Unknown operation ${operationId}`);
-  const objectStart = existing.lastIndexOf('\n  {', operationPosition) + 3;
-  let depth = 0;
-  let quote;
-  let escaped = false;
-  let objectEnd = -1;
-  for (let i = objectStart; i < existing.length; i++) {
-    const character = existing[i];
-    if (quote) {
-      if (escaped) escaped = false;
-      else if (character === '\\') escaped = true;
-      else if (character === quote) quote = undefined;
-      continue;
-    }
-    if (character === "'" || character === '"') quote = character;
-    else if (character === '{') depth++;
-    else if (character === '}' && --depth === 0) {
-      objectEnd = i + 1;
-      break;
-    }
+const existing = readFileSync(output, 'utf8');
+const replacement = routes[0];
+const marker = `operationId: '${operationId}'`;
+const operationPosition = existing.indexOf(marker);
+if (operationPosition < 0) throw new Error(`Unknown operation ${operationId}`);
+const objectStart = existing.lastIndexOf('\n  {', operationPosition) + 3;
+let depth = 0;
+let quote;
+let escaped = false;
+let objectEnd = -1;
+for (let i = objectStart; i < existing.length; i++) {
+  const character = existing[i];
+  if (quote) {
+    if (escaped) escaped = false;
+    else if (character === '\\') escaped = true;
+    else if (character === quote) quote = undefined;
+    continue;
   }
-  if (objectEnd < 0) throw new Error('Could not locate existing route object');
-  let existingRoute = existing.slice(objectStart, objectEnd);
-  for (const [status, response] of Object.entries(replacement.responses)) {
-    const pattern = new RegExp(
-      `('${status}'\\s*:\\s*\\{[^{}]*?\\bcodes:\\s*)\\[[^\\]]*\\]`,
-    );
-    const declaredCodes = `[${response.codes.map((code) => `'${code}'`).join(', ')}]`;
-    if (!pattern.test(existingRoute))
-      throw new Error(`Could not find ${status} codes for ${operationId}`);
-    existingRoute = existingRoute.replace(pattern, `$1${declaredCodes}`);
+  if (character === "'" || character === '"') quote = character;
+  else if (character === '{') depth++;
+  else if (character === '}' && --depth === 0) {
+    objectEnd = i + 1;
+    break;
   }
-  writeFileSync(
-    output,
-    `// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: ${operationId}.\n` +
-      existing.slice(existing.indexOf('\n') + 1, objectStart) +
-      existingRoute +
-      existing.slice(objectEnd),
+}
+if (objectEnd < 0) throw new Error('Could not locate existing route object');
+let existingRoute = existing.slice(objectStart, objectEnd);
+for (const [status, response] of Object.entries(replacement.responses)) {
+  const pattern = new RegExp(
+    `('${status}'\\s*:\\s*\\{[^{}]*?\\bcodes:\\s*)\\[[^\\]]*\\]`,
   );
-  console.log(`Updated ${operationId} only.`);
-  process.exit(0);
-} else if (spec.info.version !== '0.6.0-rc.2') {
-  throw new Error('Full regeneration requires OpenAPI 0.6.0-rc.2');
+  const declaredCodes = `[${response.codes.map((code) => `'${code}'`).join(', ')}]`;
+  if (!pattern.test(existingRoute))
+    throw new Error(`Could not find ${status} codes for ${operationId}`);
+  existingRoute = existingRoute.replace(pattern, `$1${declaredCodes}`);
 }
 writeFileSync(
   output,
-  '// Generated from Docs OpenAPI 0.6.0-rc.2. Use an operationId argument for a focused update.\n' +
-    "import type { ContractRoute } from './contract-route.js';\n" +
-    'export const CONTRACT_ROUTES: readonly ContractRoute[] = ' +
-    JSON.stringify(generatedRoutes, null, 2) +
-    ';\n',
+  `// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: ${operationId}.\n` +
+    existing.slice(existing.indexOf('\n') + 1, objectStart) +
+    existingRoute +
+    existing.slice(objectEnd),
 );
-console.log(
-  `Generated ${routes.length} operations from ${Object.keys(spec.paths).length} contract paths.`,
-);
+console.log(`Updated ${operationId} only.`);
