@@ -19,10 +19,14 @@ describe('BulkExportService (isolated)', () => {
           format: input.format,
         }),
       ),
-      transitionExportJob: vi
-        .fn()
-        .mockResolvedValueOnce({ ...job, status: 'PROCESSING' })
-        .mockResolvedValueOnce({ ...job, status: 'FAILED_GENERAL' }),
+      claimQueuedExportJob: vi.fn(async () => ({
+        job: { ...job, status: 'PROCESSING' },
+        fence: 'test-fence',
+      })),
+      failProcessingExportJob: vi.fn(async () => ({
+        ...job,
+        status: 'FAILED_GENERAL',
+      })),
       listQueuedExportJobs: vi.fn().mockResolvedValue([]),
     };
     const service = new BulkExportService(repository as never);
@@ -37,10 +41,13 @@ describe('BulkExportService (isolated)', () => {
       download_url: null,
     });
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
-    expect(repository.transitionExportJob.mock.calls).toEqual([
-      [accepted.export_id, ['QUEUED'], 'PROCESSING'],
-      [accepted.export_id, ['PROCESSING'], 'FAILED_GENERAL'],
-    ]);
+    expect(repository.claimQueuedExportJob).toHaveBeenCalledWith(
+      accepted.export_id,
+    );
+    expect(repository.failProcessingExportJob).toHaveBeenCalledWith(
+      accepted.export_id,
+      'test-fence',
+    );
   });
 
   it('rejects unsupported formats before persistence', async () => {

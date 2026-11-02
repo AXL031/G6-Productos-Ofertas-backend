@@ -1,5 +1,11 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import { mapBulkPersistenceError } from './domain/bulk.errors.js';
 import { BulkDomainError } from './domain/bulk.domain-error.js';
 import { BulkPersistenceRepository } from './persistence/bulk.repository.js';
 
@@ -11,15 +17,27 @@ export type ExportFormat = 'CSV' | 'XLSX';
  * authorized provider is configured, accepted jobs terminate as FAILED_GENERAL.
  */
 @Injectable()
-export class BulkExportService implements OnModuleInit {
+export class BulkExportService implements OnModuleInit, OnModuleDestroy {
+  private static readonly PROCESSING_LEASE_MS = 60_000;
+  private static readonly RETRY_BASE_MS = 250;
+  private static readonly RETRY_MAX_MS = 30_000;
   private readonly scheduled = new Set<string>();
+  private readonly failureFences = new Map<string, string>();
+  private readonly retryCounts = new Map<string, number>();
+  private readonly retryTimers = new Map<string, NodeJS.Timeout>();
+  private readonly logger = new Logger(BulkExportService.name);
+  private recoveryTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly repository: BulkPersistenceRepository) {}
 
   onModuleInit(): void {
-    // Re-submit durable QUEUED work after restart. A DB claim makes concurrent
-    // workers mutually exclusive before any source is read.
-    void this.resumeQueuedExports().catch(() => undefined);
+    void this.runRecovery();
+  }
+
+  onModuleDestroy(): void {
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+    for (const timer of this.retryTimers.values()) clearTimeout(timer);
+    this.retryTimers.clear();
   }
 
   async create(format: ExportFormat) {
@@ -29,50 +47,89 @@ export class BulkExportService implements OnModuleInit {
         'formato debe ser CSV o XLSX.',
       );
     }
-    const exportId = randomUUID();
-    const job = await this.repository.createExportJob({ exportId, format });
-    this.schedule(exportId);
-    return this.toDto(job);
+    try {
+      const exportId = randomUUID();
+      const job = await this.repository.createExportJob({ exportId, format });
+      this.schedule(exportId);
+      return this.toDto(job);
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
+    }
   }
 
   async get(exportId: string) {
     assertExportId(exportId);
-    const job = await this.repository.findExportJobByExportId(exportId);
-    if (!job)
-      throw new BulkDomainError(
-        'EXPORT_NOT_FOUND',
-        'La exportación no existe.',
-      );
-    return this.toDto(job);
+    try {
+      const job = await this.repository.findExportJobByExportId(exportId);
+      if (!job)
+        throw new BulkDomainError(
+          'EXPORT_NOT_FOUND',
+          'La exportación no existe.',
+        );
+      return this.toDto(job);
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
+    }
   }
 
   async download(exportId: string) {
     assertExportId(exportId);
-    const job = await this.repository.findExportJobByExportId(exportId);
-    if (!job)
-      throw new BulkDomainError(
-        'EXPORT_NOT_FOUND',
-        'La exportación no existe.',
-      );
-    if (job.status !== 'COMPLETED' || !job.outputFileId) {
-      throw new BulkDomainError(
-        'EXPORT_NOT_READY',
-        'La exportación no tiene un archivo completo disponible.',
-      );
+    try {
+      const job = await this.repository.findExportJobByExportId(exportId);
+      if (!job)
+        throw new BulkDomainError(
+          'EXPORT_NOT_FOUND',
+          'La exportación no existe.',
+        );
+      if (job.status !== 'COMPLETED' || !job.outputFileId) {
+        throw new BulkDomainError(
+          'EXPORT_NOT_READY',
+          'La exportación no tiene un archivo completo disponible.',
+        );
+      }
+      const manifest = await this.repository.findFileManifest(job.outputFileId);
+      if (
+        !manifest ||
+        manifest.role !== 'RESULTADO_EXPORTACION' ||
+        manifest.format !== job.format ||
+        !manifest.contentRef.trim()
+      ) {
+        throw new BulkDomainError(
+          'EXPORT_NOT_READY',
+          'La exportación no tiene un archivo completo disponible.',
+        );
+      }
+      return { job, manifest };
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
     }
-    const manifest = await this.repository.findFileManifest(job.outputFileId);
-    if (!manifest || manifest.role !== 'RESULTADO_EXPORTACION') {
-      throw new BulkDomainError(
-        'EXPORT_NOT_READY',
-        'La exportación no tiene un archivo completo disponible.',
-      );
-    }
-    return { job, manifest };
   }
 
-  private async resumeQueuedExports(): Promise<void> {
+  private async recoverAndDispatch(): Promise<void> {
+    const staleBefore = new Date(
+      Date.now() - BulkExportService.PROCESSING_LEASE_MS,
+    );
+    await this.repository.requeueStaleProcessingExports(staleBefore);
     const jobs = await this.repository.listQueuedExportJobs();
     for (const job of jobs) this.schedule(job.exportId);
+  }
+
+  private scheduleRecovery(delay: number): void {
+    if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = setTimeout(() => void this.runRecovery(), delay);
+    this.recoveryTimer.unref();
+  }
+
+  private async runRecovery(): Promise<void> {
+    try {
+      await this.recoverAndDispatch();
+      this.scheduleRecovery(BulkExportService.PROCESSING_LEASE_MS / 2);
+    } catch {
+      this.logger.warn(
+        'No se pudo recuperar la cola de exportaciones; se reintentará.',
+      );
+      this.scheduleRecovery(BulkExportService.RETRY_BASE_MS);
+    }
   }
 
   private schedule(exportId: string): void {
@@ -80,25 +137,46 @@ export class BulkExportService implements OnModuleInit {
     this.scheduled.add(exportId);
     setImmediate(() => {
       void this.process(exportId)
-        .catch(() => undefined)
+        .catch(() => this.retry(exportId))
         .finally(() => this.scheduled.delete(exportId));
     });
   }
 
   private async process(exportId: string): Promise<void> {
-    const claimed = await this.repository.transitionExportJob(
-      exportId,
-      ['QUEUED'],
-      'PROCESSING',
-    );
-    if (!claimed) return;
+    let fence = this.failureFences.get(exportId);
+    if (!fence) {
+      const claimed = await this.repository.claimQueuedExportJob(exportId);
+      if (!claimed) {
+        this.failureFences.delete(exportId);
+        this.retryCounts.delete(exportId);
+        return;
+      }
+      fence = claimed.fence;
+      this.failureFences.set(exportId, fence);
+    }
     // No authorized/provider-complete read adapters exist for Catalog, Pricing
-    // and Inventory on this base. Fail closed; never publish a partial file.
-    await this.repository.transitionExportJob(
-      exportId,
-      ['PROCESSING'],
-      'FAILED_GENERAL',
+    // and Inventory. Fail closed; never publish a partial file.
+    await this.repository.failProcessingExportJob(exportId, fence);
+    this.failureFences.delete(exportId);
+    this.retryCounts.delete(exportId);
+  }
+
+  private retry(exportId: string): void {
+    const attempt = (this.retryCounts.get(exportId) ?? 0) + 1;
+    this.retryCounts.set(exportId, attempt);
+    const delay = Math.min(
+      BulkExportService.RETRY_BASE_MS * 2 ** Math.min(attempt - 1, 16),
+      BulkExportService.RETRY_MAX_MS,
     );
+    this.logger.warn(
+      'Fallo técnico al persistir una transición de exportación; se reintentará.',
+    );
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(exportId);
+      this.schedule(exportId);
+    }, delay);
+    timer.unref();
+    this.retryTimers.set(exportId, timer);
   }
 
   private toDto(job: {

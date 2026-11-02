@@ -4,6 +4,16 @@ import { and, eq } from 'drizzle-orm';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { getTableConfig } from 'drizzle-orm/pg-core';
+import { Test } from '@nestjs/testing';
+import request from 'supertest';
+import { BulkSvcController } from '../bulk-svc.controller.js';
+import { BulkSvcService } from '../bulk-svc.service.js';
+import { BulkImportService } from '../bulk-import.service.js';
+import { BulkStorageService } from '../storage/bulk-storage.service.js';
+import { BulkReadinessService } from '../health/bulk-readiness.service.js';
+import { BulkUserBearerGuard } from '../auth/bulk-user-bearer.guard.js';
+import { BulkProblemFilter } from '../http/bulk-problem.filter.js';
+import { BulkExportService } from '../bulk-export.service.js';
 import { parseBulkEnvironment } from '../config/bulk-environment.js';
 import {
   bulkSchema,
@@ -26,6 +36,17 @@ const integration = testUrl ? describe : describe.skip;
 let pool: Pool;
 let repository: BulkPersistenceRepository;
 let database: ReturnType<typeof drizzle<typeof bulkSchema>>;
+
+async function waitForExport(exportId: string, status: string) {
+  const deadline = Date.now() + 5_000;
+  let job = await repository.findExportJobByExportId(exportId);
+  while (job?.status !== status && Date.now() < deadline) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    job = await repository.findExportJobByExportId(exportId);
+  }
+  expect(job?.status).toBe(status);
+  return job!;
+}
 
 integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
   beforeAll(async () => {
@@ -468,6 +489,26 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     });
     await expect(
       repository.completeExportJob(job.exportId, {
+        format: 'CSV',
+        contentRef: `test://${randomUUID()}`,
+      }),
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    await expect(
+      repository.completeExportJob(job.exportId, {
+        format: 'XLSX',
+        contentRef: `test://${randomUUID()}`,
+      }),
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    expect(
+      (await repository.findExportJobByExportId(job.exportId))?.outputFileId,
+    ).toBeNull();
+    expect(
+      (await repository.findExportJobByExportId(job.exportId))?.status,
+    ).toBe('QUEUED');
+    const claimed = await repository.claimQueuedExportJob(job.exportId);
+    expect(claimed?.job.status).toBe('PROCESSING');
+    await expect(
+      repository.completeExportJob(job.exportId, {
         format: 'XLSX',
         contentRef: `test://${randomUUID()}`,
       }),
@@ -494,27 +535,156 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
         expect.objectContaining({ exportId: job.exportId }),
       ]),
     );
-    const processing = await repository.transitionExportJob(
-      job.exportId,
-      ['QUEUED'],
-      'PROCESSING',
-    );
-    expect(processing?.status).toBe('PROCESSING');
+    const processing = await repository.claimQueuedExportJob(job.exportId);
+    expect(processing?.job.status).toBe('PROCESSING');
+    expect(await repository.claimQueuedExportJob(job.exportId)).toBeNull();
     expect(
-      await repository.transitionExportJob(
+      repository.transitionExportJob(
         job.exportId,
         ['QUEUED'],
         'FAILED_GENERAL',
       ),
-    ).toBeNull();
-    const failed = await repository.transitionExportJob(
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    const failed = await repository.failProcessingExportJob(
       job.exportId,
-      ['PROCESSING'],
-      'FAILED_GENERAL',
+      processing!.fence,
     );
     expect(failed?.status).toBe('FAILED_GENERAL');
     expect(failed?.outputFileId).toBeNull();
+    expect(
+      await repository.failProcessingExportJob(job.exportId, processing!.fence),
+    ).toBeNull();
   });
+
+  it('retries a transient PostgreSQL failure during an export claim', async () => {
+    const suffix = randomUUID().replaceAll('-', '');
+    const seq = `bulk.export_retry_${suffix}`;
+    const fn = `bulk.export_retry_fn_${suffix}`;
+    const trigger = `export_retry_trigger_${suffix}`;
+    await pool.query(`CREATE SEQUENCE ${seq} START 1`);
+    await pool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF OLD.status = 'QUEUED' AND NEW.status = 'PROCESSING' AND nextval('${seq}') = 1 THEN
+          RAISE EXCEPTION 'injected transient failure';
+        END IF;
+        RETURN NEW;
+      END
+    $$`);
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE UPDATE ON bulk.export_jobs FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    const service = new BulkExportService(repository);
+    try {
+      const before = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      const accepted = await service.create('CSV');
+      const terminal = await waitForExport(
+        accepted.export_id,
+        'FAILED_GENERAL',
+      );
+      expect(terminal.outputFileId).toBeNull();
+      expect(terminal.status).toBe('FAILED_GENERAL');
+      const after = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
+    } finally {
+      service.onModuleDestroy();
+      await pool.query(`DROP TRIGGER IF EXISTS ${trigger} ON bulk.export_jobs`);
+      await pool.query(`DROP FUNCTION IF EXISTS ${fn}()`);
+      await pool.query(`DROP SEQUENCE IF EXISTS ${seq}`);
+    }
+  }, 10_000);
+
+  it('recovers a stale PROCESSING export after service restart without publishing an artifact', async () => {
+    const job = await repository.createExportJob({
+      exportId: randomUUID(),
+      format: 'XLSX',
+    });
+    await repository.claimQueuedExportJob(job.exportId);
+    try {
+      await pool.query(
+        'ALTER TABLE bulk.export_jobs DISABLE TRIGGER trg_export_jobs_updated_at',
+      );
+      await pool.query(
+        "UPDATE bulk.export_jobs SET updated_at = now() - interval '2 minutes' WHERE export_id = $1",
+        [job.exportId],
+      );
+    } finally {
+      await pool.query(
+        'ALTER TABLE bulk.export_jobs ENABLE TRIGGER trg_export_jobs_updated_at',
+      );
+    }
+    const restarted = new BulkExportService(repository);
+    try {
+      const before = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      restarted.onModuleInit();
+      const terminal = await waitForExport(job.exportId, 'FAILED_GENERAL');
+      expect(terminal.outputFileId).toBeNull();
+      expect(terminal.completedAt).toBeNull();
+      const after = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      expect(after.rows[0]?.count).toBe(before.rows[0]?.count);
+    } finally {
+      restarted.onModuleDestroy();
+    }
+  }, 10_000);
+
+  it('maps an actual PostgreSQL repository outage to a safe HTTP 503', async () => {
+    const outagePool = new Pool({
+      connectionString:
+        'postgresql://bulk_test:bulk_test_only@127.0.0.1:1/bulk_test?sslmode=disable&connect_timeout=1',
+      max: 2,
+      connectionTimeoutMillis: 500,
+    });
+    const outageRepository = new BulkPersistenceRepository(
+      drizzle(outagePool, { schema: bulkSchema, logger: false }),
+    );
+    const exportService = new BulkExportService(outageRepository);
+    const appModule = await Test.createTestingModule({
+      controllers: [BulkSvcController],
+      providers: [
+        BulkSvcService,
+        {
+          provide: BulkExportService,
+          useValue: exportService,
+        },
+        { provide: BulkImportService, useValue: {} },
+        { provide: BulkStorageService, useValue: {} },
+        {
+          provide: BulkReadinessService,
+          useValue: { check: async () => true },
+        },
+      ],
+    })
+      .overrideGuard(BulkUserBearerGuard)
+      .useValue({ canActivate: () => true })
+      .compile();
+    const app = appModule.createNestApplication();
+    app.useGlobalFilters(new BulkProblemFilter());
+    await app.init();
+    try {
+      const response = await request(app.getHttpServer())
+        .get(`/api/v1/carga-masiva/productos/exportaciones/${randomUUID()}`)
+        .expect(503);
+      expect(response.body).toMatchObject({
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+        detail: 'La persistencia no está disponible.',
+      });
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /ECONNREFUSED|password|bulk_test|SQL/i,
+      );
+    } finally {
+      exportService.onModuleDestroy();
+      await app.close();
+      await outagePool.end();
+    }
+  }, 15_000);
 
   it('enforces message and operation idempotency in Outbox and lists pending messages', async () => {
     const message = {

@@ -1377,6 +1377,70 @@ export class BulkPersistenceRepository {
     }
   }
 
+  async requeueStaleProcessingExports(
+    staleBefore: Date,
+  ): Promise<Array<typeof exportJobs.$inferSelect>> {
+    try {
+      return await this.db
+        .update(exportJobs)
+        .set({ status: 'QUEUED' })
+        .where(
+          and(
+            eq(exportJobs.status, 'PROCESSING'),
+            sql`${exportJobs.updatedAt} <= ${staleBefore}`,
+          ),
+        )
+        .returning();
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async claimQueuedExportJob(
+    exportId: string,
+  ): Promise<{ job: typeof exportJobs.$inferSelect; fence: string } | null> {
+    try {
+      const [claimed] = await this.db
+        .update(exportJobs)
+        .set({ status: 'PROCESSING' })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'QUEUED'),
+          ),
+        )
+        .returning({
+          job: exportJobs,
+          fence: sql<string>`xmin::text`,
+        });
+      return claimed ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async failProcessingExportJob(
+    exportId: string,
+    fence: string,
+  ): Promise<typeof exportJobs.$inferSelect | null> {
+    try {
+      const [failed] = await this.db
+        .update(exportJobs)
+        .set({ status: 'FAILED_GENERAL' })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'PROCESSING'),
+            sql`xmin::text = ${fence}`,
+          ),
+        )
+        .returning();
+      return failed ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
   async findFileManifest(
     id: string,
   ): Promise<typeof fileManifests.$inferSelect | null> {
@@ -1398,6 +1462,12 @@ export class BulkPersistenceRepository {
     to: BulkJobStatus,
   ): Promise<typeof exportJobs.$inferSelect | null> {
     try {
+      const allowed =
+        (to === 'PROCESSING' && from.length === 1 && from[0] === 'QUEUED') ||
+        (to === 'FAILED_GENERAL' &&
+          from.length === 1 &&
+          from[0] === 'PROCESSING');
+      if (!allowed) inconsistent('Invalid export job state transition');
       const [job] = await this.db
         .update(exportJobs)
         .set({ status: to })
@@ -1427,8 +1497,12 @@ export class BulkPersistenceRepository {
           .for('update')
           .limit(1);
         if (!job) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
-        if (job.status === 'COMPLETED')
-          inconsistent('Export is already complete');
+        if (job.status !== 'PROCESSING')
+          inconsistent('Only a processing export can be completed');
+        if (resultFile.format !== job.format)
+          inconsistent('Export output format must match the requested format');
+        if (!resultFile.contentRef.trim())
+          inconsistent('Export output requires a private content reference');
         const [manifest] = await tx
           .insert(fileManifests)
           .values({
@@ -1446,7 +1520,9 @@ export class BulkPersistenceRepository {
             outputFileId: manifest.id,
             completedAt: new Date(),
           })
-          .where(eq(exportJobs.id, job.id))
+          .where(
+            and(eq(exportJobs.id, job.id), eq(exportJobs.status, 'PROCESSING')),
+          )
           .returning();
         if (!updated) throw new Error('Export update returned no row');
         return updated;
