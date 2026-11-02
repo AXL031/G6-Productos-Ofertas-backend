@@ -13,6 +13,7 @@ import {
   esquemaTaxonomia,
   categorias,
   marcas,
+  operacionesBaja,
 } from './../src/persistence/taxonomy.schema.js';
 import type { TaxonomyDb } from './../src/persistence/drizzle-taxonomy.repository.js';
 import type { DrizzleTaxonomyRepository } from './../src/persistence/drizzle-taxonomy.repository.js';
@@ -190,6 +191,25 @@ describeIntegracion(
         "SELECT nombre FROM taxonomy.brands WHERE nombre = 'Transaccion Commit'",
       );
       expect(rows).toHaveLength(1);
+    });
+
+    it('mapea y consulta la operación histórica, y exige operation_id único', async () => {
+      const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const registro = {
+        operationId,
+        entityType: 'BRAND' as const,
+        entityId: '44444444-4444-4444-8444-444444444444',
+        correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+      };
+      await dbApp.insert(operacionesBaja).values(registro);
+      const filas = await dbApp.select().from(operacionesBaja);
+      expect(filas).toHaveLength(1);
+      expect(filas[0]).toMatchObject({ ...registro, status: 'REQUESTED' });
+      await expect(
+        dbApp.insert(operacionesBaja).values(registro),
+      ).rejects.toMatchObject({
+        cause: { code: '23505', constraint: 'uq_mdo_operation_id' },
+      });
     });
 
     it('enTransaccion revierte los cambios si la operacion falla', async () => {

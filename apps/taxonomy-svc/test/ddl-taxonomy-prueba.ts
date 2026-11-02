@@ -35,6 +35,8 @@ export function construirSentenciasDdl(
     `ALTER ROLE ${ROL_APP} WITH LOGIN PASSWORD '${PASSWORD_APP}'`,
     `CREATE SCHEMA taxonomy AUTHORIZATION ${ROL_PROPIETARIO}`,
     "CREATE TYPE taxonomy.estado_entidad AS ENUM ('ACTIVO', 'INACTIVO', 'PENDING_DEACTIVATION')",
+    "CREATE TYPE taxonomy.tipo_entidad_maestra AS ENUM ('CATEGORY', 'BRAND', 'CHARACTERISTIC', 'CHARACTERISTIC_VALUE', 'PRODUCT_TYPE', 'PRODUCT_TYPE_CHARACTERISTIC')",
+    "CREATE TYPE taxonomy.estado_operacion_baja AS ENUM ('REQUESTED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'FAILED')",
     `CREATE TABLE taxonomy.categories (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,
@@ -78,7 +80,23 @@ export function construirSentenciasDdl(
       CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$'),
       CONSTRAINT ck_brands_version CHECK (taxonomy_version >= 0)
     )`,
+    `CREATE TABLE taxonomy.master_deactivation_operations (
+      id uuid NOT NULL DEFAULT gen_random_uuid(),
+      operation_id uuid NOT NULL,
+      entity_type taxonomy.tipo_entidad_maestra NOT NULL,
+      entity_id uuid NOT NULL,
+      status taxonomy.estado_operacion_baja NOT NULL DEFAULT 'REQUESTED',
+      reason text NULL,
+      correlation_id uuid NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pk_master_deactivation_operations PRIMARY KEY (id),
+      CONSTRAINT uq_mdo_operation_id UNIQUE (operation_id),
+      CONSTRAINT ck_mdo_operation_id_not_nil CHECK (operation_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+      CONSTRAINT ck_mdo_correlation_id_not_nil CHECK (correlation_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+    )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
+    'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',
     `GRANT USAGE ON SCHEMA taxonomy TO ${ROL_APP}`,
     `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA taxonomy TO ${ROL_APP}`,
