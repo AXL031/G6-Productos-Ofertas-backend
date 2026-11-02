@@ -1879,7 +1879,10 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           /Precondición fallida: ya existe un umbral global incompatible/,
         );
 
-        const overrides = await client.query<{ count: number }>(
+        // Limpiar estado de transacción abortada en la conexión
+        await client.query('ROLLBACK').catch(() => {});
+
+        const overrides = await database.query<{ count: number }>(
           `SELECT count(*)::int AS count FROM inventory.stock_threshold_override WHERE id IN (
             '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,
             '7b49463c-333e-5e63-b8ad-344c20847250'::uuid
