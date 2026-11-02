@@ -37,6 +37,12 @@ export function construirSentenciasDdl(
     "CREATE TYPE taxonomy.estado_entidad AS ENUM ('ACTIVO', 'INACTIVO', 'PENDING_DEACTIVATION')",
     "CREATE TYPE taxonomy.tipo_entidad_maestra AS ENUM ('CATEGORY', 'BRAND', 'CHARACTERISTIC', 'CHARACTERISTIC_VALUE', 'PRODUCT_TYPE', 'PRODUCT_TYPE_CHARACTERISTIC')",
     "CREATE TYPE taxonomy.estado_operacion_baja AS ENUM ('REQUESTED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'FAILED')",
+    `CREATE TABLE taxonomy.runtime_settings (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      clave text NOT NULL UNIQUE, valor_integer integer NOT NULL CHECK (valor_integer > 0),
+      descripcion text NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    "INSERT INTO taxonomy.runtime_settings (clave, valor_integer) VALUES ('MASTER_DEACTIVATION_TIMEOUT_SECONDS', 60)",
     `CREATE TABLE taxonomy.categories (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
+import { leerTimeoutBaja } from './deactivation-timeout.js';
 import {
   evaluarCheckBaja,
   type IdentidadBaja,
@@ -19,6 +20,7 @@ export class DeactivationCheckService {
   ): Promise<ResultadoEvaluacion> {
     if (!esUuid(respuesta.operationId)) return 'IGNORAR';
     const fila = await this.database.read(async (db) => {
+      const timeout = await leerTimeoutBaja(db);
       const consulta = await db.execute(sql`
         SELECT o.operation_id, o.correlation_id, o.entity_type, o.entity_id,
                o.source_version, p.tipo_producto_id, p.caracteristica_id
@@ -27,7 +29,7 @@ export class DeactivationCheckService {
             ON o.entity_type = 'PRODUCT_TYPE_CHARACTERISTIC' AND p.id = o.entity_id
          WHERE o.operation_id = ${respuesta.operationId}::uuid
            AND o.status = 'IN_PROGRESS'
-           AND o.created_at > statement_timestamp() - interval '60 seconds'
+           AND o.created_at > statement_timestamp() - (${timeout} * interval '1 second')
       `);
       return consulta.rows[0];
     });

@@ -2,13 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
+import { leerTimeoutBaja } from './deactivation-timeout.js';
 import { evaluarCheckBaja, type IdentidadBaja } from './deactivation-check.js';
 
 export type ResultadoRegistro =
   'REGISTRADA' | 'REINTENTO' | 'CONFLICTO' | 'NO_DISPONIBLE';
 const UUID_NULO = '00000000-0000-0000-0000-000000000000';
 
-/** Registro interno de intención; no inicia la baja ni publica eventos. */
+/** Admisión durable; registra en outbox sin publicar al broker. */
 @Injectable()
 export class DeactivationIntentService {
   constructor(private readonly database: Database) {}
@@ -51,6 +52,16 @@ export class DeactivationIntentService {
         const fuente =
           await tx.execute(sql`SELECT taxonomy_version, estado FROM ${entidad}
         WHERE id = ${intencion.entityId}::uuid FOR UPDATE`);
+        // Otra transacción pudo completar la admisión mientras se esperaba el lock.
+        const trasBloqueo =
+          await tx.execute(sql`SELECT entity_type, entity_id, correlation_id, source_version
+          FROM taxonomy.master_deactivation_operations WHERE operation_id = ${intencion.operationId}::uuid`);
+        if (trasBloqueo.rows[0]) return comprobar(trasBloqueo.rows[0]);
+        const activa =
+          await tx.execute(sql`SELECT operation_id FROM taxonomy.master_deactivation_operations
+          WHERE entity_type = ${intencion.entityType}::taxonomy.tipo_entidad_maestra
+            AND entity_id = ${intencion.entityId}::uuid AND status IN ('REQUESTED', 'IN_PROGRESS') LIMIT 1`);
+        if (activa.rows.length) return 'CONFLICTO';
         const fila = fuente.rows[0];
         if (
           !fila ||
@@ -58,13 +69,34 @@ export class DeactivationIntentService {
           String(fila.taxonomy_version) !== String(intencion.version)
         )
           return 'NO_DISPONIBLE';
+        await leerTimeoutBaja(tx);
+        if (intencion.entityType === 'CATEGORY') {
+          const hijos = await tx.execute(sql`SELECT id FROM taxonomy.categories
+            WHERE categoria_padre_id = ${intencion.entityId}::uuid AND estado = 'ACTIVO' LIMIT 1`);
+          if (hijos.rows.length) return 'NO_DISPONIBLE';
+        }
         const insertado =
           await tx.execute(sql`INSERT INTO taxonomy.master_deactivation_operations
         (operation_id, correlation_id, entity_type, entity_id, source_version)
         VALUES (${intencion.operationId}::uuid, ${intencion.correlationId}::uuid,
                 ${intencion.entityType}::taxonomy.tipo_entidad_maestra, ${intencion.entityId}::uuid, ${intencion.version})
         ON CONFLICT DO NOTHING RETURNING operation_id`);
-        if (insertado.rows.length) return 'REGISTRADA';
+        if (insertado.rows.length) {
+          await tx.execute(sql`UPDATE ${entidad} SET estado = 'PENDING_DEACTIVATION'
+            WHERE id = ${intencion.entityId}::uuid AND estado = 'ACTIVO' AND taxonomy_version = ${intencion.version}`);
+          await tx.execute(sql`WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha)
+            INSERT INTO taxonomy.outbox (message_id, event_name, kind, schema_version, correlation_id, operation_id, occurred_at, payload)
+            SELECT evento.message_id, 'taxonomy.master.deactivation.check.requested', 'command', 1,
+              ${intencion.correlationId}::uuid, ${intencion.operationId}::uuid, evento.fecha,
+              jsonb_build_object('message_id', evento.message_id, 'schema_version', 1, 'occurred_at', evento.fecha,
+                'correlation_id', ${intencion.correlationId}::uuid, 'operation_id', ${intencion.operationId}::uuid,
+                'producer', 'taxonomy-svc', 'kind', 'command', 'name', 'taxonomy.master.deactivation.check.requested',
+                'data', jsonb_build_object('entity_type', ${intencion.entityType}::text, 'entity_id', ${intencion.entityId}::text,
+                  'version', ${intencion.version}::bigint)) FROM evento`);
+          await tx.execute(sql`UPDATE taxonomy.master_deactivation_operations SET status = 'IN_PROGRESS'
+            WHERE operation_id = ${intencion.operationId}::uuid AND status = 'REQUESTED'`);
+          return 'REGISTRADA';
+        }
         const reintento =
           await tx.execute(sql`SELECT entity_type, entity_id, correlation_id, source_version
         FROM taxonomy.master_deactivation_operations WHERE operation_id = ${intencion.operationId}::uuid`);
@@ -77,11 +109,12 @@ export class DeactivationIntentService {
   async recuperarVencidas(): Promise<number> {
     return this.database.read((db) =>
       db.transaction(async (tx) => {
+        const timeout = await leerTimeoutBaja(tx);
         const pendientes = await tx.execute(sql`
           SELECT operation_id, correlation_id, entity_type, entity_id, source_version
           FROM taxonomy.master_deactivation_operations
           WHERE status = 'IN_PROGRESS'
-            AND created_at <= statement_timestamp() - interval '60 seconds'
+            AND created_at <= statement_timestamp() - (${timeout} * interval '1 second')
             AND entity_type IN ('CATEGORY', 'BRAND')
           ORDER BY created_at, operation_id
           LIMIT 50 FOR UPDATE SKIP LOCKED
@@ -145,11 +178,12 @@ export class DeactivationIntentService {
     if (!esUuid(respuesta.operationId)) return 'IGNORADA';
     return this.database.read((db) =>
       db.transaction(async (tx) => {
+        const timeout = await leerTimeoutBaja(tx);
         const consulta = await tx.execute(sql`
         SELECT operation_id, correlation_id, entity_type, entity_id, source_version
         FROM taxonomy.master_deactivation_operations
         WHERE operation_id = ${respuesta.operationId}::uuid AND status = 'IN_PROGRESS'
-          AND created_at > statement_timestamp() - interval '60 seconds'
+          AND created_at > statement_timestamp() - (${timeout} * interval '1 second')
         FOR UPDATE
       `);
         const fila = consulta.rows[0];

@@ -657,6 +657,44 @@ describeIntegracion(
       }
     });
 
+    it('la migración de configuración inicializa 60 segundos y respeta un valor existente', async () => {
+      const client = await admin.connect();
+      const migration = readFileSync(
+        resolve(
+          'apps/taxonomy-svc/migrations/0003_deactivation_timeout_setting.sql',
+        ),
+        'utf8',
+      );
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          "DELETE FROM taxonomy.runtime_settings WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
+        await client.query(migration);
+        expect(
+          (
+            await client.query(
+              "SELECT valor_integer FROM taxonomy.runtime_settings WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+            )
+          ).rows,
+        ).toEqual([{ valor_integer: 60 }]);
+        await client.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer = 120 WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
+        await client.query(migration);
+        expect(
+          (
+            await client.query(
+              "SELECT valor_integer FROM taxonomy.runtime_settings WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+            )
+          ).rows,
+        ).toEqual([{ valor_integer: 120 }]);
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
     it('registra intenciones con versión autoritativa y deduplica sin aceptar cambios', async () => {
       await admin.query('DELETE FROM taxonomy.master_deactivation_operations');
       const migration = readFileSync(
@@ -681,7 +719,7 @@ describeIntegracion(
         operationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
         correlationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
         entityType: 'CATEGORY' as const,
-        entityId: '11111111-1111-4111-8111-111111111111',
+        entityId: '22222222-2222-4222-8222-222222222222',
         version: 0,
       };
       try {
@@ -701,7 +739,7 @@ describeIntegracion(
           service.registrar({
             ...solicitud,
             operationId: 'abababab-abab-4bab-8bab-abababababab',
-            entityId: '22222222-2222-4222-8222-222222222222',
+            entityId: '11111111-1111-4111-8111-111111111111',
             version: 1,
           }),
         ).resolves.toBe('NO_DISPONIBLE');
@@ -726,7 +764,126 @@ describeIntegracion(
         expect(rows.rows).toEqual([
           { operation_id: solicitud.operationId, source_version: '0' },
         ]);
+        const estado = await admin.query(
+          `SELECT o.status, c.estado FROM taxonomy.master_deactivation_operations o
+          JOIN taxonomy.categories c ON c.id = o.entity_id WHERE o.operation_id = $1`,
+          [solicitud.operationId],
+        );
+        expect(estado.rows).toEqual([
+          { status: 'IN_PROGRESS', estado: 'PENDING_DEACTIVATION' },
+        ]);
+        const eventos = await admin.query(
+          'SELECT event_name, kind, payload FROM taxonomy.outbox WHERE operation_id = $1',
+          [solicitud.operationId],
+        );
+        expect(eventos.rows).toHaveLength(1);
+        expect(eventos.rows[0]).toMatchObject({
+          event_name: 'taxonomy.master.deactivation.check.requested',
+          kind: 'command',
+          payload: {
+            operation_id: solicitud.operationId,
+            data: {
+              entity_type: 'CATEGORY',
+              entity_id: solicitud.entityId,
+              version: 0,
+            },
+          },
+        });
       } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.outbox WHERE operation_id = $1',
+          [solicitud.operationId],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [solicitud.operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'ACTIVO' WHERE id = $1",
+          [solicitud.entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('falla cerrado cuando falta la configuración de timeout', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intencion = {
+        operationId: 'abababab-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        entityType: 'BRAND' as const,
+        entityId: '44444444-4444-4444-8444-444444444444',
+        version: 0,
+      };
+      try {
+        await admin.query(
+          "DELETE FROM taxonomy.runtime_settings WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
+        await expect(
+          new DeactivationIntentService(database).registrar(intencion),
+        ).rejects.toThrow('Configuración de timeout de baja no disponible');
+        expect(
+          (
+            await admin.query(
+              'SELECT operation_id FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [intencion.operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado FROM taxonomy.brands WHERE id = $1',
+              [intencion.entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'ACTIVO' }]);
+      } finally {
+        await admin.query(
+          "INSERT INTO taxonomy.runtime_settings (clave, valor_integer) VALUES ('MASTER_DEACTIVATION_TIMEOUT_SECONDS', 60) ON CONFLICT (clave) DO UPDATE SET valor_integer = 60",
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('revierte la admisión completa si falla el outbox', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intencion = {
+        operationId: 'abababab-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        entityType: 'BRAND' as const,
+        entityId: '44444444-4444-4444-8444-444444444444',
+        version: 0,
+      };
+      try {
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        await expect(
+          new DeactivationIntentService(database).registrar(intencion),
+        ).rejects.toThrow();
+        expect(
+          (
+            await admin.query(
+              'SELECT operation_id FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [intencion.operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado FROM taxonomy.brands WHERE id = $1',
+              [intencion.entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'ACTIVO' }]);
+      } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
         vi.restoreAllMocks();
       }
     });
@@ -738,21 +895,27 @@ describeIntegracion(
       );
       const operationId = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       try {
-        await admin.query(
-          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
-          ['44444444-4444-4444-8444-444444444444'],
-        );
-        await admin.query(
-          `INSERT INTO taxonomy.master_deactivation_operations
-          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
-          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
-          [
-            operationId,
-            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
-            '44444444-4444-4444-8444-444444444444',
-          ],
-        );
         const service = new DeactivationIntentService(database);
+        await expect(
+          service.registrar({
+            operationId,
+            correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            entityType: 'BRAND',
+            entityId: '44444444-4444-4444-8444-444444444444',
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        await admin.query(
+          "UPDATE taxonomy.master_deactivation_operations SET created_at = statement_timestamp() - interval '61 seconds' WHERE operation_id = $1",
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer = 120 WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        await admin.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer = 60 WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
         await expect(service.recuperarVencidas()).resolves.toBe(1);
         await expect(
           new DeactivationIntentService(database).recuperarVencidas(),
@@ -767,7 +930,7 @@ describeIntegracion(
           { status: 'FAILED', reason: 'TECHNICAL_FAILURE', estado: 'ACTIVO' },
         ]);
         const events = await admin.query(
-          'SELECT event_name, payload FROM taxonomy.outbox WHERE operation_id = $1',
+          "SELECT event_name, payload FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = 'taxonomy.master.deactivation.rejected'",
           [operationId],
         );
         expect(events.rows).toHaveLength(1);
@@ -782,6 +945,9 @@ describeIntegracion(
           },
         });
       } finally {
+        await admin.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer = 60 WHERE clave = 'MASTER_DEACTIVATION_TIMEOUT_SECONDS'",
+        );
         vi.restoreAllMocks();
       }
     });
@@ -820,17 +986,8 @@ describeIntegracion(
           version: 0,
         };
         try {
-          await admin.query(
-            "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION', taxonomy_version = 0 WHERE id = $1",
-            [identity.entityId],
-          );
-          await admin.query(
-            `INSERT INTO taxonomy.master_deactivation_operations
-          (operation_id, correlation_id, entity_type, entity_id, status, source_version)
-          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0)`,
-            [operationId, identity.correlationId, identity.entityId],
-          );
           const service = new DeactivationIntentService(database);
+          await expect(service.registrar(identity)).resolves.toBe('REGISTRADA');
           await expect(
             service.finalizar({ ...identity, version: 1, result }),
           ).resolves.toBe('IGNORADA');
@@ -847,8 +1004,8 @@ describeIntegracion(
           );
           expect(row.rows).toEqual([{ status, estado }]);
           const events = await admin.query(
-            'SELECT event_name, kind, payload FROM taxonomy.outbox WHERE operation_id = $1',
-            [operationId],
+            'SELECT event_name, kind, payload FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = $2',
+            [operationId, eventName],
           );
           expect(events.rows).toHaveLength(1);
           expect(events.rows[0]).toMatchObject({
@@ -881,20 +1038,23 @@ describeIntegracion(
         query(dbApp),
       );
       const operationId = '66666666-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
-      const entityId = '55555555-5555-4555-8555-555555555555';
+      const entityId = '44444444-4444-4444-8444-444444444444';
       try {
+        const service = new DeactivationIntentService(database);
+        await expect(
+          service.registrar({
+            operationId,
+            correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
         await admin.query(
-          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
-          [entityId],
-        );
-        await admin.query(
-          `INSERT INTO taxonomy.master_deactivation_operations
-          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
-          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
-          [operationId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', entityId],
+          "UPDATE taxonomy.master_deactivation_operations SET created_at = statement_timestamp() - interval '61 seconds' WHERE operation_id = $1",
+          [operationId],
         );
         await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
-        const service = new DeactivationIntentService(database);
         await expect(service.recuperarVencidas()).rejects.toThrow();
         const unchanged = await admin.query(
           `SELECT o.status, b.estado FROM taxonomy.master_deactivation_operations o
@@ -907,7 +1067,7 @@ describeIntegracion(
         expect(
           (
             await admin.query(
-              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              "SELECT id FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = 'taxonomy.master.deactivation.rejected'",
               [operationId],
             )
           ).rows,
@@ -925,7 +1085,7 @@ describeIntegracion(
       } finally {
         await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
         await admin.query(
-          "UPDATE taxonomy.brands SET estado = 'INACTIVO' WHERE id = $1",
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO' WHERE id = $1",
           [entityId],
         );
         vi.restoreAllMocks();
