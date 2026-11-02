@@ -1,6 +1,8 @@
 import 'reflect-metadata';
 import { spawnSync } from 'node:child_process';
-import { randomBytes, randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
+import { fileURLToPath } from 'node:url';
 import {
   mkdtempSync,
   readFileSync,
@@ -15,13 +17,8 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { connect } from 'amqplib';
 import { Test } from '@nestjs/testing';
-import { iniciarTaxonomySvc } from '../../../../dist/apps/taxonomy-svc/bootstrap.js';
-import { DeactivationIntentService } from '../../../../dist/apps/taxonomy-svc/domain/deactivation-intent.service.js';
-import { TaxonomyAmqpRuntime } from '../../../../dist/apps/taxonomy-svc/domain/taxonomy-amqp.runtime.js';
-import { AppModule } from '../../../../dist/apps/catalog-svc/app.module.js';
-import { CatalogConfig } from '../../../../dist/apps/catalog-svc/config.js';
-import { CATALOG_AMQP_SETTINGS } from '../../../../dist/apps/catalog-svc/catalog-amqp.js';
-import { Database as CatalogDatabase } from '../../../../dist/apps/catalog-svc/database.js';
+let iniciarTaxonomySvc, DeactivationIntentService, TaxonomyAmqpRuntime;
+let AppModule, CatalogConfig, CATALOG_AMQP_SETTINGS, CatalogDatabase;
 
 // Isolated, self-provisioned infrastructure only. Never accepts database or AMQP URLs.
 const token = randomBytes(10).toString('hex');
@@ -33,11 +30,13 @@ const tmp = mkdtempSync(join(tmpdir(), 'g6-cross-e2e-'));
 const key = join(tmp, 'server.key'),
   cert = join(tmp, 'server.crt');
 const docs = resolve('../G6-Productos-Ofertas-docs/datos');
-const reportPath = resolve('apps/taxonomy-svc/test/e2e-catalog/evidence.json');
+const reportPath = resolve(
+  process.env.G6_E2E_EVIDENCE_PATH ??
+    'apps/taxonomy-svc/test/e2e-catalog/evidence-latest.json',
+);
 const report = {
   taxonomySha: '',
   catalogSha: '',
-  masterSha: '',
   environment: 'PostgreSQL 17 + RabbitMQ 4.2.9, TLS, loopback, desechables',
   scenarios: {},
   finalState: {},
@@ -98,7 +97,6 @@ const row = async (query, params = []) =>
 try {
   process.env.NODE_ENV = 'test';
   report.taxonomySha = git('rev-parse', 'HEAD');
-  report.masterSha = git('rev-parse', 'origin/master');
   report.docsSha = git(
     '-C',
     resolve('../G6-Productos-Ofertas-docs'),
@@ -121,22 +119,75 @@ try {
     'log',
     '-1',
     '--format=%H',
-    'origin/master',
+    'HEAD',
     '--',
     'apps/catalog-svc',
   );
+  if (!report.catalogSha)
+    throw new Error(
+      'Falta historia de Catalog; ejecutar git fetch --unshallow',
+    );
+  report.taxonomyTree = git('rev-parse', 'HEAD:apps/taxonomy-svc/src');
+  report.catalogTree = git('rev-parse', 'HEAD:apps/catalog-svc');
+  const relevant = [
+    'apps/taxonomy-svc/src',
+    'apps/taxonomy-svc/migrations',
+    'apps/taxonomy-svc/tsconfig.app.json',
+    'apps/catalog-svc/src',
+    'apps/catalog-svc/migrations',
+    'apps/catalog-svc/tsconfig.app.json',
+    'libs',
+    'package.json',
+    'package-lock.json',
+    'nest-cli.json',
+    'tsconfig.json',
+    'tsconfig.build.json',
+  ];
+  if (git('status', '--porcelain', '--untracked-files=all', '--', ...relevant))
+    throw new Error(
+      'El código o configuración de compilación tiene cambios locales',
+    );
+  report.runnerSha256 = createHash('sha256')
+    .update(readFileSync(fileURLToPath(import.meta.url)))
+    .digest('hex');
+  report.runnerMatchesCommit =
+    git('hash-object', fileURLToPath(import.meta.url)) ===
+    git('rev-parse', 'HEAD:apps/taxonomy-svc/test/e2e-catalog/run.mjs');
+  stage = 'Compilación desde el código verificado';
+  const nest = createRequire(import.meta.url).resolve(
+    '@nestjs/cli/bin/nest.js',
+  );
+  for (const service of ['taxonomy-svc', 'catalog-svc']) {
+    const build = spawnSync(process.execPath, [nest, 'build', service], {
+      encoding: 'utf8',
+      timeout: 180000,
+      windowsHide: true,
+    });
+    if (build.status !== 0)
+      throw new Error(
+        `Falló la compilación ${service}: ${(build.stderr || build.stdout).slice(-3000)}`,
+      );
+  }
   if (
-    git('branch', '--show-current') !== 'lopez-36' ||
-    git(
-      'diff',
-      '--name-only',
-      'HEAD',
-      'origin/master',
-      '--',
-      'apps/catalog-svc',
-    )
+    git('status', '--porcelain', '--untracked-files=all', '--', ...relevant) ||
+    git('rev-parse', 'HEAD') !== report.taxonomySha
   )
-    throw new Error('La rama o el árbol de Catalog no coinciden con master');
+    throw new Error('El código cambió durante la compilación');
+  ({ iniciarTaxonomySvc } =
+    await import('../../../../dist/apps/taxonomy-svc/bootstrap.js'));
+  ({ DeactivationIntentService } =
+    await import('../../../../dist/apps/taxonomy-svc/domain/deactivation-intent.service.js'));
+  ({ TaxonomyAmqpRuntime } =
+    await import('../../../../dist/apps/taxonomy-svc/domain/taxonomy-amqp.runtime.js'));
+  ({ AppModule } =
+    await import('../../../../dist/apps/catalog-svc/app.module.js'));
+  ({ CatalogConfig } =
+    await import('../../../../dist/apps/catalog-svc/config.js'));
+  ({ CATALOG_AMQP_SETTINGS } =
+    await import('../../../../dist/apps/catalog-svc/catalog-amqp.js'));
+  ({ Database: CatalogDatabase } =
+    await import('../../../../dist/apps/catalog-svc/database.js'));
+  report.build = 'PASS';
   const openssl =
     process.platform === 'win32'
       ? 'C:/Program Files/Git/ucrt64/bin/openssl.exe'
@@ -437,26 +488,41 @@ try {
       clear: randomUUID(),
       inUse: randomUUID(),
       recover: randomUUID(),
+      categoryClear: randomUUID(),
+      categoryInUse: randomUUID(),
     },
     operations = {
       clear: randomUUID(),
       inUse: randomUUID(),
       recover: randomUUID(),
+      categoryClear: randomUUID(),
+      categoryInUse: randomUUID(),
     };
   report.operaciones = operations;
   report.entidades = ids;
-  for (const [name, id] of Object.entries(ids))
+  for (const name of ['clear', 'inUse', 'recover'])
     await admin.query('INSERT INTO taxonomy.brands(id,nombre) VALUES ($1,$2)', [
-      id,
+      ids[name],
       `E2E ${name} ${token}`,
     ]);
+  for (const name of ['categoryClear', 'categoryInUse'])
+    await admin.query(
+      'INSERT INTO taxonomy.categories(id,nombre,nivel) VALUES ($1,$2,1)',
+      [ids[name], `E2E ${name} ${token}`],
+    );
   const c = await admin.connect();
   try {
     await c.query('BEGIN');
     const productId = randomUUID();
     await c.query(
-      `INSERT INTO catalog.products(id,nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes) VALUES($1,'E2E','E2E','category-e2e','type-e2e',$2,$3,$4,false)`,
-      [productId, ids.inUse, `sku-${token}`, `slug-${token}`],
+      `INSERT INTO catalog.products(id,nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes) VALUES($1,'E2E','E2E',$5,'type-e2e',$2,$3,$4,false)`,
+      [
+        productId,
+        ids.inUse,
+        `sku-${token}`,
+        `slug-${token}`,
+        ids.categoryInUse,
+      ],
     );
     await c.query(
       "INSERT INTO catalog.product_images(product_id,url,principal) VALUES($1,'https://example.test/e2e',true)",
@@ -494,7 +560,7 @@ try {
       await intents().registrar({
         operationId: operations[name],
         correlationId,
-        entityType: 'BRAND',
+        entityType: name.startsWith('category') ? 'CATEGORY' : 'BRAND',
         entityId: ids[name],
         version: 0,
       }),
@@ -562,6 +628,35 @@ try {
     'ACTIVO',
   );
   report.scenarios.IN_USE = inUse;
+  for (const [name, expected, outcome] of [
+    ['categoryClear', 'COMPLETED', 'CLEAR'],
+    ['categoryInUse', 'REJECTED', 'IN_USE'],
+  ]) {
+    stage = `CATEGORY ${outcome} real`;
+    await start(name);
+    await wait(
+      `CATEGORY ${outcome}`,
+      async () => (await status(name))?.status === expected,
+    );
+    const response = (
+      await row(
+        "SELECT payload->>'result' AS result FROM catalog.outbox WHERE operation_id=$1 AND event_name='catalog.master.deactivation.checked'",
+        [operations[name]],
+      )
+    )[0];
+    assert.equal(response?.result, outcome);
+    const estado = (
+      await row('SELECT estado FROM taxonomy.categories WHERE id=$1', [
+        ids[name],
+      ])
+    )[0].estado;
+    assert.equal(estado, outcome === 'CLEAR' ? 'INACTIVO' : 'ACTIVO');
+    report.scenarios[`CATEGORY_${outcome}`] = {
+      status: expected,
+      resultado: response.result,
+      estado,
+    };
+  }
   stage = 'Duplicado real';
   let original;
   await wait('copia de evento real Catalog', async () => {
@@ -671,28 +766,28 @@ try {
   };
   stage = 'Esperar eventos terminales y barreras de Catalog';
   await wait(
-    'publicación de los tres resultados terminales',
+    'publicación de todos los resultados terminales',
     async () =>
       (
         await row(
           "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=ANY($1::uuid[]) AND event_name IN ('taxonomy.master.deactivated','taxonomy.master.deactivation.rejected') AND published_at IS NOT NULL",
           [Object.values(operations)],
         )
-      )[0].n === 3,
+      )[0].n === Object.keys(operations).length,
   );
   await wait(
-    'liberación de las tres barreras de Catalog',
+    'liberación de todas las barreras de Catalog',
     async () =>
       (
         await row(
           'SELECT count(*)::int AS n FROM catalog.master_barriers WHERE operation_id=ANY($1::uuid[]) AND is_blocking=false',
           [Object.values(operations)],
         )
-      )[0].n === 3,
+      )[0].n === Object.keys(operations).length,
   );
   stage = 'Estados finales';
   report.finalState.taxonomy = await row(
-    'SELECT o.operation_id,o.status,o.reason,b.estado,b.taxonomy_version FROM taxonomy.master_deactivation_operations o JOIN taxonomy.brands b ON b.id=o.entity_id WHERE o.operation_id = ANY($1::uuid[]) ORDER BY o.operation_id',
+    "SELECT o.operation_id,o.entity_type,o.status,o.reason,COALESCE(b.estado::text,c.estado::text) AS estado,COALESCE(b.taxonomy_version,c.taxonomy_version) AS taxonomy_version FROM taxonomy.master_deactivation_operations o LEFT JOIN taxonomy.brands b ON o.entity_type='BRAND' AND b.id=o.entity_id LEFT JOIN taxonomy.categories c ON o.entity_type='CATEGORY' AND c.id=o.entity_id WHERE o.operation_id = ANY($1::uuid[]) ORDER BY o.operation_id",
     [Object.values(operations)],
   );
   report.finalState.catalog = await row(
@@ -715,8 +810,14 @@ try {
     'SELECT operation_id,event_name,result FROM catalog.inbox WHERE operation_id = ANY($1::uuid[]) ORDER BY operation_id,event_name',
     [Object.values(operations)],
   );
-  assert.equal(report.finalState.taxonomyInbox.length, 3);
-  assert.equal(report.finalState.catalog.length, 3);
+  assert.equal(
+    report.finalState.taxonomyInbox.length,
+    Object.keys(operations).length,
+  );
+  assert.equal(
+    report.finalState.catalog.length,
+    Object.keys(operations).length,
+  );
   assert.ok(report.finalState.catalog.every((b) => b.is_blocking === false));
   report.result = 'PASS';
 } catch (error) {
