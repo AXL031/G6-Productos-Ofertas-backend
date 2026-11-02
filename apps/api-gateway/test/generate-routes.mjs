@@ -1,15 +1,14 @@
 // Offline generation from the official OpenAPI converted to JSON by a YAML parser.
-// Pass one operationId to update one route or --all to regenerate the full registry.
+// For one route, pass its operationId as the third argument; only its error codes
+// are refreshed, preserving all other generated route metadata and formatting.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-const argument = process.argv[3];
-if (!argument)
+const operationId = process.argv[3];
+if (!operationId)
   throw new Error(
-    'operationId is required, or pass --all to regenerate the full registry.',
+    'An operationId is required; full contract route regeneration is disabled.',
   );
-const regenerateAll = argument === '--all';
-const operationId = regenerateAll ? null : argument;
 
 const spec = JSON.parse(readFileSync(process.argv[2], 'utf8'));
 if (spec.info.version !== '0.6.0-rc.2' || spec.servers[0].url !== '/api/v1') {
@@ -49,7 +48,7 @@ for (const [path, item] of Object.entries(spec.paths)) {
       )
     )
       continue;
-    if (!regenerateAll && operation.operationId !== operationId) continue;
+    if (operation.operationId !== operationId) continue;
     const service = owners[path.split('/')[1]];
     if (
       !service ||
@@ -78,14 +77,12 @@ for (const [path, item] of Object.entries(spec.paths)) {
       typeof declaredErrorCodes !== 'object' ||
       Array.isArray(declaredErrorCodes)
     ) {
-      throw new Error(`Missing x-error-codes for ${operation.operationId}`);
+      throw new Error(`Missing x-error-codes for ${operationId}`);
     }
     for (const [status, codes] of Object.entries(declaredErrorCodes)) {
       const rawResponse = operation.responses[status];
       if (!rawResponse || !Array.isArray(codes) || codes.length === 0) {
-        throw new Error(
-          `Invalid x-error-codes entry ${status} for ${operation.operationId}`,
-        );
+        throw new Error(`Invalid x-error-codes entry ${status} for ${operationId}`);
       }
       const response = dereference(rawResponse);
       if (
@@ -95,9 +92,7 @@ for (const [path, item] of Object.entries(spec.paths)) {
         ) ||
         new Set(codes).size !== codes.length
       ) {
-        throw new Error(
-          `Invalid x-error-codes entry ${status} for ${operation.operationId}`,
-        );
+        throw new Error(`Invalid x-error-codes entry ${status} for ${operationId}`);
       }
     }
     routes.push({
@@ -127,13 +122,14 @@ for (const [path, item] of Object.entries(spec.paths)) {
           const response = dereference(raw);
           const codes = declaredErrorCodes[status] ?? [];
           if (
-            (status.startsWith('4') || status.startsWith('5')) &&
-            response.content?.['application/problem+json'] &&
-            (!Array.isArray(codes) || codes.length === 0)
+            status.startsWith('4') || status.startsWith('5')
           ) {
-            throw new Error(
-              `Missing x-error-codes entry ${status} for ${operation.operationId}`,
-            );
+            if (
+              response.content?.['application/problem+json'] &&
+              (!Array.isArray(codes) || codes.length === 0)
+            ) {
+              throw new Error(`Missing x-error-codes entry ${status} for ${operationId}`);
+            }
           }
           return [
             status,
@@ -150,29 +146,11 @@ for (const [path, item] of Object.entries(spec.paths)) {
     });
   }
 }
-if (new Set(routes.map((r) => r.operationId)).size !== routes.length)
-  throw new Error('Duplicate operationIds');
+if (routes.length !== 1)
+  throw new Error(`Expected one operation ${operationId}; found ${routes.length}`);
 const output = fileURLToPath(
   new URL('../src/routing/contract-routes.ts', import.meta.url),
 );
-if (regenerateAll) {
-  if (spec.info.version !== '0.6.0-rc.2')
-    throw new Error('Full regeneration requires OpenAPI 0.6.0-rc.2');
-  writeFileSync(
-    output,
-    '// Generated from Docs OpenAPI 0.6.0-rc.2. Use an operationId argument for a focused update.\n' +
-      "import type { ContractRoute } from './contract-route.js';\n" +
-      'export const CONTRACT_ROUTES: readonly ContractRoute[] = ' +
-      JSON.stringify(routes, null, 2) +
-      ';\n',
-  );
-  console.log(
-    `Generated ${routes.length} operations from ${Object.keys(spec.paths).length} contract paths.`,
-  );
-  process.exit(0);
-}
-if (routes.length !== 1)
-  throw new Error(`Expected one operation ${operationId}; found ${routes.length}`);
 const existing = readFileSync(output, 'utf8');
 const replacement = routes[0];
 const marker = `operationId: '${operationId}'`;
