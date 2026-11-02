@@ -86,7 +86,7 @@ export async function iniciarTaxonomySvc(
   readDatabaseConfig(env);
   const { port, host } = readHttpConfig(env);
   const logger = new SanitizedLogger(opciones.logger);
-  const app = await NestFactory.create(TaxonomySvcModule, {
+  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(), {
     logger,
     abortOnError: false,
   });

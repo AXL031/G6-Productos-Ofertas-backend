@@ -86,13 +86,23 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'taxonomy')(
         TAXONOMY_SVC_PORT: String(port),
       };
       const previous = process.env.G6_CONNECT_HOST;
+      const previousHost = process.env.PGHOST;
+      const previousUrl = process.env.DATABASE_URL;
       process.env.G6_CONNECT_HOST = '127.0.0.2';
+      delete process.env.PGHOST;
+      delete process.env.DATABASE_URL;
       try {
         const started = await iniciarTaxonomySvc({ env });
         try {
           await request(started.app.getHttpServer()).get('/health').expect(200);
           await request(started.app.getHttpServer())
             .get('/health/readiness')
+            .expect(200);
+          await request(started.app.getHttpServer())
+            .get('/api/v1/categorias')
+            .expect(200);
+          await request(started.app.getHttpServer())
+            .get('/api/v1/marcas')
             .expect(200);
           await started.app.get(Database).onModuleDestroy();
           await request(started.app.getHttpServer()).get('/health').expect(200);
@@ -105,6 +115,10 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'taxonomy')(
       } finally {
         if (previous === undefined) delete process.env.G6_CONNECT_HOST;
         else process.env.G6_CONNECT_HOST = previous;
+        if (previousHost === undefined) delete process.env.PGHOST;
+        else process.env.PGHOST = previousHost;
+        if (previousUrl === undefined) delete process.env.DATABASE_URL;
+        else process.env.DATABASE_URL = previousUrl;
       }
     }, 30000);
   },

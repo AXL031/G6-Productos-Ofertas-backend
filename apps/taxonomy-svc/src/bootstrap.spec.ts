@@ -1,8 +1,13 @@
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createServer } from 'node:net';
 import { LoggerService } from '@nestjs/common';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import request from 'supertest';
+import { Database } from './database.js';
+import { TAXONOMY_REPOSITORY } from './taxonomy.repository.js';
+import { PostgresTaxonomyRepository } from './postgres-taxonomy.repository.js';
 import {
   crearAplicacion,
   iniciarTaxonomySvc,
@@ -176,6 +181,45 @@ describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
     await expect(
       iniciarTaxonomySvc({ env: entornoRuntime({ NODE_ENV: undefined }) }),
     ).rejects.toThrow('Configuración HTTP taxonomy inválida');
+  });
+
+  it('selecciona el repositorio PostgreSQL con configuración solo en env explícito', async () => {
+    const server = createServer();
+    await new Promise<void>((resolve, reject) =>
+      server.once('error', reject).listen(0, '127.0.0.1', resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Puerto no disponible');
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+    vi.stubEnv('PGHOST', undefined);
+    vi.stubEnv('DATABASE_URL', undefined);
+    const identity = vi
+      .spyOn(Database.prototype, 'verifyIdentity')
+      .mockResolvedValue();
+    const read = vi.spyOn(Database.prototype, 'read').mockResolvedValue([]);
+    try {
+      const { app } = await iniciarTaxonomySvc({
+        env: entornoRuntime({ TAXONOMY_SVC_PORT: String(address.port) }),
+      });
+      try {
+        expect(app.get(TAXONOMY_REPOSITORY)).toBeInstanceOf(
+          PostgresTaxonomyRepository,
+        );
+        await request(app.getHttpServer())
+          .get('/api/v1/categorias')
+          .expect(200);
+        await request(app.getHttpServer()).get('/api/v1/marcas').expect(200);
+      } finally {
+        await app.close();
+      }
+    } finally {
+      identity.mockRestore();
+      read.mockRestore();
+      vi.unstubAllEnvs();
+    }
   });
 
   it('rechaza ambos puertos ausentes', async () => {
