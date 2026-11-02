@@ -1727,9 +1727,9 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         for (const sku of skus) {
           await database.query(
             `INSERT INTO inventory.stock_balance
-             (id, location_id, sku_id, on_hand, reserved, allocated, available, backorder, safety_stock)
-             VALUES (gen_random_uuid(), $1, $2, 20, 0, 0, 20, 0, 0)`,
-            [locId, sku],
+             (sku_id, location_id, on_hand, reserved, blocked)
+             VALUES ($1, $2, 20, 0, 0)`,
+            [sku, locId],
           );
         }
       }
