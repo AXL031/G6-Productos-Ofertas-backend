@@ -4,7 +4,6 @@ import {
   CommercialPrices,
   channels,
   parseCommercialQuery,
-  serializeCommercialChannel,
 } from './commercial-prices.js';
 import type { PricingRepository } from '../persistence/pricing.repository.js';
 import * as priceResolution from '../domain/resolve-price.js';
@@ -38,29 +37,8 @@ describe('Consultas comerciales contractuales', () => {
 });
 
 describe('Serialización del canal efectivo comercial', () => {
-  it('invierte solo un mapeo unívoco; global no requiere mapeo', () => {
-    const id = randomUUID();
-    expect(serializeCommercialChannel(null, undefined)).toBeNull();
-    expect(serializeCommercialChannel(id, { RETAIL: id })).toBe('RETAIL');
-    for (const mapping of [
-      undefined,
-      {},
-      { CHATBOT: randomUUID() },
-      { RETAIL: id, CHATBOT: id },
-    ])
-      expect(() => serializeCommercialChannel(id, mapping)).toThrow(
-        'SERVICIO_NO_DISPONIBLE',
-      );
-    // GET ya conoce el canal solicitado: no cambia su resolución por el mapeo inverso.
-    expect(
-      serializeCommercialChannel(id, { RETAIL: id, CHATBOT: id }, 'RETAIL'),
-    ).toBe('RETAIL');
-  });
   const at = new Date('2030-06-01T00:00:00Z');
-  function fixture(
-    channelId: string | null,
-    channel?: (typeof channels)[number],
-  ) {
+  function fixture(channelId: string | null) {
     const validity = {
       id: randomUUID(),
       precioRegular: '12.50',
@@ -91,30 +69,33 @@ describe('Serialización del canal efectivo comercial', () => {
           eligible: true,
         }),
       },
-      channel === undefined ? {} : { [channel]: channelId! },
     );
     return { service, definition, validity, readCandidates };
   }
   it.each(channels)(
-    'traduce UUID interno a %s sin cambiar el lookup de persistencia',
+    'consulta y devuelve el canal canonico %s sin mapping',
     async (channel) => {
-      const internalId = randomUUID();
-      const { service, readCandidates } = fixture(internalId, channel);
+      const { service, readCandidates } = fixture(channel);
       const response = await service.sku('sku', channel, at);
       expect(response.channel_id).toBe(channel);
-      expect(response.channel_id).not.toBe(internalId);
       expect(readCandidates).toHaveBeenCalledWith(
         'product',
         'sku',
-        internalId,
+        channel,
         at,
       );
     },
   );
+  it.each(channels)('aplica fallback global para %s', async (channel) => {
+    const { service, readCandidates } = fixture(null);
+    const response = await service.sku('sku', channel, at);
+    expect(response.channel_id).toBeNull();
+    expect(readCandidates).toHaveBeenCalledWith('product', 'sku', channel, at);
+  });
   it.each([undefined, 'RETAIL'] as const)(
     'no publica UUID ni convierte inconsistencias en vacío (canal %s)',
     async (channel) => {
-      const { service, definition, validity } = fixture(randomUUID(), channel);
+      const { service, definition, validity } = fixture(channel ?? null);
       const resolver = vi
         .spyOn(priceResolution, 'resolvePrice')
         .mockReturnValue({
@@ -169,6 +150,20 @@ describe('JWT técnico solo para operationIds comerciales autorizados', () => {
     await expect(guard.authorize(token(), false)).rejects.toMatchObject({
       status: 401,
     });
+  });
+  it('autoriza modulo-productos solo con precios:leer en lecturas comerciales', async () => {
+    await expect(
+      guard.authorize(token({ sub: 'modulo-productos' }), true),
+    ).resolves.toBeUndefined();
+    await expect(
+      guard.authorize(token({ sub: 'modulo-productos' }), false),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      guard.authorize(
+        token({ sub: 'modulo-productos', scope: 'catalogo:leer' }),
+        true,
+      ),
+    ).rejects.toMatchObject({ status: 403 });
   });
   it.each([
     [{ aud: 'another-api' }, 401],

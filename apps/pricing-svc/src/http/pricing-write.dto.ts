@@ -5,6 +5,7 @@ import {
   type schedulePrice,
 } from '../domain/price.js';
 import { record } from './pricing-read.guard.js';
+import { channels } from './commercial-prices.js';
 
 // DTO contractual; autorizar escrituras y construir PriceFact exige providers aprobados.
 function money(value: unknown): string {
@@ -32,7 +33,12 @@ function currency(value: unknown): string {
 }
 
 function channel(value: unknown): string | null {
-  return value === undefined || value === null ? null : text(value);
+  if (value === undefined || value === null) return null;
+  requireRule(
+    channels.some((channel) => channel === value),
+    'VALIDACION',
+  );
+  return text(value);
 }
 
 function instant(value: unknown): Date {
