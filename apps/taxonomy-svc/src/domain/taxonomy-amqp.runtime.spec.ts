@@ -128,6 +128,23 @@ describe('Taxonomy AMQP', () => {
     await f.runtime.onModuleDestroy();
   });
 
+  it('rechaza el mensaje si la cabecera AMQP tiene otro correlation_id', async () => {
+    const f = fixture();
+    f.runtime.iniciar();
+    try {
+      await esperar();
+      f.entregar(envelope, {
+        correlationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      });
+      await esperar();
+      expect(f.store.consumir).not.toHaveBeenCalled();
+      expect(f.store.guardarInvalido).toHaveBeenCalledOnce();
+      expect(f.consumer.ack).toHaveBeenCalledOnce();
+    } finally {
+      await f.runtime.onModuleDestroy();
+    }
+  });
+
   it('registra mensajes inválidos antes de ACK', async () => {
     const f = fixture();
     f.runtime.iniciar();

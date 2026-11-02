@@ -1080,6 +1080,114 @@ describeIntegracion(
       }
     });
 
+    it('ignora correlation_id distinto del original aunque el resto del mensaje coincida', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const operationId = '77777777-cccc-4ccc-8ccc-cccccccccccc';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const correlationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      // Ni siquiera operation_id sustituye al correlation_id original.
+      const wrongCorrelation = operationId;
+      const messageId = '77777777-dddd-4ddd-8ddd-dddddddddddd';
+      try {
+        await expect(
+          intentos.registrar({
+            operationId,
+            correlationId,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        const causation = (
+          await admin.query(
+            'SELECT message_id FROM taxonomy.outbox WHERE operation_id=$1',
+            [operationId],
+          )
+        ).rows[0].message_id;
+        const checked = parseChecked({
+          message_id: messageId,
+          correlation_id: wrongCorrelation,
+          operation_id: operationId,
+          causation_id: causation,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          producer: 'catalog-svc',
+          kind: 'result',
+          name: 'catalog.master.deactivation.checked',
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityId,
+            version: 0,
+            result: 'CLEAR',
+          },
+        });
+        await store.consumir(checked);
+        await expect(
+          intentos.finalizar({
+            operationId,
+            correlationId: wrongCorrelation,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+            result: 'CLEAR',
+          }),
+        ).resolves.toBe('IGNORADA');
+        expect(
+          (
+            await admin.query(
+              'SELECT status,correlation_id FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS', correlation_id: correlationId }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado,taxonomy_version FROM taxonomy.brands WHERE id=$1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'PENDING_DEACTIVATION', taxonomy_version: '0' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT result FROM taxonomy.inbox WHERE message_id=$1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ result: 'IGNORED' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name IN ('taxonomy.master.deactivated','taxonomy.master.deactivation.rejected')",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+      } finally {
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          messageId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.outbox WHERE operation_id=$1', [
+          operationId,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado='ACTIVO', taxonomy_version=0 WHERE id=$1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
     it('rota fallos de Outbox sin adelantar el resultado de la misma operación', async () => {
       const database = new Database();
       vi.spyOn(database, 'read').mockImplementation(async (query) =>
@@ -1235,6 +1343,7 @@ describeIntegracion(
       const correlationId = 'ffffffff-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
       const operationId = 'ffffffff-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
       const messageId = 'ffffffff-cccc-4ccc-8ccc-cccccccccccc';
+      const mensajeAjeno = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
       const entityId = '44444444-4444-4444-8444-444444444444';
       const opInUse = 'ffffffff-dddd-4ddd-8ddd-dddddddddddd';
       const messageInUse = 'ffffffff-eeee-4eee-8eee-eeeeeeeeeeee';
@@ -1342,6 +1451,60 @@ describeIntegracion(
               (error) => (error ? reject(error) : resolve()),
             );
           });
+        // Cabecera y payload concuerdan entre sí, pero no con la intención guardada.
+        const respuestaAjena = {
+          ...respuesta,
+          message_id: mensajeAjeno,
+          correlation_id: operationId,
+        };
+        await new Promise<void>((resolve, reject) => {
+          productor.publish(
+            'po.resultados.x',
+            respuestaAjena.name,
+            Buffer.from(JSON.stringify(respuestaAjena)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              userId: 'catalog_test',
+              messageId: mensajeAjeno,
+              correlationId: operationId,
+            },
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT result FROM taxonomy.inbox WHERE message_id=$1',
+                [mensajeAjeno],
+              )
+            ).rows[0]?.result === 'IGNORED',
+        );
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado,taxonomy_version FROM taxonomy.brands WHERE id=$1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'PENDING_DEACTIVATION', taxonomy_version: '0' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
         await admin.query(`REVOKE INSERT ON taxonomy.inbox FROM ${ROL_APP}`);
         await publicar();
         await esperar(() => !runtime!.disponible());
@@ -1477,6 +1640,9 @@ describeIntegracion(
         await catalog?.close().catch(() => undefined);
         await broker?.close().catch(() => undefined);
         rabbit.cerrar();
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          mensajeAjeno,
+        ]);
         await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
           messageInUse,
         ]);
