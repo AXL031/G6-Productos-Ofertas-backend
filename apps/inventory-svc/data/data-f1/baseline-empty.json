@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "schema": "inventory",
+  "source": {
+    "kind": "SYNTHETIC_EMPTY",
+    "notice": "Simulación explícita de entorno vacío. No representa ninguna base real."
+  },
+  "tables": {
+    "locations": [],
+    "stock_threshold_override": [],
+    "stock_balance": [],
+    "inventory_operations": [],
+    "kardex": [],
+    "outbox": [],
+    "commercial_fulfillment_routes": []
+  }
+}

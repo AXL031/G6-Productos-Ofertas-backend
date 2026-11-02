@@ -8,6 +8,23 @@ import { AppModule } from './app.module.js';
 import { CatalogConfig } from './config.js';
 import { SanitizedLogger } from './sanitized-logger.js';
 import { Database } from './database.js';
+import { catalogRequestLog } from './catalog-telemetry.js';
+
+export function catalogCorrelation(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  const supplied = req.get('X-Correlation-Id');
+  const id = correlationId(supplied);
+  req.headers['x-correlation-id'] = id;
+  res.setHeader('X-Correlation-Id', id);
+  if (supplied !== undefined && !isCorrelationId(supplied)) {
+    next(new BadRequestException());
+    return;
+  }
+  next();
+}
 
 export async function createApplication(
   env: Record<string, string | undefined> = process.env,
@@ -34,17 +51,8 @@ export async function createApplication(
     logger,
     abortOnError: false,
   });
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const supplied = req.get('X-Correlation-Id');
-    const id = correlationId(supplied);
-    req.headers['x-correlation-id'] = id;
-    res.setHeader('X-Correlation-Id', id);
-    if (supplied !== undefined && !isCorrelationId(supplied)) {
-      next(new BadRequestException());
-      return;
-    }
-    next();
-  });
+  app.use(catalogRequestLog(logger));
+  app.use(catalogCorrelation);
   app.enableShutdownHooks();
   return { app, config };
 }

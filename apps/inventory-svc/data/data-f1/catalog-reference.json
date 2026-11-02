@@ -1,0 +1,102 @@
+{
+  "version": 1,
+  "source": {
+    "kind": "HISTORICAL_READ_ONLY_AUDIT",
+    "repository": "Taller-SW-Web/G6-Productos-Ofertas-backend",
+    "commit": "9dcf22b9ad08eaf94eee5b4363b3a24e53ddd90a",
+    "path": "scripts/seed/mcp/pricing/003_price_matrix.json",
+    "git_blob": "4113948e8a686d46ce9c40b325d8574aa751489b",
+    "captured_at": "2026-10-16T23:38:05.750873+00:00",
+    "notice": "Referencia derivada de auditoría publicada por Pricing; requiere ratificación vigente de Catálogo #12. No acredita publicación ni estado actual."
+  },
+  "rows": [
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "kind": "VARIANTE",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    },
+    {
+      "sku": "ADI-ENT22-BASE",
+      "kind": "BASE_NO_VENDIBLE",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "variant_id": null,
+      "product_status": "BORRADOR",
+      "variant_status": null
+    },
+    {
+      "sku": "ADI-RF3-BASE",
+      "kind": "BASE_NO_VENDIBLE",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": null,
+      "product_status": "BORRADOR",
+      "variant_status": null
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "kind": "VARIANTE",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "kind": "VARIANTE",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    },
+    {
+      "sku": "NIK-PITCH-05",
+      "kind": "SIMPLE",
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "variant_id": null,
+      "product_status": "BORRADOR",
+      "variant_status": null
+    },
+    {
+      "sku": "NIK-REV7-BASE",
+      "kind": "BASE_NO_VENDIBLE",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": null,
+      "product_status": "BORRADOR",
+      "variant_status": null
+    },
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "kind": "VARIANTE",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "kind": "VARIANTE",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    },
+    {
+      "sku": "PUM-ULP-BASE",
+      "kind": "BASE_NO_VENDIBLE",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "variant_id": null,
+      "product_status": "BORRADOR",
+      "variant_status": null
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "kind": "VARIANTE",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "product_status": "BORRADOR",
+      "variant_status": "BORRADOR"
+    }
+  ]
+}

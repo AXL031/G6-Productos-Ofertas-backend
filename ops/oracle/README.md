@@ -8,6 +8,7 @@
 |---|---|
 | Estado de la VM (corte 19-oct-2026) | [`ESTADO_ACTUAL.md`](ESTADO_ACTUAL.md) |
 | Preparar un servicio desde desarrollo | [`GUIA_DEVTEAM.md`](GUIA_DEVTEAM.md) |
+| Política única de demo H4 y autenticación reversible | [H4-MODO-DEMO-AUTH-REVERSIBLE.md](H4-MODO-DEMO-AUTH-REVERSIBLE.md) |
 | Requisitos comunes para build y runtime | [`CONTRATO_DESPLIEGUE.md`](CONTRATO_DESPLIEGUE.md) |
 | Brechas específicas por servicio | [`servicios/`](servicios/) |
 | Estado comparado por servicio y propuesta de gate CI | [`ESTADO_SERVICIOS.md`](ESTADO_SERVICIOS.md) |
@@ -15,6 +16,7 @@
 | Redes y dependencias | [`MATRIZ_DEPENDENCIAS.md`](MATRIZ_DEPENDENCIAS.md) |
 | RabbitMQ | [`RABBITMQ_COMPATIBILIDAD.md`](RABBITMQ_COMPATIBILIDAD.md) |
 | Gates y formato de entrega | [`CHECKLIST_PREDEPLOY.md`](CHECKLIST_PREDEPLOY.md) |
+| Evidencia CI/CD de Hito 4 y migración del check requerido | [`CI-CD-HITO4.md`](CI-CD-HITO4.md) |
 | Procedimientos CD, operación y rollback | Secciones posteriores de este README y scripts enlazados |
 | Evidencia histórica | [`auditorias/README.md`](auditorias/README.md) |
 

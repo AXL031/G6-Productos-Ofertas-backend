@@ -6,17 +6,18 @@
 
 ## 1. Orden obligatorio de trabajo
 
-Prohibido escribir código antes de completar los pasos 1 a 5:
+Prohibido escribir código antes de completar los pasos 1 a 6:
 
 1. **LEER `AGENTS.md` COMPLETO** antes de editar cualquier archivo.
 2. **Identificar la rama actual:** debe ser tu rama personal asignada.
 3. **Leer el Issue asignado** y comprender todos sus criterios de aceptación.
 4. **Identificar microservicio, owner y archivos autorizados:** verificar matriz de ownership.
 5. **Consultar los contratos normativos correspondientes** en el repositorio de documentación.
-6. **Realizar únicamente los cambios solicitados:** sin refactors extra ni archivos fuera de scope.
-7. **Ejecutar pruebas:** pruebas enfocadas primero, luego validaciones generales.
-8. **Revisar `git diff`:** verificar cambios exactos y ausencia de whitespace errors.
-9. **Reportar resultados y bloqueos:** según el formato de reporte obligatorio.
+6. Para toda implementación o modificación del modo demo, antes de cambiar código es obligatorio leer `ops/oracle/H4-MODO-DEMO-AUTH-REVERSIBLE.md` y Backend [#144](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/144).
+7. **Realizar únicamente los cambios solicitados:** sin refactors extra ni archivos fuera de scope.
+8. **Ejecutar pruebas:** pruebas enfocadas primero, luego validaciones generales.
+9. **Revisar `git diff`:** verificar cambios exactos y ausencia de whitespace errors.
+10. **Reportar resultados y bloqueos:** según el formato de reporte obligatorio.
 
 ### Lectura obligatoria para preparación Oracle
 

@@ -43,4 +43,10 @@ describe('Commercial query contract', () => {
       parseProductQuery({ canal: 'MARKETPLACE', q: 'x' }, true),
     ).toThrow();
   });
+  it('keeps the human global context absent and never defaults it to a channel', () => {
+    expect(parseProductQuery({}, false, false).canal).toBeUndefined();
+    expect(parseProductQuery({}, true, false).canal).toBeUndefined();
+    expect(() => parseProductQuery({ canal: '' }, false, false)).toThrow();
+    expect(() => parseProductQuery({ canal: 'OTHER' }, true, false)).toThrow();
+  });
 });

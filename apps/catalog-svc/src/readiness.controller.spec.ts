@@ -75,6 +75,25 @@ describe('Catalog readiness modes', () => {
     expect(pricing.checkReady).not.toHaveBeenCalled();
   });
 
+  it('checks internal catalog reads when both demo flags are enabled', async () => {
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      {
+        marketplaceDemoPreview: true,
+        readDemo: { enabled: true },
+      } as CatalogConfig,
+      pricing,
+      repository,
+    );
+    await expect(controller.ready()).resolves.toMatchObject({
+      status: 'ready',
+    });
+    expect(commercial.list).toHaveBeenCalledOnce();
+    expect(pricing.checkReady).not.toHaveBeenCalled();
+    expect(repository.checkDemoReadAccess).not.toHaveBeenCalled();
+  });
+
   it('fails readiness closed when the Catalog database is unavailable', async () => {
     vi.mocked(database.verifyIdentity).mockRejectedValue(
       new Error('database down'),

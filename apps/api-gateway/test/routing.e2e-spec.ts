@@ -233,6 +233,28 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     ).toBe(404);
     expect(calls).toHaveLength(0);
   });
+
+  it.each(CONTRACT_ROUTES.filter((route) => route.security.length > 0))(
+    'keeps protected operation $operationId authenticated when demo is off',
+    async (route) => {
+      const path = route.path.replace(
+        /\{[^}]+\}/g,
+        '11111111-1111-1111-1111-111111111111',
+      );
+      const agent = request(app.getHttpServer());
+      const methods = {
+        GET: agent.get.bind(agent),
+        POST: agent.post.bind(agent),
+        PATCH: agent.patch.bind(agent),
+        PUT: agent.put.bind(agent),
+        DELETE: agent.delete.bind(agent),
+      };
+      const response =
+        await methods[route.method as keyof typeof methods](path);
+      expect(response.status).toBe(401);
+      expect(calls).toHaveLength(0);
+    },
+  );
   it('preserves stable Problem.code while removing secret-bearing upstream diagnostics', async () => {
     reply = {
       ...reply,

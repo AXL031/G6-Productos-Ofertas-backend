@@ -2,6 +2,7 @@ import { HttpStatus } from '@nestjs/common';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import request from 'supertest';
@@ -10,6 +11,7 @@ import { ProblemDetailsException } from './../src/errors/taxonomy.errors.js';
 import { crearRepositorioDrizzle } from './../src/persistence/persistence.providers.js';
 import {
   esquemaTaxonomia,
+  categorias,
   marcas,
 } from './../src/persistence/taxonomy.schema.js';
 import type { TaxonomyDb } from './../src/persistence/drizzle-taxonomy.repository.js';
@@ -204,6 +206,123 @@ describeIntegracion(
         "SELECT nombre FROM taxonomy.brands WHERE nombre = 'Transaccion Rollback'",
       );
       expect(rows).toHaveLength(0);
+    });
+
+    it('revierte toda la transacción ante una restricción de unicidad normalizada', async () => {
+      await expect(
+        repo.enTransaccion(async (tx) => {
+          await tx
+            .insert(marcas)
+            .values({ nombre: 'Marca rollback constraint' });
+          await tx.insert(marcas).values({ nombre: '  MARATHON  ' });
+        }),
+      ).rejects.toMatchObject({
+        cause: { code: '23505', constraint: 'uq_brands_nombre_normalizado' },
+      });
+      const { rows } = await admin.query(
+        'SELECT id FROM taxonomy.brands WHERE nombre = $1',
+        ['Marca rollback constraint'],
+      );
+      expect(rows).toHaveLength(0);
+      const original = await admin.query(
+        'SELECT nombre FROM taxonomy.brands WHERE nombre_normalizado = $1',
+        ['marathon'],
+      );
+      expect(original.rows).toEqual([{ nombre: 'Marathon' }]);
+    });
+
+    it.each([
+      [
+        'nombre vacío de categoría',
+        'INSERT INTO taxonomy.categories (nombre) VALUES ($1)',
+        ['   '],
+        'ck_categories_nombre_not_empty',
+      ],
+      [
+        'versión negativa de categoría',
+        'INSERT INTO taxonomy.categories (nombre, taxonomy_version) VALUES ($1, $2)',
+        ['Versión inválida', -1],
+        'ck_categories_version',
+      ],
+      [
+        'versión negativa de marca',
+        'INSERT INTO taxonomy.brands (nombre, taxonomy_version) VALUES ($1, $2)',
+        ['Versión inválida', -1],
+        'ck_brands_version',
+      ],
+      [
+        'categoría autorreferenciada',
+        'INSERT INTO taxonomy.categories (id, nombre, nivel, categoria_padre_id) VALUES ($1, $2, $3, $1)',
+        ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Autorreferencia', 2],
+        'ck_categories_no_self_parent',
+      ],
+    ])('rechaza %s', async (_caso, query, params, constraint) => {
+      await expect(app.query(query, params)).rejects.toMatchObject({
+        code: '23514',
+        constraint,
+      });
+    });
+
+    it('rechaza nombre vacío de marca', async () => {
+      const error: unknown = await app
+        .query('INSERT INTO taxonomy.brands (nombre) VALUES ($1)', ['   '])
+        .catch((e: unknown) => e);
+      expect(error).toMatchObject({ code: '23514' });
+      expect([
+        'ck_brands_nombre_not_empty',
+        'ck_brands_nombre_normalizado_not_empty',
+      ]).toContain((error as { constraint?: string }).constraint);
+    });
+
+    it('aplica las restricciones oficiales de FK y CHECK de categorías', async () => {
+      await expect(
+        app.query(
+          'INSERT INTO taxonomy.categories (nombre, nivel, categoria_padre_id) VALUES ($1, $2, $3)',
+          ['Hija huérfana', 2, '99999999-9999-4999-8999-999999999999'],
+        ),
+      ).rejects.toMatchObject({
+        code: '23503',
+        constraint: 'fk_categories_categoria_padre',
+      });
+      await expect(
+        app.query(
+          'INSERT INTO taxonomy.categories (nombre, orden) VALUES ($1, $2)',
+          ['Orden inválido', -1],
+        ),
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'ck_categories_orden',
+      });
+    });
+
+    it('limita los mapeos y claves foráneas Drizzle al schema taxonomy', async () => {
+      expect(getTableConfig(categorias).schema).toBe('taxonomy');
+      expect(getTableConfig(marcas).schema).toBe('taxonomy');
+      const fks = getTableConfig(categorias).foreignKeys;
+      expect(fks).toHaveLength(1);
+      const referencia = fks[0].reference();
+      expect(fks[0].getName()).toBe('fk_categories_categoria_padre');
+      expect(referencia.foreignTable).toBe(categorias);
+      expect(getTableConfig(referencia.foreignTable).schema).toBe('taxonomy');
+      expect(referencia.columns.map((column) => column.name)).toEqual([
+        'categoria_padre_id',
+      ]);
+      expect(referencia.foreignColumns.map((column) => column.name)).toEqual([
+        'id',
+      ]);
+      const { rows } = await admin.query(
+        `SELECT n.nspname AS destino FROM pg_constraint c
+        JOIN pg_class origen ON origen.oid = c.conrelid
+        JOIN pg_namespace s ON s.oid = origen.relnamespace
+        JOIN pg_class destino ON destino.oid = c.confrelid
+        JOIN pg_namespace n ON n.oid = destino.relnamespace
+        WHERE s.nspname = $1 AND c.contype = 'f'`,
+        ['taxonomy'],
+      );
+      expect(rows.length).toBeGreaterThan(0);
+      expect(
+        rows.every((row: { destino: string }) => row.destino === 'taxonomy'),
+      ).toBe(true);
     });
 
     it('verificarReadiness resuelve contra la base viva', async () => {

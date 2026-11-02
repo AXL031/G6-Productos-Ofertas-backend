@@ -1,5 +1,5 @@
 import { readGatewaySettings, readGatewayPort } from './gateway-settings.js';
-import { matchContractRoute } from './gateway-proxy.js';
+import { isRestrictedDemoPeer, matchContractRoute } from './gateway-proxy.js';
 
 describe('Gateway route boundaries and configuration', () => {
   it('preserves the Oracle/CD port and existing override precedence', () => {
@@ -69,6 +69,12 @@ describe('Gateway route boundaries and configuration', () => {
   it('keeps no-auth demo mode disabled unless explicitly enabled', () => {
     expect(readGatewaySettings({}).demoNoAuthEnabled).toBe(false);
     expect(
+      readGatewaySettings({ NODE_ENV: 'production' }).demoNoAuthEnabled,
+    ).toBe(false);
+    expect(
+      readGatewaySettings({ AUTH_ISSUER: undefined }).demoNoAuthEnabled,
+    ).toBe(false);
+    expect(
       readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' })
         .demoNoAuthEnabled,
     ).toBe(true);
@@ -80,7 +86,33 @@ describe('Gateway route boundaries and configuration', () => {
       readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'yes' }),
     ).toThrow('Invalid Gateway configuration');
   });
-  it('does not require issuer or JWKS when no-auth demo mode is enabled', () => {
+  it('rejects contradictory broad and read-only demo flags at startup', () => {
+    expect(() =>
+      readGatewaySettings({
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        G6_READ_ONLY_DEMO_ENABLED: 'true',
+      }),
+    ).toThrow('Invalid Gateway configuration');
+    expect(
+      readGatewaySettings({ G6_READ_ONLY_DEMO_ENABLED: 'true' })
+        .readOnlyDemoEnabled,
+    ).toBe(true);
+  });
+  it.each([
+    ['127.0.0.1', true],
+    ['::1', true],
+    ['10.22.0.4', true],
+    ['172.31.255.2', true],
+    ['192.168.1.8', true],
+    ['::ffff:192.168.1.8', true],
+    ['203.0.113.8', false],
+    ['8.8.8.8', false],
+    ['2001:db8::1', false],
+    [undefined, false],
+  ])('requires a private TCP peer for demo (%s)', (address, allowed) => {
+    expect(isRestrictedDemoPeer(address)).toBe(allowed);
+  });
+  it('requires explicit demo activation and permits absent G7 trust only in demo', () => {
     expect(
       readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' }),
     ).toMatchObject({
@@ -88,12 +120,12 @@ describe('Gateway route boundaries and configuration', () => {
       issuer: undefined,
       jwksUrl: undefined,
     });
-    expect(
+    expect(() =>
       readGatewaySettings({
         GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         AUTH_ISSUER: 'not-an-issuer',
-      }).demoNoAuthEnabled,
-    ).toBe(true);
+      }),
+    ).toThrow('Invalid Gateway configuration');
   });
   it('does not allow the environment public allowlist to expose protected operations in demo mode', () => {
     expect(() =>

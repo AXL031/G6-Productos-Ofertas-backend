@@ -50,7 +50,11 @@ export function construirSentenciasDdl(
       CONSTRAINT pk_categories PRIMARY KEY (id),
       CONSTRAINT fk_categories_categoria_padre FOREIGN KEY (categoria_padre_id)
         REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
+      CONSTRAINT ck_categories_nombre_not_empty CHECK (length(trim(nombre)) > 0),
       CONSTRAINT ck_categories_nivel CHECK (nivel IN (1, 2)),
+      CONSTRAINT ck_categories_orden CHECK (orden >= 0),
+      CONSTRAINT ck_categories_version CHECK (taxonomy_version >= 0),
+      CONSTRAINT ck_categories_no_self_parent CHECK (categoria_padre_id <> id),
       CONSTRAINT ck_categories_padre_nivel CHECK (
         (categoria_padre_id IS NULL AND nivel = 1) OR
         (categoria_padre_id IS NOT NULL AND nivel = 2)
@@ -69,7 +73,10 @@ export function construirSentenciasDdl(
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT pk_brands PRIMARY KEY (id),
       CONSTRAINT uq_brands_nombre_normalizado UNIQUE (nombre_normalizado),
-      CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$')
+      CONSTRAINT ck_brands_nombre_not_empty CHECK (length(trim(nombre)) > 0),
+      CONSTRAINT ck_brands_nombre_normalizado_not_empty CHECK (length(trim(nombre_normalizado)) > 0),
+      CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$'),
+      CONSTRAINT ck_brands_version CHECK (taxonomy_version >= 0)
     )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',

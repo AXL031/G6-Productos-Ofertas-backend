@@ -1,7 +1,7 @@
 import { readGatewaySettings } from './gateway-settings.js';
 import { createSignedIdentity } from '../../test/support/signed-identity.js';
 import { CONTRACT_ROUTES } from './contract-routes.js';
-import { GatewayIdentity, isDemoPublicRoute } from './gateway-identity.js';
+import { GatewayIdentity, isDemoBypassRoute } from './gateway-identity.js';
 
 describe('Gateway identity from G6/G7 contracts', () => {
   const settings = readGatewaySettings({});
@@ -167,19 +167,18 @@ describe('Gateway identity from G6/G7 contracts', () => {
       identity.authorize(product, `Bearer ${signed.token()}`),
     ).rejects.toMatchObject({ status: 503 });
   });
-  it('bypasses JWT only for the demo public GET allowlist', async () => {
-    const demoIdentity = new GatewayIdentity({
+  it('bypasses JWT for every registered contract operation only in explicit broad demo', async () => {
+    const demoSettings = {
       ...settings,
       issuer: undefined,
       jwksUrl: undefined,
       demoNoAuthEnabled: true,
-    });
-    const allowed = CONTRACT_ROUTES.filter(isDemoPublicRoute);
-    expect(allowed.map((route) => route.operationId).sort()).toEqual([
-      'listarCategorias',
-      'listarProductos',
-      'obtenerProductoPorSlug',
-    ]);
+    };
+    const demoIdentity = new GatewayIdentity(demoSettings);
+    const allowed = CONTRACT_ROUTES.filter((route) =>
+      isDemoBypassRoute(route, demoSettings),
+    );
+    expect(allowed).toHaveLength(CONTRACT_ROUTES.length);
     for (const route of allowed) {
       await expect(
         demoIdentity.authorize(route, undefined),
@@ -188,12 +187,31 @@ describe('Gateway identity from G6/G7 contracts', () => {
         demoIdentity.authorize(route, 'Bearer malformed-secret-token'),
       ).resolves.toBeUndefined();
     }
-    const protectedRoute = CONTRACT_ROUTES.find(
-      (route) => route.method === 'POST',
-    )!;
-    await expect(
-      demoIdentity.authorize(protectedRoute, undefined),
-    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+  });
+
+  it('keeps the PR #125 read-only demo as a strict subset', async () => {
+    const readOnly = new GatewayIdentity({
+      ...settings,
+      readOnlyDemoEnabled: true,
+    });
+    for (const route of CONTRACT_ROUTES) {
+      const allowed = isDemoBypassRoute(route, {
+        ...settings,
+        readOnlyDemoEnabled: true,
+      });
+      if (allowed) {
+        await expect(
+          readOnly.authorize(route, undefined),
+        ).resolves.toBeUndefined();
+      } else {
+        await expect(
+          readOnly.authorize(route, undefined),
+        ).rejects.toMatchObject({
+          status: 403,
+          code: 'SCOPE_INSUFICIENTE',
+        });
+      }
+    }
   });
   it('restores JWT and authorization checks when demo mode is disabled', async () => {
     const identity = new GatewayIdentity({

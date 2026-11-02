@@ -1,0 +1,15 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "noEmit": true,
+    "rootDir": ".."
+  },
+  "include": [
+    "../src/auth/commercial-demo.spec.ts",
+    "inventory-commercial-demo.e2e-spec.ts"
+  ],
+  "exclude": []
+}

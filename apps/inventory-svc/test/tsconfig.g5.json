@@ -1,0 +1,16 @@
+{
+  "extends": "../tsconfig.app.json",
+  "compilerOptions": {
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "noEmit": true,
+    "rootDir": ".."
+  },
+  "include": [
+    "../src/reintegros/reintegros.spec.ts",
+    "../src/reservations/reservations.cycle.spec.ts",
+    "inventory-g5-provider.e2e-spec.ts"
+  ],
+  "exclude": []
+}

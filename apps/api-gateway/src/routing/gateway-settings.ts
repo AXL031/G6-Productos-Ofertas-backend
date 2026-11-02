@@ -13,6 +13,8 @@ export interface GatewaySettings {
   readonly jwksUrl?: string;
   readonly publicOperations: readonly string[];
   readonly demoNoAuthEnabled: boolean;
+  /** Compatibility with PR #125; this flag grants only its approved GET subset. */
+  readonly readOnlyDemoEnabled?: boolean;
 }
 
 export function readGatewayPort(env: Readonly<NodeJS.ProcessEnv>): number {
@@ -88,21 +90,25 @@ export function readGatewaySettings(
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000)
       throw new Error();
     const demoNoAuthEnabled = env.GATEWAY_DEMO_NO_AUTH_ENABLED ?? 'false';
+    const readOnlyDemoEnabled = env.G6_READ_ONLY_DEMO_ENABLED ?? 'false';
     if (!['true', 'false'].includes(demoNoAuthEnabled)) throw new Error();
-    if (demoNoAuthEnabled !== 'true') {
-      if (!!env.AUTH_ISSUER !== !!env.AUTH_JWKS_URL) throw new Error();
-      for (const value of [env.AUTH_ISSUER, env.AUTH_JWKS_URL]) {
-        if (!value) continue;
-        const url = new URL(value);
-        if (
-          url.protocol !== 'https:' ||
-          url.username ||
-          url.password ||
-          url.search ||
-          url.hash
-        )
-          throw new Error();
-      }
+    if (!['true', 'false'].includes(readOnlyDemoEnabled)) throw new Error();
+    // The broad H4 mode and the legacy Catalog read-only mode are mutually
+    // exclusive. Ambiguous configuration must never widen the read-only cap.
+    if (demoNoAuthEnabled === 'true' && readOnlyDemoEnabled === 'true')
+      throw new Error();
+    if (!!env.AUTH_ISSUER !== !!env.AUTH_JWKS_URL) throw new Error();
+    for (const value of [env.AUTH_ISSUER, env.AUTH_JWKS_URL]) {
+      if (!value) continue;
+      const url = new URL(value);
+      if (
+        url.protocol !== 'https:' ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash
+      )
+        throw new Error();
     }
     const publicOperations = (env.GATEWAY_PUBLIC_OPERATION_IDS ?? '')
       .split(',')
@@ -125,6 +131,7 @@ export function readGatewaySettings(
       jwksUrl: env.AUTH_JWKS_URL,
       publicOperations: Object.freeze(publicOperations),
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
+      readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',
     });
   } catch {
     throw new Error(

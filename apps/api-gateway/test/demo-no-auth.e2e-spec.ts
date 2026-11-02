@@ -5,10 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { ApiGatewayModule } from '../src/api-gateway.module.js';
 import { CONTRACT_ROUTES } from '../src/routing/contract-routes.js';
-import {
-  GatewayIdentity,
-  isDemoPublicRoute,
-} from '../src/routing/gateway-identity.js';
+import { GatewayIdentity } from '../src/routing/gateway-identity.js';
 import {
   GATEWAY_SETTINGS,
   readGatewaySettings,
@@ -17,10 +14,12 @@ import {
 describe('Gateway no-auth demo mode', () => {
   let provider: Server;
   let app: INestApplication;
+  let settings: ReturnType<typeof readGatewaySettings>;
   let calls: {
     method: string;
     url: string;
     authorization?: string;
+    headers: Record<string, string | string[] | undefined>;
     body: Buffer;
   }[] = [];
   let providerStatus = 200;
@@ -38,6 +37,7 @@ describe('Gateway no-auth demo mode', () => {
         method: req.method!,
         url: req.url!,
         authorization: req.headers.authorization,
+        headers: req.headers,
         body: Buffer.concat(chunks),
       });
       res.writeHead(status, {
@@ -51,7 +51,7 @@ describe('Gateway no-auth demo mode', () => {
     if (!address || typeof address === 'string')
       throw new Error('No test provider address');
     const origin = `http://127.0.0.1:${address.port}`;
-    const settings = readGatewaySettings({
+    settings = readGatewaySettings({
       GATEWAY_CATALOG_SVC_URL: origin,
       GATEWAY_TAXONOMY_SVC_URL: origin,
       GATEWAY_PRICING_SVC_URL: origin,
@@ -85,18 +85,14 @@ describe('Gateway no-auth demo mode', () => {
       await new Promise<void>((done) => provider.close(() => done()));
   });
 
-  it.each(CONTRACT_ROUTES.filter(isDemoPublicRoute))(
+  it.each(CONTRACT_ROUTES)(
     '$method $path forwards without requiring or forwarding Authorization',
     async (route) => {
       const routePath = route.path.replace(
         /\{[^}]+\}/g,
         '11111111-1111-1111-1111-111111111111',
       );
-      const path =
-        route.operationId === 'listarProductos' ||
-        route.operationId === 'obtenerProductoPorSlug'
-          ? `${routePath}?canal=MARKETPLACE`
-          : routePath;
+      const path = `${routePath}?pagina=1`;
       const success = Object.entries(route.responses).find(
         ([status]) => Number(status) >= 200 && Number(status) < 300,
       )!;
@@ -137,39 +133,37 @@ describe('Gateway no-auth demo mode', () => {
     },
   );
 
-  it('keeps write operations authenticated while demo read bypass is enabled', async () => {
-    const response = await request(app.getHttpServer())
-      .post('/api/v1/productos')
-      .set('Content-Type', 'application/json')
-      .send({ fixture: true });
-
-    expect(response.status).toBe(401);
-    expect(calls).toHaveLength(0);
-  });
-
-  it('ignores invalid supplied Authorization and does not forward it', async () => {
+  it('ignores Authorization and client-supplied identity headers on bypass', async () => {
     const response = await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE')
-      .set('Authorization', 'Bearer secret-that-must-not-leak');
+      .set('Authorization', 'not-a-jwt')
+      .set('X-User-Id', 'forged-user')
+      .set('X-Client-Id', 'forged-client')
+      .set('X-Scopes', 'admin')
+      .set('X-Forwarded-For', '203.0.113.1')
+      .set('X-Real-IP', '203.0.113.1');
 
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0].authorization).toBeUndefined();
+    for (const name of [
+      'x-user-id',
+      'x-client-id',
+      'x-scopes',
+      'x-forwarded-for',
+      'x-real-ip',
+    ])
+      expect(calls[0].headers[name]).toBeUndefined();
   });
 
   it.each(['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'])(
-    'passes channel %s through only when that request is authenticated or public',
+    'preserves the contractual channel %s through the exact registered operation',
     async (canal) => {
       const response = await request(app.getHttpServer()).get(
         `/api/v1/productos?canal=${canal}`,
       );
-      if (canal === 'MARKETPLACE') {
-        expect(response.status).toBe(200);
-        expect(calls[0].url).toBe(`/api/v1/productos?canal=${canal}`);
-      } else {
-        expect(response.status).toBe(401);
-        expect(calls).toHaveLength(0);
-      }
+      expect(response.status).toBe(200);
+      expect(calls[0].url).toBe(`/api/v1/productos?canal=${canal}`);
     },
   );
 
@@ -190,11 +184,37 @@ describe('Gateway no-auth demo mode', () => {
       '/api/v1/categorias',
     );
 
-    expect(missingIdempotency.status).toBe(401);
+    expect(missingIdempotency.status).toBe(400);
     expect(invalidCorrelation.status).toBe(400);
-    expect(wrongContentType.status).toBe(401);
+    expect(wrongContentType.status).toBe(400);
     expect(unknown.status).toBe(404);
     expect(wrongMethod.status).toBe(404);
     expect(calls).toHaveLength(0);
+  });
+
+  it('fails closed when a contractual upstream is not configured', async () => {
+    const unavailableSettings = readGatewaySettings({
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+    });
+    const module = await Test.createTestingModule({
+      imports: [ApiGatewayModule],
+    })
+      .overrideProvider(GATEWAY_SETTINGS)
+      .useValue(unavailableSettings)
+      .compile();
+    const unavailableApp = module.createNestApplication({ bodyParser: false });
+    await unavailableApp.listen(0, '127.0.0.1');
+    try {
+      const response = await request(unavailableApp.getHttpServer())
+        .post('/api/v1/productos')
+        .set('Authorization', 'malformed-but-ignored-in-demo')
+        .set('Content-Type', 'application/json')
+        .send({ fixture: true });
+      expect(response.status).toBe(503);
+      expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(calls).toHaveLength(0);
+    } finally {
+      await unavailableApp.close();
+    }
   });
 });

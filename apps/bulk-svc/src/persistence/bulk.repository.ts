@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import {
   batchJobs,
   batchRows,
@@ -14,6 +15,7 @@ import {
   BulkPersistenceError,
   persistenceError,
 } from './bulk.persistence.errors.js';
+import { BulkDomainError } from '../domain/bulk.domain-error.js';
 
 export type BulkDomain = 'CATALOGO' | 'PRICING' | 'INVENTARIO';
 export type BulkFileFormat = 'CSV' | 'XLSX';
@@ -39,6 +41,7 @@ export interface CreateImportBatchInput {
   correlationId: string;
   inputFile: Omit<FileManifestInput, 'role'>;
   rows: ImportRowInput[];
+  admissionIntent?: Record<string, unknown>;
 }
 export interface CreateImportBatchResult {
   manifest: typeof fileManifests.$inferSelect;
@@ -90,10 +93,42 @@ export interface InboxMutationContext {
   updateWorkflowState(input: UpdateWorkflowStateInput): Promise<void>;
 }
 
+export interface DomainResultInput {
+  batchId: string;
+  rowId: string;
+  domain: BulkDomain;
+  operationId: string;
+  messageId: string;
+  correlationId: string;
+  causationId?: string | null;
+  eventName: string;
+  action:
+    | 'UPSERT'
+    | 'PRICE_INITIALIZATION'
+    | 'SKU_INITIALIZATION'
+    | 'STOCK_ADJUSTMENT';
+  skuId?: string;
+  status: 'COMPLETED' | 'FAILED';
+  errorCode?: string | null;
+  errorDetail?: string | null;
+}
+
 type BulkTx = Parameters<Parameters<BulkDatabase['transaction']>[0]>[0];
 
 const inconsistent = (message: string): never => {
   throw new BulkPersistenceError('CHECK_VIOLATION', new Error(message));
+};
+
+const domainFailure = (
+  code:
+    | 'INVALID_INPUT'
+    | 'IDEMPOTENCY_CONFLICT'
+    | 'INVALID_TRANSITION'
+    | 'DEPENDENCY_PENDING'
+    | 'PERSISTENCE_FAILURE',
+  message: string,
+): never => {
+  throw new BulkDomainError(code, message);
 };
 
 @Injectable()
@@ -112,6 +147,65 @@ export class BulkPersistenceRepository {
   ): Promise<CreateImportBatchResult> {
     try {
       return await this.db.transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(hashtextextended(${input.batchId}, 0))`,
+        );
+        const [existingBatch] = await tx
+          .select()
+          .from(batchJobs)
+          .where(eq(batchJobs.batchId, input.batchId))
+          .for('update')
+          .limit(1);
+        if (existingBatch) {
+          const [intentReceipt] = await tx
+            .select()
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.messageId, input.batchId),
+                eq(inbox.handler, 'bulk.import.admission'),
+              ),
+            )
+            .limit(1);
+          const [sameIntent] =
+            intentReceipt && input.admissionIntent
+              ? await tx
+                  .select({ id: inbox.id })
+                  .from(inbox)
+                  .where(
+                    and(
+                      eq(inbox.id, intentReceipt.id),
+                      sql`${inbox.payload} = ${JSON.stringify(input.admissionIntent)}::jsonb`,
+                    ),
+                  )
+                  .limit(1)
+              : [];
+          if (!sameIntent) {
+            throw new BulkPersistenceError('UNIQUE_CONFLICT');
+          }
+          const [manifest] = await tx
+            .select()
+            .from(fileManifests)
+            .where(eq(fileManifests.id, existingBatch.inputFileId))
+            .limit(1);
+          if (!manifest)
+            throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+          const rows = await tx
+            .select()
+            .from(batchRows)
+            .where(eq(batchRows.batchJobId, existingBatch.id))
+            .orderBy(asc(batchRows.createdAt), asc(batchRows.id));
+          const resultRows: CreateImportBatchResult['rows'] = [];
+          for (const row of rows) {
+            const steps = await tx
+              .select()
+              .from(rowDomainSteps)
+              .where(eq(rowDomainSteps.batchRowId, row.id))
+              .orderBy(asc(rowDomainSteps.domain));
+            resultRows.push({ row, steps });
+          }
+          return { manifest, batch: existingBatch, rows: resultRows };
+        }
         const [manifest] = await tx
           .insert(fileManifests)
           .values({
@@ -157,9 +251,491 @@ export class BulkPersistenceRepository {
             throw new Error('Incomplete step insert');
           createdRows.push({ row, steps });
         }
+        if (input.admissionIntent) {
+          await tx.insert(inbox).values({
+            messageId: input.batchId,
+            handler: 'bulk.import.admission',
+            eventName: 'bulk.import.admission',
+            correlationId: input.correlationId,
+            payload: input.admissionIntent,
+            result: 'ADMITTED',
+          });
+        }
         return { manifest, batch, rows: createdRows };
       });
     } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async recordDomainResult(
+    input: DomainResultInput,
+  ): Promise<{ processed: boolean; result: string }> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [batch] = await tx
+          .select()
+          .from(batchJobs)
+          .where(eq(batchJobs.batchId, input.batchId))
+          .for('update')
+          .limit(1);
+        if (!batch) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+        if (input.correlationId !== batch.correlationId)
+          domainFailure(
+            'INVALID_INPUT',
+            'Result correlation_id does not match its batch',
+          );
+        const [row] = await tx
+          .select()
+          .from(batchRows)
+          .where(
+            and(
+              eq(batchRows.batchJobId, batch.id),
+              eq(batchRows.rowId, input.rowId),
+            ),
+          )
+          .for('update')
+          .limit(1);
+        if (!row) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+        const expectedEvent =
+          input.status === 'COMPLETED' ? 'completed' : 'rejected';
+        const payload = {
+          batchId: input.batchId,
+          rowId: input.rowId,
+          domain: input.domain,
+          operationId: input.operationId,
+          causationId: input.causationId ?? null,
+          action: input.action,
+          skuId: input.skuId ?? null,
+          status: input.status,
+          errorCode: input.errorCode ?? null,
+          errorDetail: input.errorDetail ?? null,
+        };
+        const handler = 'bulk.domain-result';
+        const [byMessage] = await tx
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, input.messageId),
+              eq(inbox.handler, handler),
+            ),
+          )
+          .limit(1);
+        if (byMessage) {
+          const [sameMessage] = await tx
+            .select({ id: inbox.id })
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.id, byMessage.id),
+                eq(inbox.eventName, input.eventName),
+                eq(inbox.correlationId, input.correlationId),
+                sql`${inbox.payload} = ${JSON.stringify(payload)}::jsonb`,
+              ),
+            )
+            .limit(1);
+          if (!sameMessage) {
+            domainFailure(
+              'IDEMPOTENCY_CONFLICT',
+              'message_id was reused with a different result intent',
+            );
+          }
+          return { processed: false, result: byMessage.result };
+        }
+        const [byOperation] = await tx
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.handler, handler),
+              sql`${inbox.payload}->>'operationId' = ${input.operationId}`,
+              sql`${inbox.payload}->>'batchId' = ${input.batchId}`,
+              sql`${inbox.payload}->>'rowId' = ${input.rowId}`,
+              sql`${inbox.payload}->>'domain' = ${input.domain}`,
+              sql`${inbox.payload}->>'action' = ${input.action}`,
+            ),
+          )
+          .orderBy(desc(inbox.createdAt))
+          .limit(1);
+        if (byOperation) {
+          const [sameOperation] = await tx
+            .select({ id: inbox.id })
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.id, byOperation.id),
+                eq(inbox.eventName, input.eventName),
+                eq(inbox.correlationId, input.correlationId),
+                sql`${inbox.payload} = ${JSON.stringify(payload)}::jsonb`,
+              ),
+            )
+            .limit(1);
+          if (sameOperation) {
+            return { processed: false, result: byOperation.result };
+          } else {
+            const [authorizedRequeue] = await tx
+              .select({ id: inbox.id })
+              .from(inbox)
+              .where(
+                and(
+                  eq(inbox.handler, 'bulk.batch.requeue'),
+                  sql`${inbox.payload}->>'batchId' = ${input.batchId}`,
+                  sql`${inbox.createdAt} > ${byOperation.createdAt}`,
+                ),
+              )
+              .limit(1);
+            const priorAttemptFailed = byOperation.result === 'FAILED';
+            const newAttempt =
+              input.causationId !== null &&
+              input.causationId !== undefined &&
+              input.causationId !== byOperation.payload.causationId;
+            if (!authorizedRequeue || !priorAttemptFailed || !newAttempt) {
+              domainFailure(
+                'IDEMPOTENCY_CONFLICT',
+                'operation_id was reused with a different result intent',
+              );
+            }
+          }
+        }
+        if (
+          batch.status === 'COMPLETED' ||
+          batch.status === 'FAILED_GENERAL' ||
+          row.status === 'COMPLETED' ||
+          row.status === 'FAILED'
+        ) {
+          domainFailure(
+            'INVALID_TRANSITION',
+            'A terminal result cannot reopen a row or batch without an explicit requeue',
+          );
+        }
+        const [catalogStep] = await tx
+          .select()
+          .from(rowDomainSteps)
+          .where(
+            and(
+              eq(rowDomainSteps.batchRowId, row.id),
+              eq(rowDomainSteps.domain, 'CATALOGO'),
+            ),
+          )
+          .limit(1);
+        if (
+          input.domain !== 'CATALOGO' &&
+          catalogStep?.status !== 'COMPLETED'
+        ) {
+          domainFailure(
+            'DEPENDENCY_PENDING',
+            'Dependent domain result arrived before Catalog confirmation',
+          );
+        }
+        if (!row.requiredDomains.includes(input.domain))
+          domainFailure(
+            'INVALID_INPUT',
+            'Result domain is not required by this row',
+          );
+        const [admission] = await tx
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, input.batchId),
+              eq(inbox.handler, 'bulk.import.admission'),
+            ),
+          )
+          .limit(1);
+        if (!admission)
+          domainFailure(
+            'PERSISTENCE_FAILURE',
+            'Normalized row intent is not durably available',
+          );
+        const intentRowsValue = admission.payload.rows;
+        if (!Array.isArray(intentRowsValue))
+          domainFailure(
+            'PERSISTENCE_FAILURE',
+            'Persisted normalized intent is incomplete',
+          );
+        const intentRows = intentRowsValue as unknown[];
+        const normalized = intentRows.find(
+          (candidate) =>
+            typeof candidate === 'object' &&
+            candidate !== null &&
+            Reflect.get(candidate, 'rowId') === input.rowId,
+        ) as Record<string, unknown> | undefined;
+        if (!normalized)
+          domainFailure(
+            'INVALID_INPUT',
+            'Result row does not exist in persisted normalized intent',
+          );
+        const normalizedRow = normalized as Record<string, unknown>;
+        const skuIds = Array.isArray(normalizedRow.vendibleSkus)
+          ? normalizedRow.vendibleSkus
+          : [];
+        if (
+          input.domain === 'CATALOGO' &&
+          (input.action !== 'UPSERT' ||
+            input.eventName !== 'catalog.bulk.upsert.completed')
+        )
+          domainFailure(
+            'INVALID_INPUT',
+            'Bulk row results must be adapted from catalog.bulk.upsert.completed; catalog.bulk.upsert.rejected rejects the command as a whole.',
+          );
+        if (
+          input.domain === 'PRICING' &&
+          (input.action !== 'PRICE_INITIALIZATION' ||
+            input.causationId == null ||
+            (input.status === 'COMPLETED'
+              ? input.eventName !== 'pricing.product.initialization.completed'
+              : input.eventName !== 'pricing.product.initialization.rejected'))
+        )
+          inconsistent(
+            'Pricing ALTA results must preserve initialization event, operation_id and causation_id identities.',
+          );
+        if (input.domain === 'INVENTARIO') {
+          if (
+            input.action === 'SKU_INITIALIZATION' &&
+            (input.eventName !==
+              `inventory.sku.initialization.${expectedEvent}` ||
+              typeof input.skuId !== 'string' ||
+              !skuIds.includes(input.skuId))
+          )
+            domainFailure(
+              'INVALID_INPUT',
+              'Inventory SKU result is not part of the normalized row intent',
+            );
+          if (
+            input.action === 'STOCK_ADJUSTMENT' &&
+            (input.eventName !==
+              `inventory.bulk.stock.adjust.${expectedEvent}` ||
+              Number(normalizedRow.stockInicial ?? 0) <= 0 ||
+              !normalizedRow.defaultLocationId)
+          )
+            domainFailure(
+              'INVALID_INPUT',
+              'Inventory stock adjustment is not required by the normalized row intent',
+            );
+          if (
+            input.action !== 'SKU_INITIALIZATION' &&
+            input.action !== 'STOCK_ADJUSTMENT'
+          )
+            domainFailure(
+              'INVALID_INPUT',
+              'Inventory result action is invalid',
+            );
+        }
+        const [step] = await tx
+          .select()
+          .from(rowDomainSteps)
+          .where(
+            and(
+              eq(rowDomainSteps.batchRowId, row.id),
+              eq(rowDomainSteps.domain, input.domain),
+            ),
+          )
+          .for('update')
+          .limit(1);
+        if (!step)
+          domainFailure(
+            'PERSISTENCE_FAILURE',
+            'Required workflow step is missing',
+          );
+        if (step.status === 'COMPLETED')
+          domainFailure(
+            'INVALID_TRANSITION',
+            'A confirmed domain cannot accept a new operation result',
+          );
+        if (step.status === 'FAILED')
+          domainFailure(
+            'INVALID_TRANSITION',
+            'A failed domain step cannot be retried before batch requeue',
+          );
+        if (
+          input.domain === 'INVENTARIO' &&
+          input.action === 'STOCK_ADJUSTMENT'
+        ) {
+          const activeSince = await findActiveRunStart(tx, batch);
+          const earlierSkuReceipts = await tx
+            .select()
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.handler, handler),
+                sql`${inbox.payload}->>'batchId' = ${input.batchId}`,
+                sql`${inbox.payload}->>'rowId' = ${input.rowId}`,
+                sql`${inbox.payload}->>'action' = 'SKU_INITIALIZATION'`,
+                sql`${inbox.createdAt} >= ${activeSince}`,
+              ),
+            );
+          const completedSkuIds = earlierSkuReceipts
+            .filter((receipt) => receipt.payload.status === 'COMPLETED')
+            .map((receipt) => receipt.payload.skuId);
+          if (skuIds.some((sku) => !completedSkuIds.includes(sku)))
+            domainFailure(
+              'DEPENDENCY_PENDING',
+              'Stock adjustment result cannot precede all SKU initialization confirmations',
+            );
+        }
+        await tx.insert(inbox).values({
+          messageId: input.messageId,
+          handler,
+          eventName: input.eventName,
+          correlationId: input.correlationId,
+          payload,
+          result: input.status,
+        });
+        let stepStatus: BulkStepStatus = input.status;
+        if (input.domain === 'INVENTARIO' && input.status === 'COMPLETED') {
+          const activeSince = await findActiveRunStart(tx, batch);
+          const results = await tx
+            .select()
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.handler, handler),
+                sql`${inbox.payload}->>'batchId' = ${input.batchId}`,
+                sql`${inbox.payload}->>'rowId' = ${input.rowId}`,
+                sql`${inbox.payload}->>'domain' = 'INVENTARIO'`,
+                sql`${inbox.createdAt} >= ${activeSince}`,
+              ),
+            );
+          const completedSkuIds = results
+            .filter(
+              (receipt) =>
+                receipt.payload.action === 'SKU_INITIALIZATION' &&
+                receipt.payload.status === 'COMPLETED',
+            )
+            .map((receipt) => receipt.payload.skuId);
+          const adjustmentRequired =
+            Number(normalizedRow.stockInicial ?? 0) > 0 &&
+            Boolean(normalizedRow.defaultLocationId);
+          const adjustmentComplete = results.some(
+            (receipt) =>
+              receipt.payload.action === 'STOCK_ADJUSTMENT' &&
+              receipt.payload.status === 'COMPLETED',
+          );
+          const inventoryFailed = results.some(
+            (receipt) => receipt.payload.status === 'FAILED',
+          );
+          if (inventoryFailed) stepStatus = 'FAILED';
+          else if (
+            Number(normalizedRow.stockInicial ?? 0) > 0 &&
+            !normalizedRow.defaultLocationId &&
+            skuIds.every((sku) => completedSkuIds.includes(sku))
+          )
+            stepStatus = 'FAILED';
+          else
+            stepStatus =
+              skuIds.every((sku) => completedSkuIds.includes(sku)) &&
+              (!adjustmentRequired || adjustmentComplete)
+                ? 'COMPLETED'
+                : 'PROCESSING';
+        }
+        const currentSteps = await tx
+          .select()
+          .from(rowDomainSteps)
+          .where(eq(rowDomainSteps.batchRowId, row.id));
+        const stepChanges: WorkflowStepChange[] = [
+          {
+            domain: input.domain,
+            status: stepStatus,
+            errorCode:
+              stepStatus === 'FAILED'
+                ? (input.errorCode ??
+                  (input.domain === 'INVENTARIO' &&
+                  Number(normalizedRow.stockInicial ?? 0) > 0 &&
+                  !normalizedRow.defaultLocationId
+                    ? 'DEFAULT_LOCATION_REQUIRED'
+                    : 'DOMAIN_REJECTED'))
+                : null,
+            errorDetail:
+              stepStatus === 'FAILED'
+                ? (input.errorDetail ??
+                  (input.domain === 'INVENTARIO' &&
+                  Number(normalizedRow.stockInicial ?? 0) > 0 &&
+                  !normalizedRow.defaultLocationId
+                    ? 'No existe ubicación predeterminada para aplicar el stock inicial.'
+                    : null))
+                : null,
+          },
+        ];
+        if (input.domain === 'CATALOGO' && stepStatus === 'FAILED') {
+          for (const candidate of currentSteps) {
+            if (
+              candidate.domain !== 'CATALOGO' &&
+              candidate.status === 'PENDING'
+            ) {
+              stepChanges.push({
+                domain: candidate.domain as BulkDomain,
+                status: 'FAILED',
+                errorCode: 'DEPENDENCY_REJECTED',
+                errorDetail:
+                  'Catálogo rechazó la fila; el paso dependiente no se ejecutó.',
+              });
+            }
+          }
+        }
+        const changedByDomain = new Map<BulkDomain, WorkflowStepChange>(
+          stepChanges.map((change) => [change.domain, change]),
+        );
+        const requiredDomains = row.requiredDomains as BulkDomain[];
+        const statusFor = (domain: BulkDomain) =>
+          changedByDomain.get(domain)?.status ??
+          currentSteps.find((candidate) => candidate.domain === domain)
+            ?.status ??
+          'PENDING';
+        const allTerminal = requiredDomains.every((domain) =>
+          ['COMPLETED', 'FAILED'].includes(statusFor(domain)),
+        );
+        const allCompleted = requiredDomains.every(
+          (domain) => statusFor(domain) === 'COMPLETED',
+        );
+        const rowStatus: BulkRowStatus = !allTerminal
+          ? 'PROCESSING'
+          : allCompleted
+            ? 'COMPLETED'
+            : 'FAILED';
+        const failedDomain =
+          rowStatus === 'FAILED'
+            ? (requiredDomains.find(
+                (domain) => statusFor(domain) === 'FAILED',
+              ) ?? null)
+            : null;
+        const failedChange = failedDomain
+          ? changedByDomain.get(failedDomain)
+          : undefined;
+        const previousFailure = failedDomain
+          ? currentSteps.find((candidate) => candidate.domain === failedDomain)
+          : undefined;
+        const failedCode =
+          failedChange?.errorCode ?? previousFailure?.errorCode ?? null;
+        const failedDetail =
+          failedChange?.errorDetail ?? previousFailure?.errorDetail ?? null;
+        await updateWorkflowStateIn(tx, {
+          batchId: input.batchId,
+          rowId: input.rowId,
+          steps: stepChanges,
+          status: rowStatus,
+          failedDomain,
+          errorCode: failedCode,
+          errorDetail: failedDetail,
+        });
+        const response = failedDomain
+          ? 'FAILED'
+          : stepStatus === 'COMPLETED'
+            ? 'DOMAIN_COMPLETED'
+            : 'PROCESSING';
+        await tx
+          .update(inbox)
+          .set({ result: response })
+          .where(
+            and(
+              eq(inbox.messageId, input.messageId),
+              eq(inbox.handler, handler),
+            ),
+          );
+        return { processed: true, result: response };
+      });
+    } catch (error) {
+      if (error instanceof BulkDomainError) throw error;
       throw persistenceError(error);
     }
   }
@@ -220,6 +796,91 @@ export class BulkPersistenceRepository {
   async updateWorkflowState(input: UpdateWorkflowStateInput): Promise<void> {
     try {
       await this.db.transaction((tx) => updateWorkflowStateIn(tx, input));
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  /** Requeues only terminal batches that contain rows marked for reconciliation. */
+  async requeueBatch(batchId: string): Promise<typeof batchJobs.$inferSelect> {
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [batch] = await tx
+          .select()
+          .from(batchJobs)
+          .where(eq(batchJobs.batchId, batchId))
+          .for('update')
+          .limit(1);
+        if (!batch) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+        if (batch.status !== 'COMPLETED' || !batch.needsReconciliation) {
+          inconsistent(
+            'Only completed batches requiring reconciliation can be requeued',
+          );
+        }
+        const eligible = await tx
+          .select({ id: batchRows.id })
+          .from(batchRows)
+          .where(
+            and(
+              eq(batchRows.batchJobId, batch.id),
+              eq(batchRows.needsReconciliation, true),
+            ),
+          )
+          .for('update');
+        if (eligible.length === 0)
+          inconsistent('Batch has no rows eligible for reconciliation');
+        for (const { id } of eligible) {
+          await tx
+            .update(rowDomainSteps)
+            .set({ status: 'PENDING', errorCode: null, errorDetail: null })
+            .where(
+              and(
+                eq(rowDomainSteps.batchRowId, id),
+                eq(rowDomainSteps.status, 'FAILED'),
+              ),
+            );
+          await tx
+            .update(batchRows)
+            .set({
+              status: 'PENDING',
+              failedDomain: null,
+              needsReconciliation: false,
+              errorCode: null,
+              errorDetail: null,
+            })
+            .where(eq(batchRows.id, id));
+        }
+        const [completed] = await tx
+          .select({ count: sql<number>`count(*)::int` })
+          .from(batchRows)
+          .where(
+            and(
+              eq(batchRows.batchJobId, batch.id),
+              eq(batchRows.status, 'COMPLETED'),
+            ),
+          );
+        const [updated] = await tx
+          .update(batchJobs)
+          .set({
+            status: 'QUEUED',
+            completedRows: completed?.count ?? 0,
+            failedRows: 0,
+            needsReconciliation: false,
+          })
+          .where(eq(batchJobs.id, batch.id))
+          .returning();
+        if (!updated) throw new Error('Batch requeue returned no row');
+        const runId = randomUUID();
+        await tx.insert(inbox).values({
+          messageId: runId,
+          handler: 'bulk.batch.requeue',
+          eventName: 'bulk.batch.requeued',
+          correlationId: batch.correlationId,
+          payload: { batchId, runId },
+          result: 'REQUEUED',
+        });
+        return updated;
+      });
     } catch (error) {
       throw persistenceError(error);
     }
@@ -444,6 +1105,24 @@ export class BulkPersistenceRepository {
   }
 }
 
+async function findActiveRunStart(
+  tx: BulkTx,
+  batch: typeof batchJobs.$inferSelect,
+): Promise<Date> {
+  const [latestRequeue] = await tx
+    .select({ createdAt: inbox.createdAt })
+    .from(inbox)
+    .where(
+      and(
+        eq(inbox.handler, 'bulk.batch.requeue'),
+        sql`${inbox.payload}->>'batchId' = ${batch.batchId}`,
+      ),
+    )
+    .orderBy(desc(inbox.createdAt))
+    .limit(1);
+  return latestRequeue?.createdAt ?? batch.createdAt;
+}
+
 async function updateWorkflowStateIn(
   tx: BulkTx,
   input: UpdateWorkflowStateInput,
@@ -455,6 +1134,10 @@ async function updateWorkflowStateIn(
     .for('update')
     .limit(1);
   if (!batch) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+  if (batch.status === 'COMPLETED' || batch.status === 'FAILED_GENERAL')
+    inconsistent(
+      'A terminal batch requires explicit eligible requeue before workflow updates',
+    );
   const [row] = await tx
     .select()
     .from(batchRows)

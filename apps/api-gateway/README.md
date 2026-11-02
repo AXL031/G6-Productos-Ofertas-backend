@@ -128,17 +128,30 @@ No se cambia package.json para cargar archivos de otra aplicación.
   métodos no registrados continúan en 404. Cuando es `false`, conserva la
   validación JWT/autorización anterior sin cambios. El flag anterior
   `GATEWAY_DEMO_ANONYMOUS_ENABLED` fue retirado.
+- `G6_READ_ONLY_DEMO_ENABLED`: compatibilidad con el cambio de lectura de PR
+  #125, `false` por defecto. Si es `true`, solo permite sin JWT los seis GET
+  definidos en el allowlist de Gateway; cualquier otra operación queda en 403,
+  incluso si trae JWT. No puede coexistir con
+  `GATEWAY_DEMO_NO_AUTH_ENABLED=true`: esa configuración es contradictoria y
+  hace fallar el inicio. Para Fase A #144 se usa el flag general; este flag
+  estrecho existe únicamente para preservar explícitamente el modo de #125.
 
-El modo anónimo es una excepción temporal de demo respecto de los requisitos de
-seguridad JWT que declara el OpenAPI; el archivo OpenAPI no se modifica y esta
-excepción no implica homologación externa. Cualquier persona que alcance una
-instancia pública podrá invocar todas las operaciones contractuales accesibles,
-incluidas escrituras; CORS no limita clientes ajenos al navegador. No habilitar
-la exposición pública de escrituras hasta acreditar aislamiento del conjunto de
-datos de demo frente a datos reales compartidos, permisos mínimos de roles
-runtime, respaldo y recuperación, límites de solicitudes adecuados y revisión
-de exposición. Sin esa evidencia, mantener bloqueada la activación pública.
-Estas pruebas aisladas no acreditan dichas condiciones. Las operaciones que
+Ambos modos demo tienen además una barrera local: el peer TCP de cada solicitud
+que omite JWT debe ser loopback o una dirección privada RFC1918/IPv6 ULA. No se
+usan `X-Forwarded-For`, `X-Real-IP`, `Origin` ni headers de identidad enviados
+por el cliente para decidirlo. Esta comprobación bloquea peers públicos, pero
+no demuestra por sí sola qué operadores pueden alcanzar una red privada. Antes
+de activar el flag en cualquier runtime se requiere evidencia de que la entrada
+al Gateway está restringida a los operadores/dispositivos autorizados y que
+los upstreams no se exponen directamente; esta fase no modifica ni acredita la
+red, Caddy o el runtime de Oracle.
+
+El modo demo es una excepción temporal respecto de los requisitos JWT que
+declara OpenAPI; el contrato no se modifica y esta excepción no implica
+homologación externa. La barrera de peer privado no equivale a aislamiento de
+datos, controles de operadores o aprobación de exposición; CORS tampoco limita
+clientes que no usan navegador. Las pruebas Gateway no acreditan esas
+condiciones. Las operaciones que
 dependan de identidad de comprador no reciben una identidad inventada: requieren
 que la regla del upstream funcione sin ella o rechace la solicitud.
 
