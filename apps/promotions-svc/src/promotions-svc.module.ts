@@ -11,10 +11,10 @@ import { PromotionsSvcController } from './promotions-svc.controller.js';
 import { PromotionsSvcService } from './promotions-svc.service.js';
 import {
   PROMOTIONS_SERVICE_TOKENS,
-  unavailableServiceTokens,
   commercialProvider,
   adminReferenceProvider,
 } from './infrastructure/http/integration-providers.js';
+import { promotionsServiceTokens } from './infrastructure/http/service-tokens.js';
 import { couponProviders } from './coupons/coupon-providers.js';
 import {
   PromotionsConfigService,
@@ -54,7 +54,11 @@ import {
     { provide: PROMOTIONS_CLOCK, useValue: { now: () => new Date() } },
     PromotionsQueryService,
     PromotionsWriteService,
-    { provide: PROMOTIONS_SERVICE_TOKENS, useValue: unavailableServiceTokens },
+    {
+      provide: PROMOTIONS_SERVICE_TOKENS,
+      inject: [PromotionsConfigService, PromotionsIdentity],
+      useFactory: promotionsServiceTokens,
+    },
     {
       provide: ADMIN_REFERENCES,
       inject: [PromotionsConfigService, PROMOTIONS_SERVICE_TOKENS],

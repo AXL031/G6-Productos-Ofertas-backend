@@ -75,14 +75,41 @@ async function ready(operation) {
   throw new Error('ISOLATED_SERVICE_START_TIMEOUT');
 }
 try {
-  execFileSync(
-    process.env.G6_TEST_PYTHON ?? 'python',
-    [
-      resolve('apps/promotions-svc/test/support/create-probe-certificate.py'),
-      directory,
-    ],
-    { stdio: 'pipe', windowsHide: true },
-  );
+  // Match the other isolated runners: use an existing OpenSSL installation
+  // when supplied, without requiring a separate Python package installation.
+  if (process.env.G6_TEST_OPENSSL) {
+    execFileSync(
+      process.env.G6_TEST_OPENSSL,
+      [
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-days',
+        '1',
+        '-subj',
+        '/CN=isolated-probe-test',
+        '-addext',
+        'subjectAltName=IP:127.0.0.1,DNS:localhost',
+        '-addext',
+        'basicConstraints=critical,CA:TRUE',
+        '-keyout',
+        join(directory, 'server.key'),
+        '-out',
+        join(directory, 'server.crt'),
+      ],
+      { stdio: 'pipe', windowsHide: true },
+    );
+  } else
+    execFileSync(
+      process.env.G6_TEST_PYTHON ?? 'python',
+      [
+        resolve('apps/promotions-svc/test/support/create-probe-certificate.py'),
+        directory,
+      ],
+      { stdio: 'pipe', windowsHide: true },
+    );
   const certificate = join(directory, 'server.crt');
   const unrelated = join(directory, 'untrusted.crt');
   writeFileSync(unrelated, rootCertificates[0]);
@@ -148,14 +175,15 @@ try {
     RABBITMQ_URL: brokerUrl,
     PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'true',
   };
-  const check = (overrides = {}) =>
+  const service = (overrides = {}) =>
     new PromotionsReadinessService(
       nativePromotionsDependencyProbes(
         new PromotionsConfigService(
           validatePromotionsConfiguration({ ...environment, ...overrides }),
         ),
       ),
-    ).check();
+    );
+  const check = (overrides = {}) => service(overrides).check();
   stage = 'disabled-probes';
   assert.deepEqual(
     (await check({ PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false' }))
@@ -217,6 +245,29 @@ try {
   checks.push(
     'missing contractual queue stays down; probe does not create topology',
   );
+  stage = 'http-only-profile';
+  const monitor = service();
+  assert.equal((await monitor.check()).status, 'not_ready');
+  assert.deepEqual(await monitor.check(false), {
+    status: 'ready',
+    service: 'promotions-svc',
+    dependencies: { database: 'up', broker: 'disabled' },
+  });
+  checks.push(
+    'HTTP-only technical readiness does not require the unused broker',
+  );
+  stage = 'broker-recovery';
+  await channel.assertQueue('po.promociones.q', {
+    durable: true,
+    arguments: { 'x-queue-type': 'quorum' },
+  });
+  assert.equal((await monitor.check()).status, 'ready');
+  checks.push('same readiness instance recovers after the queue is restored');
+  stage = 'application-shutdown';
+  monitor.beforeApplicationShutdown();
+  assert.equal((await monitor.check()).status, 'not_ready');
+  assert.equal((await monitor.check(false)).status, 'not_ready');
+  checks.push('shutdown denies readiness for both profiles');
   console.log(
     JSON.stringify(
       {
