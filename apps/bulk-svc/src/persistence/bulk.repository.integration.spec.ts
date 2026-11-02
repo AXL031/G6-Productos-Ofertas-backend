@@ -74,6 +74,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       rowId: string;
       requiredDomains: Array<'CATALOGO' | 'PRICING' | 'INVENTARIO'>;
     }>,
+    admissionIntent?: Record<string, unknown>,
   ) =>
     repository.createImportBatch({
       batchId: randomUUID(),
@@ -81,6 +82,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       correlationId: randomUUID(),
       inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
       rows,
+      admissionIntent,
     });
 
   it('inserts/query manifests and atomically creates a batch with rows and domain steps', async () => {
@@ -105,6 +107,162 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
         )
       ).map((step) => step.domain),
     ).toEqual(['CATALOGO', 'PRICING']);
+  });
+
+  it('deduplicates results by command and row identity without colliding across rows', async () => {
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const rowA = randomUUID();
+    const rowB = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [rowA, rowB].map((rowId) => ({
+        rowId,
+        requiredDomains: ['CATALOGO' as const],
+      })),
+      admissionIntent: {
+        rows: [rowA, rowB].map((rowId, index) => ({
+          rowId,
+          vendibleSkus: [`SKU-${index}`],
+          stockInicial: 0,
+          defaultLocationId: null,
+        })),
+      },
+    });
+    const commandId = randomUUID();
+    const result = (rowId: string, messageId: string) =>
+      repository.recordDomainResult({
+        batchId,
+        rowId,
+        domain: 'CATALOGO',
+        operationId: commandId,
+        messageId,
+        correlationId,
+        eventName: 'catalog.bulk.upsert.completed',
+        action: 'UPSERT',
+        status: 'COMPLETED',
+      });
+    expect(await result(rowA, randomUUID())).toMatchObject({ processed: true });
+    expect(await result(rowB, randomUUID())).toMatchObject({ processed: true });
+    expect(await result(rowA, randomUUID())).toMatchObject({
+      processed: false,
+    });
+  });
+
+  it('applies per-row Catalog results from one completed command without false successes', async () => {
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const completedRow = randomUUID();
+    const rejectedRow = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [completedRow, rejectedRow].map((rowId) => ({
+        rowId,
+        requiredDomains: ['CATALOGO' as const],
+      })),
+      admissionIntent: {
+        rows: [completedRow, rejectedRow].map((rowId) => ({
+          rowId,
+          vendibleSkus: ['SKU-1'],
+          stockInicial: 0,
+          defaultLocationId: null,
+        })),
+      },
+    });
+    const batchOperationId = randomUUID();
+    const completed = {
+      batchId,
+      rowId: completedRow,
+      domain: 'CATALOGO' as const,
+      operationId: batchOperationId,
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT' as const,
+      status: 'COMPLETED' as const,
+    };
+    const rejected = {
+      batchId,
+      rowId: rejectedRow,
+      domain: 'CATALOGO' as const,
+      operationId: batchOperationId,
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT' as const,
+      status: 'FAILED' as const,
+      errorCode: 'VALIDACION',
+      errorDetail: 'Fila rechazada por Catalog',
+    };
+    expect(await repository.recordDomainResult(completed)).toMatchObject({
+      processed: true,
+    });
+    expect(await repository.recordDomainResult(rejected)).toMatchObject({
+      processed: true,
+    });
+    expect(await repository.recordDomainResult(completed)).toMatchObject({
+      processed: false,
+    });
+    expect(await repository.recordDomainResult(rejected)).toMatchObject({
+      processed: false,
+    });
+    const commandRejectedBatchId = randomUUID();
+    const commandRejectedRowId = randomUUID();
+    const commandRejectedCorrelationId = randomUUID();
+    await repository.createImportBatch({
+      batchId: commandRejectedBatchId,
+      correlationId: commandRejectedCorrelationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [{ rowId: commandRejectedRowId, requiredDomains: ['CATALOGO'] }],
+      admissionIntent: {
+        rows: [
+          {
+            rowId: commandRejectedRowId,
+            vendibleSkus: ['SKU-CMD-REJECT'],
+            stockInicial: 0,
+            defaultLocationId: null,
+          },
+        ],
+      },
+    });
+    await expect(
+      repository.recordDomainResult({
+        ...rejected,
+        batchId: commandRejectedBatchId,
+        rowId: commandRejectedRowId,
+        operationId: randomUUID(),
+        messageId: randomUUID(),
+        correlationId: commandRejectedCorrelationId,
+        eventName: 'catalog.bulk.upsert.rejected',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_INPUT' });
+
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      totalRows: 2,
+      completedRows: 1,
+      failedRows: 1,
+    });
+    const rows = await repository.listBatchRows(batchId);
+    expect(rows.find((row) => row.rowId === completedRow)).toMatchObject({
+      status: 'COMPLETED',
+      appliedDomains: ['CATALOGO'],
+      failedDomain: null,
+    });
+    expect(rows.find((row) => row.rowId === rejectedRow)).toMatchObject({
+      status: 'FAILED',
+      appliedDomains: [],
+      failedDomain: 'CATALOGO',
+      errorCode: 'VALIDACION',
+      needsReconciliation: false,
+    });
   });
 
   it('matches all seven migration table columns, nullability and default presence', async () => {
@@ -634,6 +792,550 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     });
   });
 
+  it('requeues a partially failed batch under lock while preserving confirmed domains', async () => {
+    const created = await importBatch([
+      { rowId: randomUUID(), requiredDomains: ['CATALOGO', 'PRICING'] },
+      { rowId: randomUUID(), requiredDomains: ['CATALOGO'] },
+    ]);
+    const [failed, completed] = created.rows.map(({ row }) => row.rowId);
+    await repository.updateWorkflowState({
+      batchId: created.batch.batchId,
+      rowId: failed!,
+      status: 'PROCESSING',
+      steps: [{ domain: 'CATALOGO', status: 'COMPLETED' }],
+    });
+    await repository.updateWorkflowState({
+      batchId: created.batch.batchId,
+      rowId: failed!,
+      status: 'FAILED',
+      failedDomain: 'PRICING',
+      steps: [{ domain: 'PRICING', status: 'FAILED' }],
+    });
+    await repository.updateWorkflowState({
+      batchId: created.batch.batchId,
+      rowId: completed!,
+      status: 'COMPLETED',
+      steps: [{ domain: 'CATALOGO', status: 'COMPLETED' }],
+    });
+    const requeued = await repository.requeueBatch(created.batch.batchId);
+    expect(requeued).toMatchObject({
+      status: 'QUEUED',
+      completedRows: 1,
+      failedRows: 0,
+    });
+    expect(
+      (await repository.listBatchRows(created.batch.batchId)).find(
+        (row) => row.rowId === failed,
+      ),
+    ).toMatchObject({
+      status: 'PENDING',
+      appliedDomains: ['CATALOGO'],
+      needsReconciliation: false,
+    });
+    expect(
+      await repository.listRowSteps(created.batch.batchId, failed!),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ domain: 'CATALOGO', status: 'COMPLETED' }),
+        expect.objectContaining({ domain: 'PRICING', status: 'PENDING' }),
+      ]),
+    );
+    await expect(
+      repository.requeueBatch(created.batch.batchId),
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+  });
+
+  it('replays an identical normalized batch intent and conflicts on changed intent', async () => {
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const rowId = randomUUID();
+    const admissionIntent = {
+      format: 'CSV',
+      templateVersion: 2,
+      rows: [{ rowId, vendibleSkus: ['SKU-1'], stockInicial: 0 }],
+    };
+    const input = {
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: {
+        format: 'CSV' as const,
+        contentRef: `test://${randomUUID()}`,
+      },
+      rows: [
+        {
+          rowId,
+          requiredDomains: ['CATALOGO', 'INVENTARIO'] as Array<
+            'CATALOGO' | 'INVENTARIO'
+          >,
+        },
+      ],
+      admissionIntent,
+    };
+    const first = await repository.createImportBatch(input);
+    const replay = await repository.createImportBatch(input);
+    expect(replay.batch.id).toBe(first.batch.id);
+    expect(replay.rows[0]?.row.id).toBe(first.rows[0]?.row.id);
+    await expect(
+      repository.createImportBatch({
+        ...input,
+        admissionIntent: {
+          ...admissionIntent,
+          rows: [{ rowId, vendibleSkus: ['SKU-2'], stockInicial: 0 }],
+        },
+      }),
+    ).rejects.toMatchObject({ code: 'UNIQUE_CONFLICT' });
+    expect(
+      await database
+        .select()
+        .from(fileManifests)
+        .where(eq(fileManifests.id, first.manifest.id)),
+    ).toHaveLength(1);
+  });
+
+  it('waits for each SKU and stock adjustment and deduplicates equivalent operation results durably', async () => {
+    const rowId = randomUUID();
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const intent = {
+      format: 'CSV',
+      templateVersion: 2,
+      rows: [
+        {
+          rowId,
+          vendibleSkus: ['SKU-A', 'SKU-B'],
+          variantSkus: ['SKU-A', 'SKU-B'],
+          stockInicial: 4,
+          defaultLocationId: randomUUID(),
+        },
+      ],
+    };
+    const created = await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [{ rowId, requiredDomains: ['CATALOGO', 'INVENTARIO'] }],
+      admissionIntent: intent,
+    });
+    const result = (
+      input: Partial<Parameters<typeof repository.recordDomainResult>[0]>,
+    ) =>
+      repository.recordDomainResult({
+        batchId,
+        rowId,
+        domain: 'INVENTARIO',
+        operationId: randomUUID(),
+        messageId: randomUUID(),
+        correlationId,
+        eventName: 'inventory.sku.initialization.completed',
+        action: 'SKU_INITIALIZATION',
+        skuId: 'SKU-A',
+        status: 'COMPLETED',
+        ...input,
+      });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'CATALOGO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT',
+      status: 'COMPLETED',
+    });
+    const skuA = {
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      skuId: 'SKU-A',
+    };
+    const first = await result(skuA);
+    expect(first).toMatchObject({ processed: true, result: 'PROCESSING' });
+    expect(await result(skuA)).toMatchObject({
+      processed: false,
+      result: 'PROCESSING',
+    });
+    await expect(
+      result({
+        ...skuA,
+        eventName: 'inventory.sku.initialization.rejected',
+        status: 'FAILED',
+      }),
+    ).rejects.toMatchObject({ code: 'IDEMPOTENCY_CONFLICT' });
+    await result({
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      skuId: 'SKU-B',
+    });
+    expect((await repository.findBatchByBatchId(batchId))?.status).toBe(
+      'PROCESSING',
+    );
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'INVENTARIO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'inventory.bulk.stock.adjust.completed',
+      action: 'STOCK_ADJUSTMENT',
+      status: 'COMPLETED',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      completedRows: 1,
+      failedRows: 0,
+    });
+    expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
+      status: 'COMPLETED',
+      appliedDomains: ['CATALOGO', 'INVENTARIO'],
+    });
+    const messageCount = (
+      await database
+        .select()
+        .from(inbox)
+        .where(eq(inbox.handler, 'bulk.domain-result'))
+    ).filter((receipt) => receipt.payload.batchId === batchId);
+    expect(messageCount).toHaveLength(4);
+    expect(created.rows).toHaveLength(1);
+  });
+
+  it('turns positive initial stock without a default location into a durable functional row failure', async () => {
+    const rowId = randomUUID();
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [{ rowId, requiredDomains: ['CATALOGO', 'INVENTARIO'] }],
+      admissionIntent: {
+        format: 'CSV',
+        templateVersion: 2,
+        rows: [
+          {
+            rowId,
+            vendibleSkus: ['SKU-A'],
+            variantSkus: [],
+            skuBase: 'SKU-A',
+            stockInicial: 1,
+            defaultLocationId: null,
+          },
+        ],
+      },
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'CATALOGO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT',
+      status: 'COMPLETED',
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'INVENTARIO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'inventory.sku.initialization.completed',
+      action: 'SKU_INITIALIZATION',
+      skuId: 'SKU-A',
+      status: 'COMPLETED',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      failedRows: 1,
+      needsReconciliation: true,
+    });
+    expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
+      status: 'FAILED',
+      failedDomain: 'INVENTARIO',
+      errorCode: 'DEFAULT_LOCATION_REQUIRED',
+    });
+  });
+
+  it('retries a failed durable operation after requeue and ignores its delayed duplicate', async () => {
+    const rowId = randomUUID();
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const operationId = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [{ rowId, requiredDomains: ['CATALOGO', 'INVENTARIO'] }],
+      admissionIntent: {
+        format: 'CSV',
+        templateVersion: 2,
+        rows: [
+          {
+            rowId,
+            vendibleSkus: ['SKU-A'],
+            variantSkus: [],
+            skuBase: 'SKU-A',
+            stockInicial: 0,
+            defaultLocationId: null,
+          },
+        ],
+      },
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'CATALOGO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT',
+      status: 'COMPLETED',
+    });
+    const rejected = {
+      batchId,
+      rowId,
+      domain: 'INVENTARIO' as const,
+      operationId,
+      messageId: randomUUID(),
+      correlationId,
+      causationId: 'inventory-request-attempt-1',
+      eventName: 'inventory.sku.initialization.rejected',
+      action: 'SKU_INITIALIZATION' as const,
+      skuId: 'SKU-A',
+      status: 'FAILED' as const,
+      errorCode: 'TEMPORARY_REJECTION',
+      errorDetail: 'retryable',
+    };
+    await repository.recordDomainResult(rejected);
+    await repository.requeueBatch(batchId);
+    expect(await repository.recordDomainResult(rejected)).toMatchObject({
+      processed: false,
+      result: 'FAILED',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'QUEUED',
+      failedRows: 0,
+    });
+    const retried = await repository.recordDomainResult({
+      ...rejected,
+      messageId: randomUUID(),
+      causationId: 'inventory-request-attempt-2',
+      eventName: 'inventory.sku.initialization.completed',
+      status: 'COMPLETED',
+      errorCode: null,
+      errorDetail: null,
+    });
+    expect(retried).toMatchObject({
+      processed: true,
+      result: 'DOMAIN_COMPLETED',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      completedRows: 1,
+      failedRows: 0,
+    });
+    expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
+      status: 'COMPLETED',
+      appliedDomains: ['CATALOGO', 'INVENTARIO'],
+    });
+  });
+
+  it('keeps a pricing failure open until already-started Inventory work reports its result', async () => {
+    const rowId = randomUUID();
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [{ rowId, requiredDomains: ['CATALOGO', 'PRICING', 'INVENTARIO'] }],
+      admissionIntent: {
+        format: 'CSV',
+        templateVersion: 2,
+        rows: [
+          {
+            rowId,
+            vendibleSkus: ['SKU-A'],
+            variantSkus: [],
+            skuBase: 'SKU-A',
+            precioRegular: 20,
+            stockInicial: 0,
+            defaultLocationId: null,
+          },
+        ],
+      },
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'CATALOGO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT',
+      status: 'COMPLETED',
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'PRICING',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'pricing.product.initialization.rejected',
+      action: 'PRICE_INITIALIZATION',
+      causationId: randomUUID(),
+      status: 'FAILED',
+      errorCode: 'PRICE_REJECTED',
+      errorDetail: 'invalid business price',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'PROCESSING',
+      failedRows: 0,
+    });
+    expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
+      status: 'PROCESSING',
+    });
+    await repository.recordDomainResult({
+      batchId,
+      rowId,
+      domain: 'INVENTARIO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'inventory.sku.initialization.completed',
+      action: 'SKU_INITIALIZATION',
+      skuId: 'SKU-A',
+      status: 'COMPLETED',
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      completedRows: 0,
+      failedRows: 1,
+    });
+    expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
+      status: 'FAILED',
+      failedDomain: 'PRICING',
+      appliedDomains: ['CATALOGO', 'INVENTARIO'],
+      errorCode: 'PRICE_REJECTED',
+      errorDetail: 'invalid business price',
+      needsReconciliation: true,
+    });
+  });
+
+  it('accepts official Pricing ALTA initialization results and preserves identity on replay', async () => {
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const readyRow = randomUUID();
+    const rejectedRow = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [readyRow, rejectedRow].map((rowId) => ({
+        rowId,
+        requiredDomains: ['CATALOGO' as const, 'PRICING' as const],
+      })),
+      admissionIntent: {
+        rows: [readyRow, rejectedRow].map((rowId) => ({
+          rowId,
+          vendibleSkus: ['SKU-PRICE'],
+          precioRegular: 18,
+          stockInicial: 0,
+          defaultLocationId: null,
+        })),
+      },
+    });
+    for (const rowId of [readyRow, rejectedRow]) {
+      await repository.recordDomainResult({
+        batchId,
+        rowId,
+        domain: 'CATALOGO',
+        operationId: randomUUID(),
+        messageId: randomUUID(),
+        correlationId,
+        eventName: 'catalog.bulk.upsert.completed',
+        action: 'UPSERT',
+        status: 'COMPLETED',
+      });
+    }
+    const completed = {
+      batchId,
+      rowId: readyRow,
+      domain: 'PRICING' as const,
+      operationId: randomUUID(),
+      causationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'pricing.product.initialization.completed',
+      action: 'PRICE_INITIALIZATION' as const,
+      status: 'COMPLETED' as const,
+    };
+    const rejected = {
+      batchId,
+      rowId: rejectedRow,
+      domain: 'PRICING' as const,
+      operationId: randomUUID(),
+      causationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId,
+      eventName: 'pricing.product.initialization.rejected',
+      action: 'PRICE_INITIALIZATION' as const,
+      status: 'FAILED' as const,
+      errorCode: 'PRICE_REJECTED',
+      errorDetail: 'Pricing rechazó el precio base',
+    };
+    await expect(
+      repository.recordDomainResult({
+        ...completed,
+        eventName: 'pricing.bulk.price.apply.completed',
+      }),
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    await expect(
+      repository.recordDomainResult({ ...completed, causationId: undefined }),
+    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    expect(await repository.recordDomainResult(completed)).toMatchObject({
+      processed: true,
+    });
+    expect(await repository.recordDomainResult(completed)).toMatchObject({
+      processed: false,
+    });
+    expect(await repository.recordDomainResult(rejected)).toMatchObject({
+      processed: true,
+    });
+    expect(await repository.recordDomainResult(rejected)).toMatchObject({
+      processed: false,
+    });
+    expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
+      status: 'COMPLETED',
+      totalRows: 2,
+      completedRows: 1,
+      failedRows: 1,
+    });
+    const rows = await repository.listBatchRows(batchId);
+    expect(rows.find((row) => row.rowId === readyRow)).toMatchObject({
+      status: 'COMPLETED',
+      appliedDomains: ['CATALOGO', 'PRICING'],
+      failedDomain: null,
+    });
+    expect(rows.find((row) => row.rowId === rejectedRow)).toMatchObject({
+      status: 'FAILED',
+      appliedDomains: ['CATALOGO'],
+      failedDomain: 'PRICING',
+      errorCode: 'PRICE_REJECTED',
+    });
+  });
+
   it('rejects completed-step and completed-row regressions and preserves durable applied domains', async () => {
     const created = await importBatch([
       { rowId: randomUUID(), requiredDomains: ['CATALOGO', 'PRICING'] },
@@ -683,6 +1385,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       appliedDomains: ['CATALOGO'],
       needsReconciliation: true,
     });
+    await repository.requeueBatch(created.batch.batchId);
     await repository.updateWorkflowState({
       batchId: created.batch.batchId,
       rowId,
