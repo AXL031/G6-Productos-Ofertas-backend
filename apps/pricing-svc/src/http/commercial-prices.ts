@@ -8,7 +8,10 @@ import { wireMoney, wireVersion } from './pricing-reads.js';
 export const PRICING_CATALOG_CONTEXT = Symbol('PRICING_CATALOG_CONTEXT');
 // Puerto interno: requiere un provider autoritativo; no define otro endpoint de Catálogo.
 export interface PricingCatalogContext {
-  resolve(sku: string): Promise<{
+  resolve(
+    sku: string,
+    correlationId?: string,
+  ): Promise<{
     sku: string;
     productId: string;
     isVariant: boolean;
@@ -75,13 +78,14 @@ export class CommercialPrices {
     channel: (typeof channels)[number] | undefined,
     at: Date,
     historical = false,
+    correlationId?: string,
   ) {
     if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
     try {
-      context = await this.catalog.resolve(sku);
+      context = await this.catalog.resolve(sku, correlationId);
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
@@ -139,11 +143,12 @@ export class CommercialPrices {
     channel: (typeof channels)[number] | undefined,
     at: Date,
     historical = false,
+    correlationId?: string,
   ) {
     const items: Awaited<ReturnType<CommercialPrices['sku']>>[] = [];
     for (const sku of skus) {
       try {
-        items.push(await this.sku(sku, channel, at, historical));
+        items.push(await this.sku(sku, channel, at, historical, correlationId));
       } catch (error) {
         // ConsultaPrecios no tiene errores por fila: solo se omite ausencia de precio contractual.
         if (

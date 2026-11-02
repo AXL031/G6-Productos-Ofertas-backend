@@ -2,7 +2,7 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import type { PricingCatalogContext } from './commercial-prices.js';
-import { record } from './pricing-read.guard.js';
+import { record, uuid } from './pricing-read.guard.js';
 import { PricingHttpError } from './pricing-http.error.js';
 
 export const PRICING_CATALOG_TOKEN = Symbol('PRICING_CATALOG_TOKEN');
@@ -17,9 +17,10 @@ export class CatalogContextHttp implements PricingCatalogContext {
     private readonly token?: PricingCatalogToken,
   ) {}
 
-  async resolve(sku: string) {
+  async resolve(sku: string, correlationId = randomUUID()) {
     try {
-      if (!this.config.catalogUrl) throw new Error();
+      if (!this.config.catalogUrl || !uuid.test(correlationId))
+        throw new Error();
       // Credencial propia: nunca se recibe ni reenvía el bearer del consumidor.
       const authorization = this.config.demoNoAuthEnabled
         ? null
@@ -30,7 +31,7 @@ export class CatalogContextHttp implements PricingCatalogContext {
         {
           headers: {
             Accept: 'application/json, application/problem+json',
-            'X-Correlation-Id': randomUUID(),
+            'X-Correlation-Id': correlationId,
             ...(authorization
               ? { Authorization: `Bearer ${authorization}` }
               : {}),
