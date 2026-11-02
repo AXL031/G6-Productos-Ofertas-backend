@@ -23,7 +23,10 @@ export class ReadinessController {
   async ready() {
     try {
       await this.database.verifyIdentity();
-      if (this.config?.marketplaceDemoPreview) {
+      if (
+        this.config?.marketplaceDemoPreview &&
+        !this.config.readDemo?.enabled
+      ) {
         if (!this.repository || !this.pricing) throw new Error();
         await this.repository.checkDemoReadAccess();
         await this.pricing.checkReady();

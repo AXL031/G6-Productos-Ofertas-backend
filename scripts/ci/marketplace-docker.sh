@@ -50,6 +50,12 @@ G6_EXPECTED_ROLE=${service}_app
 G6_CONNECTION_MODE=direct
 EOF
 done
+cat >> "$scratch/catalog.env" <<EOF
+SECURITY_ISSUER=https://issuer:3443
+SECURITY_DISCOVERY_URL=https://issuer:3443/.well-known/openid-configuration
+SECURITY_JWKS_URL=https://issuer:3443/keys
+NODE_EXTRA_CA_CERTS=/run/certs/postgres-ca.crt
+EOF
 cat > "$scratch/gateway.env" <<EOF
 AUTH_ISSUER=https://issuer:3443
 AUTH_JWKS_URL=https://issuer:3443/keys

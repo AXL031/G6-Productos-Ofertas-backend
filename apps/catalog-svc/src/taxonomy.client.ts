@@ -14,6 +14,11 @@ import type { CommercialBrand } from './commercial.types.js';
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
+export interface TaxonomyIdentity {
+  authorization?: string;
+  user: boolean;
+  restrictedDemo?: boolean;
+}
 @Injectable()
 export class TaxonomyClient {
   constructor(
@@ -23,8 +28,9 @@ export class TaxonomyClient {
 
   private async get(
     path: string,
-    key: string,
+    key: string | undefined,
     correlationId?: string,
+    identity?: TaxonomyIdentity,
   ): Promise<Record<string, unknown>[]> {
     try {
       if (!this.config.origin) throw new Error();
@@ -32,8 +38,17 @@ export class TaxonomyClient {
       const response = await fetch(new URL(path, url), {
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
-        headers: correlationId ? { 'x-correlation-id': correlationId } : {},
+        headers: {
+          ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
+          ...(identity?.authorization
+            ? { authorization: identity.authorization }
+            : {}),
+        },
       });
+      if (key === undefined && response.status === 404) {
+        await response.body?.cancel();
+        return [];
+      }
       if (
         response.status !== 200 ||
         response.headers.get('content-type')?.split(';')[0] !==
@@ -58,6 +73,10 @@ export class TaxonomyClient {
         await reader.cancel();
       }
       const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (key === undefined) {
+        if (!object(body)) throw new Error();
+        return [body];
+      }
       if (
         !object(body) ||
         !Array.isArray(body[key]) ||
@@ -71,8 +90,39 @@ export class TaxonomyClient {
       );
     }
   }
-  async brand(id: string, correlationId?: string): Promise<CommercialBrand> {
-    const rows = await this.get('/api/v1/marcas', 'brands', correlationId);
+  async brand(
+    id: string,
+    correlationId?: string,
+    identity?: TaxonomyIdentity,
+  ): Promise<CommercialBrand> {
+    let rows = await this.get(
+      identity?.user || identity?.restrictedDemo
+        ? '/api/v1/marcas/' + encodeURIComponent(id)
+        : '/api/v1/marcas',
+      identity?.user || identity?.restrictedDemo ? undefined : 'brands',
+      correlationId,
+      identity,
+    );
+    if (identity?.user || identity?.restrictedDemo)
+      rows = rows
+        .map((row) => {
+          if (
+            row.marcaId !== id ||
+            typeof row.nombre !== 'string' ||
+            !Number.isSafeInteger(row.version) ||
+            !['ACTIVO', 'INACTIVO'].includes(String(row.estado))
+          )
+            throw new ServiceUnavailableException();
+          return {
+            marca_id: row.marcaId,
+            name: row.nombre,
+            status: row.estado === 'ACTIVO' ? 'ACTIVA' : 'INACTIVA',
+            description: row.descripcion,
+            logo_url: row.logoUrl,
+            country_code: row.paisOrigenIso,
+          };
+        })
+        .filter((row) => row.status === 'ACTIVA');
     if (
       rows.some(
         (r) =>
@@ -96,11 +146,37 @@ export class TaxonomyClient {
       country_code: (row.country_code as string) ?? null,
     };
   }
-  async category(id: string, correlationId?: string): Promise<void> {
+  async category(
+    id: string,
+    correlationId?: string,
+    identity?: TaxonomyIdentity,
+  ): Promise<void> {
+    if (identity?.user || identity?.restrictedDemo) {
+      const rows = await this.get(
+        '/api/v1/categorias/' + encodeURIComponent(id),
+        undefined,
+        correlationId,
+        identity,
+      );
+      if (!rows.length)
+        throw new HttpException({ code: 'CATEGORIA_INVALIDA' }, 422);
+      const row = rows[0];
+      if (
+        row.categoriaId !== id ||
+        typeof row.nombre !== 'string' ||
+        !Number.isSafeInteger(row.version) ||
+        !['ACTIVO', 'INACTIVO'].includes(String(row.estado))
+      )
+        throw new ServiceUnavailableException();
+      if (row.estado !== 'ACTIVO')
+        throw new HttpException({ code: 'CATEGORIA_INVALIDA' }, 422);
+      return;
+    }
     const rows = await this.get(
       '/api/v1/categorias',
       'categories',
       correlationId,
+      identity,
     );
     if (
       rows.some(

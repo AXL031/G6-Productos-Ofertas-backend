@@ -15,6 +15,12 @@ export function parseDatabaseUrl(
 ): Partial<Record<string, string>> {
   try {
     const url = new URL(urlStr);
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      !url.hostname ||
+      !url.pathname.replace(/^\//, '')
+    )
+      return {};
     const result: Partial<Record<string, string>> = {};
     if (url.hostname) result.PGHOST = url.hostname;
     if (url.port) result.PGPORT = url.port;
@@ -40,6 +46,8 @@ export function readDatabaseConfig(
   env: Readonly<NodeJS.ProcessEnv>,
 ): PoolConfig {
   try {
+    if (env.DATABASE_URL?.trim() && !parseDatabaseUrl(env.DATABASE_URL).PGHOST)
+      throw new Error();
     const urlParams = env.DATABASE_URL?.trim()
       ? parseDatabaseUrl(env.DATABASE_URL)
       : {};
@@ -106,12 +114,13 @@ export class Database implements OnModuleDestroy {
   private pool?: pg.Pool;
   private db?: NodePgDatabase;
   private closed = false;
+  private env: Readonly<NodeJS.ProcessEnv> = process.env;
 
   async read<T>(query: (db: NodePgDatabase) => Promise<T>): Promise<T> {
     try {
       if (this.closed) throw new Error();
       if (!this.pool) {
-        this.pool = new pg.Pool(readDatabaseConfig(process.env));
+        this.pool = new pg.Pool(readDatabaseConfig(this.env));
         // pg emite errores de clientes idle fuera de la promesa de consulta.
         // Nunca emitir el error del driver, SQL, parámetros ni configuración.
         this.pool.on('error', () => {
@@ -134,13 +143,14 @@ export class Database implements OnModuleDestroy {
   }
 
   async verifyIdentity(
-    env: Readonly<NodeJS.ProcessEnv> = process.env,
+    env: Readonly<NodeJS.ProcessEnv> = this.env,
   ): Promise<void> {
-    const urlParams = env.DATABASE_URL?.trim()
-      ? parseDatabaseUrl(env.DATABASE_URL)
+    if (!this.pool) this.env = { ...env };
+    const urlParams = this.env.DATABASE_URL?.trim()
+      ? parseDatabaseUrl(this.env.DATABASE_URL)
       : {};
     const effectiveEnv: NodeJS.ProcessEnv = {
-      ...env,
+      ...this.env,
       ...urlParams,
     };
     await this.read(async (db) => {
@@ -169,6 +179,7 @@ export class Database implements OnModuleDestroy {
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.closed) return;
     this.closed = true;
     await this.pool?.end();
   }

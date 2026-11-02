@@ -1,0 +1,79 @@
+--- a/contratos/eventos/asyncapi.yaml
++++ b/contratos/eventos/asyncapi.yaml
+@@ -963,0 +964,36 @@
++    MasterDeactivationData:
++      type: object
++      properties:
++        entity_type:
++          type: string
++          enum: [CATEGORY, BRAND, PRODUCT_TYPE, CHARACTERISTIC_VALUE, PRODUCT_TYPE_CHARACTERISTIC]
++        entity_id:
++          type: string
++          minLength: 1
++          description: Identidad opaca, sin codificacion deducida por Catalog.
++        version:
++          type: integer
++          minimum: 0
++          description: source_version capturada al admitir la operacion; no es schema_version.
++      required: [entity_type, entity_id, version]
++      additionalProperties: true
++      description: PRODUCT_TYPE_CHARACTERISTIC permanece bloqueado en Catalog hasta homologar correspondencia verificable. No se incorporan campos propuestos aun no ratificados.
++    MasterDeactivationCheckedData:
++      allOf:
++      - $ref: '#/components/schemas/MasterDeactivationData'
++      - type: object
++        properties:
++          result:
++            type: string
++            enum: [CLEAR, IN_USE]
++        required: [result]
++    MasterDeactivationRejectedData:
++      allOf:
++      - $ref: '#/components/schemas/MasterDeactivationData'
++      - type: object
++        properties:
++          reason:
++            type: string
++            minLength: 1
++            description: Razon de rechazo, incluidas TIMEOUT, TECHNICAL_FAILURE, VERSION_CONFLICT y razones contractuales de uso incompatible.
++        required: [reason]
+@@ -1877,0 +1914,3 @@
++            operation_id:
++              type: string
++              format: uuid
+@@ -1888,2 +1927,3 @@
+-              $ref: '#/components/schemas/GenericData'
+-          required:
++              $ref: '#/components/schemas/MasterDeactivationData'
++          required:
++          - operation_id
+@@ -1910,0 +1951,3 @@
++            operation_id:
++              type: string
++              format: uuid
+@@ -1921,2 +1964,3 @@
+-              $ref: '#/components/schemas/GenericData'
+-          required:
++              $ref: '#/components/schemas/MasterDeactivationCheckedData'
++          required:
++          - operation_id
+@@ -1944,0 +1989,3 @@
++            operation_id:
++              type: string
++              format: uuid
+@@ -1955,2 +2002,3 @@
+-              $ref: '#/components/schemas/GenericData'
+-          required:
++              $ref: '#/components/schemas/MasterDeactivationData'
++          required:
++          - operation_id
+@@ -1977,0 +2026,3 @@
++            operation_id:
++              type: string
++              format: uuid
+@@ -1988,2 +2039,3 @@
+-              $ref: '#/components/schemas/GenericData'
+-          required:
++              $ref: '#/components/schemas/MasterDeactivationRejectedData'
++          required:
++          - operation_id

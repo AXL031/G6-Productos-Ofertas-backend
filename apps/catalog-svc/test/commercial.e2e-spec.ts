@@ -3,8 +3,9 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
-import { COMMERCIAL_ELIGIBILITY } from '../src/commercial-eligibility.js';
+import { CatalogPersistenceError } from '../src/database-errors.js';
 import { TaxonomyClient } from '../src/taxonomy.client.js';
+import { CatalogAuthGuard } from '../src/catalog-auth.js';
 
 describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidence)', () => {
   let app: INestApplication;
@@ -23,8 +24,10 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
     variants: [],
   };
   const repository = { listCandidates: vi.fn(), findCandidateBySlug: vi.fn() };
-  async function start(approvedFixture = false) {
+  async function start() {
     const builder = Test.createTestingModule({ imports: [AppModule] })
+      .overrideGuard(CatalogAuthGuard)
+      .useValue({ canActivate: () => true })
       .overrideProvider(PostgresCatalogRepository)
       .useValue(repository)
       .overrideProvider(TaxonomyClient)
@@ -38,13 +41,6 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
         }),
         category: async () => undefined,
       });
-    if (approvedFixture)
-      builder.overrideProvider(COMMERCIAL_ELIGIBILITY).useValue({
-        resolve: async () => ({
-          productIds: ['product-fixture'],
-          variantIds: [],
-        }),
-      });
     app = (await builder.compile()).createNestApplication();
     await app.init();
   }
@@ -54,7 +50,13 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
   afterEach(async () => {
     await app?.close();
   });
-  it('fails closed by default before accessing candidates', async () => {
+  it('returns a technical error when official persistence is unavailable', async () => {
+    repository.listCandidates.mockRejectedValue(
+      new CatalogPersistenceError('connection'),
+    );
+    repository.findCandidateBySlug.mockRejectedValue(
+      new CatalogPersistenceError('connection'),
+    );
     await start();
     for (const path of [
       '/api/v1/productos?canal=MARKETPLACE',
@@ -63,11 +65,11 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
       const response = await request(app.getHttpServer()).get(path).expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
     }
-    expect(repository.listCandidates).not.toHaveBeenCalled();
-    expect(repository.findCandidateBySlug).not.toHaveBeenCalled();
+    expect(repository.listCandidates).toHaveBeenCalledTimes(1);
+    expect(repository.findCandidateBySlug).toHaveBeenCalledTimes(1);
   });
-  it('returns a contract-shaped fixture page when the policy is supplied in test', async () => {
-    await start(true);
+  it('returns a contract-shaped fixture page using the official persistence provider', async () => {
+    await start();
     const { variants: _variants, ...summary } = product;
     repository.listCandidates.mockResolvedValue({
       items: [summary],
@@ -81,11 +83,10 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
     expect(response.body.items[0].sku_base).toBe('0001');
     expect(repository.listCandidates).toHaveBeenCalledWith(
       expect.objectContaining({ pagina: 2, tamanio: 10 }),
-      { productIds: ['product-fixture'], variantIds: [] },
     );
   });
   it('composes detail through the Taxonomy boundary and preserves simple SKU', async () => {
-    await start(true);
+    await start();
     repository.findCandidateBySlug.mockResolvedValue(product);
     const response = await request(app.getHttpServer())
       .get('/api/v1/productos/por-slug/simple-fixture?canal=MARKETPLACE')
@@ -97,7 +98,7 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
     });
   });
   it('returns contractual 404 and correlation for absent/ineligible detail', async () => {
-    await start(true);
+    await start();
     repository.findCandidateBySlug.mockResolvedValue(null);
     const correlation = '3fa85f64-5717-4562-b3fc-2c963f66afa6';
     const response = await request(app.getHttpServer())
@@ -113,7 +114,7 @@ describe('Catalog commercial boundary (isolated fixtures, not PostgreSQL evidenc
     });
   });
   it('rejects malformed input and never ignores a price filter', async () => {
-    await start(true);
+    await start();
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE&tamanio=101')
       .expect(400);

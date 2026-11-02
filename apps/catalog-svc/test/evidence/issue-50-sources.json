@@ -1,0 +1,171 @@
+{
+  "date": "2026-10-29",
+  "docsCommit": "599c34f4e677c8792532e2cc31ac372473a10710",
+  "frontendCommit": "5317ec3a21ef60b354ec65a184a52270cae42053",
+  "securityCommit": "9c11ab505ac15b1b64cb3eb7b1dbf5d8279a1219",
+  "missing": [
+    "Frontend master: docs/ISSUE_35_CATALOGO.md (fetch_file returned error)"
+  ],
+  "sources": [
+    {
+      "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+      "blobSha": "8c522d69bce88b46a5e215f4a4b0847a6209cedc",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
+    },
+    {
+      "path": "requisitos/hu/HU-003-gestion-productos-crud.md",
+      "blobSha": "58aed1624bf8bbcae4220c32b8598dcecdff4120",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/hu/HU-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-003-gestion-productos-crud.md",
+      "blobSha": "442d41b4c41d0440d8969d2603fdd38473188cc8",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/hu/HU-004-gestion-variantes-skus.md",
+      "blobSha": "56a6e1e65be73f2d44ddb7bb2fef1600ed781053",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/hu/HU-004-gestion-variantes-skus.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-004-gestion-variantes-skus.md",
+      "blobSha": "949f7ee370439350977d499f9b937b3e2aab1bdd",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-004-gestion-variantes-skus.md"
+    },
+    {
+      "path": "requisitos/specs/SPEC-009-gestion-caracteristicas.md",
+      "blobSha": "f38124e0e0073ab0ba51c191f2b9a23991b036f2",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-009-gestion-caracteristicas.md"
+    },
+    {
+      "path": "requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md",
+      "blobSha": "8653d68ebc2c82e5c4dfcddacf01aaef1a0fe18c",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md"
+    },
+    {
+      "path": "contratos/http/openapi.yaml",
+      "blobSha": "17231f82f51c6696e09e233a5e827fcfd614701f",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml"
+    },
+    {
+      "path": "contratos/eventos/asyncapi.yaml",
+      "blobSha": "4d3483790244029da1e541ae021e0b46f1bb0e2b",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/asyncapi.yaml"
+    },
+    {
+      "path": "contratos/http/catalogo-errores.md",
+      "blobSha": "d98f807bdf5ea7cf03259fb18b141e1e16b15e2b",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/catalogo-errores.md"
+    },
+    {
+      "path": "contratos/http/kit-integracion.md",
+      "blobSha": "8d937628622626dfb1c69d73cba6bca55dc4b2ce",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/kit-integracion.md"
+    },
+    {
+      "path": "contratos/pruebas/pruebas-contrato.md",
+      "blobSha": "029b27dbd0d5f6d0494fa54d1ac8d9f7fc78d7ff",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/pruebas/pruebas-contrato.md"
+    },
+    {
+      "path": "arquitectura/decisiones/REGISTRO_DEC_F.md",
+      "blobSha": "c26b1ee1f08014bcbf0fa6a7c9c6d38bacc37ff4",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/REGISTRO_DEC_F.md"
+    },
+    {
+      "path": "arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md",
+      "blobSha": "8f70b3b4b8aeed3165cec208d23009774de39d15",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md"
+    },
+    {
+      "path": "integraciones/MATRIZ_INTERMODULAR_BACKEND.md",
+      "blobSha": "4d4f42e14c8c90ca04afb89e5100db7810d978ee",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ_INTERMODULAR_BACKEND.md"
+    },
+    {
+      "path": "arquitectura/Arquitectura.md",
+      "blobSha": "7dd250506aeef7373bbeb72e80655932534fc70c",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/Arquitectura.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md",
+      "blobSha": "c5486d5c236ac11dfcad7e99ba9b25773cf22ed9",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_G1_G6_H4_2026-10-20.md",
+      "blobSha": "567268977050cfbc69e483b104dc9d7f10792910",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md"
+    },
+    {
+      "path": "integraciones/ALINEACION_MARKETPLACE.md",
+      "blobSha": "7fa6e341be45a6c273a9e22e15bf8a223545da07",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ALINEACION_MARKETPLACE.md"
+    },
+    {
+      "path": "src/features/catalog/services/catalogRepository.ts",
+      "blobSha": "6a21ace6efc96510d9b08089f38f64cf49891416",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/services/catalogRepository.ts"
+    },
+    {
+      "path": "src/features/catalog/services/taxonomyRepository.ts",
+      "blobSha": "30135ec0d132499ef1cbf207f4abad19e8b9145b",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/services/taxonomyRepository.ts"
+    },
+    {
+      "path": "src/features/catalog/services/catalogServices.ts",
+      "blobSha": "8840e34e3997975618080f5119fcb4f13894103a",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/services/catalogServices.ts"
+    },
+    {
+      "path": "src/features/catalog/hooks/useProductForm.ts",
+      "blobSha": "0c42977ce80488b5fb081686b50163f3eda28396",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/hooks/useProductForm.ts"
+    },
+    {
+      "path": "src/features/catalog/hooks/useVariantForm.ts",
+      "blobSha": "fcc2906f6451a58f6b804d808ad52d214d40b6ac",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/hooks/useVariantForm.ts"
+    },
+    {
+      "path": "src/features/catalog/hooks/useProductPreparation.ts",
+      "blobSha": "21ba72864863b70c2b99339cdbb048283b8b781a",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/hooks/useProductPreparation.ts"
+    },
+    {
+      "path": "src/features/catalog/hooks/useVariantPreparation.ts",
+      "blobSha": "48b526a211cf316229477b2d0f6674cbe7490333",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/src/features/catalog/hooks/useVariantPreparation.ts"
+    },
+    {
+      "path": "docs/COORDINACION_TAXONOMIA_CATALOGO.md",
+      "blobSha": "95ba2be84bc95339a7feea484331fbd4921d34b9",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-frontend/blob/master/docs/COORDINACION_TAXONOMIA_CATALOGO.md"
+    },
+    {
+      "path": "specs/contrato-api/openapi.yaml",
+      "blobSha": "78b7fe9041eebfd7ef88379167bf01115ea0afe9",
+      "url": "https://github.com/Taller-SW-Web/Modulo-de-Seguridad/blob/main/specs/contrato-api/openapi.yaml"
+    },
+    {
+      "path": "specs/funcionales/SPEC-17-tokens-servicio.md",
+      "blobSha": "af6fa3e073899f533ef102fd33398c3bae2ce008",
+      "url": "https://github.com/Taller-SW-Web/Modulo-de-Seguridad/blob/main/specs/funcionales/SPEC-17-tokens-servicio.md"
+    },
+    {
+      "path": "docs/integracion/matriz-scopes.md",
+      "blobSha": "b6a7505c9255fd0f8b732a2243b8e337a2aed4f5",
+      "url": "https://github.com/Taller-SW-Web/Modulo-de-Seguridad/blob/main/docs/integracion/matriz-scopes.md"
+    },
+    {
+      "path": "specs/kit-integracion.md",
+      "blobSha": "36f211c53df4c2a6ba824efbb09a55c1015cc85a",
+      "url": "https://github.com/Taller-SW-Web/Modulo-de-Seguridad/blob/main/specs/kit-integracion.md"
+    },
+    {
+      "path": "docs/integracion/hito-4-marketplace.md",
+      "blobSha": "247c3f4e0dbe1d88f16cc23ceb8e7b113511a9c3",
+      "url": "https://github.com/Taller-SW-Web/Modulo-de-Seguridad/blob/main/docs/integracion/hito-4-marketplace.md"
+    }
+  ]
+}
