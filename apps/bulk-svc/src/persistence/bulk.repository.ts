@@ -102,7 +102,11 @@ export interface DomainResultInput {
   correlationId: string;
   causationId?: string | null;
   eventName: string;
-  action: 'UPSERT' | 'PRICE_APPLY' | 'SKU_INITIALIZATION' | 'STOCK_ADJUSTMENT';
+  action:
+    | 'UPSERT'
+    | 'PRICE_INITIALIZATION'
+    | 'SKU_INITIALIZATION'
+    | 'STOCK_ADJUSTMENT';
   skuId?: string;
   status: 'COMPLETED' | 'FAILED';
   errorCode?: string | null;
@@ -293,6 +297,8 @@ export class BulkPersistenceRepository {
           .for('update')
           .limit(1);
         if (!row) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+        const expectedEvent =
+          input.status === 'COMPLETED' ? 'completed' : 'rejected';
         const payload = {
           batchId: input.batchId,
           rowId: input.rowId,
@@ -464,24 +470,25 @@ export class BulkPersistenceRepository {
         const skuIds = Array.isArray(normalizedRow.vendibleSkus)
           ? normalizedRow.vendibleSkus
           : [];
-        const expectedEvent =
-          input.status === 'COMPLETED' ? 'completed' : 'rejected';
         if (
           input.domain === 'CATALOGO' &&
           (input.action !== 'UPSERT' ||
-            input.eventName !== `catalog.bulk.upsert.${expectedEvent}`)
+            input.eventName !== 'catalog.bulk.upsert.completed')
         )
           domainFailure(
             'INVALID_INPUT',
-            'Catalog result action does not match its contract event',
+            'Bulk row results must be adapted from catalog.bulk.upsert.completed; catalog.bulk.upsert.rejected rejects the command as a whole.',
           );
         if (
           input.domain === 'PRICING' &&
-          (input.action !== 'PRICE_APPLY' ||
-            input.eventName !== `pricing.bulk.price.apply.${expectedEvent}`)
+          (input.action !== 'PRICE_INITIALIZATION' ||
+            input.causationId == null ||
+            (input.status === 'COMPLETED'
+              ? input.eventName !== 'pricing.product.initialization.completed'
+              : input.eventName !== 'pricing.product.initialization.rejected'))
         )
           inconsistent(
-            'Pricing result action does not match its contract event',
+            'Pricing ALTA results must preserve initialization event, operation_id and causation_id identities.',
           );
         if (input.domain === 'INVENTARIO') {
           if (
