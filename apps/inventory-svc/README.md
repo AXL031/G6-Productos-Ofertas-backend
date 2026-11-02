@@ -132,7 +132,7 @@ coordinado. `getMetrics()` expone contadores locales (conexión, pausa, ACK,
 duplicados, rechazos, fallos, reconexiones). No hay endpoint/exportador de
 métricas.
 
-### 4.1 Topología física AMQP adoptada (Resolución #29 / AsyncAPI 0.6.0-rc.3)
+### 4.1 Topología física AMQP adoptada (Resolución de nombres físicos / AsyncAPI 0.6.0-rc.3 — alcance parcial #29)
 
 El código de Inventory adopta la nomenclatura física en español oficial de Oracle y las ACLs del usuario `g6_inventario`:
 
@@ -143,7 +143,7 @@ El código de Inventory adopta la nomenclatura física en español oficial de Or
 | Exchange de resultados | `po.resultados.x` | `po.results.x` | **write** `po.resultados.x` | **Alineado** |
 | Configure | ninguno | ninguno | ninguno (`^$`) | **Cumplido** (el servicio no declara topología) |
 
-*Nota histórica:* Previo a la actualización contractual AsyncAPI `0.6.0-rc.3` en `master` y la resolución #29, el código utilizaba temporalmente nombres en inglés (`po.inventory.q`, `po.events.x`, `po.results.x`), los cuales diferían de la topología física desplegada en Oracle. Esta discrepancia operativa quedó resuelta adoptando los nombres físicos españoles en el consumidor y publicador Outbox. Este servicio **no crea ni modifica** exchanges, colas, bindings ni ACLs.
+*Nota histórica:* Previo a la actualización contractual AsyncAPI `0.6.0-rc.3` en `master` y la adopción de nombres físicos (alcance de #29), el código utilizaba temporalmente nombres en inglés (`po.inventory.q`, `po.events.x`, `po.results.x`), los cuales diferían de la topología física desplegada en Oracle. Esta discrepancia operativa quedó resuelta adoptando los nombres físicos españoles en el consumidor y publicador Outbox. Este servicio **no crea ni modifica** exchanges, colas, bindings ni ACLs.
 
 La frontera HTTP/PostgreSQL es independiente del broker:
 
@@ -189,7 +189,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 | [#99](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/99) | IMPLEMENTAR_PARCIAL | Invariantes de saldo/reserva/incidencia/traslado/reintegro y política offline pura | Marco + G4/G5/G7 · identidad estable de venta offline, dedupe, actor y ubicación (DEC-F-009/014/015) · política y contrato ejecutables |
 | [#100](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/100) | IMPLEMENTAR_PARCIAL | Lecturas, umbrales, dashboard, traslados y consultas comerciales | Poma/Catálogo · mapping producto/categoría/marca→SKU · Marco · métricas SPEC-016 ausentes del schema HTTP y errores de Gateway |
 | [#101](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/101) | IMPLEMENTAR_PARCIAL | Escrituras contractuales salvo frontera offline | Marco + G4/G5/G7 · autorización offline · homologación antes de conectar la política pura a una mutación persistente |
-| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia; topología física `po.inventario.q`/`po.eventos.x`/`po.resultados.x` adoptada en código y acreditada en CI (#29) | Marco + owners Bulk/Catálogo · payload tipado de bulk/deactivated · contrato ejecutable · Marco/Infra · conexión al broker Oracle con las credenciales individuales y validación bilateral. Retry/DLX no implementado por diseño: el servicio no crea topología y no dispone de retry/DLX |
+| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia; topología física `po.inventario.q`/`po.eventos.x`/`po.resultados.x` adoptada en código y acreditada en CI (alcance parcial #29) | Marco + owners Bulk/Catálogo · payload tipado de bulk/deactivated · contrato ejecutable · Marco/Infra · conexión al broker Oracle con las credenciales individuales, validación bilateral y recuperación AMQP. Retry/DLX no implementado por diseño: el servicio no crea topología y no dispone de retry/DLX |
 | [#103](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/103) | IMPLEMENTAR_PARCIAL | Límites, timeouts, errores sanitizados, contadores internos | Infra/G5 · validar fallos y recuperación con DB/broker reales; sin exporter/endpoint de métricas no contratado |
 | [#104](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/104) | BLOQUEADO_ESPECÍFICO | Provider HTTP; adaptador Frontend de umbrales, KPIs autoritativos de dashboard, distribución `porUbicacion` y traslados con solicitud inmutable, confirmación separada de presentación (`TAC-P0-05`), protección `UNCERTAIN` y matriz de transición (`TAC-P0-02`/`TAC-P1-07`) (33 pruebas unitarias/flujo + 60 Playwright, SHA Frontend `db7c2e6`, `src/features/inventory/INTEGRACION_HTTP.md`); lecturas sin fuente contractual fallan con `CONTRATO_BLOQUEADO` | Marco · cliente compartido #109 y rutas #106/#107 · integración React↔Gateway validada (área Frontend) |
 | [#105](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/105) | BLOQUEADO_ESPECÍFICO | Suites locales/provider (no son E2E real) | Marco/Infra · #104, stack aislado PostgreSQL/RabbitMQ, datos autorizados y #110 · recorrido real React→Gateway→Inventory→persistencia |

@@ -66,7 +66,7 @@ El consumidor comprueba la existencia de `po.inventario.q`, usa prefetch 20 y AC
 
 `inventory.bulk.stock.adjust.requested` y `catalog.sku.deactivated` quedan aislados con `BLOCKED_CONTRACT`: el AsyncAPI consultado declara `GenericData`, sin payload ejecutable suficiente. Un mensaje inválido, un contrato bloqueado o un fallo técnico pausa el consumidor y cierra el canal sin ACK. RabbitMQ puede volver a poner las entregas pendientes en la cola al cerrar el canal; este proceso no reconecta automáticamente mientras esté pausado. Requiere resolver la causa y llamar internamente a `resume()` o reiniciar. Un mensaje persistente incompatible puede bloquear el avance de esa cola compartida. No hay endpoint público de reanudación, retry/DLX productivo ni publicación a colas alternativas. La pérdida de conexión sin pausa programa reconexión a los 30 s.
 
-### Topología física AMQP adoptada (Resolución #29 / AsyncAPI 0.6.0-rc.3)
+### Topología física AMQP adoptada (Resolución de nombres físicos / AsyncAPI 0.6.0-rc.3 — alcance parcial #29)
 
 El código adopta los nombres físicos en español homologados con la topología Oracle (RabbitMQ 4.2.9, vhost `g6-productos-ofertas`) y el contrato AsyncAPI `0.6.0-rc.3`:
 
@@ -77,13 +77,13 @@ El código adopta los nombres físicos en español homologados con la topología
 | Exchange de resultados | `po.resultados.x` | `po.results.x` | write `po.resultados.x` | Alineado con ACL |
 | Configure | — | — | ninguno (`^$`) | El servicio no crea ni altera recursos |
 
-*Nota histórica:* Previo a la actualización AsyncAPI 0.6.0-rc.3 y la resolución #29, el código utilizaba los identificadores en inglés del AsyncAPI 0.6.0-rc.2 (`po.inventory.q`, `po.events.x`, `po.results.x`) frente a la topología física en español. Con la actualización de contrato y código, los recursos coinciden plenamente con los permisos del usuario de servicio.
+*Nota histórica:* Previo a la actualización AsyncAPI 0.6.0-rc.3 y la adopción de la nomenclatura física de Inventory (alcance parcial de #29), el código utilizaba los identificadores en inglés del AsyncAPI 0.6.0-rc.2 (`po.inventory.q`, `po.events.x`, `po.results.x`) frente a la topología física en español. Con la actualización de contrato y código, los recursos coinciden plenamente con los permisos del usuario de servicio.
 
 ### Estado de validación contra el broker Oracle
 
 Al 2026-11-01 la nomenclatura está alineada en código y acreditada en CI (suite real PostgreSQL/RabbitMQ con los nombres físicos), pero la conexión al broker Oracle **no se ha ejecutado**: `127.0.0.1:5675` no fue alcanzable desde el entorno local. Marco provisionó la URL, el vhost `g6-productos-ofertas` y el usuario `g6_inventario`; falta la ruta de red/túnel y la autorización de uso.
 
-Comprobación pasiva prevista, sin crear recursos ni publicar mensajes: `checkQueue('po.inventario.q')` acredita existencia y permiso de lectura; `checkExchange('po.eventos.x')` y `checkExchange('po.resultados.x')` acreditan existencia. El permiso de escritura solo se demuestra con una publicación confirmada autorizada, que no forma parte de esta comprobación. Un error 404/403 debe reportarse a Marco/Infra; no se declara homologación por inferencia.
+Comprobación pasiva prevista, sin crear recursos ni publicar mensajes: `checkQueue('po.inventario.q')` solo permite una comprobación pasiva de existencia de la cola; el permiso de consumo/lectura debe verificarse por separado mediante suscripción/consumo efectivo autorizado. `checkExchange('po.eventos.x')` y `checkExchange('po.resultados.x')` acreditan únicamente la existencia pasiva de los exchanges. El permiso de escritura solo se demuestra con una publicación confirmada autorizada, que no forma parte de esta comprobación pasiva. Un error 404/403 debe reportarse a Marco/Infra; no se declara homologación por inferencia.
 
 **Independencia HTTP/PostgreSQL:** `RABBITMQ_URL` es opcional al arranque; sin
 broker el proceso sirve HTTP y mantiene los eventos en Outbox como `PENDING`.
