@@ -483,45 +483,80 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
   });
 
   it('rejects incompatible file role/format combinations and completes exports atomically', async () => {
-    const job = await repository.createExportJob({
-      exportId: randomUUID(),
-      format: 'CSV',
-    });
-    await expect(
-      repository.completeExportJob(job.exportId, {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    try {
+      const job = await repository.createExportJob({
+        exportId: randomUUID(),
         format: 'CSV',
-        contentRef: `test://${randomUUID()}`,
-      }),
-    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
-    await expect(
-      repository.completeExportJob(job.exportId, {
-        format: 'XLSX',
-        contentRef: `test://${randomUUID()}`,
-      }),
-    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
-    expect(
-      (await repository.findExportJobByExportId(job.exportId))?.outputFileId,
-    ).toBeNull();
-    expect(
-      (await repository.findExportJobByExportId(job.exportId))?.status,
-    ).toBe('QUEUED');
-    const claimed = await repository.claimQueuedExportJob(job.exportId);
-    expect(claimed?.job.status).toBe('PROCESSING');
-    await expect(
-      repository.completeExportJob(job.exportId, {
-        format: 'XLSX',
-        contentRef: `test://${randomUUID()}`,
-      }),
-    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
-    expect(
-      (await repository.findExportJobByExportId(job.exportId))?.outputFileId,
-    ).toBeNull();
-    const done = await repository.completeExportJob(job.exportId, {
-      format: 'CSV',
-      contentRef: `test://${randomUUID()}`,
-    });
-    expect(done.status).toBe('COMPLETED');
-    expect(done.completedAt).toBeInstanceOf(Date);
+      });
+      const before = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      await expect(
+        repository.completeExportJob(job.exportId, {
+          format: 'CSV',
+          contentRef: `supabase://bulk-private-test/exports/${randomUUID()}.csv`,
+        }),
+      ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+      expect(
+        (await repository.findExportJobByExportId(job.exportId))?.status,
+      ).toBe('QUEUED');
+      const claimed = await repository.claimQueuedExportJob(job.exportId);
+      expect(claimed?.job.status).toBe('PROCESSING');
+
+      await expect(
+        repository.completeExportJob(job.exportId, {
+          format: 'XLSX',
+          contentRef: `supabase://bulk-private-test/exports/${randomUUID()}.xlsx`,
+        }),
+      ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+      for (const contentRef of [
+        `test://${randomUUID()}`,
+        `https://example.invalid/${randomUUID()}.csv`,
+        `supabase://another-bucket/exports/${randomUUID()}.csv`,
+        'supabase://bulk-private-test/',
+        'supabase://bulk-private-test/exports/../outside.csv',
+      ]) {
+        await expect(
+          repository.completeExportJob(job.exportId, {
+            format: 'CSV',
+            contentRef,
+          }),
+        ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+      }
+
+      const stillProcessing = await repository.findExportJobByExportId(
+        job.exportId,
+      );
+      expect(stillProcessing).toMatchObject({
+        status: 'PROCESSING',
+        outputFileId: null,
+        completedAt: null,
+      });
+      const noPartialManifest = await pool.query(
+        "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
+      );
+      expect(noPartialManifest.rows[0]?.count).toBe(before.rows[0]?.count);
+
+      const contentRef = `supabase://bulk-private-test/exports/${randomUUID()}.csv`;
+      const done = await repository.completeExportJob(job.exportId, {
+        format: 'CSV',
+        contentRef,
+      });
+      expect(done.status).toBe('COMPLETED');
+      expect(done.completedAt).toBeInstanceOf(Date);
+      expect(
+        await repository.findFileManifest(done.outputFileId!),
+      ).toMatchObject({
+        role: 'RESULTADO_EXPORTACION',
+        format: 'CSV',
+        contentRef,
+      });
+    } finally {
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
   });
 
   it('persists and conditionally advances an export without exposing partial output', async () => {

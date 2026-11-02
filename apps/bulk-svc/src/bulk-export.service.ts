@@ -21,6 +21,8 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
   private static readonly PROCESSING_LEASE_MS = 60_000;
   private static readonly RETRY_BASE_MS = 250;
   private static readonly RETRY_MAX_MS = 30_000;
+  private recoveryFailures = 0;
+  private destroyed = false;
   private readonly scheduled = new Set<string>();
   private readonly failureFences = new Map<string, string>();
   private readonly retryCounts = new Map<string, number>();
@@ -35,7 +37,9 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
   }
 
   onModuleDestroy(): void {
+    this.destroyed = true;
     if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
+    this.recoveryTimer = undefined;
     for (const timer of this.retryTimers.values()) clearTimeout(timer);
     this.retryTimers.clear();
   }
@@ -115,20 +119,34 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
   }
 
   private scheduleRecovery(delay: number): void {
+    if (this.destroyed) return;
     if (this.recoveryTimer) clearTimeout(this.recoveryTimer);
-    this.recoveryTimer = setTimeout(() => void this.runRecovery(), delay);
+    this.recoveryTimer = setTimeout(() => {
+      this.recoveryTimer = undefined;
+      if (!this.destroyed) void this.runRecovery();
+    }, delay);
     this.recoveryTimer.unref();
   }
 
   private async runRecovery(): Promise<void> {
+    if (this.destroyed) return;
     try {
       await this.recoverAndDispatch();
+      if (this.destroyed) return;
+      this.recoveryFailures = 0;
       this.scheduleRecovery(BulkExportService.PROCESSING_LEASE_MS / 2);
     } catch {
+      if (this.destroyed) return;
       this.logger.warn(
         'No se pudo recuperar la cola de exportaciones; se reintentará.',
       );
-      this.scheduleRecovery(BulkExportService.RETRY_BASE_MS);
+      this.recoveryFailures += 1;
+      const delay = Math.min(
+        BulkExportService.RETRY_BASE_MS *
+          2 ** Math.min(this.recoveryFailures - 1, 16),
+        BulkExportService.RETRY_MAX_MS,
+      );
+      this.scheduleRecovery(delay);
     }
   }
 

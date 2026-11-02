@@ -16,6 +16,7 @@ import {
   persistenceError,
 } from './bulk.persistence.errors.js';
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
+import { matchesBulkStorageReference } from '../storage/bulk-storage-reference.js';
 
 export type BulkDomain = 'CATALOGO' | 'PRICING' | 'INVENTARIO';
 export type BulkFileFormat = 'CSV' | 'XLSX';
@@ -1501,8 +1502,17 @@ export class BulkPersistenceRepository {
           inconsistent('Only a processing export can be completed');
         if (resultFile.format !== job.format)
           inconsistent('Export output format must match the requested format');
-        if (!resultFile.contentRef.trim())
-          inconsistent('Export output requires a private content reference');
+        if (
+          !matchesBulkStorageReference(
+            resultFile.contentRef,
+            process.env.BULK_STORAGE_BUCKET,
+          )
+        )
+          inconsistent(
+            'Export output must reference a configured Bulk Storage object',
+          );
+        // This checks adapter compatibility only. The caller must upload via
+        // BulkStorageService.put(), which verifies the configured bucket ACL.
         const [manifest] = await tx
           .insert(fileManifests)
           .values({
