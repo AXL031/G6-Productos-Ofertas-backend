@@ -1,4 +1,6 @@
 import type { Provider } from '@nestjs/common';
+import { h4EventAdapters } from './h4-event-adapters.js';
+import { assignedH4Contracts } from './assigned-h4-contract.generated.js';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { Pool as PgPool, PoolConfig } from 'pg';
@@ -181,13 +183,18 @@ export function nativeCouponResources(
 }
 
 export const couponProviders: Provider[] = [
-  { provide: ASSIGNED_EVENT_ADAPTERS, useValue: Object.freeze({}) },
+  { provide: ASSIGNED_EVENT_ADAPTERS, useValue: h4EventAdapters },
   { provide: PROMOTIONS_BROKER_IDENTITY, useValue: blockedBrokerIdentity },
   {
     provide: PromotionsAssignedEventDispatcher,
     inject: [COUPON_RESOURCES, ASSIGNED_EVENT_ADAPTERS],
     useFactory: (resources: CouponResources, adapters: AssignedEventAdapters) =>
-      new PromotionsAssignedEventDispatcher(resources.pool, adapters),
+      new PromotionsAssignedEventDispatcher(
+        resources.pool,
+        adapters,
+        assignedH4Contracts,
+        true,
+      ),
   },
   {
     provide: PromotionsPersistence,

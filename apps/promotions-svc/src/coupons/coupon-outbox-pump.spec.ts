@@ -53,4 +53,27 @@ describe('continuous transactional Outbox recovery', () => {
     await stopping;
     expect(publishOne).toHaveBeenCalledOnce();
   });
+
+  it('reports missing confirms once per pending streak and reports a later failure after recovery', async () => {
+    vi.useFakeTimers();
+    const publishOne = vi
+      .fn(async (): Promise<'pending' | 'published' | 'empty'> => 'empty')
+      .mockResolvedValueOnce('pending')
+      .mockResolvedValueOnce('pending')
+      .mockResolvedValueOnce('published')
+      .mockRejectedValueOnce(new Error('private broker details'))
+      .mockResolvedValueOnce('pending');
+    const failed = vi.fn(() => {
+      throw new Error('observer unavailable');
+    });
+    const pump = new CouponOutboxPump({ publishOne }, failed);
+    pump.start();
+    await vi.advanceTimersByTimeAsync(751);
+    expect(publishOne).toHaveBeenCalledTimes(5);
+    expect(failed.mock.calls).toEqual([[], []]);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(publishOne).toHaveBeenCalledTimes(6);
+    await pump.stop();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });

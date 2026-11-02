@@ -238,6 +238,21 @@ export class PromotionsRepositories {
   }
 
   async price(sku: string, channelId: string | null) {
+    // Invalidation is durable in Inbox. A PRODUCTO price change conservatively
+    // invalidates the channel when a complete local product→SKU map is unavailable.
+    // Refreshes use authoritative HTTP; never rebuild prices from a partial event.
+    const invalidated = await this.db
+      .select({ messageId: schema.inbox.messageId })
+      .from(schema.inbox)
+      .where(
+        sql`
+      ${schema.inbox.handler}='promotions-assigned-events-v1' AND ${schema.inbox.result}->>'handled'='true'
+      AND ${schema.inbox.completedAt} IS NOT NULL AND ${schema.inbox.result}->'invalidation'->>'domain'='price'
+      AND (${schema.inbox.result}->'invalidation'->>'channelId' IS NULL OR ${schema.inbox.result}->'invalidation'->>'channelId'=${channelId})
+      AND (${schema.inbox.result}->'invalidation'->>'targetType'='PRODUCTO' OR ${schema.inbox.result}->'invalidation'->>'targetId'=${sku})`,
+      )
+      .limit(1);
+    if (invalidated.length) return undefined;
     const [projection] = await this.db
       .select()
       .from(schema.priceProjection)
@@ -253,6 +268,17 @@ export class PromotionsRepositories {
   }
 
   async stock(sku: string) {
+    const invalidated = await this.db
+      .select({ messageId: schema.inbox.messageId })
+      .from(schema.inbox)
+      .where(
+        sql`
+      ${schema.inbox.handler}='promotions-assigned-events-v1' AND ${schema.inbox.result}->>'handled'='true'
+      AND ${schema.inbox.completedAt} IS NOT NULL AND ${schema.inbox.result}->'invalidation'->>'domain'='stock'
+      AND ${schema.inbox.result}->'invalidation'->>'targetId'=${sku}`,
+      )
+      .limit(1);
+    if (invalidated.length) return undefined;
     const [projection] = await this.db
       .select()
       .from(schema.stockProjection)

@@ -4,9 +4,12 @@ export interface ContractSchema {
   required?: string[];
   allOf?: ContractSchema[];
   oneOf?: ContractSchema[];
+  if?: ContractSchema;
+  then?: ContractSchema;
   enum?: unknown[];
   const?: unknown;
   minLength?: number;
+  maxLength?: number;
   minimum?: number;
   pattern?: string;
   format?: string;
@@ -45,6 +48,13 @@ function validDate(value: string): boolean {
 }
 
 export function matchesSchema(value: unknown, schema: ContractSchema): boolean {
+  if (
+    schema.if &&
+    schema.then &&
+    matchesSchema(value, schema.if) &&
+    !matchesSchema(value, schema.then)
+  )
+    return false;
   if (schema.allOf && !schema.allOf.every((item) => matchesSchema(value, item)))
     return false;
   if (
@@ -63,7 +73,7 @@ export function matchesSchema(value: unknown, schema: ContractSchema): boolean {
           : type === 'object'
             ? record(value)
             : type === 'integer'
-              ? Number.isInteger(value)
+              ? Number.isSafeInteger(value)
               : typeof value === type,
       )
     )
@@ -71,6 +81,10 @@ export function matchesSchema(value: unknown, schema: ContractSchema): boolean {
   }
   if (typeof value === 'string') {
     if (schema.minLength !== undefined && [...value].length < schema.minLength)
+      return false;
+    if (schema.maxLength !== undefined && [...value].length > schema.maxLength)
+      return false;
+    if (schema.format === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value))
       return false;
     if (schema.pattern && !new RegExp(schema.pattern).test(value)) return false;
     if (
