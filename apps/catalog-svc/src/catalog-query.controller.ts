@@ -35,6 +35,7 @@ export class CatalogQueryController {
   @Get(':productoId')
   @RequireCatalogIdentity({
     demoRead: true,
+    restrictedDemo: true,
     identity: 'either',
     roles: ['GESTOR_COMERCIAL'],
     scope: 'catalogo:leer',
@@ -44,17 +45,28 @@ export class CatalogQueryController {
     @Param('productoId') productId: string,
     @Query() query: Record<string, unknown>,
     @Headers('x-correlation-id') correlationId?: string,
-    @Req() request?: Request & { catalogPrincipal?: CatalogPrincipal },
+    @Req()
+    request?: Request & {
+      catalogPrincipal?: CatalogPrincipal;
+      catalogRestrictedDemo?: boolean;
+    },
   ) {
     this.validateCorrelation(correlationId);
     return this.service.product(
       productId,
-      parseProductQuery(query, true, request?.catalogPrincipal?.kind !== 'user')
-        .canal,
+      parseProductQuery(
+        query,
+        true,
+        !(
+          request?.catalogPrincipal?.kind === 'user' ||
+          request?.catalogRestrictedDemo
+        ),
+      ).canal,
       correlationId,
       {
         authorization: request?.headers.authorization,
         user: request?.catalogPrincipal?.kind === 'user',
+        restrictedDemo: request?.catalogRestrictedDemo,
       },
     );
   }
@@ -75,7 +87,11 @@ export class CatalogQueryController {
   }
 
   @Get(':productoId/preparacion')
-  @RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
+  @RequireCatalogIdentity({
+    restrictedDemo: true,
+    identity: 'user',
+    roles: ['GESTOR_COMERCIAL'],
+  })
   preparation(
     @Param('productoId') productId: string,
     @Headers('x-correlation-id') correlationId?: string,
@@ -85,7 +101,11 @@ export class CatalogQueryController {
   }
 
   @Get(':productoId/variantes')
-  @RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
+  @RequireCatalogIdentity({
+    restrictedDemo: true,
+    identity: 'user',
+    roles: ['GESTOR_COMERCIAL'],
+  })
   variants(
     @Param('productoId') productId: string,
     @Query() query: Record<string, unknown>,
@@ -97,7 +117,11 @@ export class CatalogQueryController {
   }
 
   @Get(':productoId/variantes/:variantId')
-  @RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
+  @RequireCatalogIdentity({
+    restrictedDemo: true,
+    identity: 'user',
+    roles: ['GESTOR_COMERCIAL'],
+  })
   variant(
     @Param('productoId') productId: string,
     @Param('variantId') variantId: string,

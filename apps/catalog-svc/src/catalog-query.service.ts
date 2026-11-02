@@ -78,7 +78,8 @@ export class CatalogQueryService {
     identity?: TaxonomyIdentity,
   ) {
     if (
-      (channel === undefined && !identity?.user) ||
+      (channel === undefined &&
+        !(identity?.user || identity?.restrictedDemo)) ||
       (channel !== undefined &&
         (typeof channel !== 'string' || !channels.includes(channel as Canal)))
     )

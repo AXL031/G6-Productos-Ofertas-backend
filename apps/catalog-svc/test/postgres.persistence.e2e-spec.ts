@@ -1265,270 +1265,284 @@ describe.skipIf(!dockerAvailable)(
         if (!dependency || row.event_name.startsWith(dependency + '.'))
           await messages.consume(resultFor(row));
     }
-    it('HTTP-50: exercises all 18 operations through real Gateway/Catalog with PostgreSQL TLS and JWT/Taxonomy fixtures', async () => {
-      const http = new CatalogGatewayHarness();
-      await http.start(persistenceSettings, { timeoutMs: 300000 });
-      try {
-        const call = async (
-          method: string,
-          path: string,
-          body: unknown,
-          status: number,
-          code?: string,
-        ) => {
-          const response = await http.call(method, path, body);
-          expect(response.status, method + ' ' + path).toBe(status);
-          expect(response.correlation).toBe(http.correlation);
-          if (code) expect(response.body.code).toBe(code);
-          return response.body as Record<string, unknown>;
-        };
-        const input = createRequest();
-        input.nombre = 'HTTP-50-' + randomUUID();
-        const product = await call('POST', '/productos', input, 201);
-        const id = String(product.product_id),
-          path = '/productos/' + id;
-        expect(product).toMatchObject({
-          status: 'BORRADOR',
-          sku_base: input.skuBase,
-          catalog_version: 0,
-        });
-        await call('POST', '/productos', input, 409, 'SKU_DUPLICADO');
-        await call('POST', '/productos', {}, 400, 'VALIDACION');
-        const updated = await call(
-          'PATCH',
-          path,
-          {
-            descripcion: 'HTTP update',
-            catalogVersion: product.catalog_version,
-          },
-          200,
+    it.each([false, true])(
+      'HTTP-50: all 18 operations with PostgreSQL TLS; restricted demo=%s (Taxonomy/results fixtures)',
+      async (restrictedDemo) => {
+        const http = new CatalogGatewayHarness();
+        await http.start(
+          persistenceSettings,
+          { timeoutMs: 300000 },
+          restrictedDemo,
         );
-        expect(Number(updated.catalog_version)).toBeGreaterThan(
-          Number(product.catalog_version),
-        );
-        await call(
-          'PATCH',
-          path,
-          { nombre: 'stale', catalogVersion: product.catalog_version },
-          409,
-          'VERSION_CONFLICT',
-        );
-        await call('POST', path + '/activar', {}, 422, 'DATOS_INCOMPLETOS');
-        const prep = await call('GET', path + '/preparacion', undefined, 200);
-        expect(prep.pricing).toMatchObject({
-          status: 'PENDING',
-          manual_retry_allowed: false,
-        });
-        await call(
-          'POST',
-          path + '/preparacion/reintentar',
-          { dependencia: 'PRICING' },
-          409,
-          'PREPARACION_NO_REINTENTABLE',
-        );
-        // Explicit fixture of a confirmed, expired publication. No broker send or
-        // completion is inferred from this timestamp; results are applied below.
-        await transactions.run((tx) =>
-          tx
-            .update(outbox)
-            .set({ published_at: new Date(Date.now() - 300001) })
-            .where(
-              and(
-                sql`${outbox.payload}->>'product_id' = ${id}`,
-                eq(
-                  outbox.event_name,
-                  'pricing.product.initialization.requested',
+        try {
+          const call = async (
+            method: string,
+            path: string,
+            body: unknown,
+            status: number,
+            code?: string,
+          ) => {
+            const response = await http.call(
+              method,
+              path,
+              body,
+              restrictedDemo ? null : http.token(),
+              restrictedDemo,
+            );
+            expect(response.status, method + ' ' + path).toBe(status);
+            expect(response.correlation).toBe(http.correlation);
+            if (code) expect(response.body.code).toBe(code);
+            return response.body as Record<string, unknown>;
+          };
+          const input = createRequest();
+          input.nombre = 'HTTP-50-' + randomUUID();
+          const product = await call('POST', '/productos', input, 201);
+          const id = String(product.product_id),
+            path = '/productos/' + id;
+          expect(product).toMatchObject({
+            status: 'BORRADOR',
+            sku_base: input.skuBase,
+            catalog_version: 0,
+          });
+          await call('POST', '/productos', input, 409, 'SKU_DUPLICADO');
+          await call('POST', '/productos', {}, 400, 'VALIDACION');
+          const updated = await call(
+            'PATCH',
+            path,
+            {
+              descripcion: 'HTTP update',
+              catalogVersion: product.catalog_version,
+            },
+            200,
+          );
+          expect(Number(updated.catalog_version)).toBeGreaterThan(
+            Number(product.catalog_version),
+          );
+          await call(
+            'PATCH',
+            path,
+            { nombre: 'stale', catalogVersion: product.catalog_version },
+            409,
+            'VERSION_CONFLICT',
+          );
+          await call('POST', path + '/activar', {}, 422, 'DATOS_INCOMPLETOS');
+          const prep = await call('GET', path + '/preparacion', undefined, 200);
+          expect(prep.pricing).toMatchObject({
+            status: 'PENDING',
+            manual_retry_allowed: false,
+          });
+          await call(
+            'POST',
+            path + '/preparacion/reintentar',
+            { dependencia: 'PRICING' },
+            409,
+            'PREPARACION_NO_REINTENTABLE',
+          );
+          // Explicit fixture of a confirmed, expired publication. No broker send or
+          // completion is inferred from this timestamp; results are applied below.
+          await transactions.run((tx) =>
+            tx
+              .update(outbox)
+              .set({ published_at: new Date(Date.now() - 300001) })
+              .where(
+                and(
+                  sql`${outbox.payload}->>'product_id' = ${id}`,
+                  eq(
+                    outbox.event_name,
+                    'pricing.product.initialization.requested',
+                  ),
                 ),
               ),
-            ),
-        );
-        const original = (await requested(id)).find((row) =>
-          row.event_name.startsWith('pricing.'),
-        )!;
-        const accepted = await call(
-          'POST',
-          path + '/preparacion/reintentar',
-          { dependencia: 'PRICING' },
-          202,
-        );
-        expect(accepted).toMatchObject({
-          operation_id: original.operation_id,
-          status: 'ACCEPTED',
-          correlation_id: http.correlation,
-        });
-        await call(
-          'POST',
-          path + '/preparacion/reintentar',
-          { dependencia: 'PRICING' },
-          409,
-          'PREPARACION_NO_REINTENTABLE',
-        );
-        expect(
-          (await requested(id)).filter((row) =>
+          );
+          const original = (await requested(id)).find((row) =>
             row.event_name.startsWith('pricing.'),
-          ),
-        ).toHaveLength(2);
-        await complete(id);
-        await call('POST', path + '/activar', {}, 200);
-        const detail = await call('GET', path, undefined, 200);
-        expect(detail).toMatchObject({
-          product_id: id,
-          sku_base: input.skuBase,
-          marca: { marca_id: input.marcaId },
-        });
-        await call(
-          'GET',
-          '/productos/por-slug/' + product.slug,
-          undefined,
-          200,
-        );
-        const page = await call(
-          'GET',
-          '/productos?q=' +
-            encodeURIComponent(input.nombre) +
-            '&pagina=1&tamanio=1&estado=ACTIVO',
-          undefined,
-          200,
-        );
-        expect(page).toMatchObject({
-          pagina: 1,
-          tamanio: 1,
-          total: 1,
-          items: [{ product_id: id }],
-        });
-        await call(
-          'GET',
-          '/productos/' + randomUUID(),
-          undefined,
-          404,
-          'PRODUCTO_NO_ENCONTRADO',
-        );
-        await call('POST', path + '/desactivar', {}, 200);
-        await call('GET', path, undefined, 404, 'PRODUCTO_NO_ENCONTRADO');
-        await call('POST', path + '/reactivar', {}, 200);
+          )!;
+          const accepted = await call(
+            'POST',
+            path + '/preparacion/reintentar',
+            { dependencia: 'PRICING' },
+            202,
+          );
+          expect(accepted).toMatchObject({
+            operation_id: original.operation_id,
+            status: 'ACCEPTED',
+            correlation_id: http.correlation,
+          });
+          await call(
+            'POST',
+            path + '/preparacion/reintentar',
+            { dependencia: 'PRICING' },
+            409,
+            'PREPARACION_NO_REINTENTABLE',
+          );
+          expect(
+            (await requested(id)).filter((row) =>
+              row.event_name.startsWith('pricing.'),
+            ),
+          ).toHaveLength(2);
+          await complete(id);
+          await call('POST', path + '/activar', {}, 200);
+          const detail = await call('GET', path, undefined, 200);
+          expect(detail).toMatchObject({
+            product_id: id,
+            sku_base: input.skuBase,
+            marca: { marca_id: input.marcaId },
+          });
+          await call(
+            'GET',
+            '/productos/por-slug/' + product.slug,
+            undefined,
+            200,
+          );
+          const page = await call(
+            'GET',
+            '/productos?q=' +
+              encodeURIComponent(input.nombre) +
+              '&pagina=1&tamanio=1&estado=ACTIVO',
+            undefined,
+            200,
+          );
+          expect(page).toMatchObject({
+            pagina: 1,
+            tamanio: 1,
+            total: 1,
+            items: [{ product_id: id }],
+          });
+          await call(
+            'GET',
+            '/productos/' + randomUUID(),
+            undefined,
+            404,
+            'PRODUCTO_NO_ENCONTRADO',
+          );
+          await call('POST', path + '/desactivar', {}, 200);
+          await call('GET', path, undefined, 404, 'PRODUCTO_NO_ENCONTRADO');
+          await call('POST', path + '/reactivar', {}, 200);
 
-        const parent = await call(
-          'POST',
-          '/productos',
-          createRequest(true),
-          201,
-        );
-        const parentId = String(parent.product_id),
-          parentPath = '/productos/' + parentId;
-        const variantInput = {
-          sku: '000-HTTP-50-' + randomUUID(),
-          atributosIdentificadores: [
-            {
-              caracteristica_id: 'size',
-              nombre: 'Size',
-              valor_id: null,
-              valor: 'M',
-            },
-          ],
-          imagenUrl: 'https://example.test/variant.jpg',
-          perfilFisico: fullProfile,
-        };
-        const child = await call(
-          'POST',
-          parentPath + '/variantes',
-          variantInput,
-          201,
-        );
-        const childPath = parentPath + '/variantes/' + child.variant_id;
-        await call(
-          'POST',
-          parentPath + '/variantes',
-          {
-            ...variantInput,
+          const parent = await call(
+            'POST',
+            '/productos',
+            createRequest(true),
+            201,
+          );
+          const parentId = String(parent.product_id),
+            parentPath = '/productos/' + parentId;
+          const variantInput = {
+            sku: '000-HTTP-50-' + randomUUID(),
             atributosIdentificadores: [
-              { ...variantInput.atributosIdentificadores[0], valor: 'L' },
+              {
+                caracteristica_id: 'size',
+                nombre: 'Size',
+                valor_id: null,
+                valor: 'M',
+              },
             ],
-          },
-          409,
-          'SKU_DUPLICADO',
-        );
-        await call(
-          'POST',
-          parentPath + '/variantes',
-          { ...variantInput, sku: randomUUID() },
-          409,
-          'COMBINACION_DUPLICADA',
-        );
-        const variantsPage = await call(
-          'GET',
-          parentPath + '/variantes?estado=BORRADOR&pagina=1&tamanio=1',
-          undefined,
-          200,
-        );
-        expect(variantsPage).toMatchObject({
-          meta: { pagina: 1, tamanio: 1, total: 1, totalPaginas: 1 },
-          items: [{ sku: variantInput.sku }],
-        });
-        await call('GET', childPath, undefined, 200);
-        const edited = await call(
-          'PATCH',
-          childPath,
-          {
-            imagenUrl: 'https://example.test/updated.jpg',
-            catalogVersion: child.catalog_version,
-          },
-          200,
-        );
-        expect(edited.sku).toBe(variantInput.sku);
-        await call(
-          'POST',
-          childPath + '/activar',
-          undefined,
-          422,
-          'DATOS_INCOMPLETOS',
-        );
-        await complete(parentId);
-        await call('POST', childPath + '/activar', undefined, 200);
-        await call('POST', parentPath + '/activar', {}, 200);
-        await call('POST', childPath + '/desactivar', undefined, 200);
-        expect(
-          await database.read(
-            async (db) =>
-              (
-                await db
-                  .select({ estado: products.estado })
-                  .from(products)
-                  .where(eq(products.id, parentId))
-              )[0],
-          ),
-        ).toEqual({ estado: 'INACTIVO' });
-        await call('POST', childPath + '/reactivar', undefined, 200);
-        await call('POST', parentPath + '/reactivar', {}, 200);
-        await call(
-          'POST',
-          childPath + '/preparacion/reintentar',
-          undefined,
-          409,
-          'PREPARACION_NO_REINTENTABLE',
-        );
-        http.taxonomyAvailable = false;
-        await call(
-          'PATCH',
-          path,
-          { descripcion: 'must roll back' },
-          503,
-          'SERVICIO_NO_DISPONIBLE',
-        );
-        expect(
-          await database.read(
-            async (db) =>
-              (
-                await db
-                  .select({ description: products.descripcion })
-                  .from(products)
-                  .where(eq(products.id, id))
-              )[0],
-          ),
-        ).toEqual({ description: 'HTTP update' });
-      } finally {
-        await http.close();
-      }
-    }, 120000);
+            imagenUrl: 'https://example.test/variant.jpg',
+            perfilFisico: fullProfile,
+          };
+          const child = await call(
+            'POST',
+            parentPath + '/variantes',
+            variantInput,
+            201,
+          );
+          const childPath = parentPath + '/variantes/' + child.variant_id;
+          await call(
+            'POST',
+            parentPath + '/variantes',
+            {
+              ...variantInput,
+              atributosIdentificadores: [
+                { ...variantInput.atributosIdentificadores[0], valor: 'L' },
+              ],
+            },
+            409,
+            'SKU_DUPLICADO',
+          );
+          await call(
+            'POST',
+            parentPath + '/variantes',
+            { ...variantInput, sku: randomUUID() },
+            409,
+            'COMBINACION_DUPLICADA',
+          );
+          const variantsPage = await call(
+            'GET',
+            parentPath + '/variantes?estado=BORRADOR&pagina=1&tamanio=1',
+            undefined,
+            200,
+          );
+          expect(variantsPage).toMatchObject({
+            meta: { pagina: 1, tamanio: 1, total: 1, totalPaginas: 1 },
+            items: [{ sku: variantInput.sku }],
+          });
+          await call('GET', childPath, undefined, 200);
+          const edited = await call(
+            'PATCH',
+            childPath,
+            {
+              imagenUrl: 'https://example.test/updated.jpg',
+              catalogVersion: child.catalog_version,
+            },
+            200,
+          );
+          expect(edited.sku).toBe(variantInput.sku);
+          await call(
+            'POST',
+            childPath + '/activar',
+            undefined,
+            422,
+            'DATOS_INCOMPLETOS',
+          );
+          await complete(parentId);
+          await call('POST', childPath + '/activar', undefined, 200);
+          await call('POST', parentPath + '/activar', {}, 200);
+          await call('POST', childPath + '/desactivar', undefined, 200);
+          expect(
+            await database.read(
+              async (db) =>
+                (
+                  await db
+                    .select({ estado: products.estado })
+                    .from(products)
+                    .where(eq(products.id, parentId))
+                )[0],
+            ),
+          ).toEqual({ estado: 'INACTIVO' });
+          await call('POST', childPath + '/reactivar', undefined, 200);
+          await call('POST', parentPath + '/reactivar', {}, 200);
+          await call(
+            'POST',
+            childPath + '/preparacion/reintentar',
+            undefined,
+            409,
+            'PREPARACION_NO_REINTENTABLE',
+          );
+          http.taxonomyAvailable = false;
+          await call(
+            'PATCH',
+            path,
+            { descripcion: 'must roll back' },
+            503,
+            'SERVICIO_NO_DISPONIBLE',
+          );
+          expect(
+            await database.read(
+              async (db) =>
+                (
+                  await db
+                    .select({ description: products.descripcion })
+                    .from(products)
+                    .where(eq(products.id, id))
+                )[0],
+            ),
+          ).toEqual({ description: 'HTTP update' });
+        } finally {
+          await http.close();
+        }
+      },
+      120000,
+    );
     it('Q-06: preserves historical NULL, corrects drafts with optimistic concurrency and never clears publication', async () => {
       const service = mutationService();
       const historical = '00000000-0000-4000-8000-000000000049';

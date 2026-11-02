@@ -9,6 +9,8 @@ import {
   Optional,
   type ExecutionContext,
 } from '@nestjs/common';
+import { SanitizedLogger } from './sanitized-logger.js';
+import { isCorrelationId } from './correlation.js';
 import { Reflector } from '@nestjs/core';
 import {
   CATALOG_READ_DEMO,
@@ -99,6 +101,7 @@ export type CatalogPrincipal =
 export interface CatalogAuthPolicy {
   marketplacePreviewRead?: boolean;
   demoRead?: boolean;
+  restrictedDemo?: boolean;
   identity: 'user' | 'service' | 'either';
   scope?: string;
   allowedClients?: readonly string[];
@@ -396,6 +399,25 @@ export class CatalogAuthGuard implements CanActivate {
         catalogDemoPreview?: boolean;
       }
     >();
+    if (this.readDemo.restricted && policy.restrictedDemo) {
+      const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
+      if (!peer || !this.readDemo.gatewayIps?.includes(peer))
+        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
+      const correlation = request.headers['x-correlation-id'];
+      new SanitizedLogger('runtime').log({
+        code: 'CATALOG_RESTRICTED_DEMO_ACCESS',
+        actor: 'restricted-demo:catalog-svc',
+        operation: context.getHandler().name,
+        correlationId:
+          typeof correlation === 'string' && isCorrelationId(correlation)
+            ? correlation
+            : undefined,
+      });
+      // Explicit non-human access context; never a G7 principal or incoming identity.
+      delete request.headers.authorization;
+      Object.assign(request, { catalogRestrictedDemo: true });
+      return true;
+    }
     if (this.readDemo.enabled) {
       if (request.method === 'GET' && policy.demoRead) {
         request.catalogDemoRead = true;

@@ -31,6 +31,7 @@ export class CommercialController {
   @RequireCatalogIdentity({
     marketplacePreviewRead: true,
     demoRead: true,
+    restrictedDemo: true,
     identity: 'either',
     roles: ['GESTOR_COMERCIAL'],
     scope: 'catalogo:leer',
@@ -42,6 +43,7 @@ export class CommercialController {
     @Req()
     request?: Request & {
       catalogPrincipal?: CatalogPrincipal;
+      catalogRestrictedDemo?: boolean;
       catalogDemoRead?: boolean;
       catalogDemoPreview?: boolean;
     },
@@ -50,6 +52,7 @@ export class CommercialController {
     if (
       query.estado !== undefined &&
       !request?.catalogDemoRead &&
+      !request?.catalogRestrictedDemo &&
       !request?.catalogDemoPreview &&
       (request?.catalogPrincipal?.kind !== 'user' ||
         !request.catalogPrincipal.roles.includes('GESTOR_COMERCIAL'))
@@ -57,19 +60,24 @@ export class CommercialController {
       throw new ForbiddenException();
     const administrativeState =
       request?.catalogDemoRead ||
+      request?.catalogRestrictedDemo ||
       (request?.catalogPrincipal?.kind === 'user' &&
         request.catalogPrincipal.roles.includes('GESTOR_COMERCIAL'));
     return this.service.list(
       parseProductQuery(
         query,
         false,
-        request?.catalogPrincipal?.kind !== 'user',
+        !(
+          request?.catalogPrincipal?.kind === 'user' ||
+          request?.catalogRestrictedDemo
+        ),
       ),
       correlationId,
       administrativeState,
       {
         authorization: request?.headers.authorization,
         user: request?.catalogPrincipal?.kind === 'user',
+        restrictedDemo: request?.catalogRestrictedDemo,
       },
     );
   }
@@ -77,6 +85,7 @@ export class CommercialController {
   @RequireCatalogIdentity({
     marketplacePreviewRead: true,
     demoRead: true,
+    restrictedDemo: true,
     identity: 'either',
     roles: ['GESTOR_COMERCIAL'],
     scope: 'catalogo:leer',
@@ -86,7 +95,11 @@ export class CommercialController {
     @Param('slug') slug: string,
     @Query() query: Record<string, unknown>,
     @Headers('x-correlation-id') correlationId?: string,
-    @Req() request?: Request & { catalogPrincipal?: CatalogPrincipal },
+    @Req()
+    request?: Request & {
+      catalogPrincipal?: CatalogPrincipal;
+      catalogRestrictedDemo?: boolean;
+    },
   ) {
     this.validateCorrelation(correlationId);
     return this.service.detail(
@@ -94,12 +107,16 @@ export class CommercialController {
       parseProductQuery(
         query,
         true,
-        request?.catalogPrincipal?.kind !== 'user',
+        !(
+          request?.catalogPrincipal?.kind === 'user' ||
+          request?.catalogRestrictedDemo
+        ),
       ),
       correlationId,
       {
         authorization: request?.headers.authorization,
         user: request?.catalogPrincipal?.kind === 'user',
+        restrictedDemo: request?.catalogRestrictedDemo,
       },
     );
   }

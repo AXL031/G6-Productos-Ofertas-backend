@@ -17,6 +17,7 @@ function object(value: unknown): value is Record<string, unknown> {
 export interface TaxonomyIdentity {
   authorization?: string;
   user: boolean;
+  restrictedDemo?: boolean;
 }
 @Injectable()
 export class TaxonomyClient {
@@ -95,14 +96,14 @@ export class TaxonomyClient {
     identity?: TaxonomyIdentity,
   ): Promise<CommercialBrand> {
     let rows = await this.get(
-      identity?.user
+      identity?.user || identity?.restrictedDemo
         ? '/api/v1/marcas/' + encodeURIComponent(id)
         : '/api/v1/marcas',
-      identity?.user ? undefined : 'brands',
+      identity?.user || identity?.restrictedDemo ? undefined : 'brands',
       correlationId,
       identity,
     );
-    if (identity?.user)
+    if (identity?.user || identity?.restrictedDemo)
       rows = rows
         .map((row) => {
           if (
@@ -150,7 +151,7 @@ export class TaxonomyClient {
     correlationId?: string,
     identity?: TaxonomyIdentity,
   ): Promise<void> {
-    if (identity?.user) {
+    if (identity?.user || identity?.restrictedDemo) {
       const rows = await this.get(
         '/api/v1/categorias/' + encodeURIComponent(id),
         undefined,

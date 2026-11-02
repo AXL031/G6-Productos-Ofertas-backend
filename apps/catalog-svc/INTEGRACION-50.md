@@ -185,3 +185,98 @@ autenticada externa, homologación y despliegue conservan evidencia independient
 Se deja para #51 el mecanismo demo de escrituras sujeto a aprobación de actor/
 perímetro, la configuración operativa y smoke/deploy H4; este bloque no lo
 implementa ni desbloquea AMQP compartido.
+
+## Revisión H4 de PR #125 — autenticación reversible (#144)
+
+La autorización de esta revisión permite implementar las operaciones administrativas
+seleccionadas en demo privada. Sustituye el bloqueo de implementación demo descrito
+arriba; no autoriza activar el bypass en Oracle ni acredita su perímetro externo.
+Fuentes: Backend #144 (consultado en esta revisión), política
+`ops/oracle/H4-MODO-DEMO-AUTH-REVERSIBLE.md`, acuerdos internos G6 H4
+DEC-G6-INT-01/04/13 (Docs SHA 5124eeae4ec65b22ea9146cd7b1ce3888c617c10), OpenAPI 0.6.0-rc.2 y AsyncAPI 0.6.0-rc.4.
+No se adapta aquí el resto de cambios de esos contratos candidatos.
+
+### Selección y perímetro
+
+- Default: `GATEWAY_DEMO_NO_AUTH_ENABLED=false`; se conserva el guard JWT,
+  issuer/JWKS, firma, caducidad, audience, rol/scope/cliente y errores originales.
+- Demo: `GATEWAY_DEMO_NO_AUTH_ENABLED=true` (flag existente de Gateway/Pricing),
+  junto con `CATALOG_DEMO_GATEWAY_IPS` (lista explícita de IPv4 privadas del
+  Gateway). Catalog compara el par TCP real, normalizando IPv4-mapped IPv6;
+  no utiliza X-Forwarded-For ni otro encabezado como prueba de origen.
+  Loopback se admite para pruebas aisladas. Marco debe revisar las IP efectivas
+  del Gateway y demostrar el aislamiento Caddy/Tailscale antes de activación.
+- Rechaza flag inválido, lista ausente/pública/inválida y combinación con
+  `G6_READ_ONLY_DEMO_ENABLED=true` o preview Marketplace. Taxonomy demo requiere
+  hostname privado `taxonomy-svc`; Pricing conserva su origen privado validado.
+- Corte: las 18 operaciones de la matriz de este informe, exclusivamente.
+  Contexto SKU para Pricing, datos físicos, códigos de barras y otras operaciones
+  técnicas conservan JWT; no se amplían sus permisos.
+- Contexto técnico no humano: `restricted-demo:catalog-svc`, registrado con
+  operación y correlación válida mediante logger saneado; no hay JWT, principal,
+  sub, rol ni scope fabricados. Catalog elimina Authorization entrante antes de
+  llamar al caso de uso. Taxonomy recibe los GET administrativos reales y
+  correlación, sin header Authorization vacío ni token ficticio.
+- Los filtros monetarios consultan Pricing sin Authorization en demo; en modo
+  autenticado conservan CatalogPricingIdentityProvider/G7. No reenvían el bearer
+  consumidor. Preservan decimales exactos, filtro antes de contar/paginar, lotes
+  de 100, concurrencia 3, instante común, SKU opaco y deadline global de 5 s.
+  Dependencia fallida sigue devolviendo 503, sin páginas parciales.
+- No se alteran validaciones, casos de uso, transacciones, outbox ni condiciones
+  de preparación/activación. Activar exige resultados reales ya persistidos;
+  demo no simula preparación. No se habilita RabbitMQ ni consumidor compartido.
+
+### Evidencia de prueba y límites
+
+`restricted-demo.http.e2e-spec.ts`: HTTP/guards reales con fixtures explícitos
+para casos de uso/repositorio/HTTP Pricing. Cubre alta, edición, activación,
+preparación, retorno a JWT, token entrante no propagado, correlación inválida,
+par TCP no autorizado con X-Forwarded-For falso, introspección no exenta y filtro
+monetario nominal/503 en ambos modos. No constituye integración externa real.
+`catalog-price-filter.spec.ts` comprueba ausencia de Authorization y que G7 no
+se llama en demo; los casos anteriores conservan lotes/decimales/timeout.
+
+HTTP-50 se ejecuta dos veces en el runner PostgreSQL/TLS desechable: autenticado
+por Gateway real y demo por HTTP directo privado a Catalog. Ambos usan servicios,
+repositorios y transacciones reales; Taxonomy y resultados de preparación son
+fixtures explícitos, con ausencia/presencia de Authorization validada por modo.
+Local sin Docker se omite; el resultado efectivo se debe consultar en CI del
+HEAD final. No acredita Gateway en demo, G7 real, respuesta real de Vera/Taco,
+AMQP compartido, perímetro externo ni despliegue. El flujo autenticado con JWT
+RS256/JWKS de fixture permanece cubierto por gateway-catalog.authenticated.
+
+### Rendimiento pendiente
+
+No se modifica el algoritmo SQL del listado ni su enriquecimiento por lotes.
+Persisten consultas de atributos e imágenes por variante en los detalles
+(`findCandidateBySlug`, `findCandidateByProductId` y detalle demo): crecimiento
+lineal con las variantes del producto. El preview Marketplace histórico hace
+una consulta Pricing por producto con concurrencia 4; queda separado del nuevo
+modo. CatalogMasterClient consulta valores de características individualmente
+al validar atributos, además de maestros/esquema por operación. Se documentan
+para seguimiento; no se introducen cachés de estado autoritativo ni refactors
+fuera del alcance. Los SKU que contienen coma requieren GET individual por el
+contrato CSV, conservando concurrencia 3 y presupuesto común.
+
+### Sincronización y pendientes operativos
+
+Master remoto al sincronizar: e68791a. Había 11 commits alcanzables nuevos
+(incluidos merges), incorporados mediante merge explícito sin conflictos; la
+petición mencionaba cuatro. Sus cambios pertenecen a Taxonomy y se incorporan
+sin ediciones propias fuera de Catalog. Seeds/certificado locales preexistentes
+se preservan. CI se informa por SHA final al entregar.
+
+Marco: alinear las rutas/métodos demo del Gateway, revisar IP y comprobar acceso
+externo restringido antes de release. López/Vera: pruebas HTTP con sus procesos
+reales y sus modos demo; G7: emisión/grants reales para fase autenticada.
+Los defectos Gateway y frontera de vista administrativa del informe original
+conservan su seguimiento independiente. Retry/DLX, ACL, AMQP y autorización de
+despliegue permanecen bajo Marco. No se declara READY_FOR_DEPLOY ni cierre #50.
+
+Validación de esta revisión antes de commit: unitarias generales PASS (1534,
+38 SKIP); E2E generales PASS (879, 140 SKIP, incluido Docker ausente local).
+Después del último ajuste de configuración/filtro: pruebas enfocadas PASS (63),
+HTTP de ambos modos PASS (6); typecheck, tsc explícito de E2E, lint,
+format:check, build:catalog-svc y git diff --check PASS. Los fallos iniciales de
+fixture de DI/sintaxis/tipos se corrigieron y se repitieron sus comprobaciones.
+La suite PostgreSQL demo necesita ejecución en CI con Docker antes de atribuir PASS.

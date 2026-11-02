@@ -42,7 +42,9 @@ function instant(value: unknown): number {
 @Injectable()
 export class CatalogPriceFilter {
   constructor(
-    @Optional() private readonly config?: CatalogConfig,
+    @Optional()
+    @Inject(CatalogConfig)
+    private readonly config?: Pick<CatalogConfig, 'pricingOrigin' | 'readDemo'>,
     @Optional()
     @Inject(CATALOG_PRICING_IDENTITY)
     private readonly identity?: CatalogPricingIdentity,
@@ -55,14 +57,25 @@ export class CatalogPriceFilter {
     correlation: string,
     signal: AbortSignal,
   ): Promise<Array<{ sku: string; effective: string; currency: string }>> {
-    if (!this.config?.pricingOrigin || !this.identity) throw new Error();
+    if (
+      !this.config?.pricingOrigin ||
+      (!this.config.readDemo?.restricted && !this.identity)
+    )
+      throw new Error();
     // A comma cannot be represented unambiguously by the batch CSV contract.
     const individual = skus.length === 1 && skus[0].includes(',');
     if (skus.some((sku) => !sku || (!individual && sku.includes(','))))
       throw new Error();
-    const authorization = await this.identity.authorization(signal);
+    const authorization = this.config.readDemo?.restricted
+      ? undefined
+      : await this.identity!.authorization(signal);
     signal.throwIfAborted();
-    if (!/^Bearer [^\s]+$/i.test(authorization)) throw new Error();
+    if (
+      !this.config.readDemo?.restricted &&
+      (typeof authorization !== 'string' ||
+        !/^Bearer [^\s]+$/i.test(authorization))
+    )
+      throw new Error();
     const url = new URL(
       individual
         ? '/api/v1/precios/skus/' + encodeURIComponent(skus[0])
@@ -75,7 +88,10 @@ export class CatalogPriceFilter {
     if (!individual) url.searchParams.set('skus', skus.join(','));
     if (canal !== undefined) url.searchParams.set('canal', canal);
     const response = await fetch(url, {
-      headers: { authorization, 'X-Correlation-Id': correlation },
+      headers: {
+        ...(authorization ? { authorization } : {}),
+        'X-Correlation-Id': correlation,
+      },
       redirect: 'error',
       signal,
     });

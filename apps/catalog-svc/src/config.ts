@@ -104,6 +104,8 @@ export class CatalogConfig {
         'CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED debe ser true o false.',
       );
     }
+    if (this.readDemo.restricted && preview === 'true')
+      errors.push('No combinar preview Marketplace y demo restringida.');
     let pricingOrigin: string | undefined;
     if (env.CATALOG_PRICING_URL !== undefined) {
       try {
@@ -126,6 +128,12 @@ export class CatalogConfig {
         );
       }
     }
+    if (
+      this.readDemo.restricted &&
+      taxonomy?.origin &&
+      new URL(taxonomy.origin).hostname !== 'taxonomy-svc'
+    )
+      errors.push('Demo restringida requiere Taxonomy privado taxonomy-svc.');
     if (preview === 'true' && !pricingOrigin) {
       errors.push('CATALOG_PRICING_URL es obligatorio para la demo.');
     }

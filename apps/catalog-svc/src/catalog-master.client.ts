@@ -26,7 +26,7 @@ export class CatalogMasterClient {
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
         headers: {
-          authorization,
+          ...(authorization ? { authorization } : {}),
           'x-correlation-id': correlationId,
           accept: 'application/json',
         },

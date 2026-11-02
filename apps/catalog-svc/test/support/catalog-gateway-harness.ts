@@ -62,6 +62,7 @@ export class CatalogGatewayHarness {
   async start(
     database?: PostgresSettings,
     preparation: { timeoutMs?: number } = {},
+    restrictedDemo = false,
   ): Promise<void> {
     try {
       this.upstream = createServer((req, res) => {
@@ -85,7 +86,9 @@ export class CatalogGatewayHarness {
           res.statusCode = 503;
           body = {};
         } else if (
-          !req.headers.authorization?.startsWith('Bearer ') ||
+          (restrictedDemo
+            ? req.headers.authorization !== undefined
+            : !req.headers.authorization?.startsWith('Bearer ')) ||
           req.headers['x-correlation-id'] !== this.correlation
         ) {
           res.statusCode = 401;
@@ -170,7 +173,11 @@ export class CatalogGatewayHarness {
         .overrideProvider(CATALOG_AMQP_SETTINGS)
         .useValue({})
         .overrideProvider(CATALOG_READ_DEMO)
-        .useValue({ enabled: false })
+        .useValue({
+          enabled: false,
+          restricted: restrictedDemo,
+          gatewayIps: ['127.0.0.1'],
+        })
         .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
         .useValue(false)
         .overrideProvider(CATALOG_PREPARATION_CONFIG)
@@ -178,6 +185,7 @@ export class CatalogGatewayHarness {
         .compile();
       this.catalog = module.createNestApplication({ logger: false });
       await this.catalog.listen(0, '127.0.0.1');
+      if (restrictedDemo) return; // Direct private HTTP: does not claim Gateway demo integration.
       this.directory = mkdtempSync(join(tmpdir(), 'catalog-auth-gateway-'));
       const output = join(this.directory, 'compiled');
       const compile = spawnSync(

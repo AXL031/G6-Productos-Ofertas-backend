@@ -32,6 +32,34 @@ afterAll(() => {
 });
 
 describe('CatalogConfig PG contract', () => {
+  it('captures restricted demo explicitly and rejects public upstreams or mixed preview', () => {
+    const env = {
+      ...validEnv(),
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      CATALOG_DEMO_GATEWAY_IPS: '10.0.0.5',
+      CATALOG_TAXONOMY_URL: 'http://taxonomy-svc:3009',
+      CATALOG_PRICING_URL: 'http://pricing-svc:3002',
+    };
+    expect(new CatalogConfig(env).readDemo.restricted).toBe(true);
+    expect(
+      new CatalogConfig({ ...env, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
+        .readDemo.restricted,
+    ).toBeUndefined();
+    expect(
+      () =>
+        new CatalogConfig({
+          ...env,
+          CATALOG_TAXONOMY_URL: 'https://public.example',
+        }),
+    ).toThrow();
+    expect(
+      () =>
+        new CatalogConfig({
+          ...env,
+          CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
+        }),
+    ).toThrow();
+  });
   it('captures messaging and timeout configuration once and rejects malformed settings', () => {
     const config = new CatalogConfig({
       ...validEnv(),

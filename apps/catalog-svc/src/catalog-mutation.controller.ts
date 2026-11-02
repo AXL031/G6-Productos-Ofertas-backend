@@ -15,7 +15,11 @@ import { correlationId, isCorrelationId } from './correlation.js';
 
 @Controller('api/v1/productos')
 @UseGuards(CatalogAuthGuard)
-@RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
+@RequireCatalogIdentity({
+  restrictedDemo: true,
+  identity: 'user',
+  roles: ['GESTOR_COMERCIAL'],
+})
 export class CatalogMutationController {
   constructor(private readonly service: CatalogMutationService) {}
   private actor(authorization?: string, id?: string) {
