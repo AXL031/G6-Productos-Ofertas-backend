@@ -240,7 +240,10 @@ export class PromotionsRepositories {
   async price(sku: string, channelId: string | null) {
     // Invalidation is durable in Inbox. A PRODUCTO price change conservatively
     // invalidates the channel when a complete local product→SKU map is unavailable.
-    // Refreshes use authoritative HTTP; never rebuild prices from a partial event.
+    // A completed handled Inbox marker is a persistent tombstone: no version/time
+    // comparison or automatic revalidation occurs, even after projection updates.
+    // HTTP reads supply current business facts but do not clear this tombstone.
+    // See REVISION-PR143-TRANSPORTE-INVALIDACIONES.md before any Inbox retention.
     const invalidated = await this.db
       .select({ messageId: schema.inbox.messageId })
       .from(schema.inbox)
@@ -268,6 +271,9 @@ export class PromotionsRepositories {
   }
 
   async stock(sku: string) {
+    // Any completed stock invalidation hides this SKU's cached availability,
+    // regardless of location/version. Never aggregate locations or reconstruct
+    // commercial availability from the event; the marker survives ordinary reads.
     const invalidated = await this.db
       .select({ messageId: schema.inbox.messageId })
       .from(schema.inbox)
@@ -295,6 +301,7 @@ export class PromotionsRepositories {
   }
 
   async inbox(messageId: string, handler: string) {
+    // Read-only receipt lookup: no ACK, replay, cache refresh or marker removal.
     const [entry] = await this.db
       .select()
       .from(schema.inbox)

@@ -52,6 +52,13 @@ export interface InternalHttpOptions {
   getServiceAccessToken?: ServiceAccessTokenSource;
 }
 
+/** URL validation only; this does not verify DNS, routing or network isolation.
+ * AUTHENTICATED sends a service bearer. Plain HTTP aliases are permitted solely
+ * on the independently verified private g6-http network with trusted service DNS
+ * and no public business ports; loopback is for same-host isolated processes.
+ * Outside that boundary use HTTPS with certificate verification. See the PR143
+ * transport/invalidation review for the release evidence required from infra.
+ */
 export function internalOrigin(
   value: string,
   demo: boolean,
@@ -108,6 +115,8 @@ export class InternalHttpReader {
       'X-Correlation-Id': randomUUID(),
     };
     if (this.options.mode !== 'RESTRICTED_DEMO') {
+      // Own service credentials only. For HTTP aliases, the deployment must first
+      // prove the private network above; an alias string alone proves no secrecy.
       const token = await this.options.getServiceAccessToken?.(
         {
           operationId: operation,
