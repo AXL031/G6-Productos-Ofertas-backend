@@ -13,7 +13,10 @@ import {
 } from '@nestjs/common';
 import { BaseExceptionFilter, HttpAdapterHost } from '@nestjs/core';
 import type { Request, Response } from 'express';
-import { CommercialDependencyError } from '../domain/commercial-context.js';
+import {
+  CommercialDependencyError,
+  CommercialInputError,
+} from '../domain/commercial-context.js';
 import { PromotionsPersistenceError } from '../infrastructure/persistence/promotions-persistence.js';
 import { PromotionsQueryGuard, QueryOperation } from './promotions-identity.js';
 import { PromotionsQueryService } from './query-service.js';
@@ -62,12 +65,14 @@ export class PromotionsProblemFilter implements ExceptionFilter {
     )
       error = new PromotionsHttpError(400, 'VALIDACION');
     const problem =
-      error instanceof PromotionsHttpError
-        ? error
-        : error instanceof PromotionsPersistenceError ||
-            error instanceof CommercialDependencyError
-          ? new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE')
-          : new PromotionsHttpError(500, 'ERROR_INTERNO');
+      error instanceof CommercialInputError
+        ? new PromotionsHttpError(400, 'VALIDACION')
+        : error instanceof PromotionsHttpError
+          ? error
+          : error instanceof PromotionsPersistenceError ||
+              error instanceof CommercialDependencyError
+            ? new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE')
+            : new PromotionsHttpError(500, 'ERROR_INTERNO');
     const id = correlationId(request);
     this.logger.http(
       operation[0],

@@ -1,6 +1,11 @@
-import { randomUUID } from 'node:crypto';
+import {
+  InternalHttpReader,
+  type InternalHttpOptions,
+  type InternalOperation,
+} from './internal-http.js';
 import {
   CommercialDependencyError,
+  CommercialInputError,
   type BasketRequest,
   type CommercialContext,
 } from '../../domain/commercial-context.js';
@@ -10,113 +15,22 @@ import { effectiveAt } from '../../domain/promotion-rules.js';
 import type { RecommendationCandidate } from '../../domain/promotion-rules.js';
 import { withDeadline } from '../resilience/deadline.js';
 
-type Operation =
-  'obtenerProducto' | 'obtenerPrecioSku' | 'consultarDisponibilidadComercial';
-const scopes: Record<Operation, string> = {
-  obtenerProducto: 'catalogo:leer',
-  obtenerPrecioSku: 'precios:leer',
-  consultarDisponibilidadComercial: 'inventario:disponibilidad:leer',
-};
-export interface CommercialHttpOptions {
-  origin: string;
-  // Own service credentials supplied by the integration owner, never the inbound
-  // user's/channel's token. This callback does not grant an absent allowlist.
-  getServiceAccessToken(
-    request: {
-      operationId: Operation;
-      audience: 'api-productos';
-      scope: string;
-    },
-    signal: AbortSignal,
-  ): Promise<string | null>;
-}
+export type CommercialHttpOptions = InternalHttpOptions;
 
-/** Candidate outbound client, deliberately NOT registered in PromotionsSvcModule.
- * Current rc.1 allowlists exclude Promotions. No environment flag activates it.
- * Local fixture tests exercise HTTP/DTO logic, not a real grant/homologation.
- */
+/** Real outbound client; configuration selects explicit upstreams and access mode. */
 export class HttpCommercialContext implements CommercialContext {
-  private readonly origin: string;
-  constructor(private readonly options: CommercialHttpOptions) {
-    const url = new URL(options.origin);
-    if (
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      url.pathname !== '/' ||
-      (url.protocol !== 'https:' &&
-        !(
-          url.protocol === 'http:' &&
-          ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
-        ))
-    )
-      throw new Error('INVALID_COMMERCIAL_ORIGIN');
-    this.origin = url.origin;
+  private readonly reader: InternalHttpReader;
+  constructor(options: CommercialHttpOptions) {
+    this.reader = new InternalHttpReader(options);
   }
-
-  private async read(
-    operation: Operation,
+  private read(
+    operation: InternalOperation,
     path: string,
     signal: AbortSignal,
     missing = false,
-  ): Promise<unknown> {
-    signal.throwIfAborted();
-    const token = await this.options.getServiceAccessToken(
-      {
-        operationId: operation,
-        audience: 'api-productos',
-        scope: scopes[operation],
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (!token || /\s/.test(token))
-      throw new Error('COMMERCIAL_SESSION_UNAVAILABLE');
-    const response = await fetch(this.origin + '/api/v1' + path, {
-      signal,
-      redirect: 'error',
-      credentials: 'omit',
-      cache: 'no-store',
-      headers: {
-        Authorization: 'Bearer ' + token,
-        'X-Correlation-Id': randomUUID(),
-        Accept: 'application/json',
-      },
-    });
-    if (missing && response.status === 404) {
-      await response.body?.cancel();
-      return null;
-    }
-    if (
-      !response.ok ||
-      !/^application\/json(?:\s*;|$)/i.test(
-        response.headers.get('content-type') ?? '',
-      )
-    ) {
-      await response.body?.cancel();
-      throw new Error('COMMERCIAL_HTTP_UNAVAILABLE');
-    }
-    if (!response.body) throw new Error('COMMERCIAL_HTTP_UNAVAILABLE');
-    const reader = response.body.getReader();
-    const chunks: Uint8Array[] = [];
-    let bytes = 0;
-    try {
-      for (;;) {
-        const part = await reader.read();
-        if (part.done) break;
-        bytes += part.value.byteLength;
-        if (bytes > 1_048_576) throw new Error('COMMERCIAL_RESPONSE_LIMIT');
-        chunks.push(part.value);
-      }
-      return JSON.parse(
-        new TextDecoder('utf-8', { fatal: true }).decode(Buffer.concat(chunks)),
-      );
-    } finally {
-      await reader.cancel().catch(() => undefined);
-    }
+  ) {
+    return this.reader.read(operation, path, signal, missing);
   }
-
   private async bounded<T>(
     operation: string,
     signal: AbortSignal | undefined,
@@ -129,7 +43,8 @@ export class HttpCommercialContext implements CommercialContext {
           work(signal ? AbortSignal.any([signal, timeout]) : timeout),
         2500,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof CommercialInputError) throw error;
       throw new CommercialDependencyError(
         operation,
         'Catálogo/Pricing/Inventario + integración G6/G7',
@@ -184,18 +99,19 @@ export class HttpCommercialContext implements CommercialContext {
     at: string,
     signal: AbortSignal,
   ) {
-    const row = object(
-      await this.read(
-        'obtenerPrecioSku',
-        '/precios/skus/' +
-          encodeURIComponent(sku) +
-          '?canal=' +
-          encodeURIComponent(channel) +
-          '&at=' +
-          encodeURIComponent(at),
-        signal,
-      ),
+    const raw = await this.read(
+      'obtenerPrecioSku',
+      '/precios/skus/' +
+        encodeURIComponent(sku) +
+        '?canal=' +
+        encodeURIComponent(channel) +
+        '&at=' +
+        encodeURIComponent(at),
+      signal,
+      true,
     );
+    if (raw === null) return null;
+    const row = object(raw);
     const regular = finitePositive(row.precio_regular);
     const offer =
       row.precio_oferta == null ? null : finitePositive(row.precio_oferta);
@@ -232,10 +148,7 @@ export class HttpCommercialContext implements CommercialContext {
           !request.lines.length ||
           request.lines.some(
             (l) =>
-              !l.product_id ||
-              !l.sku ||
-              !Number.isSafeInteger(l.quantity) ||
-              l.quantity <= 0,
+              !l.sku || !Number.isSafeInteger(l.quantity) || l.quantity <= 0,
           )
         )
           throw new Error('CANONICAL_SKU_PRODUCT_RESOLVER_REQUIRED');
@@ -248,21 +161,52 @@ export class HttpCommercialContext implements CommercialContext {
           Awaited<ReturnType<HttpCommercialContext['price']>>
         >();
         const lines = [];
+        const contexts = new Map<string, string>();
         for (const line of request.lines) {
-          const id = line.product_id!;
+          let id = line.product_id;
+          if (!id) {
+            if (!contexts.has(line.sku)) {
+              const context = object(
+                await this.read(
+                  'obtenerContextoSku',
+                  '/productos/skus/' +
+                    encodeURIComponent(line.sku) +
+                    '/contexto',
+                  bounded,
+                ),
+              );
+              if (
+                context.sku !== line.sku ||
+                typeof context.isVariant !== 'boolean' ||
+                typeof context.active !== 'boolean' ||
+                typeof context.eligible !== 'boolean' ||
+                !context.active ||
+                !context.eligible
+              )
+                throw new Error('INVALID_SKU_CONTEXT');
+              contexts.set(line.sku, text(context.productId));
+            }
+            id = contexts.get(line.sku)!;
+          }
           if (!products.has(id))
             products.set(
               id,
               await this.product(id, request.channel_id, bounded),
             );
           const product = products.get(id);
-          if (!product?.skus.includes(line.sku))
-            throw new Error('SKU_NOT_COMMERCIALLY_VISIBLE');
-          if (!prices.has(line.sku))
-            prices.set(
+          if (!product) throw new Error('SKU_NOT_COMMERCIALLY_VISIBLE');
+          if (!product.skus.includes(line.sku))
+            throw new CommercialInputError();
+          if (!prices.has(line.sku)) {
+            const price = await this.price(
               line.sku,
-              await this.price(line.sku, request.channel_id, at, bounded),
+              request.channel_id,
+              at,
+              bounded,
             );
+            if (!price) throw new Error('BASKET_PRICE_UNAVAILABLE');
+            prices.set(line.sku, price);
+          }
           lines.push({
             sku: line.sku,
             productId: id,
@@ -313,26 +257,25 @@ export class HttpCommercialContext implements CommercialContext {
           Pick<
             RecommendationCandidate,
             'active' | 'channelEligible' | 'availability' | 'currentPrice'
-          >
+          > | null
         >();
-        const products = new Map<string, string>();
+        const products = new Map<string, string[]>();
         const at = new Date().toISOString();
         for (const id of new Set(ids)) {
           text(id);
           const p = await this.product(id, channelId, bounded);
-          if (!p) throw new Error('RECOMMENDED_PRODUCT_NOT_VISIBLE');
-          // D-REC-01/02 still open, even if only one variant is currently returned.
-          if (p.hasVariants)
-            throw new Error('MULTI_SKU_RECOMMENDATION_NOT_DEFINED');
-          const sku = p.skus[0];
-          if (!sku || sku.includes(','))
+          if (!p) {
+            result.set(id, null);
+            continue;
+          }
+          if (p.skus.some((sku) => !sku || sku.includes(',')))
             throw new Error('UNREPRESENTABLE_SKU_LIST');
-          products.set(id, sku);
+          products.set(id, p.skus);
         }
-        const uniqueSkus = [...new Set(products.values())];
+        const uniqueSkus = [...new Set([...products.values()].flat())];
         const availability = new Map<
           string,
-          RecommendationCandidate['availability']
+          RecommendationCandidate['availability'] | 'INDETERMINADO'
         >();
         for (let offset = 0; offset < uniqueSkus.length; offset += 100) {
           const batch = uniqueSkus.slice(offset, offset + 100);
@@ -352,26 +295,54 @@ export class HttpCommercialContext implements CommercialContext {
             if (
               !batch.includes(sku) ||
               availability.has(sku) ||
-              !['DISPONIBLE', 'STOCK_BAJO', 'AGOTADO'].includes(
-                String(item.status),
-              )
+              ![
+                'DISPONIBLE',
+                'STOCK_BAJO',
+                'AGOTADO',
+                'INDETERMINADO',
+              ].includes(String(item.status))
             )
               throw new Error('UNDETERMINED_OR_INVALID_AVAILABILITY');
             availability.set(
               sku,
-              item.status as RecommendationCandidate['availability'],
+              item.status as
+                RecommendationCandidate['availability'] | 'INDETERMINADO',
             );
           }
-          if (batch.some((sku) => !availability.has(sku)))
-            throw new Error('INCOMPLETE_AVAILABILITY');
         }
-        for (const [id, sku] of products) {
-          const price = await this.price(sku, channelId, at, bounded);
+        let currency: string | undefined;
+        for (const [id, skus] of products) {
+          const positive = skus.filter((sku) =>
+            ['DISPONIBLE', 'STOCK_BAJO'].includes(availability.get(sku) ?? ''),
+          );
+          let minimum: string | undefined;
+          for (const sku of [...positive].sort()) {
+            const price = await this.price(sku, channelId, at, bounded);
+            if (!price) continue;
+            if (currency && price.currency !== currency)
+              throw new Error('MIXED_CURRENCIES');
+            currency = price.currency;
+            const effective = price.offer ?? price.regular;
+            if (
+              minimum === undefined ||
+              Decimal.from(effective).compare(Decimal.from(minimum)) < 0
+            )
+              minimum = effective;
+          }
+          // Null is an explicit product exclusion, never a fabricated stock state.
+          if (minimum === undefined) {
+            result.set(id, null);
+            continue;
+          }
           result.set(id, {
             active: true,
             channelEligible: true,
-            availability: availability.get(sku)!,
-            currentPrice: Number(price.offer ?? price.regular),
+            availability: positive.some(
+              (sku) => availability.get(sku) === 'DISPONIBLE',
+            )
+              ? 'DISPONIBLE'
+              : 'STOCK_BAJO',
+            currentPrice: Number(minimum),
           });
         }
         return result;

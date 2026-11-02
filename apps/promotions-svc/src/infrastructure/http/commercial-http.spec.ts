@@ -1,7 +1,10 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { HttpCommercialContext } from './commercial-http.js';
-import { CommercialDependencyError } from '../../domain/commercial-context.js';
+import {
+  CommercialDependencyError,
+  CommercialInputError,
+} from '../../domain/commercial-context.js';
 
 // Explicit synthetic DTO server. It proves real HTTP transport and internal
 // contract mapping only; neither G7 grants nor provider deployment is claimed.
@@ -52,21 +55,38 @@ async function fixture(
       'Bearer synthetic-service-token',
     );
     expect(request.headers['x-correlation-id']).toMatch(/^[0-9a-f-]{36}$/i);
-    const raw = url.pathname.startsWith('/api/v1/productos/')
-      ? simple(
-          decodeURIComponent(url.pathname.slice('/api/v1/productos/'.length)),
-        )
-      : url.pathname.startsWith('/api/v1/precios/')
-        ? price(
-            decodeURIComponent(
-              url.pathname.slice('/api/v1/precios/skus/'.length),
+    const raw =
+      url.pathname.startsWith('/api/v1/productos/skus/') &&
+      url.pathname.endsWith('/contexto')
+        ? {
+            sku: decodeURIComponent(
+              url.pathname.slice(
+                '/api/v1/productos/skus/'.length,
+                -'/contexto'.length,
+              ),
             ),
-          )
-        : {
-            items: (url.searchParams.get('skus') ?? '')
-              .split(',')
-              .map((sku) => ({ sku, status: 'STOCK_BAJO' })),
-          };
+            productId: 'P',
+            isVariant: false,
+            active: true,
+            eligible: true,
+          }
+        : url.pathname.startsWith('/api/v1/productos/')
+          ? simple(
+              decodeURIComponent(
+                url.pathname.slice('/api/v1/productos/'.length),
+              ),
+            )
+          : url.pathname.startsWith('/api/v1/precios/')
+            ? price(
+                decodeURIComponent(
+                  url.pathname.slice('/api/v1/precios/skus/'.length),
+                ),
+              )
+            : {
+                items: (url.searchParams.get('skus') ?? '')
+                  .split(',')
+                  .map((sku) => ({ sku, status: 'STOCK_BAJO' })),
+              };
     const result = change(url, raw);
     response.writeHead(result.status ?? 200, {
       'content-type': 'application/json',
@@ -152,15 +172,18 @@ describe('Candidate commercial HTTP client #72/#73', () => {
       }),
     );
   });
-  it('keeps missing SKU-to-product resolution and VENTAS outside this candidate without sending requests', async () => {
+  it('resolves missing product_id through the newly authorized skuContext and preserves VENTAS rejection', async () => {
     await fixture(async (client, calls) => {
-      await expect(
-        client.basket({ ...basket, lines: [{ sku: 'S-P', quantity: 1 }] }, at),
-      ).rejects.toBeInstanceOf(CommercialDependencyError);
+      const resolved = await client.basket(
+        { ...basket, lines: [{ sku: 'S-P', quantity: 1 }] },
+        at,
+      );
+      expect(resolved.lines[0].productId).toBe('P');
+      expect(calls[0].pathname).toBe('/api/v1/productos/skus/S-P/contexto');
       await expect(
         client.basket({ ...basket, channel_id: 'VENTAS' }, at),
       ).rejects.toBeInstanceOf(CommercialDependencyError);
-      expect(calls).toHaveLength(0);
+      expect(calls).toHaveLength(3);
     });
   });
   it('maps simple-product recommendation facts from independent price and commercial availability calls', async () => {
@@ -188,27 +211,71 @@ describe('Candidate commercial HTTP client #72/#73', () => {
       ).toBe(true);
     });
   });
-  it('never aggregates multi-SKU recommendations, even if only one active variant remains', async () => {
+  it('uses the minimum price of positive variants without selecting a SKU or summing stock', async () => {
     await fixture(
       async (client, calls) => {
-        await expect(
-          client.recommendationProducts(['P'], 'MARKETPLACE'),
-        ).rejects.toBeInstanceOf(CommercialDependencyError);
-        expect(calls).toHaveLength(1);
+        const result = await client.recommendationProducts(
+          ['P'],
+          'MARKETPLACE',
+        );
+        expect(result.get('P')).toMatchObject({
+          availability: 'DISPONIBLE',
+          currentPrice: 50,
+        });
+        const instants = calls
+          .filter((u) => u.pathname.includes('/precios/'))
+          .map((u) => u.searchParams.get('at'));
+        expect(new Set(instants).size).toBe(1);
+        expect(
+          calls.some((u) => u.searchParams.get('skus') === 'SKU-A,SKU-B'),
+        ).toBe(true);
       },
-      (_url, body) => ({
-        body: {
-          ...(body as object),
-          tiene_variantes: true,
-          variants: [{ variant_id: 'V', sku: 'SKU' }],
-        },
+      (url, body) => ({
+        body: url.pathname.includes('/productos/')
+          ? {
+              ...(body as object),
+              tiene_variantes: true,
+              sku_base: null,
+              variants: [
+                { variant_id: 'A', sku: 'SKU-A' },
+                { variant_id: 'B', sku: 'SKU-B' },
+              ],
+            }
+          : url.pathname.includes('/inventario/')
+            ? {
+                items: [
+                  { sku: 'SKU-A', status: 'DISPONIBLE' },
+                  { sku: 'SKU-B', status: 'STOCK_BAJO' },
+                ],
+              }
+            : url.pathname.endsWith('SKU-A')
+              ? { ...price('SKU-A'), precio_oferta: 70 }
+              : { ...price('SKU-B'), precio_oferta: 50 },
       }),
     );
   });
-  it('does not convert INDETERMINADO or incomplete availability into AGOTADO or an empty list', async () => {
+  it('excludes candidates with no positive availability without fabricating AGOTADO', async () => {
     for (const items of [
       [],
       [{ sku: 'S-P', status: 'INDETERMINADO' }],
+      [{ sku: 'S-P', status: 'AGOTADO' }],
+    ])
+      await fixture(
+        async (client) => {
+          const result = await client.recommendationProducts(
+            ['P'],
+            'MARKETPLACE',
+          );
+          expect(result.has('P')).toBe(true);
+          expect(result.get('P')).toBeNull();
+        },
+        (url, body) => ({
+          body: url.pathname.includes('/inventario/') ? { items } : body,
+        }),
+      );
+  });
+  it('rejects corrupt or duplicate availability instead of hiding a dependency error', async () => {
+    for (const items of [
       [{ sku: 'OTHER', status: 'AGOTADO' }],
       [
         { sku: 'S-P', status: 'DISPONIBLE' },
@@ -226,6 +293,102 @@ describe('Candidate commercial HTTP client #72/#73', () => {
         }),
       );
     }
+  });
+  it('does not price unknown-stock SKU when another variant has positive stock', async () => {
+    await fixture(
+      async (client, calls) => {
+        expect(
+          (await client.recommendationProducts(['P'], 'MARKETPLACE')).get('P'),
+        ).toMatchObject({ availability: 'STOCK_BAJO', currentPrice: 80 });
+        expect(
+          calls
+            .filter((u) => u.pathname.includes('/precios/'))
+            .map((u) => u.pathname),
+        ).toEqual(['/api/v1/precios/skus/A']);
+      },
+      (url, body) => ({
+        body: url.pathname.includes('/productos/')
+          ? {
+              ...simple(),
+              tiene_variantes: true,
+              sku_base: null,
+              variants: [
+                { variant_id: '1', sku: 'A' },
+                { variant_id: '2', sku: 'B' },
+              ],
+            }
+          : url.pathname.includes('/inventario/')
+            ? {
+                items: [
+                  { sku: 'A', status: 'STOCK_BAJO' },
+                  { sku: 'B', status: 'INDETERMINADO' },
+                ],
+              }
+            : body,
+      }),
+    );
+  });
+  it('excludes a legitimate missing price but propagates a technical pricing failure', async () => {
+    for (const status of [404, 503])
+      await fixture(
+        async (client) => {
+          const response = client.recommendationProducts(['P'], 'MARKETPLACE');
+          if (status === 404) expect((await response).get('P')).toBeNull();
+          else
+            await expect(response).rejects.toBeInstanceOf(
+              CommercialDependencyError,
+            );
+        },
+        (url, body) => ({
+          status: url.pathname.includes('/precios/') ? status : 200,
+          body:
+            url.pathname.includes('/precios/') && status === 404
+              ? { status: 404, code: 'PRECIO_NO_ENCONTRADO' }
+              : body,
+        }),
+      );
+  });
+  it('rejects mixed currencies across positive candidates', async () => {
+    await fixture(
+      async (client) => {
+        await expect(
+          client.recommendationProducts(['P', 'Q'], 'MARKETPLACE'),
+        ).rejects.toBeInstanceOf(CommercialDependencyError);
+      },
+      (url, body) => ({
+        body: url.pathname.endsWith('S-Q')
+          ? { ...price('S-Q'), currency: 'USD' }
+          : body,
+      }),
+    );
+  });
+  it('rejects ineligible context before resolving a missing product or querying prices', async () => {
+    await fixture(
+      async (client, calls) => {
+        await expect(
+          client.basket(
+            { ...basket, lines: [{ sku: 'S-P', quantity: 1 }] },
+            at,
+          ),
+        ).rejects.toBeInstanceOf(CommercialDependencyError);
+        expect(calls).toHaveLength(1);
+      },
+      (url, body) => ({
+        body: url.pathname.endsWith('/contexto')
+          ? { ...(body as object), active: false }
+          : body,
+      }),
+    );
+  });
+  it('classifies a mismatched product/SKU as invalid input', async () => {
+    await fixture(async (client) => {
+      await expect(
+        client.basket(
+          { ...basket, lines: [{ product_id: 'P', sku: 'S-Q', quantity: 1 }] },
+          at,
+        ),
+      ).rejects.toBeInstanceOf(CommercialInputError);
+    });
   });
   it.each([401, 403, 429, 500, 503])(
     'sanitizes HTTP %i without retrying or exposing provider errors',
@@ -251,7 +414,10 @@ describe('Candidate commercial HTTP client #72/#73', () => {
           CommercialDependencyError,
         );
       },
-      () => ({ status: 404 }),
+      () => ({
+        status: 404,
+        body: { status: 404, code: 'PRODUCTO_NO_ENCONTRADO' },
+      }),
     );
   });
   it.each([
@@ -293,7 +459,9 @@ describe('Candidate commercial HTTP client #72/#73', () => {
       await fixture(
         async (client) => {
           await expect(client.basket(basket, at)).rejects.toBeInstanceOf(
-            CommercialDependencyError,
+            'sku_base' in changes
+              ? CommercialInputError
+              : CommercialDependencyError,
           );
         },
         (url, body) => ({
