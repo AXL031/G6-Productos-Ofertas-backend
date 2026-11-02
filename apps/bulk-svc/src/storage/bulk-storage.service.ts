@@ -1,5 +1,28 @@
 import { Injectable } from '@nestjs/common';
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
+import { matchesBulkStorageReference } from './bulk-storage-reference.js';
+
+async function isMissingObjectResponse(response: Response): Promise<boolean> {
+  if (response.status === 404) return true;
+  if (response.status !== 400) return false;
+
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    return false;
+  }
+
+  return (
+    payload !== null &&
+    typeof payload === 'object' &&
+    !Array.isArray(payload) &&
+    Object.hasOwn(payload, 'code') &&
+    Object.hasOwn(payload, 'statusCode') &&
+    Reflect.get(payload, 'code') === 'NoSuchKey' &&
+    Reflect.get(payload, 'statusCode') === '404'
+  );
+}
 
 /** Private Supabase Storage adapter. It never provisions buckets or policies. */
 @Injectable()
@@ -44,7 +67,8 @@ export class BulkStorageService {
           throw new Error('idempotent object conflict');
         return `supabase://${bucket}/${objectName}`;
       }
-      if (existing.status !== 404) throw new Error('object lookup failed');
+      if (!(await isMissingObjectResponse(existing)))
+        throw new Error('object lookup failed');
       const response = await fetch(objectUrl, {
         method: 'POST',
         headers: {
@@ -73,7 +97,7 @@ export class BulkStorageService {
   async get(contentRef: string): Promise<Buffer> {
     const { url, key, bucket } = this.config();
     const prefix = `supabase://${bucket}/`;
-    if (!contentRef.startsWith(prefix))
+    if (!matchesBulkStorageReference(contentRef, bucket))
       throw new BulkDomainError(
         'STORAGE_UNAVAILABLE',
         'La referencia privada no corresponde al bucket configurado.',

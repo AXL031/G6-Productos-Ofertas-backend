@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import {
+  buildCatalogBulkCommands,
+  stableUuid,
+  type CatalogBulkCommand,
+  type CatalogBulkRow,
+} from './messaging/catalog-bulk-upsert.js';
 import { parseBulkTemplate } from './domain/bulk-template-v2.js';
 import {
   BulkDomainError,
@@ -32,7 +38,17 @@ export class BulkImportService {
         'PLANTILLA_INCOMPATIBLE',
         'template_version debe ser 2.',
       );
-    const parsed = parseBulkTemplate(input.bytes, input.format);
+    const batchId = input.batchId ?? randomUUID();
+    const parsedFile = parseBulkTemplate(input.bytes, input.format);
+    const parsed = {
+      ...parsedFile,
+      rows: parsedFile.rows.map((row) => {
+        const rowId = stableUuid(
+          `${batchId}:bulk-row:${row.rowNumber}:${row.rowId}`,
+        );
+        return { ...row, rowId, rowOperationId: rowId };
+      }),
+    };
     assertImportDependencies(parsed);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
       rowId: row.rowId,
@@ -49,7 +65,7 @@ export class BulkImportService {
       defaultLocationId: row.defaultLocationId,
     }));
     const result = await this.createImport({
-      batchId: input.batchId ?? randomUUID(),
+      batchId,
       correlationId: input.correlationId,
       contentRef: input.contentRef,
       format: input.format,
@@ -102,6 +118,48 @@ export class BulkImportService {
       rowId: row.rowId,
       requiredDomains: row.requiredDomains,
     }));
+    const catalogRows = (input.intentRows ?? []).map((value) => {
+      if (typeof value !== 'object' || value === null) {
+        throw new BulkDomainError(
+          'INVALID_INPUT',
+          'La intención normalizada de Catalog está incompleta.',
+        );
+      }
+      const row = value as Record<string, unknown>;
+      return {
+        row_number: Number(row.rowNumber),
+        row_operation_id: String(row.rowOperationId),
+        producto_id: typeof row.productId === 'string' ? row.productId : null,
+        sku_base: String(row.skuBase),
+        product: row.product as Record<string, unknown>,
+        variant_id: typeof row.variantId === 'string' ? row.variantId : null,
+        variant: (row.variant as Record<string, unknown> | null) ?? null,
+      } satisfies CatalogBulkRow;
+    });
+    let priorAdmission: Record<string, unknown> | null;
+    try {
+      priorAdmission = await this.repository.findImportAdmissionIntent(
+        input.batchId,
+      );
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
+    }
+    const persistedCommands = Array.isArray(priorAdmission?.catalogCommands)
+      ? priorAdmission.catalogCommands
+      : null;
+    const commands: CatalogBulkCommand[] = persistedCommands
+      ? persistedCommands.map((value) => {
+          const envelope = value as CatalogBulkCommand['envelope'];
+          return { envelope, serialized: JSON.stringify(envelope) };
+        })
+      : catalogRows.length
+        ? buildCatalogBulkCommands({
+            batchId: input.batchId,
+            correlationId: input.correlationId,
+            rows: catalogRows,
+            occurredAt: new Date(),
+          })
+        : [];
     try {
       return await this.repository.createImportBatch({
         batchId: input.batchId,
@@ -112,11 +170,22 @@ export class BulkImportService {
           contentRef: input.contentRef,
         },
         rows: persistedRows,
+        catalogCommands: commands.map(({ envelope }) => ({
+          messageId: envelope.message_id,
+          eventName: envelope.name,
+          kind: envelope.kind,
+          schemaVersion: envelope.schema_version,
+          correlationId: envelope.correlation_id,
+          operationId: envelope.operation_id,
+          occurredAt: new Date(envelope.occurred_at),
+          payload: envelope as unknown as Record<string, unknown>,
+        })),
         admissionIntent: {
           format: input.format,
           templateVersion: input.templateVersion,
           contentRef: input.contentRef,
           rows: input.intentRows ?? normalized,
+          catalogCommands: commands.map(({ envelope }) => envelope),
         },
       });
     } catch (error) {

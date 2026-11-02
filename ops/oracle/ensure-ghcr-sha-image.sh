@@ -26,8 +26,10 @@ if docker manifest inspect "$image" >/dev/null 2>"$inspect_error"; then
       echo 'Existe una imagen para este SHA, pero su origen o revisión no se puede verificar; no se sobrescribe.' >&2
       exit 1
     }
-  printf 'exists=true\nimage=%s\n' "$image" >> "$output"
-  echo 'PASS: imagen GHCR existente verificada por paquete, origen y revisión; se reutilizará.'
+  digest="$(docker image inspect "$image" --format '{{index .RepoDigests 0}}' | sed -E 's/.*@(sha256:[0-9a-f]{64})$/\1/')"
+  [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'No se pudo verificar el digest de la imagen GHCR existente.' >&2; exit 1; }
+  printf 'exists=true\nimage=%s\ndigest=%s\n' "$image" "$digest" >> "$output"
+  echo 'CORRECTO: imagen GHCR existente verificada por paquete, origen, revisión y digest; se reutilizará.'
   exit 0
 fi
 
@@ -36,4 +38,4 @@ if ! grep -Eiq 'manifest unknown|no such manifest|not found|404' "$inspect_error
   exit 1
 fi
 printf 'exists=false\nimage=%s\n' "$image" >> "$output"
-echo 'PASS: no existe imagen para este SHA; se permite publicar una vez.'
+echo 'CORRECTO: no existe imagen para este SHA; se permite una publicación.'

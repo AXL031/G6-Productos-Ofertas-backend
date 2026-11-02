@@ -14,7 +14,7 @@ async function bootstrap() {
     });
     const config = app.get(PromotionsConfigService).settings;
     app.enableShutdownHooks();
-    await app.listen(config.port);
+    await app.listen(config.port, config.listenHost);
     logger.started();
   } catch (error: unknown) {
     if (app) await app.close().catch(() => undefined);

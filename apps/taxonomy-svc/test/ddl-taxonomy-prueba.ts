@@ -35,6 +35,14 @@ export function construirSentenciasDdl(
     `ALTER ROLE ${ROL_APP} WITH LOGIN PASSWORD '${PASSWORD_APP}'`,
     `CREATE SCHEMA taxonomy AUTHORIZATION ${ROL_PROPIETARIO}`,
     "CREATE TYPE taxonomy.estado_entidad AS ENUM ('ACTIVO', 'INACTIVO', 'PENDING_DEACTIVATION')",
+    "CREATE TYPE taxonomy.tipo_entidad_maestra AS ENUM ('CATEGORY', 'BRAND', 'CHARACTERISTIC', 'CHARACTERISTIC_VALUE', 'PRODUCT_TYPE', 'PRODUCT_TYPE_CHARACTERISTIC')",
+    "CREATE TYPE taxonomy.estado_operacion_baja AS ENUM ('REQUESTED', 'IN_PROGRESS', 'COMPLETED', 'REJECTED', 'FAILED')",
+    `CREATE TABLE taxonomy.runtime_settings (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      clave text NOT NULL UNIQUE, valor_integer integer NOT NULL CHECK (valor_integer > 0),
+      descripcion text NULL, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now()
+    )`,
+    "INSERT INTO taxonomy.runtime_settings (clave, valor_integer) VALUES ('MASTER_DEACTIVATION_TIMEOUT_SECONDS', 60)",
     `CREATE TABLE taxonomy.categories (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,
@@ -50,7 +58,11 @@ export function construirSentenciasDdl(
       CONSTRAINT pk_categories PRIMARY KEY (id),
       CONSTRAINT fk_categories_categoria_padre FOREIGN KEY (categoria_padre_id)
         REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
+      CONSTRAINT ck_categories_nombre_not_empty CHECK (length(trim(nombre)) > 0),
       CONSTRAINT ck_categories_nivel CHECK (nivel IN (1, 2)),
+      CONSTRAINT ck_categories_orden CHECK (orden >= 0),
+      CONSTRAINT ck_categories_version CHECK (taxonomy_version >= 0),
+      CONSTRAINT ck_categories_no_self_parent CHECK (categoria_padre_id <> id),
       CONSTRAINT ck_categories_padre_nivel CHECK (
         (categoria_padre_id IS NULL AND nivel = 1) OR
         (categoria_padre_id IS NOT NULL AND nivel = 2)
@@ -69,9 +81,37 @@ export function construirSentenciasDdl(
       updated_at timestamptz NOT NULL DEFAULT now(),
       CONSTRAINT pk_brands PRIMARY KEY (id),
       CONSTRAINT uq_brands_nombre_normalizado UNIQUE (nombre_normalizado),
-      CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$')
+      CONSTRAINT ck_brands_nombre_not_empty CHECK (length(trim(nombre)) > 0),
+      CONSTRAINT ck_brands_nombre_normalizado_not_empty CHECK (length(trim(nombre_normalizado)) > 0),
+      CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$'),
+      CONSTRAINT ck_brands_version CHECK (taxonomy_version >= 0)
+    )`,
+    `CREATE TABLE taxonomy.master_deactivation_operations (
+      id uuid NOT NULL DEFAULT gen_random_uuid(),
+      operation_id uuid NOT NULL,
+      entity_type taxonomy.tipo_entidad_maestra NOT NULL,
+      entity_id uuid NOT NULL,
+      status taxonomy.estado_operacion_baja NOT NULL DEFAULT 'REQUESTED',
+      reason text NULL,
+      correlation_id uuid NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pk_master_deactivation_operations PRIMARY KEY (id),
+      CONSTRAINT uq_mdo_operation_id UNIQUE (operation_id),
+      CONSTRAINT ck_mdo_operation_id_not_nil CHECK (operation_id <> '00000000-0000-0000-0000-000000000000'::uuid),
+      CONSTRAINT ck_mdo_correlation_id_not_nil CHECK (correlation_id <> '00000000-0000-0000-0000-000000000000'::uuid)
+    )`,
+    `CREATE TABLE taxonomy.outbox (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      message_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+      event_name text NOT NULL, kind text NOT NULL, schema_version integer NOT NULL DEFAULT 1,
+      correlation_id uuid NOT NULL, causation_id uuid NULL, operation_id uuid NULL,
+      occurred_at timestamptz NOT NULL, payload jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(), published_at timestamptz NULL,
+      attempts integer NOT NULL DEFAULT 0, last_error text NULL
     )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
+    'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',
     `GRANT USAGE ON SCHEMA taxonomy TO ${ROL_APP}`,
     `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA taxonomy TO ${ROL_APP}`,

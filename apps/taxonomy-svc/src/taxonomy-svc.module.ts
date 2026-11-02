@@ -9,6 +9,9 @@ import { TaxonomySvcController } from './taxonomy-svc.controller.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
 import { TAXONOMY_REPOSITORY } from './taxonomy.repository.js';
 import { Database } from './database.js';
+import { PostgresTaxonomyRepository } from './postgres-taxonomy.repository.js';
+import { DeactivationCheckService } from './domain/deactivation-check.service.js';
+import { DeactivationIntentService } from './domain/deactivation-intent.service.js';
 
 export interface OpcionesModuloTaxonomy {
   databaseUrl?: string;
@@ -20,12 +23,27 @@ export interface OpcionesModuloTaxonomy {
   providers: [
     TaxonomySvcService,
     Database,
+    DeactivationCheckService,
+    DeactivationIntentService,
     proveedorDeRepositorio(),
     { provide: TAXONOMY_READINESS, useExisting: TAXONOMY_REPOSITORY },
     { provide: APP_FILTER, useClass: ProblemDetailsFilter },
   ],
 })
 export class TaxonomySvcModule {
+  static forRuntime(): DynamicModule {
+    return {
+      module: TaxonomySvcModule,
+      providers: [
+        {
+          provide: TAXONOMY_REPOSITORY,
+          useFactory: (db: Database) => new PostgresTaxonomyRepository(db),
+          inject: [Database],
+        },
+      ],
+    };
+  }
+
   static forRoot(opciones: OpcionesModuloTaxonomy = {}): DynamicModule {
     if (!opciones.databaseUrl) {
       return {

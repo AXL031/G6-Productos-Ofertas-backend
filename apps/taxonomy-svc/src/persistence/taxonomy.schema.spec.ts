@@ -1,6 +1,12 @@
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { categorias, esquemaTaxonomia, marcas } from './taxonomy.schema.js';
+import { getTableConfig } from 'drizzle-orm/pg-core';
+import {
+  categorias,
+  esquemaTaxonomia,
+  marcas,
+  operacionesBaja,
+} from './taxonomy.schema.js';
 
 describe('taxonomy.schema (#35)', () => {
   const db = drizzle.mock({ schema: esquemaTaxonomia });
@@ -48,5 +54,31 @@ describe('taxonomy.schema (#35)', () => {
       'INACTIVO',
       'PENDING_DEACTIVATION',
     ]);
+  });
+
+  it('mapea la tabla histórica de operaciones sin inventar columnas', () => {
+    const tabla = getTableConfig(operacionesBaja);
+    expect(tabla.schema).toBe('taxonomy');
+    expect(tabla.name).toBe('master_deactivation_operations');
+    expect(tabla.columns.map((columna) => columna.name)).toEqual([
+      'id',
+      'operation_id',
+      'entity_type',
+      'entity_id',
+      'status',
+      'reason',
+      'correlation_id',
+      'created_at',
+      'updated_at',
+    ]);
+    expect(
+      tabla.uniqueConstraints.map((constraint) => constraint.name),
+    ).toContain('uq_mdo_operation_id');
+    expect(tabla.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        'ck_mdo_operation_id_not_nil',
+        'ck_mdo_correlation_id_not_nil',
+      ]),
+    );
   });
 });

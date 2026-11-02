@@ -1,14 +1,14 @@
 export type Canal = 'MARKETPLACE' | 'CHATBOT' | 'RETAIL' | 'VENTAS';
 export interface ProductQuery {
-  canal: Canal;
+  canal?: Canal;
   q?: string;
   categoriaId?: string;
   marcaId?: string;
   pagina: number;
   tamanio: number;
   estado?: 'BORRADOR' | 'ACTIVO' | 'INACTIVO';
-  precioMin?: number;
-  precioMax?: number;
+  precioMin?: string | number;
+  precioMax?: string | number;
   orden: 'NOMBRE_ASC' | 'NOMBRE_DESC';
 }
 export interface Attribute {

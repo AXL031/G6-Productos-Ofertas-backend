@@ -8,6 +8,7 @@ const encode = value => Buffer.from(JSON.stringify(value)).toString('base64url')
 createServer({ key: readFileSync('/certs/server.key'), cert: readFileSync('/certs/server.crt') }, (req, res) => {
   res.setHeader('content-type', 'application/json');
   if (req.url === '/keys') return res.end(JSON.stringify({ keys: [key] }));
+  if (req.url === '/.well-known/openid-configuration') return res.end(JSON.stringify({ issuer: 'https://issuer:3443', jwks_uri: 'https://issuer:3443/keys' }));
   const overrides = req.url === '/expired' ? { exp: 1 } : req.url === '/forbidden' ? { scope: 'invalid' } : {};
   const now = Math.floor(Date.now() / 1000);
   const payload = encode({ iss: 'https://issuer:3443', sub: 'modulo-marketplace', tipo: 'servicio', aud: ['api-productos'], scope: 'catalogo:leer', iat: now, exp: now + 600, jti: randomUUID(), ...overrides });

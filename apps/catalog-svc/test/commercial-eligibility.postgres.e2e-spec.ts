@@ -1,88 +1,57 @@
 import { Test } from '@nestjs/testing';
-import { sql } from 'drizzle-orm';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
-import {
-  COMMERCIAL_ELIGIBILITY,
-  type CommercialEligibilityPolicy,
-} from '../src/commercial-eligibility.js';
 import { Database } from '../src/database.js';
-
-function writeEvidence(value: Readonly<Record<string, string | number>>): void {
-  process.stdout.write(JSON.stringify(value) + '\n');
-}
+import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
+import {
+  CATALOG_READ_DEMO,
+  CATALOG_MARKETPLACE_PREVIEW,
+} from '../src/catalog-read-demo.js';
 
 describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
-  'Catalog commercial eligibility on configured PostgreSQL (read only)',
+  'Catalog global eligibility on configured PostgreSQL (read only)',
   () => {
-    it('queries the candidate table or fails closed when it is unavailable', async () => {
+    it('reads official tables and preserves authentication without candidate eligibility tables', async () => {
       const app = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(CATALOG_READ_DEMO)
+        .useValue({ enabled: false })
+        .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
+        .useValue(false)
         .compile()
         .then((module) => module.createNestApplication());
-
       try {
         await app.init();
-        const database = app.get(Database);
-        await database.verifyIdentity();
-
-        const relation = await database.read((db) =>
-          db.execute(
-            sql`SELECT to_regclass('catalog.sku_channel_eligibility')::text AS relation`,
-          ),
-        );
-        const policy = app.get<CommercialEligibilityPolicy>(
-          COMMERCIAL_ELIGIBILITY,
-        );
-
-        if (relation.rows[0]?.relation == null) {
-          await expect(policy.resolve('MARKETPLACE')).rejects.toMatchObject({
-            status: 503,
-            message: 'Servicio temporalmente no disponible',
-          });
-          for (const path of [
-            '/api/v1/productos?canal=MARKETPLACE',
-            '/api/v1/productos/por-slug/integration-probe?canal=MARKETPLACE',
-          ]) {
-            const response = await request(app.getHttpServer())
-              .get(path)
-              .expect(503);
-            expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
-          }
-          writeEvidence({
-            evidence: 'catalog-commercial-eligibility-postgres',
-            outcome: 'candidate-table-absent-adapter-and-endpoints-503',
-          });
-          return;
-        }
-
-        try {
-          const selection = await policy.resolve('MARKETPLACE');
-          expect(Array.isArray(selection.productIds)).toBe(true);
-          expect(Array.isArray(selection.variantIds)).toBe(true);
-          expect(new Set(selection.productIds).size).toBe(
-            selection.productIds.length,
+        await app.get(Database).verifyIdentity();
+        const repository = app.get(PostgresCatalogRepository);
+        const query = {
+          canal: 'MARKETPLACE' as const,
+          pagina: 1,
+          tamanio: 1,
+          orden: 'NOMBRE_ASC' as const,
+        };
+        const page = await repository.listCandidates(query);
+        expect(page.total).toBeGreaterThanOrEqual(page.items.length);
+        for (const canal of ['CHATBOT', 'RETAIL', 'VENTAS'] as const) {
+          expect(await repository.listCandidates({ ...query, canal })).toEqual(
+            page,
           );
-          expect(new Set(selection.variantIds).size).toBe(
-            selection.variantIds.length,
-          );
-          writeEvidence({
-            evidence: 'catalog-commercial-eligibility-postgres',
-            outcome: 'select-succeeded',
-            productCount: selection.productIds.length,
-            variantCount: selection.variantIds.length,
-          });
-        } catch (error) {
-          // A present table with insufficient runtime SELECT privilege is also
-          // a supported fail-closed state for this candidate integration.
-          expect(error).toMatchObject({
-            status: 503,
-            message: 'Servicio temporalmente no disponible',
-          });
-          writeEvidence({
-            evidence: 'catalog-commercial-eligibility-postgres',
-            outcome: 'select-unavailable-fails-closed',
-          });
         }
+        for (const path of [
+          '/api/v1/productos?canal=MARKETPLACE',
+          '/api/v1/productos/por-slug/integration-probe?canal=MARKETPLACE',
+        ]) {
+          const response = await request(app.getHttpServer())
+            .get(path)
+            .expect(401);
+          expect(response.body.code).toBe('TOKEN_INVALIDO');
+        }
+        process.stdout.write(
+          JSON.stringify({
+            evidence: 'catalog-global-eligibility-postgres',
+            outcome: 'official-select-succeeded-unauthenticated-endpoints-401',
+            writes: 0,
+          }) + '\n',
+        );
       } finally {
         await app.close();
       }

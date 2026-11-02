@@ -2,10 +2,13 @@
 
 Owner: Axel Cueva · rama `cueva` · issue #72 · actualización 23/10/2026.
 
-**Estado: propuesta v1 implementada como motor interno acotado, sin activar HTTP.** El usuario pidió
-resolver la decisión pendiente al no existir acuerdo. Este documento concreta la
-regla propuesta por Promotions; no acredita aceptación de Marco ni de otros módulos.
-No crea una DEC-F ni modifica OpenAPI, AsyncAPI, datos persistentes o runtime.
+**Estado al 02/11/2026: composición v1 adoptada internamente el 26/10 y conectada a `evaluateBasket`/HTTP en PR #159, por instrucción de Axel e INT-13.**
+Seguimiento, resultados y fronteras externas: [revisión PR #159](REVISION-PR159-Y-COMPOSICION-H4.md).
+Ver [registro de la decisión y dependencias](DECISIONES-MARCO-2026-10-26.md).
+La comunicación fue aportada por Axel, quien autorizó su registro y verificación.
+La aprobación interna no acredita compatibilidad ni homologación de consumidores.
+No crea una DEC-F ni modifica OpenAPI, AsyncAPI o migraciones. El código runtime
+incorpora la regla interna aprobada sin atribuir integración compartida.
 
 ## Base normativa y decisiones nuevas
 
@@ -26,7 +29,8 @@ Fuentes G6 consultadas en el commit
 
 La fórmula sucesiva, el reparto proporcional, el significado de la campaña
 principal, el desempate de conjuntos y el redondeo de las secciones siguientes
-son **decisiones propuestas aquí**, no citas de reglas ya aprobadas.
+fueron propuestas aquí y **adoptadas internamente por Marco** según el registro
+anterior; no se atribuyen a una aprobación externa ni crean una DEC-F nueva.
 
 ## Regla elegida
 
@@ -69,7 +73,7 @@ son **decisiones propuestas aquí**, no citas de reglas ya aprobadas.
 
 ## Identidad y frontera contractual
 
-Se propone que `EvaluacionPromocionesResponse.promotion_id` identifique la primera
+La decisión interna establece que `EvaluacionPromocionesResponse.promotion_id` identifique la primera
 campaña **efectivamente aplicada** según `(prioridad, id)`, o `null` si solo hay
 oferta de Pricing o ningún beneficio. **No identifica todo el conjunto ni el cupón.**
 No fabricar un UUID concatenado, una campaña sintética o un identificador de pedido.
@@ -81,8 +85,8 @@ combinación. El consumo posterior sigue validando el cupón real y sus límites
 
 El prototipo devuelve internamente `applied`, `primaryPromotionId` y
 `couponPromotionId`; **no son campos nuevos del HTTP ni un snapshot durable**.
-Antes de conectar la propuesta, G6 y los consumidores deben confirmar si el
-campo singular con esta semántica basta. Si necesitan reconstruir la composición
+La implementación interna usa el identificador singular ya aprobado. La prueba
+compartida debe confirmar su interpretación por los consumidores. Si necesitan reconstruir la composición
 en Ventas/Postventa, debe existir un contrato versionado de desglose/snapshot y su
 homologación; no se puede reconstruir toda la combinación desde la campaña principal.
 
@@ -92,7 +96,7 @@ El cálculo usa fracciones exactas, incluidas asignaciones como `1/3`. No se eli
 una precisión decimal arbitraria durante el reparto ni se redondea cada paso.
 Así se evita que el orden de las líneas cree o destruya descuento.
 
-Para la futura salida monetaria se propone:
+Para la salida monetaria, la decisión interna aprobada establece:
 
 - PEN: dos decimales; otras monedas necesitan escala explícita acordada.
 - Redondear el resultado total una sola vez, al más cercano y mitad hacia arriba.
@@ -104,37 +108,41 @@ Para la futura salida monetaria se propone:
 - Antes de salida, exigir precios regulares/oferta representables en la escala de
   la moneda. Si no lo son, la integración debe resolver esa discrepancia con Pricing.
 
-**Este redondeo está implementado internamente y sigue pendiente de homologación.**
+**Este redondeo está implementado y conectado a HTTP para PEN, escala 2.**
 `projectBenefitMoney` exige escala explícita (0–6), devuelve unidades mínimas
 `bigint`, valida precios representables y conserva total/saldos/descuento. No hay
 registro implícito de monedas. El ejemplo PEN usa escala 2 como entrada explícita.
-No se convierten fracciones a `number` ni se conectan al DTO.
-Elegir una regla aquí no acredita que Pricing/Ventas la hayan aceptado.
+No se convierten fracciones intermedias a `number`: `evaluateBasket` proyecta
+primero unidades mínimas exactas y después publica los campos monetarios existentes,
+rechazando pérdida de precisión en el JSON. Moneda sin escala acordada y precios
+unitarios no representables producen el error técnico contractual, sin inventar escala.
+La aprobación de Marco no acredita que Pricing/Ventas o los demás consumidores la hayan aceptado.
 
 ## Ejemplos de aceptación
 
 Todos usan políticas compatibles, importes antes del redondeo y ausencia de oferta
 de Pricing salvo que se indique. La prioridad fija el orden mostrado.
 
-| Caso | Cálculo | Resultado |
-| --- | --- | --- |
-| 10 % y después 20 % sobre 100 | 100 × 0,9 × 0,8 | 72; no sumar porcentajes. |
-| A=60, B=40; fijo 30 en ambos; después 50 % solo en A | Reparto 18/12; saldos 42/28; A queda 21 | 49. |
-| A=1, B=2; fijo 1 en ambos; después 50 % en A | Reparto 1/3 y 2/3; saldos finales 1/3 y 4/3 | 5/3 exacto; propuesta PEN 1,67. |
-| Regular 100, oferta 80 y automática 15 % exclusiva | Comparar 80 con 85 | 80, campaña principal null. |
-| Caso anterior con permiso para Pricing | 80 × 0,85 | 68. |
-| Exclusiva 50 % frente a combinación autorizada de 30 % y 40 % | Comparar 50 con 100 × 0,7 × 0,6 | 42. |
-| Fijo 50 sobre subtotal 30 | min(50,30) | 0; no consume un cupón adicional sin ahorro. |
-| Automática 10 % prioridad 1 y cupón 10 % prioridad 2 | 100 → 90 → 81 | Principal: automática; cupón identificado aparte. |
+| Caso                                                          | Cálculo                                     | Resultado                                         |
+| ------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------- |
+| 10 % y después 20 % sobre 100                                 | 100 × 0,9 × 0,8                             | 72; no sumar porcentajes.                         |
+| A=60, B=40; fijo 30 en ambos; después 50 % solo en A          | Reparto 18/12; saldos 42/28; A queda 21     | 49.                                               |
+| A=1, B=2; fijo 1 en ambos; después 50 % en A                  | Reparto 1/3 y 2/3; saldos finales 1/3 y 4/3 | 5/3 exacto; propuesta PEN 1,67.                   |
+| Regular 100, oferta 80 y automática 15 % exclusiva            | Comparar 80 con 85                          | 80, campaña principal null.                       |
+| Caso anterior con permiso para Pricing                        | 80 × 0,85                                   | 68.                                               |
+| Exclusiva 50 % frente a combinación autorizada de 30 % y 40 % | Comparar 50 con 100 × 0,7 × 0,6             | 42.                                               |
+| Fijo 50 sobre subtotal 30                                     | min(50,30)                                  | 0; no consume un cupón adicional sin ahorro.      |
+| Automática 10 % prioridad 1 y cupón 10 % prioridad 2          | 100 → 90 → 81                               | Principal: automática; cupón identificado aparte. |
 
 ## Implementación, pruebas y activación
 
 El motor está en `src/domain/benefit-composition.ts` y la proyección monetaria en
 `src/domain/benefit-money.ts`. El archivo original de `test/proposals` reexporta
 el motor para conservar las 26 pruebas de regresión, incluido el oráculo exhaustivo.
-No existen importaciones desde los handlers HTTP ni desde `evaluateBasket`.
-Está compilado, pero su ejecución pública sigue aislada. Usa entradas sintéticas explícitas y
-ya elegibles; no sustituye Catálogo, Pricing, JWT, base de datos o broker.
+`evaluateBasket` llama al motor y a su proyección monetaria desde las operaciones
+HTTP existentes. Consolida SKU duplicados coherentes y mantiene separada la
+campaña principal del cupón aplicado. Las pruebas usan hechos sintéticos explícitos;
+la producción requiere Catálogo/Pricing y JWT configurados, sin sustituirlos.
 
 La enumeración exacta sigue siendo exponencial y se acota técnicamente a 12
 campañas y 100 líneas, con máximo 250 000 unidades de trabajo y 100 ms por defecto.
@@ -143,8 +151,8 @@ El presupuesto puede reducirse; el tiempo puede ampliarse explícitamente hasta
 y antes de devolver. Los importes de entrada tienen límite de 128 caracteres.
 Si se supera un límite se lanza `CompositionBudgetExceeded`: no se devuelve el
 mejor candidato parcial, no se truncan campañas ni se usa una aproximación voraz.
-Estos límites internos aún requieren revisión operativa antes de activar HTTP;
-el futuro adaptador deberá traducir el agotamiento al error técnico contractual.
+El adaptador mantiene estos límites y traduce cualquier agotamiento al 503
+contractual completo. No devuelve un ganador parcial ni amplía el presupuesto HTTP.
 No se publican parámetros ni códigos nuevos. Las 26 regresiones originales y las
 pruebas monetarias/budgets ejercitan el mismo motor compilado.
 
@@ -152,24 +160,24 @@ pruebas monetarias/budgets ejercitan el mismo motor compilado.
 npm test -- apps/promotions-svc/test/proposals/combination-policy.spec.ts --maxWorkers=1
 ```
 
-| Dimensión | Estado |
-| --- | --- |
-| Regla propuesta | Definida en versión 1; no cambia DEC-F adoptadas. |
-| Motor interno | Implementado en src: fórmula, compatibilidad, identidades, conservación exacta y búsqueda acotada. |
-| Pruebas | Ejecución y resultado por separado en el reporte de la entrega. |
-| Redondeo/límites | Implementados internamente como propuesta v1; adopción y límites operativos pendientes. Snapshot contractual aún pendiente. |
-| HTTP en producción | Sin cambios; mantiene el gate de combinación múltiple y el provider comercial bloqueado. |
-| Homologación externa / despliegue | No realizados. |
+| Dimensión                         | Estado                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Regla interna                     | Versión 1 adoptada por Marco el 26/10; no cambia DEC-F adoptadas.                                                                          |
+| Motor interno                     | Implementado en src: fórmula, compatibilidad, identidades, conservación exacta y búsqueda acotada.                                         |
+| Pruebas                           | Ejecución y resultado por separado en el reporte de la entrega.                                                                            |
+| Redondeo/límites                  | PEN escala 2, mitad hacia arriba final, mayor resto y límites originales conectados; fallo completo con 503. |
+| Implementación HTTP                | Conectada en código y probada localmente con PostgreSQL; tráfico compartido requiere fuentes/identidad/entorno verificados. |
+| Homologación externa / despliegue | No realizados.                                                                                                                             |
 
 ## Responsables y desbloqueo verificable
 
-| Owner | Operación | Evidencia necesaria |
-| --- | --- | --- |
-| Axel/Promotions + Marco/arquitectura G6 | Adoptar composición interna | Revisión registrada de esta versión: orden, reparto, desempate y límites de producción. |
+| Owner                                                          | Operación                                  | Evidencia necesaria                                                                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Axel/Promotions                        | Composición interna y límites              | Implementada y probada en PR #159; CI y SHA finales se registran en esa entrega. |
 | G6 + owners de Marketplace, Chatbot, Retail y Ventas/Postventa | Respuesta/snapshot de múltiples beneficios | Aceptación verificable de `promotion_id` principal; si hace falta desglose, contrato versionado y pruebas de consumidor. No se presume aceptación por silencio. |
-| Pricing + Ventas/Postventa + G6 | Salida monetaria y conciliación | Confirmar escala/redondeo/reparto y ejemplos monetarios; verificar la implementación candidata contra la regla homologada. |
-| Catálogo/Pricing + integración G6/G7 | Evaluación comercial real | Adaptadores con identidad autorizada y precios/elegibilidad coherentes para canal/instante. |
+| Pricing + Ventas/Postventa + G6                                | Salida monetaria y conciliación            | Confirmar escala/redondeo/reparto y ejemplos monetarios; verificar la implementación candidata contra la regla homologada.                                      |
+| Catálogo/Pricing + integración G6/G7                           | Evaluación comercial real                  | Adaptadores con identidad autorizada y precios/elegibilidad coherentes para canal/instante.                                                                     |
 
-Este documento queda listo para revisión; no se enviaron mensajes ni se atribuyó
-aprobación a otros owners. #72 permanece parcial y las demás fronteras de #73 no
-se desbloquean por definir la fórmula de composición.
+La implementación interna definida queda conectada y probada. No se atribuye
+homologación ni despliegue a otros owners: las pruebas compartidas y fronteras
+comerciales de #73 conservan sus responsables y condiciones de desbloqueo.

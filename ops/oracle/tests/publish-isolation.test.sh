@@ -11,20 +11,20 @@ grep -Eq '^      fail-fast: false$' "$WORKFLOW"
 grep -Fq '        service: ${{ fromJSON(needs.prepare.outputs.services) }}' "$WORKFLOW"
 grep -Fq '      group: deploy-g6-services-oracle-${{ github.repository }}-${{ matrix.service }}' "$WORKFLOW"
 grep -Fq '      cancel-in-progress: false' "$WORKFLOW"
-grep -Fq 'Verify or reserve immutable SHA image' "$WORKFLOW"
+grep -Fq 'Verificar o reservar imagen inmutable por SHA' "$WORKFLOW"
 grep -Fq 'ensure-ghcr-sha-image.sh' "$WORKFLOW"
 grep -Fq "steps.image.outputs.exists == 'false'" "$WORKFLOW"
 grep -Eq '^        type: choice$' "$WORKFLOW"
-publish_line="$(grep -n 'name: Build and publish image tagged with the SHA' "$WORKFLOW" | cut -d: -f1)"
-deployment_line="$(grep -n 'name: Register deployment attempt' "$WORKFLOW" | cut -d: -f1)"
-remote_line="$(grep -n 'name: Deploy image, check health and roll back on failure' "$WORKFLOW" | cut -d: -f1)"
-success_line="$(grep -n 'name: Record successful deployment after remote health checks' "$WORKFLOW" | cut -d: -f1)"
+publish_line="$(grep -n 'name: Construir y publicar imagen etiquetada con SHA' "$WORKFLOW" | cut -d: -f1)"
+deployment_line="$(grep -n '^      - name: Registrar intento de despliegue$' "$WORKFLOW" | cut -d: -f1)"
+remote_line="$(grep -n '^      - name: Desplegar imagen, comprobar salud y recuperar ante fallo$' "$WORKFLOW" | cut -d: -f1)"
+success_line="$(grep -n '^      - name: Registrar despliegue exitoso después de comprobar salud remota$' "$WORKFLOW" | cut -d: -f1)"
 ((publish_line < deployment_line && deployment_line < remote_line && remote_line < success_line)) || {
-  echo 'FAIL: el deployment exitoso no está ordenado después de publicación y verificación remota.' >&2
+  echo 'FALLO: el deployment exitoso no está ordenado después de publicación y verificación remota.' >&2
   exit 1
 }
 if grep -Eq '^  publish:$|needs\.publish\.result' "$WORKFLOW"; then
-  echo 'FAIL: la publicación todavía es una barrera agregada para otras filas.' >&2
+  echo 'FALLO: la publicación todavía es una barrera agregada para otras filas.' >&2
   exit 1
 fi
 
@@ -40,12 +40,12 @@ release_one() {
 }
 
 if release_one catalog-svc; then
-  echo 'FAIL: la publicación simulada debía fallar.' >&2
+  echo 'FALLO: la publicación simulada debía fallar.' >&2
   exit 1
 fi
 release_one inventory-svc
 [[ "$(<"$LOG")" == $'publish:catalog-svc\npublish:inventory-svc\ndeploy:inventory-svc' ]] || {
-  echo 'FAIL: un fallo de publicación afectó el servicio independiente.' >&2
+  echo 'FALLO: un fallo de publicación afectó el servicio independiente.' >&2
   exit 1
 }
-printf 'PASS: publicación fallida aislada de otra fila de servicio\n'
+printf 'CORRECTO: publicación fallida aislada de otra fila de servicio\n'

@@ -32,7 +32,7 @@ cleanup_test() {
 trap cleanup_test EXIT
 
 fail() {
-  printf 'FAIL: %s\n' "$1" >&2
+  printf 'FALLO: %s\n' "$1" >&2
   exit 1
 }
 
@@ -89,7 +89,7 @@ if env -u SSH_ORIGINAL_COMMAND bash "$STAGED_OPS/deploy-g6-service.sh" --version
   fail 'la versión incompatible del registro no fue rechazada'
 fi
 mv "${TEMP_ROOT}/services.psv.version-backup" "$STAGED_OPS/services.psv"
-printf 'PASS: versión del registro y ejecutor informada y compatibilidad obligatoria\n'
+printf 'CORRECTO: versión del registro y ejecutor informada y compatibilidad obligatoria\n'
 touch "${TEMP_ROOT}/opt/g6-productos-ofertas/inventory/docker-compose.inventory.yml"
 touch "${TEMP_ROOT}/opt/g6-productos-ofertas/shared/docker-compose.service.yml"
 printf '%s\n' 'DATABASE_URL=test-only' > "${TEMP_ROOT}/etc/g6-inventory/runtime.env"
@@ -155,7 +155,7 @@ REQUIRED_COMPOSE_ENV
       --file "${REPO_ROOT}/ops/oracle/docker-compose.inventory.http.yml" config --quiet >/dev/null 2>&1; then
     fail 'Compose aceptó la ausencia de INVENTORY_IMAGE'
   fi
-  printf 'PASS: Compose base y opt-in validados; aliases únicos, healthchecks y puertos loopback conservados\n'
+  printf 'CORRECTO: Compose base y opt-in validados; aliases únicos, healthchecks y puertos loopback conservados\n'
 }
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
@@ -371,7 +371,7 @@ assert_value "${STATE_ROOT}/g6-inventory/active-image" "$INVENTORY_IMAGE"
 assert_value "${STATE_ROOT}/g6-inventory/previous-image" "$OLD_INVENTORY_IMAGE"
 assert_value "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" "$OLD_CATALOG_IMAGE"
 [[ "$(<"${TEMP_ROOT}/docker.log")" == $'g6-inventory pull ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:0123456789012345678901234567890123456789\ng6-inventory up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:0123456789012345678901234567890123456789' ]] || fail 'Inventario no conservó su proyecto, puerto o flujo de operaciones'
-printf 'PASS: comando SSH anterior y aislamiento de inventory-svc\n'
+printf 'CORRECTO: comando SSH anterior y aislamiento de inventory-svc\n'
 
 reset_simulation
 printf '%s\n' "$OLD_INVENTORY_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc"
@@ -381,14 +381,14 @@ assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$CAT
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/previous-image" "$OLD_CATALOG_IMAGE"
 assert_value "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc" "$OLD_INVENTORY_IMAGE"
 [[ "$(<"${TEMP_ROOT}/docker.log")" == $'g6-catalog-svc pull ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:0123456789012345678901234567890123456789\ng6-catalog-svc up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:0123456789012345678901234567890123456789' ]] || fail 'catalog-svc alteró un proyecto o servicio no seleccionado'
-printf 'PASS: ejecución genérica de catalog-svc aislada de Inventario\n'
+printf 'CORRECTO: ejecución genérica de catalog-svc aislada de Inventario\n'
 
 # Sin el overlay opt-in, una instalación previa no necesita conocer g6-http.
 reset_simulation
 printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
 run_deploy "service-deploy catalog-svc ${IMAGE_SHA}" 3001 0
 [[ ! -f "${TEMP_ROOT}/network.log" ]] || fail 'el despliegue anterior inspeccionó una red no habilitada'
-printf 'PASS: despliegue genérico conserva compatibilidad cuando el overlay no está instalado\n'
+printf 'CORRECTO: despliegue genérico conserva compatibilidad cuando el overlay no está instalado\n'
 
 # El overlay es opt-in y exige que la red ya exista antes de pull/up.
 cp "$TEMP_ROOT/service-http.yml" "${TEMP_ROOT}/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml"
@@ -453,7 +453,7 @@ reset_simulation
 touch "${TEMP_ROOT}/g6-http-present"
 printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
 run_deploy "service-deploy catalog-svc ${IMAGE_SHA}" 3001 0
-printf 'PASS: dos servicios genéricos comparten solo el alias implícito service y conservan aliases canónicos únicos\n'
+printf 'CORRECTO: dos servicios genéricos comparten solo el alias implícito service y conservan aliases canónicos únicos\n'
 printf '%s\n' 'g6-catalog-svc|catalog-svc,service|service|g6-catalog-svc' 'g6-taxonomy-svc|catalog-svc,service|service|g6-taxonomy-svc' > "${TEMP_ROOT}/network-members.tsv"
 reset_simulation
 touch "${TEMP_ROOT}/g6-http-present"
@@ -477,8 +477,8 @@ reset_simulation
 touch "${TEMP_ROOT}/g6-http-present"
 printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
 run_deploy "service-deploy catalog-svc ${IMAGE_SHA}" 3001 0
-printf 'PASS: red externa valida configuración, miembros y colisiones de alias antes de pull/up\n'
-printf 'PASS: overlay solo se aplica con g6-http preparado y aliases validados\n'
+printf 'CORRECTO: red externa valida configuración, miembros y colisiones de alias antes de pull/up\n'
+printf 'CORRECTO: overlay solo se aplica con g6-http preparado y aliases validados\n'
 
 # Inventory mantiene el comando/Compose legado incluso si hay overlay genérico;
 # su overlay dedicado solo se usa al instalarlo expresamente.
@@ -496,7 +496,7 @@ grep -Fq "${TEMP_ROOT}/opt/g6-productos-ofertas/inventory/docker-compose.invento
   "${TEMP_ROOT}/docker-args.log" || fail 'Inventory no aplicó su overlay explícito'
 [[ "$(<"${TEMP_ROOT}/docker.log")" == $'g6-inventory pull ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:0123456789012345678901234567890123456789\ng6-inventory up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:0123456789012345678901234567890123456789' ]] ||
   fail 'Inventory cambió el proyecto o las operaciones Compose del flujo legado'
-printf 'PASS: Inventory legacy conserva wrapper, proyecto, 3005 y overlay opt-in\n'
+printf 'CORRECTO: Inventory legacy conserva wrapper, proyecto, 3005 y overlay opt-in\n'
 
 reset_simulation
 printf '%s\n' "$OLD_INVENTORY_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc"
@@ -507,7 +507,7 @@ assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$OLD
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/previous-image" "$OLD_CATALOG_IMAGE"
 assert_value "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc" "$OLD_INVENTORY_IMAGE"
 [[ "$(<"${TEMP_ROOT}/docker.log")" == $'g6-catalog-svc pull ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:abcdefabcdefabcdefabcdefabcdefabcdefabcd\ng6-catalog-svc up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:abcdefabcdefabcdefabcdefabcdefabcdefabcd\ng6-catalog-svc up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:2222222222222222222222222222222222222222' ]] || fail 'rollback genérico no quedó confinado al servicio catalog-svc'
-printf 'PASS: rollback catalog-svc sin modificar inventory-svc\n'
+printf 'CORRECTO: rollback catalog-svc sin modificar inventory-svc\n'
 
 reset_simulation
 printf '%s\n' "$OLD_INVENTORY_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc"
@@ -515,7 +515,7 @@ printf '%s\n' "$INVENTORY_NEXT_IMAGE" > "${TEMP_ROOT}/unhealthy-http-image"
 run_deploy "inventory-deploy ${NEXT_SHA}" 3005 1 "${STAGED_OPS}/deploy-inventory-svc.sh"
 assert_value "${STATE_ROOT}/g6-inventory/active-image" "$OLD_INVENTORY_IMAGE"
 assert_value "${STATE_ROOT}/g6-inventory/previous-image" "$OLD_INVENTORY_IMAGE"
-printf 'PASS: rollback de Inventario mantiene imagen y estado previos\n'
+printf 'CORRECTO: rollback de Inventario mantiene imagen y estado previos\n'
 
 for invalid_command in \
   'service-deploy unknown-svc 0123456789012345678901234567890123456789' \
@@ -528,7 +528,7 @@ for invalid_command in \
   run_deploy "$invalid_command" 3001 1
   [[ ! -s "${TEMP_ROOT}/docker.log" ]] || fail "entrada rechazada ejecutó operaciones Docker: ${invalid_command}"
 done
-printf 'PASS: nombres no registrados y entradas inválidas rechazadas\n'
+printf 'CORRECTO: nombres no registrados y entradas inválidas rechazadas\n'
 
 # Dos despliegues del mismo servicio se serializan en el host y el estado final
 # conserva active-image/previous-image como pares coherentes.
@@ -549,7 +549,7 @@ assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$CAT
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/previous-image" "$CATALOG_NEXT_IMAGE"
 expected_log="$(printf '%s\n' "g6-catalog-svc pull ${CATALOG_NEXT_IMAGE}" "g6-catalog-svc up ${CATALOG_NEXT_IMAGE}" "g6-catalog-svc pull ${CATALOG_IMAGE}" "g6-catalog-svc up ${CATALOG_IMAGE}")"
 [[ "$(<"${TEMP_ROOT}/docker.log")" == "$expected_log" ]] || fail 'el orden de despliegues concurrentes se corrompió'
-printf 'PASS: despliegues concurrentes serializados y estado activo/anterior coherente\n'
+printf 'CORRECTO: despliegues concurrentes serializados y estado activo/anterior coherente\n'
 
 # El bloqueo también cubre la fase de rollback; otro despliegue espera hasta
 # que la restauración y la escritura de estado terminen.
@@ -570,7 +570,7 @@ if wait "$rollback_pid"; then fail 'el despliegue no saludable debió informar r
 wait "$after_rollback_pid" || fail 'el despliegue posterior al rollback falló'
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$CATALOG_IMAGE"
 assert_value "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" "$CATALOG_IMAGE"
-printf 'PASS: rollback concurrente protegido del siguiente despliegue\n'
+printf 'CORRECTO: rollback concurrente protegido del siguiente despliegue\n'
 
 # El wrapper legado usado por Inventory y el comando genérico terminan en el
 # mismo lock local, por lo que manual/automático no pueden pisar su estado.
@@ -589,7 +589,7 @@ wait "$manual_pid" || fail 'el comando SSH compatible de Inventario falló'
 wait "$automatic_pid" || fail 'el segundo deploy de Inventario falló'
 assert_value "${STATE_ROOT}/g6-inventory/active-image" "$INVENTORY_IMAGE"
 assert_value "${STATE_ROOT}/g6-inventory/previous-image" "$INVENTORY_NEXT_IMAGE"
-printf 'PASS: wrapper manual y comando genérico automático comparten exclusión de Inventario\n'
+printf 'CORRECTO: wrapper manual y comando genérico automático comparten exclusión de Inventario\n'
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 && docker info >/dev/null 2>&1 &&
   docker image inspect inventory-svc:ci >/dev/null 2>&1; then
@@ -646,7 +646,7 @@ RUNTIME_COMPOSE
     grep -Fxq taxonomy-svc <<< "$taxonomy_aliases" || fail 'alias Docker canónico taxonomy-svc ausente'
     grep -Fxq taxonomy-svc <<< "$catalog_aliases" && fail 'taxonomy-svc colisionó con el alias canónico de catalog-svc'
     grep -Fxq catalog-svc <<< "$taxonomy_aliases" && fail 'catalog-svc colisionó con el alias canónico de taxonomy-svc'
-    printf 'PASS: aliases reales Docker catalog-svc=[%s] taxonomy-svc=[%s]\n' \
+    printf 'CORRECTO: aliases reales Docker catalog-svc=[%s] taxonomy-svc=[%s]\n' \
       "$(tr '\n' ' ' <<< "$catalog_aliases" | sed 's/[[:space:]]*$//')" \
       "$(tr '\n' ' ' <<< "$taxonomy_aliases" | sed 's/[[:space:]]*$//')"
 
@@ -685,7 +685,7 @@ RUNTIME_COMPOSE
     [[ "$result" == 1 ]] || fail "preflight Docker real terminó inesperadamente: $(<"${TEMP_ROOT}/runtime-preflight.log")"
     grep -Fq 'la imagen actual no pertenece al servicio registrado' "${TEMP_ROOT}/runtime-preflight.log" ||
       fail "preflight Docker no superó la validación de aliases: $(<"${TEMP_ROOT}/runtime-preflight.log")"
-    printf 'PASS: preflight real aceptó ambos miembros; se detuvo luego en el gate de imagen antes de login/pull/up\n'
+    printf 'CORRECTO: preflight real aceptó ambos miembros; se detuvo luego en el gate de imagen antes de login/pull/up\n'
   fi
 else
   printf 'NO EJECUTADO: Docker daemon e imagen inventory-svc:ci requeridos para verificar aliases runtime\n'

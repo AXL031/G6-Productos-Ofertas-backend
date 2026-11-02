@@ -4,7 +4,7 @@ import {
   type ProposalResult,
 } from './benefit-composition.js';
 
-/** Internal projection of candidate policy v1. Scale is explicit; this is not an
+/** Internal projection of approved policy v1. Scale is explicit; this is not an
  * HTTP DTO or an adopted currency registry. Never round intermediate benefits. */
 export function projectBenefitMoney(
   evaluation: ProposalResult,

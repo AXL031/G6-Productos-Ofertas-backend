@@ -1,0 +1,5 @@
+--- a/scripts/seed/mcp/catalog/003_carga_catalogo.sql
++++ b/scripts/seed/mcp/catalog/003_carga_catalogo.sql
+@@ -330 +330 @@
+-IF EXISTS (SELECT 1 FROM jsonb_array_elements(e->'products') x WHERE NOT EXISTS (SELECT 1 FROM catalog.products r WHERE r.id=(x->>'id')::uuid AND (to_jsonb(r)-'created_at'-'updated_at'-'catalog_version')=x)) THEN RAISE EXCEPTION 'DATA-002 contenido diferente en catalog.products'; END IF;
++IF EXISTS (SELECT 1 FROM jsonb_array_elements(e->'products') x WHERE NOT EXISTS (SELECT 1 FROM catalog.products r WHERE r.id=(x->>'id')::uuid AND (to_jsonb(r)-'created_at'-'updated_at'-'catalog_version'-'publicado_alguna_vez')=x)) THEN RAISE EXCEPTION 'DATA-002 contenido diferente en catalog.products'; END IF;

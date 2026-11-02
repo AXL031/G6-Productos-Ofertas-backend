@@ -1,0 +1,71 @@
+--- a/contratos/http/openapi.yaml
++++ b/contratos/http/openapi.yaml
+@@ -879,4 +879 @@
+-                      enum: &id029
+-                      - CATEGORIA_INVALIDA
+-                      - MARCA_INVALIDA
+-                      - PERFIL_FISICO_INVALIDO
++                      enum: [CATEGORIA_INVALIDA, MARCA_INVALIDA, PERFIL_FISICO_INVALIDO, TIPO_PRODUCTO_INVALIDO]
+@@ -900 +897,5 @@
+-        '422': *id029
++        '422':
++        - CATEGORIA_INVALIDA
++        - MARCA_INVALIDA
++        - PERFIL_FISICO_INVALIDO
++        - TIPO_PRODUCTO_INVALIDO
+@@ -6149,0 +6151,16 @@
++        '400':
++          description: Entrada sintacticamente invalida
++          content:
++            application/problem+json:
++              schema:
++                allOf:
++                - $ref: '#/components/schemas/Problem'
++                - type: object
++                  properties:
++                    status:
++                      type: integer
++                      const: 400
++                    code:
++                      type: string
++                      const: VALIDACION
++                  required: [status, code]
+@@ -6251,0 +6269,2 @@
++        '400':
++        - VALIDACION
+@@ -6466,0 +6486,16 @@
++        '400':
++          description: Entrada sintacticamente invalida
++          content:
++            application/problem+json:
++              schema:
++                allOf:
++                - $ref: '#/components/schemas/Problem'
++                - type: object
++                  properties:
++                    status:
++                      type: integer
++                      const: 400
++                    code:
++                      type: string
++                      const: VALIDACION
++                  required: [status, code]
+@@ -6568,0 +6604,2 @@
++        '400':
++        - VALIDACION
+@@ -21956,0 +21994,4 @@
++        tipoProductoId:
++          type: string
++          minLength: 1
++          description: Correccion Q-06 solo en BORRADOR simple, sin variantes persistidas, publicado_alguna_vez=false y catalogVersion vigente.
+@@ -22008,5 +22049,3 @@
+-          oneOf:
+-          - type: string
+-            minLength: 1
+-          - type: 'null'
+-          description: Opcional; Catálogo genera uno si se omite.
++          type: string
++          minLength: 1
++          description: SKU explicito obligatorio, opaco e inmutable; no se genera automaticamente.
+@@ -22030,0 +22070 @@
++      - sku

@@ -26,6 +26,10 @@ import {
   officialMigrations,
 } from './support/official-migrations.mjs';
 import { verifyHttpReadQueries } from './support/http-query-checks.mjs';
+import { verifyHttpUpstreams } from './support/http-upstream-checks.mjs';
+import { verifyServiceTokenWiring } from './support/service-token-wiring-checks.mjs';
+import { verifyHttpComposition } from './support/http-composition-checks.mjs';
+import { verifyH4Invalidations } from './support/h4-invalidation-checks.mjs';
 
 const { Pool } = pg;
 const directory = mkdtempSync(join(tmpdir(), 'g6-promotions-persistence-'));
@@ -639,7 +643,12 @@ try {
   );
 
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
+  checks.push(...(await verifyH4Invalidations(resources.pool)));
   checks.push(...(await verifyHttpWrites(resources, runtimeConfig, admin)));
+  checks.push(...(await verifyHttpUpstreams(resources, runtimeConfig)));
+  stage = 'authenticated Nest service-token wiring';
+  checks.push(...(await verifyServiceTokenWiring(resources, runtimeConfig)));
+  stage = 'HTTP queries and signed JWT with real PostgreSQL';
   checks.push(...(await verifyHttpReadQueries(resources, runtimeConfig)));
   if (process.env.G6_PROMOTIONS_GATEWAY_E2E === 'true') {
     stage = 'native Gateway/Promotions flow with real PostgreSQL';
@@ -660,6 +669,15 @@ try {
     } finally {
       await gatewayResources.onApplicationShutdown();
     }
+  }
+  stage = 'approved benefit composition through HTTP and PostgreSQL';
+  const compositionResources = nativeCouponResources(runtimeConfig);
+  try {
+    checks.push(
+      ...(await verifyHttpComposition(compositionResources, runtimeConfig)),
+    );
+  } finally {
+    await compositionResources.onApplicationShutdown();
   }
   console.log(
     JSON.stringify({

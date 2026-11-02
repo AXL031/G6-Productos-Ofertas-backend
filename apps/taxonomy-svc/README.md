@@ -11,7 +11,10 @@ El servicio valida la configuración en el arranque y falla cerrado (`fail-close
 | `NODE_ENV` | Entorno de ejecución. Debe ser uno de `development`, `test`, `production`. | Sí | Ninguno |
 | `TAXONOMY_SVC_PORT` | Puerto HTTP del servicio. Entero entre 1 y 65535. | Sí (o `PORT`) | Ninguno |
 | `PORT` | Puerto HTTP alternativo; se usa solo si no se define `TAXONOMY_SVC_PORT`. | No | Ninguno |
-| `DATABASE_URL` | URL de conexión PostgreSQL a la taxonomía (`postgresql://` o `postgres://`), con host y base de datos. | Sí | Ninguno |
+| `DATABASE_URL` | Fuente opcional de parámetros PostgreSQL. Alternativamente se pueden proporcionar `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE` y `PGSSLROOTCERT`. Los valores presentes en la URL tienen precedencia. | No, si se proporcionan los parámetros PG | Ninguno |
+| `G6_DATABASE_SCHEMA`, `G6_EXPECTED_ROLE`, `G6_CONNECTION_MODE` | Schema `taxonomy`, rol permitido y modo `direct` o `session`. El schema también puede venir en la URL. | Sí | Ninguno |
+
+El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y una CA absoluta legible; la URL puede suministrar los valores correspondientes. El arranque valida además la identidad efectiva antes de escuchar.
 
 ## Endpoints operativos
 
@@ -24,6 +27,8 @@ El servicio valida la configuración en el arranque y falla cerrado (`fail-close
 
 ## Persistencia
 
+**Alcance parcial del issue #35:** los mapeos Drizzle cubren categorías y marcas de las 12 tablas del modelo físico. Queda pendiente mapear las otras diez tablas y validar la persistencia contra las migraciones oficiales; el fixture aislado de estas pruebas no ejecuta dichas migraciones. Este avance no cierra el issue #35.
+
 - Driver `drizzle-orm` sobre `pg` (`node-postgres`).
 - Esquema en `src/persistence/taxonomy.schema.ts`: `taxonomy.categories` y `taxonomy.brands` mapeadas al modelo físico, incluido el enum `taxonomy.estado_entidad` y la columna generada `nombre_normalizado`.
 - `DrizzleTaxonomyRepository` implementa `TaxonomyRepository` y `TaxonomyReadinessIndicator`; las lecturas filtran por `estado = 'ACTIVO'`.
@@ -32,6 +37,14 @@ El servicio valida la configuración en el arranque y falla cerrado (`fail-close
 
 ## Pruebas de integración (Postgres aislado)
 
+### Observabilidad y reconciliación de bajas vencidas
+
+Al ejecutar `recuperarVencidas()`, las operaciones con entidad ausente, estado distinto o versión no coincidente permanecen `IN_PROGRESS`: no se modifica la entidad, no se emite resultado terminal y no se libera ninguna barrera de Catálogo. El servicio registra el aviso estructurado `taxonomy.deactivation.recovery_discrepancy`, con `operation_id`, tipo y motivo; omite datos de conexión y payloads. Cada instancia inspecciona como máximo una vez cada cinco minutos y registra hasta 50 identificadores. La consulta obtiene como máximo 51 discrepancias y `muestra_truncada` indica que hay más de 50; no calcula un total exacto. El límite de frecuencia es por instancia y se reinicia al reiniciar el proceso, por lo que la plataforma debe deduplicar entre réplicas. Los casos discrepantes no ocupan los 50 lugares destinados a recuperaciones válidas. Un cambio concurrente durante la restauración se reporta como `CAMBIO_CONCURRENTE`, también con límite de frecuencia por instancia. Si hay pocas o ninguna discrepancia, la inspección aún puede recorrer las operaciones vencidas; medir el plan con datos representativos antes de producción y evaluar un índice mediante el proceso de migración autorizado.
+
+Medición local exploratoria: `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF)` sobre PostgreSQL 17 desechable, con 100 000 operaciones sintéticas vencidas y sin discrepancias, devolvió 0 filas en 130,498 ms y mostró un recorrido secuencial de las operaciones. Es una muestra local sin carga concurrente ni datos productivos, no una garantía de latencia; requiere medición con cardinalidad e índices reales antes del despliegue.
+
+El owner de Taxonomy debe investigar la operación y contrastar su versión autoritativa, estado e integración con Catálogo antes de decidir una reconciliación. No debe forzar una versión, liberar barreras ni aplicar SQL a la base compartida sin el proceso autorizado. Una vez corregida y verificada la causa mediante ese proceso, una ejecución posterior puede recuperar la operación; la transacción registra el resultado en outbox. La publicación real y la ejecución periódica del runner siguen pendientes. Configurar una alerta operativa sobre este evento y monitorear su persistencia también queda pendiente de la plataforma; un aviso local no acredita alerta desplegada ni reconciliación externa.
+
 `scripts/ci/run-taxonomy-integration.mjs` aprovisiona y elimina su propio contenedor `postgres:17-alpine`, publica el puerto solo en loopback y genera la URL/credenciales internamente. Rechaza `TAXONOMY_TEST_DATABASE_URL` recibida desde el entorno. PostgreSQL se inicia con un identificador aleatorio de sesión que el preflight coteja mediante `current_setting()` antes de permitir cualquier DDL; un testigo insertado en una URL recibida no se considera acreditación. No apuntar pruebas destructivas a Supabase ni a bases compartidas.
 
 ```sh
@@ -39,3 +52,38 @@ node scripts/ci/run-taxonomy-integration.mjs
 ```
 
 La suite crea esquema, roles y datos de prueba únicamente en el contenedor gestionado por el runner, verifica permisos efectivos (positivos y negativos), transacciones (commit/rollback), readiness y el camino `503`, y elimina contenedor y esquema al finalizar.
+
+## Prueba de solo lectura contra PostgreSQL real
+
+`test/postgres.readonly.e2e-spec.ts` ejecuta el handler HTTP real con el provider PostgreSQL/Drizzle instalado y comprueba, sin escribir, que la proyección de `GET /api/v1/categorias` y `GET /api/v1/marcas` coincide con los conteos de filas `ACTIVO` y solo expone campos contractuales, y que `GET /api/v1/categorias?estado=INACTIVO` responde `400 VALIDACION` con ese provider.
+
+La prueba solo se ejecuta con `G6_READONLY_INTEGRATION=taxonomy` y requiere las variables `PG*`/`G6_*` de `apps/taxonomy-svc/.env.local` (ignorado por git; nunca se commitea) con `PGSSLMODE=verify-full`, el certificado raíz en `PGSSLROOTCERT` y la identidad `taxonomy_dev_login`. Solo hace `SELECT`; no apuntar pruebas destructivas a Supabase ni a bases compartidas.
+
+El archivo `.env.local` se carga con `node --env-file` (Node interpreta correctamente las comillas del archivo) y la corrida debe declarar explícitamente `G6_READONLY_INTEGRATION=taxonomy`, generar el reporte JSON y fijar su ruta de salida. Sin esas tres piezas, vitest omite la suite y no produce evidencia.
+
+PowerShell (Windows):
+
+```powershell
+$env:G6_READONLY_INTEGRATION = 'taxonomy'
+node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts --reporter=json --outputFile=apps/taxonomy-svc/test/evidence/postgres-readonly-AAAA-MM-DD.json
+```
+
+`sh` (Linux/macOS/Git Bash):
+
+```sh
+G6_READONLY_INTEGRATION=taxonomy node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts --reporter=json --outputFile=apps/taxonomy-svc/test/evidence/postgres-readonly-AAAA-MM-DD.json
+```
+
+La corrida debe reportar `3 passed` y escribir el JSON. Incluye el arranque real con entorno explícito y comprueba los probes con la conexión disponible y después de cerrar el pool. La trazabilidad de la ejecución (SHA, fecha, versiones y comando) se registra en el sidecar `test/evidence/postgres-readonly-AAAA-MM-DD.md`. Esta prueba no acredita autorización G7, despliegue ni E2E desplegado.
+
+## Verificación de configuración y probes (#34)
+
+Pruebas enfocadas de configuración fail-closed, redacción de secretos y separación liveness/readiness:
+
+```sh
+npm test -- apps/taxonomy-svc/src/config/environment.spec.ts apps/taxonomy-svc/src/bootstrap.spec.ts apps/taxonomy-svc/src/logging/sanitized-logger.spec.ts apps/taxonomy-svc/src/database.spec.ts
+npm run test:e2e -- apps/taxonomy-svc/test/readiness.e2e-spec.ts apps/taxonomy-svc/test/app.e2e-spec.ts
+npm run build:taxonomy-svc
+```
+
+El arranque real exige las variables privadas descritas arriba y verifica la identidad PostgreSQL antes de escuchar. Registra la evidencia de cada ejecución local con SHA, fecha, versiones, comandos y resultados; esta no acredita despliegue Oracle, homologación externa ni E2E desplegado.

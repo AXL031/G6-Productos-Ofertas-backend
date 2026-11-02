@@ -1,6 +1,7 @@
 import {
   blockedCommercialContext,
   CommercialDependencyError,
+  CommercialInputError,
   type CommercialContext,
 } from '../../domain/commercial-context.js';
 import { BoundedCommercialContext } from './commercial-deadline.js';
@@ -10,6 +11,17 @@ const basket = {
   lines: [{ sku: 'A', quantity: 1 }],
 };
 describe('Bounded commercial integration boundary', () => {
+  it('preserves a contractual input error through the deadline boundary', async () => {
+    const source = {
+      ...blockedCommercialContext,
+      basket: async () => {
+        throw new CommercialInputError();
+      },
+    };
+    await expect(
+      new BoundedCommercialContext(source).basket(basket, 'at'),
+    ).rejects.toBeInstanceOf(CommercialInputError);
+  });
   afterEach(() => vi.useRealTimers());
   it('preserves the explicit default gate and its unblock condition', async () => {
     const context = new BoundedCommercialContext(blockedCommercialContext);

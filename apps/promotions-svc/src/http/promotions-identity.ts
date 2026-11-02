@@ -10,6 +10,7 @@ import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 import type { Request } from 'express';
 import { PromotionsConfigService } from '../infrastructure/config/promotions-config.js';
 import { httpContracts } from './http-contract.generated.js';
+import { restrictedDemoPeer } from './restricted-demo-peer.js';
 import {
   isUuid,
   object,
@@ -101,7 +102,10 @@ export class PromotionsIdentity {
     @Inject(PROMOTIONS_JWKS) private readonly keys: PromotionsKeySource,
   ) {}
   async authorize(
-    operation: HttpOperation,
+    operation: Pick<
+      HttpOperation,
+      'security' | 'audience' | 'scope' | 'clients'
+    >,
     authorization: string | undefined,
   ): Promise<void> {
     const bearer = /^Bearer ([^\s]+)$/i.exec(authorization ?? '');
@@ -201,6 +205,8 @@ export class PromotionsQueryGuard implements CanActivate {
   constructor(
     @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(PromotionsIdentity) private readonly identity: PromotionsIdentity,
+    @Inject(PromotionsConfigService)
+    private readonly config: PromotionsConfigService,
   ) {}
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const id = this.reflector.get<string>(
@@ -210,6 +216,21 @@ export class PromotionsQueryGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     if (!httpContracts[id])
       throw new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    if (this.config.settings.localDemoEnabled) {
+      // Use the TCP peer, never proxy/identity headers supplied by a caller.
+      const peer = request.socket.remoteAddress;
+      if (!(await restrictedDemoPeer(peer)))
+        throw new PromotionsHttpError(403, 'SCOPE_INSUFICIENTE');
+      const operation = httpContracts[id];
+      const path = new RegExp(
+        '^' + operation.path.replace(/\{[^}]+\}/g, '[^/]+') + '/?$',
+        'i',
+      );
+      if (request.method !== operation.method || !path.test(request.path))
+        throw new PromotionsHttpError(403, 'SCOPE_INSUFICIENTE');
+      // No synthetic user/service principal is installed. Business handlers run unchanged.
+      return true;
+    }
     await this.identity.authorize(
       httpContracts[id],
       request.header('authorization'),

@@ -1,0 +1,781 @@
+{
+  "version": 1,
+  "schema": "inventory",
+  "source": {
+    "kind": "READ_ONLY_EXPORT",
+    "captured_at": "2026-11-02T08:00:00.000000Z",
+    "project_ref": "slzglmtiyrzygpkiuthf",
+    "environment": "shared",
+    "database": "postgres",
+    "engine": "PostgreSQL 17",
+    "authorized_by": "Marco Castilla (Infraestructura / G6)",
+    "notice": "Export de solo lectura del estado real de Supabase inventory al 2026-11-02. Contiene 2 ubicaciones, 14 saldos, 14 operaciones y 12 registros kardex."
+  },
+  "tables": {
+    "locations": [
+      {
+        "id": "9129b578-631e-1735-8427-b683fb524380",
+        "code": "ALM-LURIN",
+        "name": "Centro de distribución Lurín",
+        "type": "ALMACEN_CENTRAL",
+        "external_ref": null,
+        "active": true
+      },
+      {
+        "id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "code": "TDA-MIRAFLORES",
+        "name": "Tienda Miraflores",
+        "type": "TIENDA",
+        "external_ref": null,
+        "active": true
+      }
+    ],
+    "stock_threshold_override": [],
+    "stock_balance": [
+      {
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 20,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 5,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 10,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 2,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "ADI-RF3-GRI-39",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 0,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "0"
+      },
+      {
+        "sku_id": "ADI-RF3-GRI-39",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 0,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "0"
+      },
+      {
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 10,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 2,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 18,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 4,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 5,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 1,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "on_hand": 5,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      },
+      {
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "on_hand": 1,
+        "reserved": 0,
+        "blocked": 0,
+        "stock_version": "1"
+      }
+    ],
+    "inventory_operations": [
+      {
+        "id": "20000000-0000-4000-8000-000000000001",
+        "operation_id": "10000000-0000-4000-8000-000000000001",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:ADI-ENT22-AZU-M:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 20,
+        "quantity_applied": 20,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-ENT22-AZU-M",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 20
+        },
+        "result_payload": {
+          "sku_id": "ADI-ENT22-AZU-M",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 20,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 20,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000002",
+        "operation_id": "10000000-0000-4000-8000-000000000002",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:ADI-ENT22-AZU-M:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 5,
+        "quantity_applied": 5,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-ENT22-AZU-M",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 5
+        },
+        "result_payload": {
+          "sku_id": "ADI-ENT22-AZU-M",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 5,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 5,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000003",
+        "operation_id": "10000000-0000-4000-8000-000000000003",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:ADI-RF3-GRI-38:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 10,
+        "quantity_applied": 10,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-RF3-GRI-38",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 10
+        },
+        "result_payload": {
+          "sku_id": "ADI-RF3-GRI-38",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 10,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 10,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000004",
+        "operation_id": "10000000-0000-4000-8000-000000000004",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:ADI-RF3-GRI-38:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 2,
+        "quantity_applied": 2,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-RF3-GRI-38",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 2
+        },
+        "result_payload": {
+          "sku_id": "ADI-RF3-GRI-38",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 2,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 2,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000005",
+        "operation_id": "10000000-0000-4000-8000-000000000005",
+        "operation_type": "INICIALIZACION_SKU",
+        "idempotency_key": "init:ADI-RF3-GRI-39:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-RF3-GRI-39",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 0,
+        "quantity_applied": 0,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-RF3-GRI-39",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 0
+        },
+        "result_payload": {
+          "sku_id": "ADI-RF3-GRI-39",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 0,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 0,
+          "stock_version": "0"
+        },
+        "stock_version": "0",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000006",
+        "operation_id": "10000000-0000-4000-8000-000000000006",
+        "operation_type": "INICIALIZACION_SKU",
+        "idempotency_key": "init:ADI-RF3-GRI-39:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "ADI-RF3-GRI-39",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 0,
+        "quantity_applied": 0,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "ADI-RF3-GRI-39",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 0
+        },
+        "result_payload": {
+          "sku_id": "ADI-RF3-GRI-39",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 0,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 0,
+          "stock_version": "0"
+        },
+        "stock_version": "0",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000007",
+        "operation_id": "10000000-0000-4000-8000-000000000007",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-PITCH-05:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 10,
+        "quantity_applied": 10,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-PITCH-05",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 10
+        },
+        "result_payload": {
+          "sku_id": "NIK-PITCH-05",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 10,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 10,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000008",
+        "operation_id": "10000000-0000-4000-8000-000000000008",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-PITCH-05:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 2,
+        "quantity_applied": 2,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-PITCH-05",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 2
+        },
+        "result_payload": {
+          "sku_id": "NIK-PITCH-05",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 2,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 2,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000009",
+        "operation_id": "10000000-0000-4000-8000-000000000009",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-REV7-NEG-41:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 18,
+        "quantity_applied": 18,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-REV7-NEG-41",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 18
+        },
+        "result_payload": {
+          "sku_id": "NIK-REV7-NEG-41",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 18,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 18,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000010",
+        "operation_id": "10000000-0000-4000-8000-000000000010",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-REV7-NEG-41:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 4,
+        "quantity_applied": 4,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-REV7-NEG-41",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 4
+        },
+        "result_payload": {
+          "sku_id": "NIK-REV7-NEG-41",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 4,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 4,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000011",
+        "operation_id": "10000000-0000-4000-8000-000000000011",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-REV7-NEG-42:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 5,
+        "quantity_applied": 5,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-REV7-NEG-42",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 5
+        },
+        "result_payload": {
+          "sku_id": "NIK-REV7-NEG-42",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 5,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 5,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000012",
+        "operation_id": "10000000-0000-4000-8000-000000000012",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:NIK-REV7-NEG-42:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 1,
+        "quantity_applied": 1,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "NIK-REV7-NEG-42",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 1
+        },
+        "result_payload": {
+          "sku_id": "NIK-REV7-NEG-42",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 1,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 1,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000013",
+        "operation_id": "10000000-0000-4000-8000-000000000013",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:PUM-ULP-NEG-42:9129b578-631e-1735-8427-b683fb524380",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "quantity_requested": 5,
+        "quantity_applied": 5,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "PUM-ULP-NEG-42",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 5
+        },
+        "result_payload": {
+          "sku_id": "PUM-ULP-NEG-42",
+          "location_id": "9129b578-631e-1735-8427-b683fb524380",
+          "on_hand": 5,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 5,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      },
+      {
+        "id": "20000000-0000-4000-8000-000000000014",
+        "operation_id": "10000000-0000-4000-8000-000000000014",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "idempotency_key": "init:PUM-ULP-NEG-42:aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "intention": "initial-setup",
+        "status": "APLICADO",
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "quantity_requested": 1,
+        "quantity_applied": 1,
+        "correlation_id": "30000000-0000-4000-8000-000000000001",
+        "client_id": null,
+        "request_fingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "request_payload": {
+          "sku_id": "PUM-ULP-NEG-42",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 1
+        },
+        "result_payload": {
+          "sku_id": "PUM-ULP-NEG-42",
+          "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+          "on_hand": 1,
+          "reserved": 0,
+          "blocked": 0,
+          "available": 1,
+          "stock_version": "1"
+        },
+        "stock_version": "1",
+        "applied_at": "2026-10-16T12:00:00.000000Z"
+      }
+    ],
+    "kardex": [
+      {
+        "id": "40000000-0000-4000-8000-000000000001",
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000001",
+        "quantity": 20,
+        "on_hand_before": 0,
+        "on_hand_after": 20,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000002",
+        "sku_id": "ADI-ENT22-AZU-M",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000002",
+        "quantity": 5,
+        "on_hand_before": 0,
+        "on_hand_after": 5,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000003",
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000003",
+        "quantity": 10,
+        "on_hand_before": 0,
+        "on_hand_after": 10,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000004",
+        "sku_id": "ADI-RF3-GRI-38",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000004",
+        "quantity": 2,
+        "on_hand_before": 0,
+        "on_hand_after": 2,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000005",
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000007",
+        "quantity": 10,
+        "on_hand_before": 0,
+        "on_hand_after": 10,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000006",
+        "sku_id": "NIK-PITCH-05",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000008",
+        "quantity": 2,
+        "on_hand_before": 0,
+        "on_hand_after": 2,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000007",
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000009",
+        "quantity": 18,
+        "on_hand_before": 0,
+        "on_hand_after": 18,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000008",
+        "sku_id": "NIK-REV7-NEG-41",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000010",
+        "quantity": 4,
+        "on_hand_before": 0,
+        "on_hand_after": 4,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000009",
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000011",
+        "quantity": 5,
+        "on_hand_before": 0,
+        "on_hand_after": 5,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000010",
+        "sku_id": "NIK-REV7-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000012",
+        "quantity": 1,
+        "on_hand_before": 0,
+        "on_hand_after": 1,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000011",
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "9129b578-631e-1735-8427-b683fb524380",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000013",
+        "quantity": 5,
+        "on_hand_before": 0,
+        "on_hand_after": 5,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      },
+      {
+        "id": "40000000-0000-4000-8000-000000000012",
+        "sku_id": "PUM-ULP-NEG-42",
+        "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+        "operation_type": "AJUSTE_ABSOLUTO",
+        "operation_id": "10000000-0000-4000-8000-000000000014",
+        "quantity": 1,
+        "on_hand_before": 0,
+        "on_hand_after": 1,
+        "reserved_before": 0,
+        "reserved_after": 0,
+        "blocked_before": 0,
+        "blocked_after": 0,
+        "stock_version": "1",
+        "correlation_id": "30000000-0000-4000-8000-000000000001"
+      }
+    ],
+    "outbox": [],
+    "commercial_fulfillment_routes": []
+  }
+}

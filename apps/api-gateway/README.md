@@ -231,12 +231,15 @@ de los 5 MB de SPEC-011, rechazo 413 de 11 MiB normal/temprano, código ajeno
 rechazado y 401/403 antes de contactar al proveedor. Son fixtures sintéticos
 de transporte, sin acreditar validación de imágenes ni integración Taxonomía.
 
-Regeneración offline: descargar el OpenAPI del commit indicado, convertir YAML
-a JSON con un parser YAML y ejecutar
-`node apps/api-gateway/test/generate-routes.mjs <openapi.json>`; después aplicar
-Prettier y ejecutar pruebas. El parser se usó como herramienta temporal, sin
-añadir dependencias del proyecto. No versionar la copia YAML/JSON temporal de
-`node_modules/.cache`; el inventario generado es el artefacto de runtime.
+Actualización offline focalizada: obtener el OpenAPI oficial **0.6.0-rc.2** y
+convertir su YAML a JSON temporal con un parser YAML. Ejecutar el generador con
+el `operationId` que se desea actualizar, por ejemplo:
+`node apps/api-gateway/test/generate-routes.mjs <openapi-0.6.0-rc.2.json> verificarCantidadComercial`.
+El argumento `operationId` es obligatorio; el generador falla cerrado si falta,
+la operación no existe o `x-error-codes` está ausente o malformado. Solo actualiza
+los códigos de la operación seleccionada; no regenera el resto del registro. El
+parser se usa temporalmente, sin añadir dependencias. No versionar la copia
+YAML/JSON temporal; el inventario generado es el artefacto de runtime.
 
 ## Estado y dependencias específicas
 

@@ -1,0 +1,151 @@
+{
+  "recorded_at": "2026-10-17T13:48:27.697Z",
+  "working_tree_base": "570bf025afabf956f94cbac8fe2589aa197cabac",
+  "type": "real Catalog HTTP -> existing Supabase; public Taxonomy categories; image HEAD",
+  "writes": "none; mutation request must be rejected before DB access",
+  "cases": [
+    {
+      "id": "CATALOG_SUPABASE_READ",
+      "status": "PASS",
+      "products": 20,
+      "total": 20,
+      "durationMs": 784,
+      "with_real_images": 15,
+      "missing_images": [
+        {
+          "id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+          "name": "adidas Entrada 22"
+        },
+        {
+          "id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+          "name": "adidas Runfalcon 3.0"
+        },
+        {
+          "id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+          "name": "Nike Pitch"
+        },
+        {
+          "id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+          "name": "Nike Revolution 7"
+        },
+        {
+          "id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+          "name": "Puma Ultra Play"
+        }
+      ]
+    },
+    {
+      "id": "REAL_IMAGES",
+      "status": "PASS",
+      "images": [
+        {
+          "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada-h57505-gris.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2508-blanco.avif",
+          "status": 200,
+          "type": "image/avif"
+        },
+        {
+          "product_id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-messi-ji8291.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jg5832-negro.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jh3407-celeste.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-academy-hv4386-100.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-100-blanco.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6855-010-negro.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park7-bv6708-010-negro.webp",
+          "status": 200,
+          "type": "image/webp"
+        },
+        {
+          "product_id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-orbita-084641-02-naranja.jpg",
+          "status": 200,
+          "type": "image/jpeg"
+        },
+        {
+          "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-cristal-782244-02-blanco.avif",
+          "status": 200,
+          "type": "image/avif"
+        },
+        {
+          "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/ua-tech2-1326413-001-negro.avif",
+          "status": 200,
+          "type": "image/avif"
+        }
+      ]
+    },
+    {
+      "id": "GUARD_INPUT",
+      "status": "PASS",
+      "invalid_page": 400,
+      "write": 403
+    },
+    {
+      "id": "PUBLIC_TAXONOMY",
+      "status": "PASS",
+      "categories": 8
+    },
+    {
+      "id": "DETAIL",
+      "status": "BLOCKED_UPSTREAM",
+      "http": 503,
+      "dependency": "public Taxonomy /api/v1/marcas not yet published"
+    }
+  ]
+}

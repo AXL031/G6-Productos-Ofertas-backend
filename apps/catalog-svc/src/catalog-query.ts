@@ -1,9 +1,11 @@
 import { BadRequestException } from '@nestjs/common';
 import type { Canal, ProductQuery } from './commercial.types.js';
+import { compareDecimal } from './decimal.js';
 
 export function parseProductQuery(
   input: Record<string, unknown>,
   detail = false,
+  requireChannel = true,
 ): ProductQuery {
   const keys = detail
     ? ['canal']
@@ -25,8 +27,10 @@ export function parseProductQuery(
   }
   const canal = input.canal;
   if (
-    typeof canal !== 'string' ||
-    !['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'].includes(canal)
+    (canal === undefined && requireChannel) ||
+    (canal !== undefined &&
+      (typeof canal !== 'string' ||
+        !['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'].includes(canal)))
   )
     throw new BadRequestException();
   function integer(key: string, fallback: number, max: number): number {
@@ -42,7 +46,7 @@ export function parseProductQuery(
       throw new BadRequestException();
     return +raw;
   }
-  function price(key: string): number | undefined {
+  function price(key: string): string | undefined {
     const raw = input[key];
     if (raw === undefined) return undefined;
     if (
@@ -53,7 +57,7 @@ export function parseProductQuery(
       +raw < 0
     )
       throw new BadRequestException();
-    return +raw;
+    return raw;
   }
   if (
     input.estado !== undefined &&
@@ -74,11 +78,11 @@ export function parseProductQuery(
   if (
     precioMin !== undefined &&
     precioMax !== undefined &&
-    precioMin > precioMax
+    compareDecimal(precioMin, precioMax) > 0
   )
     throw new BadRequestException();
   return {
-    canal: canal as Canal,
+    canal: canal as Canal | undefined,
     q: input.q as string | undefined,
     categoriaId: input.categoriaId as string | undefined,
     marcaId: input.marcaId as string | undefined,

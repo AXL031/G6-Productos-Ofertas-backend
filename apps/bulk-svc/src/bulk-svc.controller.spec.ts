@@ -4,6 +4,7 @@ import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
 import { BulkImportService } from './bulk-import.service.js';
 import { BulkStorageService } from './storage/bulk-storage.service.js';
+import { BulkExportService } from './bulk-export.service.js';
 
 describe('BulkSvcController', () => {
   let controller: BulkSvcController;
@@ -15,6 +16,7 @@ describe('BulkSvcController', () => {
         BulkSvcService,
         { provide: BulkImportService, useValue: {} },
         { provide: BulkStorageService, useValue: {} },
+        { provide: BulkExportService, useValue: {} },
         {
           provide: BulkReadinessService,
           useValue: { check: vi.fn().mockResolvedValue(false) },

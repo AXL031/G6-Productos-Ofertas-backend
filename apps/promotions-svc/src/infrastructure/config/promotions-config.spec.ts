@@ -11,6 +11,47 @@ import {
 describe('Promotions configuration', () => {
   const fixture = createEnvironmentFixture();
   afterAll(() => fixture.cleanup());
+  it('validates paired service credentials against the HTTPS G7 issuer without exposing the secret', () => {
+    const credentials = {
+      AUTH_ISSUER: 'https://g7.test/api/v1/auth',
+      AUTH_JWKS_URL: 'https://g7.test/api/v1/auth/.well-known/jwks.json',
+      PROMOTIONS_SERVICE_TOKEN_URL: 'https://g7.test/api/v1/auth/token',
+      PROMOTIONS_SERVICE_CLIENT_SECRET: 'synthetic-secret',
+    };
+    const settings = validatePromotionsConfiguration({
+      ...fixture.environment,
+      ...credentials,
+    });
+    expect(settings.serviceCredentials?.tokenUrl).toBe(
+      credentials.PROMOTIONS_SERVICE_TOKEN_URL,
+    );
+    expect(JSON.stringify(new PromotionsConfigService(settings))).not.toContain(
+      'synthetic-secret',
+    );
+    for (const overrides of [
+      { PROMOTIONS_SERVICE_TOKEN_URL: undefined },
+      { PROMOTIONS_SERVICE_CLIENT_SECRET: undefined },
+      { PROMOTIONS_SERVICE_CLIENT_SECRET: '' },
+      { AUTH_ISSUER: undefined, AUTH_JWKS_URL: undefined },
+      ...[
+        'http://g7.test/api/v1/auth/token',
+        'https://wrong.test/api/v1/auth/token',
+        'https://g7.test/wrong',
+        'https://g7.test/api/v1/auth/token?secret=x',
+        'https://user:secret@g7.test/api/v1/auth/token',
+      ].map((PROMOTIONS_SERVICE_TOKEN_URL) => ({
+        PROMOTIONS_SERVICE_TOKEN_URL,
+      })),
+    ]) {
+      expect(() =>
+        validatePromotionsConfiguration({
+          ...fixture.environment,
+          ...credentials,
+          ...overrides,
+        }),
+      ).toThrow(PromotionsConfigurationError);
+    }
+  });
   it('requires a paired HTTPS issuer/JWKS configuration and does not serialize it', () => {
     for (const auth of [
       { AUTH_ISSUER: 'https://issuer.test' },
@@ -55,6 +96,69 @@ describe('Promotions configuration', () => {
       'password',
     );
   });
+  it('validates optional existing Gateway upstream variables without enabling public token-free traffic', () => {
+    expect(
+      validatePromotionsConfiguration(fixture.environment).upstreams,
+    ).toEqual({});
+    expect(
+      validatePromotionsConfiguration({
+        ...fixture.environment,
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        GATEWAY_CATALOG_SVC_URL: 'http://catalog-svc:3001',
+        GATEWAY_TAXONOMY_SVC_URL: 'http://127.0.0.1:3006',
+      }).upstreams,
+    ).toMatchObject({
+      catalog: 'http://catalog-svc:3001',
+      taxonomy: 'http://127.0.0.1:3006',
+    });
+    for (const url of [
+      'https://public.example',
+      'http://pricing-svc:3002',
+      'http://user:secret@catalog-svc:3001',
+      'http://catalog-svc:3001/path',
+    ])
+      expect(() =>
+        validatePromotionsConfiguration({
+          ...fixture.environment,
+          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+          GATEWAY_CATALOG_SVC_URL: url,
+        }),
+      ).toThrow('GATEWAY_CATALOG_SVC_URL');
+  });
+
+  it('enables token-free local development explicitly and binds only loopback', () => {
+    expect(validatePromotionsConfiguration(fixture.environment)).toMatchObject({
+      localDemoEnabled: false,
+      listenHost: '::',
+    });
+    for (const NODE_ENV of ['development', 'test'])
+      expect(
+        validatePromotionsConfiguration({
+          ...fixture.environment,
+          NODE_ENV,
+          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        }),
+      ).toMatchObject({ localDemoEnabled: true, listenHost: '127.0.0.1' });
+    expect(
+      validatePromotionsConfiguration({
+        ...fixture.environment,
+        NODE_ENV: 'production',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }),
+    ).toMatchObject({
+      localDemoEnabled: true,
+      listenHost: '0.0.0.0',
+      couponRuntimeEnabled: false,
+    });
+    for (const NODE_ENV of [undefined])
+      expect(() =>
+        validatePromotionsConfiguration({
+          ...fixture.environment,
+          NODE_ENV,
+          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        }),
+      ).toThrow('GATEWAY_DEMO_NO_AUTH_ENABLED');
+  });
 
   it('disables probes and coupon runtime unless explicitly enabled', () => {
     const environment = { ...fixture.environment };
@@ -79,6 +183,7 @@ describe('Promotions configuration', () => {
   it.each([
     'PROMOTIONS_DEPENDENCY_PROBES_ENABLED',
     'PROMOTIONS_COUPON_RUNTIME_ENABLED',
+    'GATEWAY_DEMO_NO_AUTH_ENABLED',
   ])('rejects ambiguous activation in %s', (name) => {
     for (const value of ['', '1', 'TRUE', ' false '])
       expect(() =>

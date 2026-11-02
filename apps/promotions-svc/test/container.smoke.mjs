@@ -127,3 +127,6 @@ try {
   }
   rmSync(directory, { recursive: true, force: true });
 }
+
+// The existing CI entry point also verifies the production demo TCP boundary.
+await import('./restricted-demo.container.smoke.mjs');
