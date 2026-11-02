@@ -1,6 +1,7 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { PricingClient } from './pricing.client.js';
 import type { CatalogConfig } from './config.js';
+import { isCorrelationId } from './correlation.js';
 
 const productId = '88888888-8888-4888-8888-888888888888';
 const current = {
@@ -55,6 +56,42 @@ describe('PricingClient (mock HTTP responses)', () => {
       ),
     );
     await expect(client.currentPrice(productId)).resolves.toBeNull();
+  });
+
+  it('propagates the request correlation without changing the timeout or private route', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(current), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await client.currentPrice(productId, 2500, id);
+    expect(fetchMock.mock.calls[0][1].headers).toEqual({
+      'X-Correlation-Id': id,
+    });
+    expect(fetchMock.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('generates a technical correlation for standalone readiness requests', async () => {
+    fetchMock.mockResolvedValue(
+      new Response(JSON.stringify(current), {
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+    await client.currentPrice(productId);
+    expect(
+      isCorrelationId(fetchMock.mock.calls[0][1].headers?.['X-Correlation-Id']),
+    ).toBe(true);
+  });
+
+  it('rejects an invalid internal correlation before HTTP without exposing it', async () => {
+    await expect(
+      client.currentPrice(productId, 2500, 'Bearer private'),
+    ).rejects.toMatchObject({
+      status: 503,
+      message: 'Servicio temporalmente no disponible',
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it('does not treat an unregistered Pricing route as a missing product price', async () => {

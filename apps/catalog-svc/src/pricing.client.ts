@@ -1,5 +1,6 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { CatalogConfig } from './config.js';
+import { correlationId, isCorrelationId } from './correlation.js';
 
 export const DEMO_PRICING = Symbol('DEMO_PRICING');
 
@@ -63,15 +64,25 @@ export class PricingClient {
   async currentPrice(
     productId: string,
     timeoutMs = 2500,
+    requestCorrelationId?: string,
   ): Promise<CurrentProductPrice | null> {
     try {
       if (!this.config.pricingOrigin) throw new Error();
+      if (
+        requestCorrelationId !== undefined &&
+        !isCorrelationId(requestCorrelationId)
+      )
+        throw new Error();
       const response = await fetch(
         new URL(
           `/api/v1/precios/productos/${encodeURIComponent(productId)}`,
           this.config.pricingOrigin,
         ),
-        { redirect: 'manual', signal: AbortSignal.timeout(timeoutMs) },
+        {
+          redirect: 'manual',
+          signal: AbortSignal.timeout(timeoutMs),
+          headers: { 'X-Correlation-Id': correlationId(requestCorrelationId) },
+        },
       );
       if (response.status === 404) {
         if (

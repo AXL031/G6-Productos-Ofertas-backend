@@ -76,7 +76,7 @@ describe('bootstrap configuration', () => {
             supplied === undefined
               ? path === '/health/live'
                 ? 200
-                : 503
+                : 401
               : 400,
           );
           const id = result.headers['x-correlation-id'];
@@ -88,9 +88,10 @@ describe('bootstrap configuration', () => {
       const problem = await request(await app.getUrl())
         .get('/api/v1/productos?canal=MARKETPLACE')
         .set('X-Correlation-Id', id)
-        .expect(503);
+        .expect(401);
       expect(problem.headers['x-correlation-id']).toBe(id);
       expect(problem.body.correlationId).toBe(id);
+      expect(problem.body.code).toBe('TOKEN_INVALIDO');
       expect(JSON.stringify(output.mock.calls)).not.toContain('fixture-secret');
     } finally {
       await app.close();

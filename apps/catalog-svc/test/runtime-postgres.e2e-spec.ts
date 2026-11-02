@@ -1,5 +1,11 @@
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { chmodSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  rmSync,
+  readFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { createServer, type AddressInfo } from 'node:net';
@@ -150,7 +156,18 @@ describe.skipIf(!dockerAvailable)(
           '-v',
           'ON_ERROR_STOP=1',
         ],
-        "CREATE ROLE catalog_app LOGIN PASSWORD 'ci-runtime-password'; CREATE SCHEMA catalog; REVOKE ALL ON SCHEMA catalog FROM PUBLIC; GRANT USAGE ON SCHEMA catalog TO catalog_app; ALTER ROLE catalog_app SET default_transaction_read_only = on;",
+        "CREATE ROLE catalog_app LOGIN PASSWORD 'ci-runtime-password'; CREATE ROLE po_catalog_owner NOLOGIN; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner; REVOKE ALL ON SCHEMA catalog FROM PUBLIC; GRANT USAGE ON SCHEMA catalog TO catalog_app; ALTER ROLE catalog_app SET default_transaction_read_only = on; SET ROLE po_catalog_owner;\n" +
+          readFileSync(
+            resolve('apps/catalog-svc/test/fixtures/0001_create_catalog.sql'),
+            'utf8',
+          ) +
+          '\n' +
+          readFileSync(
+            resolve(
+              'apps/catalog-svc/migrations/0003_product_publication_history.sql',
+            ),
+            'utf8',
+          ),
       );
       databasePort = command('docker', ['port', container, '5432/tcp'])
         .split(':')
@@ -238,9 +255,9 @@ describe.skipIf(!dockerAvailable)(
           });
           const base = 'http://127.0.0.1:' + port;
           expect((await fetch(base + '/health/live')).status).toBe(200);
-          // Commercial eligibility remains intentionally closed; DB reachability is
-          // proved by the real identity check required before APPLICATION_STARTED.
-          expect((await fetch(base + '/health/ready')).status).toBe(503);
+          // The official empty schema is sufficient for global eligibility.
+          // No candidate table, Pricing/Inventory fan-out or fixture rows.
+          expect((await fetch(base + '/health/ready')).status).toBe(200);
           command('docker', ['stop', '--time', '0', container]);
           stopped = true;
           expect((await fetch(base + '/health/live')).status).toBe(200);

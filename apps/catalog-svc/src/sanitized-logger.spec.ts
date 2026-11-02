@@ -17,6 +17,24 @@ describe('sanitized JSON logger', () => {
     circular.self = circular;
     expect(() => JSON.stringify(sanitize(circular))).not.toThrow();
   });
+  it('redacts serialized driver objects, private paths, headers and full payloads', () => {
+    const value = {
+      query: 'SELECT customer_private FROM catalog.products',
+      parameters: ['private-value'],
+      detail: 'private-row',
+      stack: 'Error\n at C:\\Users\\Private\\service.js',
+      headers: { 'x-private': 'private-header' },
+      payload: { name: 'private-name' },
+      body: { data: 'private-body' },
+    };
+    const result = JSON.stringify(sanitize(JSON.stringify(value)));
+    expect(result).not.toMatch(
+      /customer_private|private-value|private-row|Private|private-header|private-name|private-body/,
+    );
+    expect(sanitize('Error\n at /home/runtime/private.js:2')).toBe(
+      '[redacted-stack]',
+    );
+  });
 
   it('redacts serialized JSON and JWTs', () => {
     expect(String(sanitize('{"token":"private-secret"}'))).not.toContain(
