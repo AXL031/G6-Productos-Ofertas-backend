@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
@@ -7,11 +7,15 @@ import { evaluarCheckBaja, type IdentidadBaja } from './deactivation-check.js';
 
 export type ResultadoRegistro =
   'REGISTRADA' | 'REINTENTO' | 'CONFLICTO' | 'NO_DISPONIBLE';
+const INTERVALO_AVISOS_MS = 5 * 60 * 1000;
 const UUID_NULO = '00000000-0000-0000-0000-000000000000';
 
 /** Admisión durable; registra en outbox sin publicar al broker. */
 @Injectable()
 export class DeactivationIntentService {
+  private readonly logger = new Logger(DeactivationIntentService.name);
+  private proximaInspeccion = 0;
+  private proximoAvisoConcurrente = 0;
   constructor(private readonly database: Database) {}
 
   async registrar(intencion: IdentidadBaja): Promise<ResultadoRegistro> {
@@ -107,49 +111,88 @@ export class DeactivationIntentService {
 
   /** Recupera bajas vencidas soportadas y deja el rechazo en outbox, sin emitirlo. */
   async recuperarVencidas(): Promise<number> {
-    return this.database.read((db) =>
-      db.transaction(async (tx) => {
-        const timeout = await leerTimeoutBaja(tx);
-        const pendientes = await tx.execute(sql`
-          SELECT operation_id, correlation_id, entity_type, entity_id, source_version
-          FROM taxonomy.master_deactivation_operations
-          WHERE status = 'IN_PROGRESS'
-            AND created_at <= statement_timestamp() - (${timeout} * interval '1 second')
-            AND entity_type IN ('CATEGORY', 'BRAND')
-          ORDER BY created_at, operation_id
-          LIMIT 50 FOR UPDATE SKIP LOCKED
-        `);
-        let recuperadas = 0;
-        for (const operacion of pendientes.rows) {
-          if (
-            typeof operacion.operation_id !== 'string' ||
-            typeof operacion.correlation_id !== 'string' ||
-            typeof operacion.entity_id !== 'string' ||
-            (operacion.entity_type !== 'CATEGORY' &&
-              operacion.entity_type !== 'BRAND') ||
-            (typeof operacion.source_version !== 'string' &&
-              typeof operacion.source_version !== 'number')
+    const ahora = Date.now();
+    const inspeccionar = ahora >= this.proximaInspeccion;
+    if (inspeccionar) this.proximaInspeccion = ahora + INTERVALO_AVISOS_MS;
+    let resultado;
+    try {
+      resultado = await this.database.read((db) =>
+        db.transaction(async (tx) => {
+          const timeout = await leerTimeoutBaja(tx);
+          const discrepancias = inspeccionar
+            ? await tx.execute(sql`
+          WITH inspeccion AS (
+            SELECT o.operation_id, o.entity_type,
+              CASE
+                WHEN o.source_version IS NULL OR o.source_version > 9007199254740991 THEN 'VERSION_NO_VALIDA'
+                WHEN o.entity_type = 'CATEGORY' AND c.id IS NULL THEN 'ENTIDAD_AUSENTE'
+                WHEN o.entity_type = 'BRAND' AND b.id IS NULL THEN 'ENTIDAD_AUSENTE'
+                WHEN o.entity_type = 'CATEGORY' AND c.estado <> 'PENDING_DEACTIVATION' THEN 'ESTADO_DISTINTO'
+                WHEN o.entity_type = 'BRAND' AND b.estado <> 'PENDING_DEACTIVATION' THEN 'ESTADO_DISTINTO'
+                WHEN o.entity_type = 'CATEGORY' AND c.taxonomy_version <> o.source_version THEN 'VERSION_DISTINTA'
+                WHEN o.entity_type = 'BRAND' AND b.taxonomy_version <> o.source_version THEN 'VERSION_DISTINTA'
+              END AS motivo
+            FROM taxonomy.master_deactivation_operations o
+            LEFT JOIN taxonomy.categories c ON o.entity_type = 'CATEGORY' AND c.id = o.entity_id
+            LEFT JOIN taxonomy.brands b ON o.entity_type = 'BRAND' AND b.id = o.entity_id
+            WHERE o.status = 'IN_PROGRESS' AND o.entity_type IN ('CATEGORY', 'BRAND')
+              AND o.created_at <= statement_timestamp() - (${timeout} * interval '1 second')
           )
-            continue;
-          const version = Number(operacion.source_version);
-          if (!Number.isSafeInteger(version) || version < 0) continue;
-          const entidad =
-            operacion.entity_type === 'CATEGORY'
-              ? sql`taxonomy.categories`
-              : sql`taxonomy.brands`;
-          const restaurada = await tx.execute(sql`
+          SELECT operation_id, entity_type, motivo
+          FROM inspeccion WHERE motivo IS NOT NULL LIMIT 51
+        `)
+            : { rows: [] };
+          const pendientes = await tx.execute(sql`
+          SELECT o.operation_id, o.correlation_id, o.entity_type, o.entity_id, o.source_version
+          FROM taxonomy.master_deactivation_operations o
+          WHERE o.status = 'IN_PROGRESS'
+            AND o.created_at <= statement_timestamp() - (${timeout} * interval '1 second')
+            AND o.source_version BETWEEN 0 AND 9007199254740991
+            AND ((o.entity_type = 'CATEGORY' AND EXISTS (
+              SELECT 1 FROM taxonomy.categories c WHERE c.id = o.entity_id
+                AND c.estado = 'PENDING_DEACTIVATION' AND c.taxonomy_version = o.source_version
+            )) OR (o.entity_type = 'BRAND' AND EXISTS (
+              SELECT 1 FROM taxonomy.brands b WHERE b.id = o.entity_id
+                AND b.estado = 'PENDING_DEACTIVATION' AND b.taxonomy_version = o.source_version
+            )))
+          ORDER BY o.created_at, o.operation_id
+          LIMIT 50 FOR UPDATE OF o SKIP LOCKED
+        `);
+          let recuperadas = 0;
+          const cambiosConcurrentes: string[] = [];
+          for (const operacion of pendientes.rows) {
+            if (
+              typeof operacion.operation_id !== 'string' ||
+              typeof operacion.correlation_id !== 'string' ||
+              typeof operacion.entity_id !== 'string' ||
+              (operacion.entity_type !== 'CATEGORY' &&
+                operacion.entity_type !== 'BRAND') ||
+              (typeof operacion.source_version !== 'string' &&
+                typeof operacion.source_version !== 'number')
+            )
+              continue;
+            const version = Number(operacion.source_version);
+            if (!Number.isSafeInteger(version) || version < 0) continue;
+            const entidad =
+              operacion.entity_type === 'CATEGORY'
+                ? sql`taxonomy.categories`
+                : sql`taxonomy.brands`;
+            const restaurada = await tx.execute(sql`
             UPDATE ${entidad} SET estado = 'ACTIVO'
             WHERE id = ${operacion.entity_id}::uuid AND estado = 'PENDING_DEACTIVATION'
               AND taxonomy_version = ${version}
             RETURNING id
           `);
-          if (!restaurada.rows.length) continue;
-          await tx.execute(sql`
+            if (!restaurada.rows.length) {
+              cambiosConcurrentes.push(operacion.operation_id);
+              continue;
+            }
+            await tx.execute(sql`
             UPDATE taxonomy.master_deactivation_operations
             SET status = 'FAILED', reason = 'TECHNICAL_FAILURE', updated_at = statement_timestamp()
             WHERE operation_id = ${operacion.operation_id}::uuid AND status = 'IN_PROGRESS'
           `);
-          await tx.execute(sql`
+            await tx.execute(sql`
             WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha)
             INSERT INTO taxonomy.outbox
               (message_id, event_name, kind, schema_version, correlation_id, operation_id, occurred_at, payload)
@@ -164,11 +207,43 @@ export class DeactivationIntentService {
                   'reason', 'TECHNICAL_FAILURE'))
             FROM evento
           `);
-          recuperadas += 1;
-        }
-        return recuperadas;
-      }),
-    );
+            recuperadas += 1;
+          }
+          return {
+            recuperadas,
+            discrepancias: discrepancias.rows,
+            cambiosConcurrentes,
+          };
+        }),
+      );
+    } catch (error) {
+      if (inspeccionar) this.proximaInspeccion = 0;
+      throw error;
+    }
+    for (const incidencia of resultado.discrepancias.slice(0, 50)) {
+      this.logger.warn({
+        event: 'taxonomy.deactivation.recovery_discrepancy',
+        operation_id: incidencia.operation_id,
+        entity_type: incidencia.entity_type,
+        reason: incidencia.motivo,
+        muestra_truncada: resultado.discrepancias.length > 50,
+      });
+    }
+    const avisarConcurrentes =
+      resultado.cambiosConcurrentes.length > 0 &&
+      Date.now() >= this.proximoAvisoConcurrente;
+    if (avisarConcurrentes)
+      this.proximoAvisoConcurrente = Date.now() + INTERVALO_AVISOS_MS;
+    for (const operationId of avisarConcurrentes
+      ? resultado.cambiosConcurrentes
+      : []) {
+      this.logger.warn({
+        event: 'taxonomy.deactivation.recovery_discrepancy',
+        operation_id: operationId,
+        reason: 'CAMBIO_CONCURRENTE',
+      });
+    }
+    return resultado.recuperadas;
   }
 
   /** Persiste la decisión y su evento en outbox; no publica al broker. */
