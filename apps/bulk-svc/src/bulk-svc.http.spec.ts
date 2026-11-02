@@ -273,6 +273,14 @@ describe('Bulk HTTP import routes (isolated)', () => {
             .send({ formato: 'PDF' })
         ).body,
       ).toMatchObject({ code: 'VALIDACION', status: 400 });
+      const overLimit = await request(app.getHttpServer())
+        .post('/api/v1/carga-masiva/productos/importaciones')
+        .attach('archivo', Buffer.alloc(10_485_761), 'over-limit.csv');
+      expect(overLimit.status).toBe(413);
+      expect(overLimit.body).toMatchObject({
+        code: 'ARCHIVO_EXCEDE_LIMITE',
+        status: 413,
+      });
 
       const invalid = await request(app.getHttpServer())
         .post('/api/v1/carga-masiva/productos/importaciones')
