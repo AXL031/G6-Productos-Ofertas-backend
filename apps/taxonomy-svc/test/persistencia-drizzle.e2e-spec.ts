@@ -960,9 +960,15 @@ describeIntegracion(
             event: 'taxonomy.deactivation.recovery_discrepancy',
             operation_id: operationId,
             reason: 'VERSION_DISTINTA',
-            total: 1,
+            muestra_truncada: false,
           }),
         );
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledTimes(1);
+        const momento = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(momento + 5 * 60 * 1000 + 1);
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledTimes(2);
         expect(
           (
             await admin.query(
@@ -979,6 +985,8 @@ describeIntegracion(
             )
           ).rows,
         ).toHaveLength(0);
+        // Solo en PostgreSQL desechable: recrea una precondición válida para probar
+        // el reintento. Reducir la versión NO es una reconciliación permitida en producción.
         await admin.query(
           'UPDATE taxonomy.brands SET taxonomy_version = 0 WHERE id = $1',
           [entityId],
@@ -1001,6 +1009,100 @@ describeIntegracion(
           ).rows,
         ).toHaveLength(1);
       } finally {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('detecta CAMBIO_CONCURRENTE al esperar una actualización de otra conexión PostgreSQL', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const aviso = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const operationId = '88888888-cccc-4ccc-8ccc-cccccccccccc';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const bloqueador = await admin.connect();
+      let recuperacion: Promise<number> | undefined;
+      try {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION', taxonomy_version = 0 WHERE id = $1",
+          [entityId],
+        );
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [operationId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', entityId],
+        );
+        await bloqueador.query('BEGIN');
+        await bloqueador.query(
+          'UPDATE taxonomy.brands SET taxonomy_version = 1 WHERE id = $1',
+          [entityId],
+        );
+        const pid = (await bloqueador.query('SELECT pg_backend_pid() AS pid'))
+          .rows[0].pid;
+        recuperacion = new DeactivationIntentService(
+          database,
+        ).recuperarVencidas();
+        let bloqueada = false;
+        for (let i = 0; i < 100; i++) {
+          const espera = await admin.query(
+            'SELECT 1 FROM pg_stat_activity WHERE $1 = ANY(pg_blocking_pids(pid))',
+            [pid],
+          );
+          if (espera.rowCount) {
+            bloqueada = true;
+            break;
+          }
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        expect(bloqueada).toBe(true);
+        await bloqueador.query('COMMIT');
+        await expect(recuperacion).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledWith(
+          expect.objectContaining({
+            operation_id: operationId,
+            reason: 'CAMBIO_CONCURRENTE',
+          }),
+        );
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado, taxonomy_version FROM taxonomy.brands WHERE id = $1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'PENDING_DEACTIVATION', taxonomy_version: '1' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+      } finally {
+        await bloqueador.query('ROLLBACK');
+        if (recuperacion) await recuperacion.catch(() => undefined);
+        bloqueador.release();
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [operationId],
+        );
         await admin.query(
           "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
           [entityId],
@@ -1105,7 +1207,7 @@ describeIntegracion(
           expect.objectContaining({
             event: 'taxonomy.deactivation.recovery_discrepancy',
             reason: 'ENTIDAD_AUSENTE',
-            total: 51,
+            muestra_truncada: true,
           }),
         );
         expect(
