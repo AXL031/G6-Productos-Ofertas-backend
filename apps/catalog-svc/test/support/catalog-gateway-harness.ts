@@ -9,6 +9,7 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
+import { catalogCorrelation } from '../../src/bootstrap.js';
 import { AppModule } from '../../src/app.module.js';
 import { CATALOG_SECURITY_CONFIG } from '../../src/catalog-auth.js';
 import { CATALOG_AMQP_SETTINGS } from '../../src/catalog-amqp.js';
@@ -184,6 +185,7 @@ export class CatalogGatewayHarness {
         .useValue(preparation)
         .compile();
       this.catalog = module.createNestApplication({ logger: false });
+      this.catalog.use(catalogCorrelation);
       await this.catalog.listen(0, '127.0.0.1');
       if (restrictedDemo) return; // Direct private HTTP: does not claim Gateway demo integration.
       this.directory = mkdtempSync(join(tmpdir(), 'catalog-auth-gateway-'));

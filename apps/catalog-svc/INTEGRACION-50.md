@@ -280,3 +280,9 @@ HTTP de ambos modos PASS (6); typecheck, tsc explícito de E2E, lint,
 format:check, build:catalog-svc y git diff --check PASS. Los fallos iniciales de
 fixture de DI/sintaxis/tipos se corrigieron y se repitieron sus comprobaciones.
 La suite PostgreSQL demo necesita ejecución en CI con Docker antes de atribuir PASS.
+
+Primera CI de esta revisión (901ac40, run 41378754777): FAIL en HTTP-50 demo
+por ausencia del header de correlación en el harness directo; alta devolvió el
+status esperado. Se reutiliza ahora el mismo middleware `catalogCorrelation`
+del arranque real en el harness, sin eliminar la aserción. El resto de jobs
+aprobó; este run no acredita la suite demo completa. Nueva CI por SHA posterior.
