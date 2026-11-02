@@ -2,6 +2,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { BulkSvcController } from './bulk-svc.controller.js';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
+import { BulkImportService } from './bulk-import.service.js';
+import { BulkStorageService } from './storage/bulk-storage.service.js';
 
 describe('BulkSvcController', () => {
   let controller: BulkSvcController;
@@ -11,6 +13,8 @@ describe('BulkSvcController', () => {
       controllers: [BulkSvcController],
       providers: [
         BulkSvcService,
+        { provide: BulkImportService, useValue: {} },
+        { provide: BulkStorageService, useValue: {} },
         {
           provide: BulkReadinessService,
           useValue: { check: vi.fn().mockResolvedValue(false) },

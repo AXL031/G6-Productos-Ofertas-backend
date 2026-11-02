@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { BulkSvcModule } from './bulk-svc.module.js';
+import { BulkProblemFilter } from './http/bulk-problem.filter.js';
 import {
   InvalidBulkEnvironment,
   parseBulkEnvironment,
@@ -23,6 +24,7 @@ async function bootstrap(): Promise<void> {
       logger: false,
     });
     app.enableShutdownHooks(['SIGINT', 'SIGTERM']);
+    app.useGlobalFilters(new BulkProblemFilter());
     await app.init();
 
     const server = app.getHttpServer();
