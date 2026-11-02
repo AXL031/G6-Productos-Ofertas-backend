@@ -8,6 +8,7 @@ import { getTableConfig } from 'drizzle-orm/pg-core';
 import { vi } from 'vitest';
 import { Database } from '../src/database.js';
 import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
+import { DeactivationIntentService } from '../src/domain/deactivation-intent.service.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import request from 'supertest';
@@ -653,6 +654,281 @@ describeIntegracion(
           .expect(200);
       } finally {
         await appNest.close();
+      }
+    });
+
+    it('registra intenciones con versión autoritativa y deduplica sin aceptar cambios', async () => {
+      await admin.query('DELETE FROM taxonomy.master_deactivation_operations');
+      const migration = readFileSync(
+        resolve(
+          'apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql',
+        ),
+        'utf8',
+      );
+      await admin.query('BEGIN');
+      try {
+        await admin.query(migration);
+        await admin.query('COMMIT');
+      } catch (error) {
+        await admin.query('ROLLBACK');
+        throw error;
+      }
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const solicitud = {
+        operationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        correlationId: 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee',
+        entityType: 'CATEGORY' as const,
+        entityId: '11111111-1111-4111-8111-111111111111',
+        version: 0,
+      };
+      try {
+        const service = new DeactivationIntentService(database);
+        const simultaneas = await Promise.all([
+          service.registrar(solicitud),
+          service.registrar(solicitud),
+        ]);
+        expect(simultaneas.sort()).toEqual(['REGISTRADA', 'REINTENTO']);
+        await expect(
+          new DeactivationIntentService(database).registrar(solicitud),
+        ).resolves.toBe('REINTENTO');
+        await expect(
+          service.registrar({ ...solicitud, version: 1 }),
+        ).resolves.toBe('CONFLICTO');
+        await expect(
+          service.registrar({
+            ...solicitud,
+            operationId: 'abababab-abab-4bab-8bab-abababababab',
+            entityId: '22222222-2222-4222-8222-222222222222',
+            version: 1,
+          }),
+        ).resolves.toBe('NO_DISPONIBLE');
+        await expect(
+          service.registrar({ ...solicitud, entityType: 'PRODUCT_TYPE' }),
+        ).resolves.toBe('NO_DISPONIBLE');
+        await expect(
+          service.registrar({
+            ...solicitud,
+            correlationId: 'ffffffff-ffff-4fff-8fff-ffffffffffff',
+          }),
+        ).resolves.toBe('CONFLICTO');
+        await expect(
+          service.registrar({
+            ...solicitud,
+            operationId: '99999999-9999-4999-8999-999999999999',
+          }),
+        ).resolves.toBe('CONFLICTO');
+        const rows = await admin.query(
+          'SELECT operation_id, source_version FROM taxonomy.master_deactivation_operations',
+        );
+        expect(rows.rows).toEqual([
+          { operation_id: solicitud.operationId, source_version: '0' },
+        ]);
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('recupera una baja vencida de forma atómica e idempotente con rechazo en outbox', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const operationId = '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      try {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          ['44444444-4444-4444-8444-444444444444'],
+        );
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [
+            operationId,
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            '44444444-4444-4444-8444-444444444444',
+          ],
+        );
+        const service = new DeactivationIntentService(database);
+        await expect(service.recuperarVencidas()).resolves.toBe(1);
+        await expect(
+          new DeactivationIntentService(database).recuperarVencidas(),
+        ).resolves.toBe(0);
+        const row = await admin.query(
+          `SELECT o.status, o.reason, b.estado
+          FROM taxonomy.master_deactivation_operations o JOIN taxonomy.brands b ON b.id = o.entity_id
+          WHERE o.operation_id = $1`,
+          [operationId],
+        );
+        expect(row.rows).toEqual([
+          { status: 'FAILED', reason: 'TECHNICAL_FAILURE', estado: 'ACTIVO' },
+        ]);
+        const events = await admin.query(
+          'SELECT event_name, payload FROM taxonomy.outbox WHERE operation_id = $1',
+          [operationId],
+        );
+        expect(events.rows).toHaveLength(1);
+        expect(events.rows[0]).toMatchObject({
+          event_name: 'taxonomy.master.deactivation.rejected',
+          payload: {
+            data: {
+              entity_type: 'BRAND',
+              version: 0,
+              reason: 'TECHNICAL_FAILURE',
+            },
+          },
+        });
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
+    it.each([
+      [
+        'CLEAR',
+        'COMPLETADA',
+        'COMPLETED',
+        'INACTIVO',
+        'taxonomy.master.deactivated',
+      ],
+      [
+        'IN_USE',
+        'RECHAZADA',
+        'REJECTED',
+        'ACTIVO',
+        'taxonomy.master.deactivation.rejected',
+      ],
+    ])(
+      'cierra %s con estado y outbox correlacionados',
+      async (result, esperado, status, estado, eventName) => {
+        const database = new Database();
+        vi.spyOn(database, 'read').mockImplementation(async (query) =>
+          query(dbApp),
+        );
+        const operationId =
+          result === 'CLEAR'
+            ? '22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+            : '33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+        const identity = {
+          operationId,
+          correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          entityType: 'BRAND' as const,
+          entityId: '44444444-4444-4444-8444-444444444444',
+          version: 0,
+        };
+        try {
+          await admin.query(
+            "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION', taxonomy_version = 0 WHERE id = $1",
+            [identity.entityId],
+          );
+          await admin.query(
+            `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0)`,
+            [operationId, identity.correlationId, identity.entityId],
+          );
+          const service = new DeactivationIntentService(database);
+          await expect(
+            service.finalizar({ ...identity, version: 1, result }),
+          ).resolves.toBe('IGNORADA');
+          await expect(
+            service.finalizar({ ...identity, result }),
+          ).resolves.toBe(esperado);
+          await expect(
+            service.finalizar({ ...identity, result }),
+          ).resolves.toBe('IGNORADA');
+          const row = await admin.query(
+            `SELECT o.status, b.estado FROM taxonomy.master_deactivation_operations o
+          JOIN taxonomy.brands b ON b.id = o.entity_id WHERE o.operation_id = $1`,
+            [operationId],
+          );
+          expect(row.rows).toEqual([{ status, estado }]);
+          const events = await admin.query(
+            'SELECT event_name, kind, payload FROM taxonomy.outbox WHERE operation_id = $1',
+            [operationId],
+          );
+          expect(events.rows).toHaveLength(1);
+          expect(events.rows[0]).toMatchObject({
+            event_name: eventName,
+            kind: result === 'CLEAR' ? 'event' : 'result',
+            payload: {
+              operation_id: operationId,
+              correlation_id: identity.correlationId,
+              data: {
+                entity_type: 'BRAND',
+                entity_id: identity.entityId,
+                version: 0,
+                ...(result === 'IN_USE' ? { reason: 'IN_USE' } : {}),
+              },
+            },
+          });
+        } finally {
+          await admin.query(
+            "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+            [identity.entityId],
+          );
+          vi.restoreAllMocks();
+        }
+      },
+    );
+
+    it('revierte la recuperación ante fallo del outbox y permite reintentarla', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const operationId = '66666666-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const entityId = '55555555-5555-4555-8555-555555555555';
+      try {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          [entityId],
+        );
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [operationId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', entityId],
+        );
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        const service = new DeactivationIntentService(database);
+        await expect(service.recuperarVencidas()).rejects.toThrow();
+        const unchanged = await admin.query(
+          `SELECT o.status, b.estado FROM taxonomy.master_deactivation_operations o
+          JOIN taxonomy.brands b ON b.id = o.entity_id WHERE o.operation_id = $1`,
+          [operationId],
+        );
+        expect(unchanged.rows).toEqual([
+          { status: 'IN_PROGRESS', estado: 'PENDING_DEACTIVATION' },
+        ]);
+        expect(
+          (
+            await admin.query(
+              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        await expect(service.recuperarVencidas()).resolves.toBe(1);
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'FAILED' }]);
+      } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'INACTIVO' WHERE id = $1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
       }
     });
 

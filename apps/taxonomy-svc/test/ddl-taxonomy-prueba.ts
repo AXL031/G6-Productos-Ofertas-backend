@@ -95,6 +95,15 @@ export function construirSentenciasDdl(
       CONSTRAINT ck_mdo_operation_id_not_nil CHECK (operation_id <> '00000000-0000-0000-0000-000000000000'::uuid),
       CONSTRAINT ck_mdo_correlation_id_not_nil CHECK (correlation_id <> '00000000-0000-0000-0000-000000000000'::uuid)
     )`,
+    `CREATE TABLE taxonomy.outbox (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      message_id uuid NOT NULL DEFAULT gen_random_uuid() UNIQUE,
+      event_name text NOT NULL, kind text NOT NULL, schema_version integer NOT NULL DEFAULT 1,
+      correlation_id uuid NOT NULL, causation_id uuid NULL, operation_id uuid NULL,
+      occurred_at timestamptz NOT NULL, payload jsonb NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(), published_at timestamptz NULL,
+      attempts integer NOT NULL DEFAULT 0, last_error text NULL
+    )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
     'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',
