@@ -55,20 +55,41 @@ describe('CatalogSkuContextClient', () => {
     });
   });
   it('distinguishes unknown, inactive, ineligible and malformed references', async () => {
-    const respond = (status: number, data?: unknown) =>
+    const respond = (
+      status: number,
+      data?: unknown,
+      contentType = 'application/json',
+    ) =>
       new CatalogSkuContextClient(
         'http://catalog-svc',
         () => 't',
         async () =>
           new Response(data === undefined ? null : JSON.stringify(data), {
             status,
-            headers: { 'content-type': 'application/json' },
+            headers: { 'content-type': contentType },
           }),
       );
-    await expect(respond(404).getContext('x', 'c')).rejects.toMatchObject({
+    await expect(
+      respond(
+        404,
+        { status: 404, code: 'SKU_NO_ENCONTRADO' },
+        'application/problem+json',
+      ).getContext('x', 'c'),
+    ).rejects.toMatchObject({
       reason: 'SKU_NO_ENCONTRADO',
       upstreamStatus: 404,
     });
+    await expect(respond(404).getContext('x', 'c')).rejects.toMatchObject({
+      reason: 'UPSTREAM_FAILURE',
+      upstreamStatus: 404,
+    });
+    await expect(
+      respond(
+        404,
+        { code: 'SKU_NO_ENCONTRADO' },
+        'application/json',
+      ).getContext('x', 'c'),
+    ).rejects.toMatchObject({ reason: 'UPSTREAM_FAILURE' });
     await expect(
       respond(200, { ...context, active: false }).getContext(context.sku, 'c'),
     ).rejects.toMatchObject({ reason: 'SKU_INACTIVO' });
@@ -83,8 +104,8 @@ describe('CatalogSkuContextClient', () => {
     ).rejects.toMatchObject({ reason: 'INVALID_RESPONSE' });
   });
   it.each([
-    [401, 'SERVICE_AUTH_REJECTED'],
-    [403, 'SERVICE_AUTH_REJECTED'],
+    [401, 'SERVICE_AUTHENTICATION_FAILED'],
+    [403, 'SERVICE_AUTHORIZATION_FAILED'],
     [503, 'UNAVAILABLE'],
   ])(
     'does not confuse upstream %i with missing SKU',

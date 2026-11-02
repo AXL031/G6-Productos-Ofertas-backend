@@ -14,6 +14,7 @@ import {
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { readCombosEnvironment } from './config/combos-environment.js';
+import { isAllowedDemoGatewayIp } from './http/combos-demo-origin.js';
 import {
   ComboError,
   CombosSvcService,
@@ -43,6 +44,14 @@ export class CombosSvcController {
         401,
         'TOKEN_INVALIDO',
         'Autenticación JWT requerida; validador G7 no disponible',
+      );
+    if (
+      !isAllowedDemoGatewayIp(req.socket.remoteAddress, policy.demoGatewayIps)
+    )
+      throw new ComboError(
+        403,
+        'SCOPE_INSUFICIENTE',
+        'Origen de red no autorizado para la demostración restringida',
       );
   }
   @Get('combos') async list(

@@ -8,6 +8,7 @@ export interface CombosEnvironment {
   readonly host: string;
   readonly port: number;
   readonly demoEnabled: boolean;
+  readonly demoGatewayIps: readonly string[];
   readonly pool: PoolConfig;
 }
 
@@ -29,6 +30,15 @@ export function readCombosEnvironment(
   const host = env.COMBOS_SVC_HOST ?? '0.0.0.0';
   if (!validHost(host)) errors.push('COMBOS_SVC_HOST');
   const demoEnabled = env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true';
+  const demoGatewayIps = (env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS ?? '')
+    .split(',')
+    .map((address) => address.trim())
+    .filter(Boolean);
+  if (
+    demoGatewayIps.some((address) => isIP(address) === 0) ||
+    (demoEnabled && demoGatewayIps.length === 0)
+  )
+    errors.push('COMBOS_RESTRICTED_DEMO_GATEWAY_IPS');
   if (
     env.COMBOS_RESTRICTED_DEMO_ENABLED !== undefined &&
     !['true', 'false'].includes(env.COMBOS_RESTRICTED_DEMO_ENABLED)
@@ -83,6 +93,7 @@ export function readCombosEnvironment(
     host,
     port,
     demoEnabled,
+    demoGatewayIps,
     pool: {
       host: env.G6_CONNECT_HOST || databaseHost,
       port: pgPort,

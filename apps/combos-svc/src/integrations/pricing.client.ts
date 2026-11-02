@@ -10,11 +10,14 @@ export interface ResolvedSkuPrice {
 interface PriceWire {
   sku: string;
   precio_regular: number | string;
-  precio_oferta: number | string | null;
+  precio_oferta?: number | string | null;
   currency: string;
   channel_id: string | null;
   valid_from: string;
-  valid_until: string | null;
+  valid_until?: string | null;
+  price_version: number;
+  vigencia_id: string;
+  origen: 'PRODUCTO' | 'SKU_OVERRIDE';
 }
 
 function cents(value: number | string): bigint {
@@ -113,12 +116,20 @@ export class PricingClient {
           !p.currency ||
           !(p.channel_id === null || typeof p.channel_id === 'string') ||
           typeof p.valid_from !== 'string' ||
-          !(p.valid_until === null || typeof p.valid_until === 'string')
+          (p.valid_until !== undefined &&
+            p.valid_until !== null &&
+            typeof p.valid_until !== 'string') ||
+          typeof p.price_version !== 'number' ||
+          !Number.isInteger(p.price_version) ||
+          p.price_version < 0 ||
+          typeof p.vigencia_id !== 'string' ||
+          !p.vigencia_id ||
+          !['PRODUCTO', 'SKU_OVERRIDE'].includes(p.origen)
         )
           throw new IntegrationFailure('PRICING', 'INVALID_RESPONSE');
         const start = Date.parse(p.valid_from);
         const end =
-          p.valid_until === null ? Infinity : Date.parse(p.valid_until);
+          p.valid_until == null ? Infinity : Date.parse(p.valid_until);
         const instant = Date.parse(at);
         if (
           !Number.isFinite(start) ||
@@ -130,7 +141,7 @@ export class PricingClient {
           throw new IntegrationFailure('PRICING', 'PRICE_NOT_CURRENT');
         const regular = cents(p.precio_regular);
         const publicPrice =
-          p.precio_oferta === null ? regular : cents(p.precio_oferta);
+          p.precio_oferta == null ? regular : cents(p.precio_oferta);
         results.push({
           sku: p.sku,
           precio_regular: amount(regular),

@@ -9,6 +9,9 @@ const row = (sku: string, overrides: Record<string, unknown> = {}) => ({
   channel_id: null,
   valid_from: '2026-01-01T00:00:00Z',
   valid_until: null,
+  price_version: 4,
+  vigencia_id: `validity-${sku}`,
+  origen: 'PRODUCTO',
   ...overrides,
 });
 
@@ -94,6 +97,21 @@ describe('PricingClient', () => {
     );
     expect(prices[0]?.precio_publico).toBe('10.25');
   });
+  it('accepts omitted optional offer/end fields and uses the regular price', async () => {
+    const { precio_oferta: _offer, valid_until: _end, ...wirePrice } = row('1');
+    const client = new PricingClient(
+      'http://pricing-svc',
+      () => 't',
+      async () => Response.json({ items: [wirePrice] }),
+    );
+    const [price] = await client.getPrices(
+      ['1'],
+      '2026-11-02T00:00:00Z',
+      undefined,
+      'c',
+    );
+    expect(price?.precio_publico).toBe('10.25');
+  });
   it('rejects mixed currencies, incomplete results and out-of-instant prices', async () => {
     const client = (payload: unknown) =>
       new PricingClient(
@@ -122,6 +140,26 @@ describe('PricingClient', () => {
         items: [row('1', { valid_from: '2027-01-01T00:00:00Z' })],
       }).getPrices(['1'], '2026-11-02T00:00:00Z', undefined, 'c'),
     ).rejects.toMatchObject({ reason: 'PRICE_NOT_CURRENT' });
+  });
+  it.each([
+    ['price_version', undefined],
+    ['price_version', -1],
+    ['vigencia_id', undefined],
+    ['vigencia_id', ''],
+    ['origen', undefined],
+    ['origen', 'UNKNOWN'],
+  ])('rejects invalid required Precio field %s', async (field, value) => {
+    const invalid = row('1');
+    if (value === undefined) delete (invalid as Record<string, unknown>)[field];
+    else Object.assign(invalid, { [field]: value });
+    const client = new PricingClient(
+      'http://pricing-svc',
+      () => 't',
+      async () => Response.json({ items: [invalid] }),
+    );
+    await expect(
+      client.getPrices(['1'], '2026-11-02T00:00:00Z', undefined, 'c'),
+    ).rejects.toMatchObject({ reason: 'INVALID_RESPONSE' });
   });
   it('fails closed on missing credentials and distinguishes upstream auth, 503, timeout and network', async () => {
     await expect(

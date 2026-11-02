@@ -63,12 +63,29 @@ describe('readCombosEnvironment', () => {
         COMBOS_RESTRICTED_DEMO_ENABLED: 'true',
       }),
     ).toThrow(/COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED/);
+    expect(() =>
+      readCombosEnvironment({
+        ...base(),
+        COMBOS_RESTRICTED_DEMO_ENABLED: 'true',
+        COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED: 'true',
+      }),
+    ).toThrow(/COMBOS_RESTRICTED_DEMO_GATEWAY_IPS/);
     expect(
       readCombosEnvironment({
         ...base(),
         COMBOS_RESTRICTED_DEMO_ENABLED: 'true',
         COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED: 'true',
-      }).demoEnabled,
-    ).toBe(true);
+        COMBOS_RESTRICTED_DEMO_GATEWAY_IPS: '127.0.0.1, ::1',
+      }),
+    ).toMatchObject({
+      demoEnabled: true,
+      demoGatewayIps: ['127.0.0.1', '::1'],
+    });
+    expect(() =>
+      readCombosEnvironment({
+        ...base(),
+        COMBOS_RESTRICTED_DEMO_GATEWAY_IPS: 'trusted.invalid',
+      }),
+    ).toThrow(/COMBOS_RESTRICTED_DEMO_GATEWAY_IPS/);
   });
 });

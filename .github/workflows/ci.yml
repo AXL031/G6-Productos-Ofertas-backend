@@ -275,11 +275,12 @@ jobs:
               continue
             fi
             name="${service}-generic-ci"
+            combos_ca_dir=''
             if [[ "$service" == api-gateway ]]; then
               docker run --rm --entrypoint node "g6-service:${service}-ci" -e \
                 "require('node:fs').accessSync('/app/dist/apps/api-gateway/readiness.js')"
             fi
-            trap 'docker rm --force "$name" >/dev/null 2>&1 || true' EXIT
+            trap 'docker rm --force "$name" >/dev/null 2>&1 || true; if [[ -n "${combos_ca_dir:-}" ]]; then rm -f "$combos_ca_dir/ca.key" "$combos_ca_dir/ca.crt"; rmdir "$combos_ca_dir" 2>/dev/null || true; fi' EXIT
             runtime_env=()
             if [[ "$service" == pricing-svc ]]; then
               # Fixture aislada: liveness no necesita una base disponible.
@@ -288,6 +289,20 @@ jobs:
             if [[ "$service" == price-audit-svc ]]; then
               runtime_env+=(--env 'DATABASE_URL=postgresql://audit:ci-fixture@127.0.0.1:1/audit?sslmode=verify-full'
                 --env 'AUTH_ISSUER=https://identity.invalid' --env 'AUTH_JWKS_URL=https://identity.invalid/jwks')
+            fi
+            if [[ "$service" == combos-svc ]]; then
+              combos_ca_dir="$(mktemp -d)"
+              combos_ca="$combos_ca_dir/ca.crt"
+              openssl req -x509 -newkey rsa:2048 -nodes -keyout "$combos_ca_dir/ca.key" \
+                -out "$combos_ca" -days 1 -subj '/CN=combos-ci-test-ca' \
+                -addext 'basicConstraints=critical,CA:TRUE' \
+                -addext 'keyUsage=critical,keyCertSign,cRLSign'
+              runtime_env+=(--env 'PGHOST=localhost' --env 'PGPORT=1'
+                --env 'PGDATABASE=combos_ci' --env 'PGUSER=combos_ci'
+                --env 'PGPASSWORD=ci-only-unused' --env 'PGSSLMODE=verify-full'
+                --env 'PGSSLROOTCERT=/run/g6-ci-certs/ca.crt'
+                --env 'COMBOS_RESTRICTED_DEMO_ENABLED=false'
+                --mount "type=bind,source=$combos_ca,target=/run/g6-ci-certs/ca.crt,readonly")
             fi
             docker run --detach --name "$name" --publish "127.0.0.1::${port}" \
               --env "PORT=${port}" --env "${port_env}=${port}" "${runtime_env[@]}" "g6-service:${service}-ci" >/dev/null
@@ -309,13 +324,22 @@ jobs:
                 process.exit(1);
               }
             ' "$response" "$service"
-            if [[ "$service" == pricing-svc || "$service" == price-audit-svc ]]; then
-              readiness_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${host_port}/health/ready")"
+            if [[ "$service" == pricing-svc || "$service" == price-audit-svc || "$service" == combos-svc ]]; then
+              readiness_path='/health/ready'
+              [[ "$service" != combos-svc ]] || readiness_path='/ready'
+              readiness_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${host_port}${readiness_path}")"
               if [[ "$readiness_status" != 503 ]]; then
                 printf 'FAIL: %s debe responder readiness=503 con la base de fixture inaccesible.\n' "$service" >&2
                 exit 1
               fi
               printf 'PASS: %s mantiene liveness=200 y readiness=503 con PostgreSQL inaccesible.\n' "$service"
+            fi
+            if [[ "$service" == combos-svc ]]; then
+              if docker run --rm "g6-service:${service}-ci" >/dev/null 2>&1; then
+                printf 'FAIL: %s arrancó sin configuración PostgreSQL obligatoria.\n' "$service" >&2
+                exit 1
+              fi
+              printf 'PASS: %s falla al arrancar cuando falta configuración PostgreSQL obligatoria.\n' "$service"
             fi
             healthy=''
             for attempt in {1..30}; do
@@ -325,6 +349,11 @@ jobs:
             done
             [[ "$healthy" == healthy ]]
             docker rm --force "$name" >/dev/null
+            if [[ -n "$combos_ca_dir" ]]; then
+              rm -f "$combos_ca_dir/ca.key" "$combos_ca_dir/ca.crt"
+              rmdir "$combos_ca_dir"
+              combos_ca_dir=''
+            fi
             trap - EXIT
             printf 'PASS: Dockerfile.service %s escuchó en %s/%s y su healthcheck quedó healthy.\n' "$service" "$port_env" "$port"
           done < ops/oracle/services.psv

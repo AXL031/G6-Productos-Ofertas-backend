@@ -53,13 +53,38 @@ export class CatalogSkuContextClient {
           : 'NETWORK_FAILURE',
       );
     }
-    if (response.status === 404)
-      throw new IntegrationFailure('CATALOG', 'SKU_NO_ENCONTRADO', 404);
-    if (response.status === 401 || response.status === 403)
+    if (response.status === 404) {
+      let problemCode: unknown;
+      if (
+        response.headers
+          .get('content-type')
+          ?.split(';', 1)[0]
+          ?.trim()
+          .toLowerCase() === 'application/problem+json'
+      ) {
+        try {
+          const problem: unknown = await response.json();
+          if (problem && typeof problem === 'object' && 'code' in problem)
+            problemCode = problem.code;
+        } catch {
+          // A malformed 404 body is an upstream failure, never an absent SKU.
+        }
+      }
+      if (problemCode === 'SKU_NO_ENCONTRADO')
+        throw new IntegrationFailure('CATALOG', 'SKU_NO_ENCONTRADO', 404);
+      throw new IntegrationFailure('CATALOG', 'UPSTREAM_FAILURE', 404);
+    }
+    if (response.status === 401)
       throw new IntegrationFailure(
         'CATALOG',
-        'SERVICE_AUTH_REJECTED',
-        response.status,
+        'SERVICE_AUTHENTICATION_FAILED',
+        401,
+      );
+    if (response.status === 403)
+      throw new IntegrationFailure(
+        'CATALOG',
+        'SERVICE_AUTHORIZATION_FAILED',
+        403,
       );
     if (response.status === 503)
       throw new IntegrationFailure('CATALOG', 'UNAVAILABLE', 503);

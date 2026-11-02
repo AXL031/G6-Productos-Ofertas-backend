@@ -37,6 +37,7 @@ describe.skipIf(!isolatedHarnessEnabled)(
       'PGSSLROOTCERT',
       'COMBOS_RESTRICTED_DEMO_ENABLED',
       'COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED',
+      'COMBOS_RESTRICTED_DEMO_GATEWAY_IPS',
       'COMBOS_CATALOG_URL',
       'COMBOS_PRICING_URL',
       'COMBOS_CATALOG_CONTEXT_AUTHORIZED',
@@ -58,19 +59,34 @@ describe.skipIf(!isolatedHarnessEnabled)(
       process.env.PGSSLROOTCERT = process.env.COMBOS_TEST_CA!;
       process.env.COMBOS_RESTRICTED_DEMO_ENABLED = 'true';
       process.env.COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED = 'true';
+      process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS =
+        '127.0.0.1,::1,::ffff:127.0.0.1';
       process.env.COMBOS_CATALOG_CONTEXT_AUTHORIZED = 'true';
       process.env.COMBOS_CATALOG_SERVICE_BEARER = 'isolated-test-service-token';
       process.env.COMBOS_PRICING_SERVICE_BEARER = 'isolated-test-service-token';
       catalog = createServer((req, res) => {
         const sku = decodeURIComponent((req.url ?? '').split('/').at(-2) ?? '');
-        const status = sku === 'MISSING' ? 404 : catalogStatus;
-        res.writeHead(status, { 'content-type': 'application/json' });
+        const missing = sku === 'MISSING';
+        const status = missing ? 404 : catalogStatus;
+        res.writeHead(status, {
+          'content-type': missing
+            ? 'application/problem+json'
+            : 'application/json',
+        });
         res.end(
-          JSON.stringify({
-            ...skuContext(sku),
-            active: sku !== 'INACTIVE',
-            eligible: sku !== 'INELIGIBLE',
-          }),
+          JSON.stringify(
+            missing
+              ? {
+                  title: 'SKU no encontrado',
+                  status: 404,
+                  code: 'SKU_NO_ENCONTRADO',
+                }
+              : {
+                  ...skuContext(sku),
+                  active: sku !== 'INACTIVE',
+                  eligible: sku !== 'INELIGIBLE',
+                },
+          ),
         );
       });
       pricing = createServer((req, res) => {
@@ -86,6 +102,9 @@ describe.skipIf(!isolatedHarnessEnabled)(
           channel_id: null,
           valid_from: '2026-01-01T00:00:00Z',
           valid_until: null,
+          price_version: 1,
+          vigencia_id: `validity-${sku}`,
+          origen: 'PRODUCTO',
         });
         res.writeHead(pricingStatus, { 'content-type': 'application/json' });
         res.end(
@@ -378,6 +397,15 @@ describe.skipIf(!isolatedHarnessEnabled)(
         .set('Authorization', 'Bearer not-a-token')
         .expect(401)
         .expect((r) => expect(r.body.code).toBe('TOKEN_INVALIDO'));
+      process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS = '203.0.113.10';
+      await request(app.getHttpServer())
+        .get('/api/v1/combos')
+        .set('X-Forwarded-For', '203.0.113.10')
+        .set('X-Real-IP', '203.0.113.10')
+        .expect(403)
+        .expect((r) => expect(r.body.code).toBe('SCOPE_INSUFICIENTE'));
+      process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS =
+        '127.0.0.1,::1,::ffff:127.0.0.1';
       await request(app.getHttpServer())
         .get('/api/v1/combos')
         .set('X-Correlation-Id', 'invalid')
