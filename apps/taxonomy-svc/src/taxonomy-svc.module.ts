@@ -10,6 +10,7 @@ import { TaxonomySvcService } from './taxonomy-svc.service.js';
 import { TAXONOMY_REPOSITORY } from './taxonomy.repository.js';
 import { Database } from './database.js';
 import { PostgresTaxonomyRepository } from './postgres-taxonomy.repository.js';
+import { DeactivationCheckService } from './domain/deactivation-check.service.js';
 
 export interface OpcionesModuloTaxonomy {
   databaseUrl?: string;
@@ -21,6 +22,7 @@ export interface OpcionesModuloTaxonomy {
   providers: [
     TaxonomySvcService,
     Database,
+    DeactivationCheckService,
     proveedorDeRepositorio(),
     { provide: TAXONOMY_READINESS, useExisting: TAXONOMY_REPOSITORY },
     { provide: APP_FILTER, useClass: ProblemDetailsFilter },

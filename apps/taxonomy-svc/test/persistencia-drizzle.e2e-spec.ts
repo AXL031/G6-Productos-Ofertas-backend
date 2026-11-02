@@ -5,6 +5,9 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { getTableConfig } from 'drizzle-orm/pg-core';
+import { vi } from 'vitest';
+import { Database } from '../src/database.js';
+import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import request from 'supertest';
@@ -304,6 +307,75 @@ describeIntegracion(
         );
       } finally {
         await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
+    it('consulta el check correlacionado solo durante la ventana y el estado en curso', async () => {
+      const client = await admin.connect();
+      const migration = readFileSync(
+        resolve(
+          'apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql',
+        ),
+        'utf8',
+      );
+      const database = new Database();
+      const conexion = drizzle(client);
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(conexion),
+      );
+      const service = new DeactivationCheckService(database);
+      const identidad = {
+        operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa5',
+        correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        entityType: 'CATEGORY' as const,
+        entityId: '11111111-1111-4111-8111-111111111111',
+        version: 4,
+      };
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'DELETE FROM taxonomy.master_deactivation_operations',
+        );
+        await client.query(migration);
+        await client.query(
+          'CREATE TABLE taxonomy.product_type_characteristics (id uuid PRIMARY KEY, tipo_producto_id uuid NOT NULL, caracteristica_id uuid NOT NULL)',
+        );
+        await client.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, entity_type, entity_id, correlation_id, source_version, status)
+          VALUES ($1, $2, $3, $4, $5, 'IN_PROGRESS')`,
+          [
+            identidad.operationId,
+            identidad.entityType,
+            identidad.entityId,
+            identidad.correlationId,
+            identidad.version,
+          ],
+        );
+        await expect(
+          service.evaluar({ ...identidad, result: 'CLEAR' }),
+        ).resolves.toBe('EVALUAR_BAJA');
+        await expect(
+          service.evaluar({ ...identidad, version: 3, result: 'CLEAR' }),
+        ).resolves.toBe('IGNORAR');
+        await client.query(
+          "UPDATE taxonomy.master_deactivation_operations SET created_at = statement_timestamp() - interval '61 seconds' WHERE operation_id = $1",
+          [identidad.operationId],
+        );
+        await expect(
+          service.evaluar({ ...identidad, result: 'CLEAR' }),
+        ).resolves.toBe('IGNORAR');
+        await client.query(
+          "UPDATE taxonomy.master_deactivation_operations SET created_at = statement_timestamp(), status = 'COMPLETED' WHERE operation_id = $1",
+          [identidad.operationId],
+        );
+        await expect(
+          service.evaluar({ ...identidad, result: 'CLEAR' }),
+        ).resolves.toBe('IGNORAR');
+      } finally {
+        await client.query('ROLLBACK');
+        vi.restoreAllMocks();
         client.release();
       }
     });
