@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
+import { matchesBulkStorageReference } from './bulk-storage-reference.js';
 
 /** Private Supabase Storage adapter. It never provisions buckets or policies. */
 @Injectable()
@@ -73,7 +74,7 @@ export class BulkStorageService {
   async get(contentRef: string): Promise<Buffer> {
     const { url, key, bucket } = this.config();
     const prefix = `supabase://${bucket}/`;
-    if (!contentRef.startsWith(prefix))
+    if (!matchesBulkStorageReference(contentRef, bucket))
       throw new BulkDomainError(
         'STORAGE_UNAVAILABLE',
         'La referencia privada no corresponde al bucket configurado.',

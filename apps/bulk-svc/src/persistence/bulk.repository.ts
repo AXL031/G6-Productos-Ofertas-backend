@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   batchJobs,
@@ -16,6 +16,7 @@ import {
   persistenceError,
 } from './bulk.persistence.errors.js';
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
+import { matchesBulkStorageReference } from '../storage/bulk-storage-reference.js';
 
 export type BulkDomain = 'CATALOGO' | 'PRICING' | 'INVENTARIO';
 export type BulkFileFormat = 'CSV' | 'XLSX';
@@ -1365,6 +1366,125 @@ export class BulkPersistenceRepository {
     }
   }
 
+  async listQueuedExportJobs(): Promise<Array<typeof exportJobs.$inferSelect>> {
+    try {
+      return await this.db
+        .select()
+        .from(exportJobs)
+        .where(eq(exportJobs.status, 'QUEUED'))
+        .orderBy(asc(exportJobs.createdAt));
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async requeueStaleProcessingExports(
+    staleBefore: Date,
+  ): Promise<Array<typeof exportJobs.$inferSelect>> {
+    try {
+      return await this.db
+        .update(exportJobs)
+        .set({ status: 'QUEUED' })
+        .where(
+          and(
+            eq(exportJobs.status, 'PROCESSING'),
+            sql`${exportJobs.updatedAt} <= ${staleBefore}`,
+          ),
+        )
+        .returning();
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async claimQueuedExportJob(
+    exportId: string,
+  ): Promise<{ job: typeof exportJobs.$inferSelect; fence: string } | null> {
+    try {
+      const [claimed] = await this.db
+        .update(exportJobs)
+        .set({ status: 'PROCESSING' })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'QUEUED'),
+          ),
+        )
+        .returning({
+          job: exportJobs,
+          fence: sql<string>`xmin::text`,
+        });
+      return claimed ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async failProcessingExportJob(
+    exportId: string,
+    fence: string,
+  ): Promise<typeof exportJobs.$inferSelect | null> {
+    try {
+      const [failed] = await this.db
+        .update(exportJobs)
+        .set({ status: 'FAILED_GENERAL' })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'PROCESSING'),
+            sql`xmin::text = ${fence}`,
+          ),
+        )
+        .returning();
+      return failed ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async findFileManifest(
+    id: string,
+  ): Promise<typeof fileManifests.$inferSelect | null> {
+    try {
+      const [manifest] = await this.db
+        .select()
+        .from(fileManifests)
+        .where(eq(fileManifests.id, id))
+        .limit(1);
+      return manifest ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async transitionExportJob(
+    exportId: string,
+    from: BulkJobStatus[],
+    to: BulkJobStatus,
+  ): Promise<typeof exportJobs.$inferSelect | null> {
+    try {
+      const allowed =
+        (to === 'PROCESSING' && from.length === 1 && from[0] === 'QUEUED') ||
+        (to === 'FAILED_GENERAL' &&
+          from.length === 1 &&
+          from[0] === 'PROCESSING');
+      if (!allowed) inconsistent('Invalid export job state transition');
+      const [job] = await this.db
+        .update(exportJobs)
+        .set({ status: to })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            inArray(exportJobs.status, from),
+          ),
+        )
+        .returning();
+      return job ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
   async completeExportJob(
     exportId: string,
     resultFile: Omit<FileManifestInput, 'role'>,
@@ -1378,8 +1498,21 @@ export class BulkPersistenceRepository {
           .for('update')
           .limit(1);
         if (!job) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
-        if (job.status === 'COMPLETED')
-          inconsistent('Export is already complete');
+        if (job.status !== 'PROCESSING')
+          inconsistent('Only a processing export can be completed');
+        if (resultFile.format !== job.format)
+          inconsistent('Export output format must match the requested format');
+        if (
+          !matchesBulkStorageReference(
+            resultFile.contentRef,
+            process.env.BULK_STORAGE_BUCKET,
+          )
+        )
+          inconsistent(
+            'Export output must reference a configured Bulk Storage object',
+          );
+        // This checks adapter compatibility only. The caller must upload via
+        // BulkStorageService.put(), which verifies the configured bucket ACL.
         const [manifest] = await tx
           .insert(fileManifests)
           .values({
@@ -1397,7 +1530,9 @@ export class BulkPersistenceRepository {
             outputFileId: manifest.id,
             completedAt: new Date(),
           })
-          .where(eq(exportJobs.id, job.id))
+          .where(
+            and(eq(exportJobs.id, job.id), eq(exportJobs.status, 'PROCESSING')),
+          )
           .returning();
         if (!updated) throw new Error('Export update returned no row');
         return updated;

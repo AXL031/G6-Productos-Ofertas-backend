@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { BulkSvcController } from './bulk-svc.controller.js';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkImportService } from './bulk-import.service.js';
+import { BulkExportService } from './bulk-export.service.js';
 import {
   parseBulkEnvironment,
   BULK_ENVIRONMENT,
@@ -28,6 +29,7 @@ import { CatalogBulkResultConsumer } from './messaging/catalog-bulk-result-consu
   providers: [
     BulkSvcService,
     BulkImportService,
+    BulkExportService,
     BulkStorageService,
     BulkUserBearerGuard,
     BulkOutboxRelay,
