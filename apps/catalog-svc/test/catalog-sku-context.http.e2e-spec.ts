@@ -47,7 +47,7 @@ describe('Private Pricing SKU context HTTP contract (local signed RS256/JWKS, is
       '.' +
       encode({
         iss: origin,
-        sub: 'modulo-pricing',
+        sub: 'modulo-productos',
         tipo: 'servicio',
         aud: ['api-productos'],
         scope: 'catalogo:leer',
@@ -92,9 +92,9 @@ describe('Private Pricing SKU context HTTP contract (local signed RS256/JWKS, is
         discoveryUrl: origin + '/discovery',
         jwksUrl: origin + '/keys',
       })
-      // Even both existing demo flags must never bypass this private operation.
+      // Restricted administrative demo and preview never bypass this technical operation.
       .overrideProvider(CATALOG_READ_DEMO)
-      .useValue({ enabled: true })
+      .useValue({ enabled: false, restricted: true, gatewayIps: ['127.0.0.1'] })
       .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
       .useValue(true)
       .compile();
@@ -181,7 +181,7 @@ describe('Private Pricing SKU context HTTP contract (local signed RS256/JWKS, is
     ['wrong audience', { aud: ['another-api'] }, 401],
     ['missing scope', { scope: 'precios:leer' }, 403],
     ['Marketplace', { sub: 'modulo-marketplace' }, 403],
-    ['Catalog identity', { sub: 'modulo-productos' }, 403],
+    ['legacy Pricing identity', { sub: 'modulo-pricing' }, 403],
     [
       'human manager',
       { tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] },

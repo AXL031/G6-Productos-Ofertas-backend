@@ -22,7 +22,7 @@ export class CatalogSkuContextController {
   @RequireCatalogIdentity({
     identity: 'service',
     scope: 'catalogo:leer',
-    allowedClients: ['modulo-pricing'],
+    allowedClients: ['modulo-productos'],
   })
   async context(
     @Param('sku') sku: string,
