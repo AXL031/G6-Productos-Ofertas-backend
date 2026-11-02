@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
+  stableUuid,
   type CatalogBulkCommand,
   type CatalogBulkRow,
 } from './messaging/catalog-bulk-upsert.js';
@@ -37,7 +38,17 @@ export class BulkImportService {
         'PLANTILLA_INCOMPATIBLE',
         'template_version debe ser 2.',
       );
-    const parsed = parseBulkTemplate(input.bytes, input.format);
+    const batchId = input.batchId ?? randomUUID();
+    const parsedFile = parseBulkTemplate(input.bytes, input.format);
+    const parsed = {
+      ...parsedFile,
+      rows: parsedFile.rows.map((row) => {
+        const rowId = stableUuid(
+          `${batchId}:bulk-row:${row.rowNumber}:${row.rowId}`,
+        );
+        return { ...row, rowId, rowOperationId: rowId };
+      }),
+    };
     assertImportDependencies(parsed);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
       rowId: row.rowId,
@@ -54,7 +65,7 @@ export class BulkImportService {
       defaultLocationId: row.defaultLocationId,
     }));
     const result = await this.createImport({
-      batchId: input.batchId ?? randomUUID(),
+      batchId,
       correlationId: input.correlationId,
       contentRef: input.contentRef,
       format: input.format,

@@ -122,6 +122,159 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     ).toBe(false);
   }, 30000);
 
+  it('isolates row operation identities across independent batches with identical CSV and preserves each replay', async () => {
+    const service = new BulkImportService(repository);
+    const batchIds = [id(), id()] as const;
+    const correlationIds = [id(), id()] as const;
+    const values = [
+      'ALTA',
+      '',
+      '',
+      'SKU-SAME-FILE',
+      '',
+      'Producto idéntico',
+      'Descripción',
+      'cat-1',
+      'marca-1',
+      'tipo-1',
+      'false',
+      '12.5',
+      '[]',
+      '',
+      '',
+      '0',
+    ];
+    const bytes = Buffer.from(
+      `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.join(',')}\r\n`,
+      'utf8',
+    );
+    const makeInput = (index: 0 | 1) => ({
+      bytes,
+      format: 'CSV' as const,
+      templateVersion: 2,
+      correlationId: correlationIds[index],
+      batchId: batchIds[index],
+      contentRef: 'test://same-csv-file',
+    });
+
+    const admitted = await Promise.all([
+      service.receiveImport(makeInput(0)),
+      service.receiveImport(makeInput(1)),
+    ]);
+    const initialIdentities = admitted.map((result) => ({
+      rowId: result.parsed.rows[0]!.rowId,
+      rowOperationId: result.parsed.rows[0]!.rowOperationId,
+    }));
+    expect(initialIdentities[0]?.rowOperationId).not.toBe(
+      initialIdentities[1]?.rowOperationId,
+    );
+    expect(initialIdentities[0]?.rowId).toBe(
+      initialIdentities[0]?.rowOperationId,
+    );
+    expect(initialIdentities[1]?.rowId).toBe(
+      initialIdentities[1]?.rowOperationId,
+    );
+
+    const admittedCommands = await Promise.all(
+      batchIds.map((batchId) => repository.findImportAdmissionIntent(batchId)),
+    );
+    const envelopes = admittedCommands.map(
+      (intent) =>
+        (
+          intent!.catalogCommands as Array<{
+            message_id: string;
+            operation_id: string;
+            data: {
+              batch_id: string;
+              rows: Array<{ row_operation_id: string }>;
+            };
+          }>
+        )[0]!,
+    );
+    expect(envelopes[0]!.data.rows[0]!.row_operation_id).toBe(
+      initialIdentities[0]!.rowOperationId,
+    );
+    expect(envelopes[1]!.data.rows[0]!.row_operation_id).toBe(
+      initialIdentities[1]!.rowOperationId,
+    );
+    expect(new Set(envelopes.map((envelope) => envelope.message_id)).size).toBe(
+      2,
+    );
+
+    const relay = new BulkOutboxRelay(repository, broker.url);
+    await relay.flush();
+    const delivered = [await broker.nextCommand(), await broker.nextCommand()];
+    expect(
+      new Set(
+        delivered.map(
+          (item) => (item as { data: { batch_id: string } }).data.batch_id,
+        ),
+      ),
+    ).toEqual(new Set(batchIds));
+
+    for (const [index, envelope] of envelopes.entries()) {
+      const row = admitted[index]!.parsed.rows[0]!;
+      await broker.publishResult({
+        message_id: id(),
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        correlation_id: correlationIds[index],
+        causation_id: envelope.message_id,
+        operation_id: envelope.operation_id,
+        producer: 'catalog-svc',
+        kind: 'result',
+        name: 'catalog.bulk.upsert.completed',
+        data: {
+          batch_id: batchIds[index],
+          batch_operation_id: envelope.operation_id,
+          results: [
+            {
+              row_number: row.rowNumber,
+              row_operation_id: row.rowOperationId,
+              product_id: id(),
+              sku_base: row.skuBase,
+              status: 'COMPLETED',
+              code: null,
+            },
+          ],
+        },
+      });
+    }
+    await waitFor(async () => {
+      const stepSets = await Promise.all(
+        batchIds.map(async (batchId, index) =>
+          repository.listRowSteps(
+            batchId,
+            admitted[index]!.parsed.rows[0]!.rowId,
+          ),
+        ),
+      );
+      return stepSets.every((steps) =>
+        steps.some(
+          (step) => step.domain === 'CATALOGO' && step.status === 'COMPLETED',
+        ),
+      );
+    });
+
+    const replayed = await Promise.all([
+      service.receiveImport(makeInput(0)),
+      service.receiveImport(makeInput(1)),
+    ]);
+    expect(
+      replayed.map((result) => ({
+        rowId: result.parsed.rows[0]!.rowId,
+        rowOperationId: result.parsed.rows[0]!.rowOperationId,
+      })),
+    ).toEqual(initialIdentities);
+    expect(
+      await Promise.all(
+        batchIds.map((batchId) =>
+          repository.findImportAdmissionIntent(batchId),
+        ),
+      ),
+    ).toEqual(admittedCommands);
+  }, 60000);
+
   it('persists, replays and consolidates multiple 1 MiB chunks with distinct chunk identities', async () => {
     const batchId = id();
     const correlationId = id();
