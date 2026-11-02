@@ -1,4 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -210,6 +212,100 @@ describeIntegracion(
       ).rejects.toMatchObject({
         cause: { code: '23505', constraint: 'uq_mdo_operation_id' },
       });
+    });
+
+    it('valida versión y operación activa únicas con la migración aditiva en una transacción aislada', async () => {
+      const client = await admin.connect();
+      const migration = readFileSync(
+        resolve(
+          'apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql',
+        ),
+        'utf8',
+      );
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          'DELETE FROM taxonomy.master_deactivation_operations',
+        );
+        await client.query(migration);
+        await client.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, entity_type, entity_id, correlation_id, source_version)
+          VALUES ($1, 'BRAND', $2, $3, $4)`,
+          [
+            'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa1',
+            '44444444-4444-4444-8444-444444444444',
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            3,
+          ],
+        );
+        await client.query('SAVEPOINT duplicado');
+        await expect(
+          client.query(
+            `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, entity_type, entity_id, correlation_id, source_version)
+          VALUES ($1, 'BRAND', $2, $3, $4)`,
+            [
+              'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa2',
+              '44444444-4444-4444-8444-444444444444',
+              'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+              3,
+            ],
+          ),
+        ).rejects.toMatchObject({
+          code: '23505',
+          constraint: 'uq_mdo_active_entity',
+        });
+        await client.query('ROLLBACK TO SAVEPOINT duplicado');
+        await client.query('SAVEPOINT sin_version');
+        await expect(
+          client.query(
+            `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, entity_type, entity_id, correlation_id)
+          VALUES ($1, 'CATEGORY', $2, $3)`,
+            [
+              'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa3',
+              '11111111-1111-4111-8111-111111111111',
+              'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            ],
+          ),
+        ).rejects.toMatchObject({
+          code: '23514',
+          constraint: 'ck_mdo_active_source_version',
+        });
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
+    });
+
+    it('detiene la migración si existen operaciones históricas activas sin versión', async () => {
+      const client = await admin.connect();
+      const migration = readFileSync(
+        resolve(
+          'apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql',
+        ),
+        'utf8',
+      );
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, entity_type, entity_id, correlation_id)
+          VALUES ($1, 'BRAND', $2, $3)`,
+          [
+            'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaa4',
+            '44444444-4444-4444-8444-444444444444',
+            'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+          ],
+        );
+        await expect(client.query(migration)).rejects.toThrow(
+          'requieren reconciliación',
+        );
+      } finally {
+        await client.query('ROLLBACK');
+        client.release();
+      }
     });
 
     it('enTransaccion revierte los cambios si la operacion falla', async () => {
