@@ -1,4 +1,4 @@
-// Internal candidate policy v1; deliberately disconnected from HTTP until homologation.
+// Approved internal G6 policy v1, used by evaluateBasket after authoritative facts.
 import { Decimal } from './decimal.js';
 import type { CombinationPolicy } from '../infrastructure/persistence/repositories.js';
 
@@ -134,8 +134,8 @@ function compareResults(a: ProposalResult, b: ProposalResult): number {
 }
 
 /** Inputs are already eligible at the same channel/instant and have one currency.
- * This internal candidate enumerates all compatible subsets; it is intentionally
- * not a production HTTP evaluator or a substitute for authoritative price data.
+ * Enumerates compatible subsets with bounded exact arithmetic. The caller owns
+ * identity/eligibility, monetary projection and HTTP DTOs; prices stay authoritative.
  */
 export function composeBenefits(
   lines: readonly ProposalLine[],
