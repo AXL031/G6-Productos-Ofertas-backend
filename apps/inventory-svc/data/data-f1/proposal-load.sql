@@ -4,132 +4,182 @@
 -- Microservicio: inventory-svc
 -- Esquema destino: inventory
 -- Ambiente autorizado: Supabase compartido G6 (slzglmtiyrzygpkiuthf), PostgreSQL 17
--- Autorización de infraestructura: Marco Castilla (extracción y propuesta de carga)
+-- Autorización de infraestructura: Marco Castilla (extracción y propuesta técnica)
 -- ESTADO: PROPUESTA TÉCNICA (NO EJECUTADA — REQUIERE 2da AUTORIZACIÓN DE MARCO)
+-- ============================================================================
+-- MECANISMO DE EJECUCIÓN ADMITIDO:
+-- 1. Desde psql:
+--      psql -v ON_ERROR_STOP=1 -f apps/inventory-svc/data/data-f1/proposal-load.sql
+-- 2. Desde el Editor SQL de Supabase:
+--      Copiar y ejecutar el bloque completo; el script es SQL puro y transaccional.
 -- ============================================================================
 -- PRINCIPIOS DE PROTECCIÓN Y NO REGRESIÓN:
 -- 1. No modifica esquemas ajenos (catalog, pricing, taxonomy, promotions, etc.).
--- 2. No sobrescribe saldos existentes ni altera inventario físico existente (14 saldos).
--- 3. Inserciones idempotentes protegidas con ON CONFLICT DO NOTHING / WHERE NOT EXISTS.
--- 4. Ejecución transaccional atómica con bloque DO y verificación final.
+-- 2. No sobrescribe saldos existentes ni altera inventario físico (14 saldos).
+-- 3. Idempotencia estricta por clave de negocio funcional (WHERE NOT EXISTS).
+-- 4. Aborta con RAISE EXCEPTION ante cualquier discrepancia previa o posterior.
 -- ============================================================================
 
-\set ON_ERROR_STOP on
-
-BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;
+BEGIN;
 
 -- ----------------------------------------------------------------------------
--- 1. Verificación de entorno, rol y esquema
+-- 1. Verificación efectiva de destino y esquema
 -- ----------------------------------------------------------------------------
 DO $$
 BEGIN
-  IF current_database() <> 'postgres' THEN
-    RAISE EXCEPTION 'Destino incorrecto: la base de datos debe ser postgres';
+  -- Validar existencia del esquema inventory
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.schemata WHERE schema_name = 'inventory'
+  ) THEN
+    RAISE EXCEPTION 'Destino inválido: el esquema inventory no existe en la base de datos %', current_database();
   END IF;
 
-  -- Comprobar que no se ejecutan operaciones sobre otros esquemas
-  IF EXISTS (
-    SELECT 1 FROM pg_tables 
-    WHERE schemaname NOT IN ('inventory') 
-      AND tablename IN ('stock_balance', 'locations')
+  -- Validar existencia de la tabla destino stock_threshold_override
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.tables 
+    WHERE table_schema = 'inventory' AND table_name = 'stock_threshold_override'
   ) THEN
-    -- Aislamiento confirmado
-    NULL;
+    RAISE EXCEPTION 'Destino inválido: la tabla inventory.stock_threshold_override no existe';
   END IF;
 END $$;
 
--- Fijar esquema de búsqueda exclusivo
+-- Fijar search_path exclusivo para evitar ambigüedades de resolución
 SET LOCAL search_path = inventory, public;
 
 -- ----------------------------------------------------------------------------
--- 2. Verificación de precondiciones de ubicaciones autorizadas
+-- 2. Verificación estricta de precondiciones (Baseline real de Supabase)
 -- ----------------------------------------------------------------------------
--- Las ubicaciones ALM-LURIN y TDA-MIRAFLORES ya existen en Supabase.
--- Se verifica su presencia sin alterarlas ni duplicarlas.
 DO $$
 DECLARE
   v_count_locations integer;
+  v_count_balances integer;
+  v_conflicting_global integer;
+  v_conflicting_sku integer;
 BEGIN
+  -- 2.1 Verificar exactamente las 2 ubicaciones autorizadas activas
   SELECT count(*) INTO v_count_locations
   FROM inventory.locations
   WHERE id IN (
     '9129b578-631e-1735-8427-b683fb524380'::uuid,
     'aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485'::uuid
-  );
+  ) AND active = true;
 
-  IF v_count_locations < 2 THEN
-    RAISE EXCEPTION 'Precondición fallida: ubicaciones Lurín o Miraflores no encontradas en inventory.locations';
+  IF v_count_locations <> 2 THEN
+    RAISE EXCEPTION 'Precondición fallida: se esperaban exactamente 2 ubicaciones activas (Lurín y Miraflores), encontradas: %', v_count_locations;
   END IF;
-END $$;
 
--- ----------------------------------------------------------------------------
--- 3. Inserción de umbrales no existentes (stock_threshold_override)
--- ----------------------------------------------------------------------------
--- Umbral global (5 unidades) y específico para ADI-ENT22-AZU-M (3 unidades)
-INSERT INTO inventory.stock_threshold_override (
-  id,
-  sku_id,
-  location_id,
-  umbral_efectivo
-)
-VALUES
-  (
-    '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid, -- id determinista UUIDv5
-    NULL,
-    NULL,
-    5
-  ),
-  (
-    '7b49463c-333e-5e63-b8ad-344c20847250'::uuid, -- id determinista UUIDv5
-    'ADI-ENT22-AZU-M',
-    NULL,
-    3
-  )
-ON CONFLICT (id) DO NOTHING;
-
--- ----------------------------------------------------------------------------
--- 4. Garantía de no sobrescritura de saldos existentes
--- ----------------------------------------------------------------------------
--- El análisis de dry-run y auditoría de Gabriel Poma confirmó que ya existen
--- 14 saldos para los 7 SKU en Lurín y Miraflores. Se prohíbe taxativamente
--- cualquier UPDATE sobre inventory.stock_balance para evitar pérdida de datos.
-DO $$
-DECLARE
-  v_existing_balances integer;
-BEGIN
-  SELECT count(*) INTO v_existing_balances
+  -- 2.2 Verificar exactamente los 14 saldos existentes esperados
+  SELECT count(*) INTO v_count_balances
   FROM inventory.stock_balance
   WHERE location_id IN (
     '9129b578-631e-1735-8427-b683fb524380'::uuid,
     'aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485'::uuid
   );
 
-  IF v_existing_balances < 14 THEN
-    RAISE WARNING 'Se detectaron menos de 14 saldos previos (total: %)', v_existing_balances;
+  IF v_count_balances <> 14 THEN
+    RAISE EXCEPTION 'Precondición fallida: se esperaban exactamente 14 saldos en baseline, encontrados: %', v_count_balances;
+  END IF;
+
+  -- 2.3 Verificar que no existan umbrales globales incompatibles
+  SELECT count(*) INTO v_conflicting_global
+  FROM inventory.stock_threshold_override
+  WHERE sku_id IS NULL AND location_id IS NULL AND umbral_efectivo <> 5;
+
+  IF v_conflicting_global > 0 THEN
+    RAISE EXCEPTION 'Precondición fallida: ya existe un umbral global incompatible con valor distinto a 5';
+  END IF;
+
+  -- 2.4 Verificar que no existan umbrales incompatibles para ADI-ENT22-AZU-M
+  SELECT count(*) INTO v_conflicting_sku
+  FROM inventory.stock_threshold_override
+  WHERE sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL AND umbral_efectivo <> 3;
+
+  IF v_conflicting_sku > 0 THEN
+    RAISE EXCEPTION 'Precondición fallida: ya existe un umbral incompatible para ADI-ENT22-AZU-M con valor distinto a 3';
   END IF;
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 5. Verificaciones posteriores a la inserción
+-- 3. Inserción idempotente por clave de negocio funcional
+-- ----------------------------------------------------------------------------
+
+-- 3.1 Umbral global (5 unidades)
+-- Se inserta únicamente si no existe ya un umbral global en inventory.stock_threshold_override
+INSERT INTO inventory.stock_threshold_override (
+  id,
+  sku_id,
+  location_id,
+  umbral_efectivo
+)
+SELECT
+  '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,
+  NULL,
+  NULL,
+  5
+WHERE NOT EXISTS (
+  SELECT 1 FROM inventory.stock_threshold_override
+  WHERE sku_id IS NULL AND location_id IS NULL
+);
+
+-- 3.2 Umbral específico para ADI-ENT22-AZU-M (3 unidades)
+-- Se inserta únicamente si no existe ya un umbral para este SKU
+INSERT INTO inventory.stock_threshold_override (
+  id,
+  sku_id,
+  location_id,
+  umbral_efectivo
+)
+SELECT
+  '7b49463c-333e-5e63-b8ad-344c20847250'::uuid,
+  'ADI-ENT22-AZU-M',
+  NULL,
+  3
+WHERE NOT EXISTS (
+  SELECT 1 FROM inventory.stock_threshold_override
+  WHERE sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL
+);
+
+-- ----------------------------------------------------------------------------
+-- 4. Verificaciones transaccionales posteriores (Post-condiciones)
 -- ----------------------------------------------------------------------------
 DO $$
 DECLARE
-  v_thresholds integer;
+  v_global_val integer;
+  v_sku_val integer;
+  v_total_balances integer;
 BEGIN
-  SELECT count(*) INTO v_thresholds
+  -- 4.1 Verificar valor y presencia del umbral global
+  SELECT umbral_efectivo INTO v_global_val
   FROM inventory.stock_threshold_override
-  WHERE id IN (
-    '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,
-    '7b49463c-333e-5e63-b8ad-344c20847250'::uuid
+  WHERE sku_id IS NULL AND location_id IS NULL;
+
+  IF v_global_val IS NULL OR v_global_val <> 5 THEN
+    RAISE EXCEPTION 'Post-verificación fallida: el umbral global debe ser 5, valor actual: %', v_global_val;
+  END IF;
+
+  -- 4.2 Verificar valor y presencia del umbral específico
+  SELECT umbral_efectivo INTO v_sku_val
+  FROM inventory.stock_threshold_override
+  WHERE sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL;
+
+  IF v_sku_val IS NULL OR v_sku_val <> 3 THEN
+    RAISE EXCEPTION 'Post-verificación fallida: el umbral de ADI-ENT22-AZU-M debe ser 3, valor actual: %', v_sku_val;
+  END IF;
+
+  -- 4.3 Garantizar que no se modificaron ni eliminaron los 14 saldos existentes
+  SELECT count(*) INTO v_total_balances
+  FROM inventory.stock_balance
+  WHERE location_id IN (
+    '9129b578-631e-1735-8427-b683fb524380'::uuid,
+    'aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485'::uuid
   );
 
-  IF v_thresholds <> 2 THEN
-    RAISE EXCEPTION 'Verificación post-carga fallida: los umbrales no se registraron correctamente';
+  IF v_total_balances <> 14 THEN
+    RAISE EXCEPTION 'Post-verificación fallida: la cantidad de saldos existentes fue alterada (total: %)', v_total_balances;
   END IF;
 END $$;
 
 -- ----------------------------------------------------------------------------
--- 6. Cierre seguro de la transacción
+-- 5. Cierre seguro de la transacción
 -- ----------------------------------------------------------------------------
--- Si la validación falla o se ejecuta en modo prueba, sustituir por ROLLBACK.
 COMMIT;

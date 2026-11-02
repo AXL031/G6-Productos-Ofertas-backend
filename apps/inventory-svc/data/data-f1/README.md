@@ -9,7 +9,9 @@ Owner: Taco. Estado: **IMPLEMENTAR_PARCIAL**. Este directorio prepara una propue
 - `baseline-empty.json`: simulación sintética vacía para pruebas unitarias sin conexión.
 - `baseline-supabase-2026-11-02.json`: snapshot de solo lectura (`READ_ONLY_EXPORT`) obtenido con autorización expresa de Infraestructura (Marco Castilla) sobre el proyecto `slzglmtiyrzygpkiuthf` (PostgreSQL 17, esquema `inventory`). Contiene el estado real: 2 ubicaciones, 14 saldos, 14 operaciones de inicialización y 12 movimientos Kardex.
 - `dry-run.mjs`: validador y comparador offline.
-- `proposal-load.sql`: propuesta de script SQL transaccional atómico e idempotente para la carga de umbrales no existentes sin sobrescribir saldos existentes ni afectar otros esquemas.
+- `proposal-load.sql`: propuesta de script SQL transaccional atómico e idempotente para la inserción de los 2 umbrales de stock no existentes sin sobrescribir saldos existentes ni afectar otros esquemas.
+- `proposal-rollback.sql`: script de reversión selectiva segura que elimina exclusivamente los 2 umbrales de stock de DATA-004, validando la integridad inmutable de los 14 saldos y las 2 ubicaciones.
+- `proposal-sql.test.mjs`: suite de pruebas automatizadas que valida la sintaxis, precondiciones, idempotencia funcional en replay y reversión selectiva.
 
 ## 2. Reproducción y ejecución offline
 
@@ -18,6 +20,9 @@ Desde la raíz de Backend:
 ```powershell
 # Pruebas unitarias de integridad del preparador
 node --test apps/inventory-svc/data/data-f1/dry-run.test.mjs
+
+# Pruebas unitarias de idempotencia, seguridad y reversión de scripts SQL
+node --test apps/inventory-svc/data/data-f1/proposal-sql.test.mjs
 
 # Dry-run contra simulación vacía (38 INSERT propuestos, 0 conflictos)
 node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/data/data-f1/baseline-empty.json --report dist/inventory-data-f1-dry-run.json
@@ -40,26 +45,39 @@ Al ejecutar el preparador contra el snapshot real de Supabase (`baseline-supabas
 
 ## 4. Propuesta SQL Atómica e Idempotente (`proposal-load.sql`)
 
-Conforme a las condiciones establecidas por Marco Castilla para la preparación de la carga:
+Conforme a las 4 correcciones requeridas por Marco Castilla en su auditoría:
 
-1. **Aislamiento y Destino:** Limita su acción estrictamente a `inventory`. No realiza lecturas ni escrituras en esquemas ajenos (`catalog`, `pricing`, `promotions`, etc.).
-2. **No Regresión de Saldos Existentes:** No contiene `UPDATE` ni `DELETE` sobre `stock_balance`. Respeta los 14 saldos existentes en Lurín y Miraflores.
-3. **Idempotencia:** Las inserciones de umbrales utilizan `ON CONFLICT (id) DO NOTHING` con UUIDs deterministas UUIDv5.
-4. **Atomicidad:** Transacción protegida por `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED` con validaciones previas y posteriores en bloques `DO $$`. En caso de cualquier discrepancia, la transacción aborta limpiamente (`ROLLBACK`).
-5. **Condición de Release:** No se ejecutará en Supabase hasta recibir la segunda autorización escrita de Marco Castilla.
+1. **Idempotencia por Clave de Negocio Funcional:**
+   - La restricción de unicidad no depende únicamente del UUID `id`. Se implementó protección con `WHERE NOT EXISTS` sobre la clave de negocio:
+     - Umbral global: valida que no exista una fila con `sku_id IS NULL AND location_id IS NULL` (índice único `ix_threshold_global`).
+     - Umbral específico: valida que no exista una fila con `sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL` (restricción única `uq_threshold_override`).
+   - Reejecutar el script (`replay`) produce cero inserciones adicionales y cero conflictos (`no-op`).
+2. **Precondiciones Estrictas con Aborto Transaccional (`RAISE EXCEPTION`):**
+   - El script no emite avisos pasivos (`WARNING`). Aborta inmediatamente con `RAISE EXCEPTION` y `ROLLBACK` automático si:
+     - Las ubicaciones activas autorizadas en `inventory.locations` difieren de 2 (`ALM-LURIN` y `TDA-MIRAFLORES`).
+     - La cantidad de saldos en `inventory.stock_balance` difiere de 14.
+     - Ya existe un umbral global con valor distinto a 5.
+     - Ya existe un umbral para `ADI-ENT22-AZU-M` con valor distinto a 3.
+3. **Mecanismo de Ejecución Universal:**
+   - Se retiraron meta-comandos propietarios de consola (como `\set ON_ERROR_STOP on`). El script es ANSI/PostgreSQL puro encapsulado en un bloque transaccional `BEGIN; ... COMMIT;`.
+   - **Desde psql:** `psql -v ON_ERROR_STOP=1 -f apps/inventory-svc/data/data-f1/proposal-load.sql`
+   - **Desde Editor SQL de Supabase:** Copiar y ejecutar el bloque completo directamente en la consola web del proyecto.
+4. **Validación de Destino y Reversión Selectiva:**
+   - Valida activamente que la base conectada posea el esquema `inventory` y la tabla `stock_threshold_override`, fijando `SET LOCAL search_path = inventory, public;`.
+   - Se provee el script de reversión `proposal-rollback.sql` para desaplicar la carga de forma selectiva sin alterar los 14 saldos ni las 2 ubicaciones.
 
 ## 5. Plan de Verificación y Recuperación
 
 1. **Verificación Posterior:**
-   - Consulta de conteo y claves en `inventory.stock_threshold_override` (debe registrar exactamente 2 filas).
-   - Verificación de integridad referencial de ubicaciones (`ALM-LURIN` y `TDA-MIRAFLORES`).
-   - Cotejo de no alteración de `inventory.stock_balance` (permanecen los 14 saldos).
-2. **Recuperación ante Errores:**
-   - La ejecución está condicionada a `ON_ERROR_STOP on`. Si cualquier verificación falla, el bloque produce `ROLLBACK` total.
-   - En caso de reversión manual requerida, el script define la eliminación selectiva por clave primaria de los 2 umbrales insertados, sin afectar tablas operativas.
+   - Comprueba que el umbral global sea exactamente 5 (`sku_id IS NULL AND location_id IS NULL`).
+   - Comprueba que el umbral de `ADI-ENT22-AZU-M` sea exactamente 3 (`location_id IS NULL`).
+   - Comprueba que los 14 saldos de `inventory.stock_balance` y las 2 ubicaciones no hayan sufrido ninguna mutación.
+2. **Reversión Selectiva (`proposal-rollback.sql`):**
+   - Elimina exclusivamente los 2 umbrales de DATA-004 (`id` o clave de negocio coincidente).
+   - Verifica antes de confirmar (`COMMIT`) que permanezcan exactamente los 14 saldos y las 2 ubicaciones; si no, aborta con `RAISE EXCEPTION`.
 
 ## 6. Estado y Dependencias Externas
 
 - **Poma / Catálogo #12:** Ratificación técnica completada (7 SKUs en BORRADOR; -BASE excluidos). Falta publicación comercial futura de los productos.
-- **Marco / Infraestructura:** Primera autorización cumplida (extracción de lectura y dry-run offline). Pendiente segunda autorización formal para la carga de umbrales.
-- **Estado del Issue #14:** `IMPLEMENTAR_PARCIAL`.
+- **Marco / Infraestructura:** Primera autorización cumplida. Versión corregida del SQL lista para la revisión final de Marco.
+- **Estado del Issue #14:** `IMPLEMENTAR_PARCIAL` (no se ejecutará ninguna escritura en Supabase compartido hasta contar con la segunda autorización escrita).
