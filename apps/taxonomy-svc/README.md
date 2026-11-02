@@ -11,7 +11,10 @@ El servicio valida la configuración en el arranque y falla cerrado (`fail-close
 | `NODE_ENV` | Entorno de ejecución. Debe ser uno de `development`, `test`, `production`. | Sí | Ninguno |
 | `TAXONOMY_SVC_PORT` | Puerto HTTP del servicio. Entero entre 1 y 65535. | Sí (o `PORT`) | Ninguno |
 | `PORT` | Puerto HTTP alternativo; se usa solo si no se define `TAXONOMY_SVC_PORT`. | No | Ninguno |
-| `DATABASE_URL` | URL de conexión PostgreSQL a la taxonomía (`postgresql://` o `postgres://`), con host y base de datos. | Sí | Ninguno |
+| `DATABASE_URL` | Fuente opcional de parámetros PostgreSQL. Alternativamente se pueden proporcionar `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD`, `PGSSLMODE` y `PGSSLROOTCERT`. Los valores presentes en la URL tienen precedencia. | No, si se proporcionan los parámetros PG | Ninguno |
+| `G6_DATABASE_SCHEMA`, `G6_EXPECTED_ROLE`, `G6_CONNECTION_MODE` | Schema `taxonomy`, rol permitido y modo `direct` o `session`. El schema también puede venir en la URL. | Sí | Ninguno |
+
+El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y una CA absoluta legible; la URL puede suministrar los valores correspondientes. El arranque valida además la identidad efectiva antes de escuchar.
 
 ## Endpoints operativos
 
@@ -61,4 +64,16 @@ node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs ru
 G6_READONLY_INTEGRATION=taxonomy node --env-file=apps/taxonomy-svc/.env.local ./node_modules/vitest/vitest.mjs run --config ./vitest.config.e2e.ts apps/taxonomy-svc/test/postgres.readonly.e2e-spec.ts --reporter=json --outputFile=apps/taxonomy-svc/test/evidence/postgres-readonly-AAAA-MM-DD.json
 ```
 
-La corrida debe reportar `2 passed` y escribir el JSON. La trazabilidad de la ejecución (SHA, fecha, versiones y comando) se registra en el sidecar `test/evidence/postgres-readonly-AAAA-MM-DD.md`. Esta prueba no acredita autorización G7, despliegue ni E2E.
+La corrida debe reportar `3 passed` y escribir el JSON. Incluye el arranque real con entorno explícito y comprueba los probes con la conexión disponible y después de cerrar el pool. La trazabilidad de la ejecución (SHA, fecha, versiones y comando) se registra en el sidecar `test/evidence/postgres-readonly-AAAA-MM-DD.md`. Esta prueba no acredita autorización G7, despliegue ni E2E desplegado.
+
+## Verificación de configuración y probes (#34)
+
+Pruebas enfocadas de configuración fail-closed, redacción de secretos y separación liveness/readiness:
+
+```sh
+npm test -- apps/taxonomy-svc/src/config/environment.spec.ts apps/taxonomy-svc/src/bootstrap.spec.ts apps/taxonomy-svc/src/logging/sanitized-logger.spec.ts apps/taxonomy-svc/src/database.spec.ts
+npm run test:e2e -- apps/taxonomy-svc/test/readiness.e2e-spec.ts apps/taxonomy-svc/test/app.e2e-spec.ts
+npm run build:taxonomy-svc
+```
+
+El arranque real exige las variables privadas descritas arriba y verifica la identidad PostgreSQL antes de escuchar. Registra la evidencia de cada ejecución local con SHA, fecha, versiones, comandos y resultados; esta no acredita despliegue Oracle, homologación externa ni E2E desplegado.
