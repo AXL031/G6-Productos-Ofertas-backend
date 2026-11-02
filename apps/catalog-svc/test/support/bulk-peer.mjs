@@ -1,3 +1,4 @@
+import { bulkSimpleCsv } from './bulk-peer-fixtures.mjs';
 // Executed in a separate process. No Catalog source imports a Bulk module.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
@@ -23,8 +24,7 @@ let phase = 'permissions';
 try {
   const permission = await pool.query("SELECT has_schema_privilege(current_user, 'catalog', 'USAGE') AS catalog_access");
   if (permission.rows[0].catalog_access) throw new Error('Bulk role unexpectedly accesses Catalog');
-  const headers = 'operacion,producto_id,catalog_version,sku_base,sku_variante,nombre,descripcion,categoria_id,marca_id,tipo_producto_id,tiene_variantes,precio_regular,atributos_producto,atributos_variante,imagen_url,stock_inicial';
-  const csv = `${headers}\nALTA,,,${config.sku},,Bulk real,Disposable,category-fixture,brand-fixture,type-fixture,false,20,[],,,0\n`;
+  const csv = bulkSimpleCsv(config.sku);
   const input = { bytes: Buffer.from(csv), format: 'CSV', templateVersion: 2, correlationId: config.correlation, contentRef: `test://${config.batch}`, batchId: config.batch };
   phase = 'import';
   await importer.receiveImport(input);

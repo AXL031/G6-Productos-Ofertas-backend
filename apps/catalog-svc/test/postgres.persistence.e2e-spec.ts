@@ -1409,12 +1409,12 @@ describe.skipIf(!dockerAvailable)(
         producto_id: id,
         sku_base: parent.skuBase,
         product: {
-          catalogVersion: stored.catalog_version,
+          catalogVersion: Number(stored.catalog_version),
           descripcion: 'updated once',
         },
         variant_id: v.id,
         variant: {
-          catalogVersion: v.catalog_version,
+          catalogVersion: Number(v.catalog_version),
           imagenUrl: 'https://example.test/updated',
         },
       }));

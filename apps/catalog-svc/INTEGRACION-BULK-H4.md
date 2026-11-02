@@ -152,3 +152,14 @@ RabbitMQ compartido, retry/DLX ni los N+1 pendientes del PR anterior.
   se actualizaron al schema tipado y sus 13 pruebas volvieron a pasar.
 - Prueba BULK-JOINT y nuevos casos PostgreSQL: requieren Docker/CI. El resultado
   efectivo por SHA se incorporará a la descripción del PR y a la entrega.
+
+### Seguimiento de ejecución
+
+La repetición local de unitarias generales terminó PASS: 1774 pruebas y 56 SKIP.
+Primera CI del PR #162 (4f2a946, run 41536637909): dos fallos de fixture en E2E.
+El recorrido de actualización enviaba bigint de la lectura PostgreSQL en lugar
+ del número JSON de catalogVersion, y el CSV del proceso Bulk usaba LF cuando
+el parser productivo exige CRLF/RFC 4180. Se corrigen las fixtures sin relajar el
+consumidor ni sus aserciones. El CSV exacto de BULK-JOINT ya fue validado localmente
+por el parser productivo compilado de Bulk; tsc estricto de las pruebas PASS.
+El SHA posterior debe acreditar de nuevo PostgreSQL y el recorrido conjunto en CI.
