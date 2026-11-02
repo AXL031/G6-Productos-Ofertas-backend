@@ -9,6 +9,10 @@ import { vi } from 'vitest';
 import { Database } from '../src/database.js';
 import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
 import { DeactivationIntentService } from '../src/domain/deactivation-intent.service.js';
+import {
+  TaxonomyMessageStore,
+  parseChecked,
+} from '../src/persistence/taxonomy-message.store.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
 import request from 'supertest';
@@ -932,6 +936,144 @@ describeIntegracion(
       }
     });
 
+    it('publica outbox tras confirmación y procesa checked con Inbox transaccional e idempotente', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const operationId = '77777777-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const correlationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const messageId = '77777777-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      try {
+        await expect(
+          intentos.registrar({
+            operationId,
+            correlationId,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        const solicitud = (
+          await admin.query(
+            'SELECT message_id FROM taxonomy.outbox WHERE operation_id = $1',
+            [operationId],
+          )
+        ).rows[0].message_id as string;
+        await expect(
+          store.publicarUno(async () => {
+            throw new Error('fallo');
+          }),
+        ).resolves.toBe(false);
+        expect(
+          (
+            await admin.query(
+              'SELECT published_at, attempts FROM taxonomy.outbox WHERE message_id = $1',
+              [solicitud],
+            )
+          ).rows,
+        ).toEqual([{ published_at: null, attempts: 1 }]);
+        const enviados: unknown[] = [];
+        await expect(
+          store.publicarUno(async (row) => {
+            enviados.push(row.message_id);
+          }),
+        ).resolves.toBe(true);
+        expect(enviados).toEqual([solicitud]);
+        const checked = parseChecked({
+          message_id: messageId,
+          correlation_id: correlationId,
+          operation_id: operationId,
+          causation_id: solicitud,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          producer: 'catalog-svc',
+          kind: 'result',
+          name: 'catalog.master.deactivation.checked',
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityId,
+            version: 0,
+            result: 'CLEAR',
+          },
+        });
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        try {
+          await expect(store.consumir(checked)).rejects.toThrow();
+          expect(
+            (
+              await admin.query(
+                'SELECT id FROM taxonomy.inbox WHERE message_id = $1',
+                [messageId],
+              )
+            ).rows,
+          ).toHaveLength(0);
+          expect(
+            (
+              await admin.query(
+                'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+                [operationId],
+              )
+            ).rows,
+          ).toEqual([{ status: 'IN_PROGRESS' }]);
+        } finally {
+          await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        }
+        await store.consumir(checked);
+        await store.consumir(checked);
+        expect(
+          (
+            await admin.query(
+              'SELECT result FROM taxonomy.inbox WHERE message_id = $1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ result: 'PROCESSED' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'COMPLETED' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = 'taxonomy.master.deactivated'",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+        await expect(
+          store.consumir({
+            ...checked,
+            data: { ...checked.data, result: 'IN_USE' },
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id = $1', [
+          messageId,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.outbox WHERE operation_id = $1',
+          [operationId],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
     it('notifica una versión discrepante sin cerrar y recupera tras reconciliación', async () => {
       const database = new Database();
       vi.spyOn(database, 'read').mockImplementation(async (query) =>
@@ -1199,9 +1341,8 @@ describeIntegracion(
           VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
           [operationId, correlationId, entityId],
         );
-        await expect(
-          new DeactivationIntentService(database).recuperarVencidas(),
-        ).resolves.toBe(1);
+        const service = new DeactivationIntentService(database);
+        await expect(service.recuperarVencidas()).resolves.toBe(1);
         expect(aviso).toHaveBeenCalledTimes(50);
         expect(aviso).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1209,6 +1350,17 @@ describeIntegracion(
             reason: 'ENTIDAD_AUSENTE',
             muestra_truncada: true,
           }),
+        );
+        const primeraMuestra = new Set(
+          aviso.mock.calls.map(([entrada]) => entrada.operation_id),
+        );
+        aviso.mockClear();
+        const momento = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(momento + 5 * 60 * 1000 + 1);
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledTimes(1);
+        expect(primeraMuestra.has(aviso.mock.calls[0][0].operation_id)).toBe(
+          false,
         );
         expect(
           (

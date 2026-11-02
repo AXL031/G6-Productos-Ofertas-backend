@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
 import { leerTimeoutBaja } from './deactivation-timeout.js';
@@ -15,6 +16,7 @@ const UUID_NULO = '00000000-0000-0000-0000-000000000000';
 export class DeactivationIntentService {
   private readonly logger = new Logger(DeactivationIntentService.name);
   private proximaInspeccion = 0;
+  private cursorInspeccion: string | null = null;
   private proximoAvisoConcurrente = 0;
   constructor(private readonly database: Database) {}
 
@@ -137,9 +139,10 @@ export class DeactivationIntentService {
             LEFT JOIN taxonomy.brands b ON o.entity_type = 'BRAND' AND b.id = o.entity_id
             WHERE o.status = 'IN_PROGRESS' AND o.entity_type IN ('CATEGORY', 'BRAND')
               AND o.created_at <= statement_timestamp() - (${timeout} * interval '1 second')
+              AND (${this.cursorInspeccion}::uuid IS NULL OR o.operation_id > ${this.cursorInspeccion}::uuid)
           )
           SELECT operation_id, entity_type, motivo
-          FROM inspeccion WHERE motivo IS NOT NULL LIMIT 51
+          FROM inspeccion WHERE motivo IS NOT NULL ORDER BY operation_id LIMIT 51
         `)
             : { rows: [] };
           const pendientes = await tx.execute(sql`
@@ -220,6 +223,13 @@ export class DeactivationIntentService {
       if (inspeccionar) this.proximaInspeccion = 0;
       throw error;
     }
+    if (inspeccionar) {
+      const ultima = resultado.discrepancias[49]?.operation_id;
+      this.cursorInspeccion =
+        resultado.discrepancias.length > 50 && typeof ultima === 'string'
+          ? ultima
+          : null;
+    }
     for (const incidencia of resultado.discrepancias.slice(0, 50)) {
       this.logger.warn({
         event: 'taxonomy.deactivation.recovery_discrepancy',
@@ -252,61 +262,68 @@ export class DeactivationIntentService {
   ): Promise<'COMPLETADA' | 'RECHAZADA' | 'IGNORADA'> {
     if (!esUuid(respuesta.operationId)) return 'IGNORADA';
     return this.database.read((db) =>
-      db.transaction(async (tx) => {
-        const timeout = await leerTimeoutBaja(tx);
-        const consulta = await tx.execute(sql`
+      db.transaction((tx) => this.finalizarEnTransaccion(tx, respuesta)),
+    );
+  }
+
+  async finalizarEnTransaccion(
+    tx: Pick<NodePgDatabase, 'execute'>,
+    respuesta: IdentidadBaja & { result: unknown },
+  ): Promise<'COMPLETADA' | 'RECHAZADA' | 'IGNORADA'> {
+    const timeout = await leerTimeoutBaja(tx);
+    const consulta = await tx.execute(sql`
         SELECT operation_id, correlation_id, entity_type, entity_id, source_version
         FROM taxonomy.master_deactivation_operations
         WHERE operation_id = ${respuesta.operationId}::uuid AND status = 'IN_PROGRESS'
           AND created_at > statement_timestamp() - (${timeout} * interval '1 second')
         FOR UPDATE
       `);
-        const fila = consulta.rows[0];
-        if (
-          !fila ||
-          typeof fila.operation_id !== 'string' ||
-          typeof fila.correlation_id !== 'string' ||
-          typeof fila.entity_id !== 'string' ||
-          (fila.entity_type !== 'CATEGORY' && fila.entity_type !== 'BRAND') ||
-          (typeof fila.source_version !== 'string' &&
-            typeof fila.source_version !== 'number')
-        )
-          return 'IGNORADA';
-        const version = Number(fila.source_version);
-        if (!Number.isSafeInteger(version) || version < 0) return 'IGNORADA';
-        const esperada: IdentidadBaja = {
-          operationId: fila.operation_id,
-          correlationId: fila.correlation_id,
-          entityType: fila.entity_type,
-          entityId: fila.entity_id,
-          version,
-        };
-        const evaluacion = evaluarCheckBaja(esperada, respuesta);
-        if (evaluacion === 'IGNORAR') return 'IGNORADA';
-        const completa = evaluacion === 'EVALUAR_BAJA';
-        const entidad =
-          fila.entity_type === 'CATEGORY'
-            ? sql`taxonomy.categories`
-            : sql`taxonomy.brands`;
-        const cambio = completa
-          ? sql`estado = 'INACTIVO', taxonomy_version = taxonomy_version + 1`
-          : sql`estado = 'ACTIVO'`;
-        const actualizada = await tx.execute(sql`
+    const fila = consulta.rows[0];
+    if (
+      !fila ||
+      typeof fila.operation_id !== 'string' ||
+      typeof fila.correlation_id !== 'string' ||
+      typeof fila.entity_id !== 'string' ||
+      (fila.entity_type !== 'CATEGORY' && fila.entity_type !== 'BRAND') ||
+      (typeof fila.source_version !== 'string' &&
+        typeof fila.source_version !== 'number')
+    )
+      return 'IGNORADA';
+    const version = Number(fila.source_version);
+    if (!Number.isSafeInteger(version) || version < 0) return 'IGNORADA';
+    const esperada: IdentidadBaja = {
+      operationId: fila.operation_id,
+      correlationId: fila.correlation_id,
+      entityType: fila.entity_type,
+      entityId: fila.entity_id,
+      version,
+    };
+    const evaluacion = evaluarCheckBaja(esperada, respuesta);
+    if (evaluacion === 'IGNORAR') return 'IGNORADA';
+    const completa = evaluacion === 'EVALUAR_BAJA';
+    const entidad =
+      fila.entity_type === 'CATEGORY'
+        ? sql`taxonomy.categories`
+        : sql`taxonomy.brands`;
+    const cambio = completa
+      ? sql`estado = 'INACTIVO', taxonomy_version = taxonomy_version + 1`
+      : sql`estado = 'ACTIVO'`;
+    const actualizada = await tx.execute(sql`
         UPDATE ${entidad} SET ${cambio}
         WHERE id = ${fila.entity_id}::uuid AND estado = 'PENDING_DEACTIVATION' AND taxonomy_version = ${version}
         RETURNING id
       `);
-        if (!actualizada.rows.length) return 'IGNORADA';
-        const status = completa ? 'COMPLETED' : 'REJECTED';
-        const nombre = completa
-          ? 'taxonomy.master.deactivated'
-          : 'taxonomy.master.deactivation.rejected';
-        const kind = completa ? 'event' : 'result';
-        const reason = completa ? null : 'IN_USE';
-        await tx.execute(sql`UPDATE taxonomy.master_deactivation_operations
+    if (!actualizada.rows.length) return 'IGNORADA';
+    const status = completa ? 'COMPLETED' : 'REJECTED';
+    const nombre = completa
+      ? 'taxonomy.master.deactivated'
+      : 'taxonomy.master.deactivation.rejected';
+    const kind = completa ? 'event' : 'result';
+    const reason = completa ? null : 'IN_USE';
+    await tx.execute(sql`UPDATE taxonomy.master_deactivation_operations
         SET status = ${status}::taxonomy.estado_operacion_baja, reason = ${reason}, updated_at = statement_timestamp()
         WHERE operation_id = ${fila.operation_id}::uuid AND status = 'IN_PROGRESS'`);
-        await tx.execute(sql`
+    await tx.execute(sql`
         WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha)
         INSERT INTO taxonomy.outbox (message_id, event_name, kind, schema_version, correlation_id, operation_id, occurred_at, payload)
         SELECT evento.message_id, ${nombre}, ${kind}, 1, ${fila.correlation_id}::uuid, ${fila.operation_id}::uuid, evento.fecha,
@@ -317,8 +334,6 @@ export class DeactivationIntentService {
               'version', ${version}::bigint) || CASE WHEN ${completa}::boolean THEN '{}'::jsonb ELSE jsonb_build_object('reason', 'IN_USE') END)
         FROM evento
       `);
-        return completa ? 'COMPLETADA' : 'RECHAZADA';
-      }),
-    );
+    return completa ? 'COMPLETADA' : 'RECHAZADA';
   }
 }

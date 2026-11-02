@@ -1,5 +1,6 @@
 import { Controller, Get, HttpStatus, Inject } from '@nestjs/common';
 import { ProblemDetailsException } from '../errors/taxonomy.errors.js';
+import { TaxonomyAmqpRuntime } from '../domain/taxonomy-amqp.runtime.js';
 import { TAXONOMY_READINESS } from './readiness.port.js';
 import type { TaxonomyReadinessIndicator } from './readiness.port.js';
 
@@ -13,6 +14,7 @@ export class ReadinessController {
   constructor(
     @Inject(TAXONOMY_READINESS)
     private readonly indicador: TaxonomyReadinessIndicator,
+    private readonly amqp: TaxonomyAmqpRuntime,
   ) {}
 
   @Get('readiness')
@@ -36,6 +38,10 @@ export class ReadinessController {
       | null
       | undefined;
     try {
+      if (!this.amqp.disponible())
+        throw ProblemDetailsException.noDisponible(
+          'Mensajería de taxonomía no disponible.',
+        );
       if (typeof ind?.verificarReadiness === 'function') {
         await ind.verificarReadiness();
         return;

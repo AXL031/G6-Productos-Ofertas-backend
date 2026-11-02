@@ -12,6 +12,9 @@ import { Database } from './database.js';
 import { PostgresTaxonomyRepository } from './postgres-taxonomy.repository.js';
 import { DeactivationCheckService } from './domain/deactivation-check.service.js';
 import { DeactivationIntentService } from './domain/deactivation-intent.service.js';
+import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
+import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
+import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
 
 export interface OpcionesModuloTaxonomy {
   databaseUrl?: string;
@@ -25,6 +28,9 @@ export interface OpcionesModuloTaxonomy {
     Database,
     DeactivationCheckService,
     DeactivationIntentService,
+    DeactivationRecoveryRunner,
+    TaxonomyAmqpRuntime,
+    TaxonomyMessageStore,
     proveedorDeRepositorio(),
     { provide: TAXONOMY_READINESS, useExisting: TAXONOMY_REPOSITORY },
     { provide: APP_FILTER, useClass: ProblemDetailsFilter },
