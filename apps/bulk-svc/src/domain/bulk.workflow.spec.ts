@@ -39,6 +39,12 @@ describe('bulk workflow rules', () => {
       assertRowCompletion(['CATALOGO', 'INVENTARIO'], ['CATALOGO']),
     ).toThrow(BulkDomainError);
     expect(() => assertRowCompletion(['CATALOGO'], ['CATALOGO'])).not.toThrow();
+    expect(() =>
+      assertRowCompletion(
+        ['CATALOGO', 'PRICING', 'INVENTARIO'],
+        ['CATALOGO', 'INVENTARIO'],
+      ),
+    ).toThrow(BulkDomainError);
   });
 
   it('allows a completed batch to include failed rows once all rows are terminal', () => {

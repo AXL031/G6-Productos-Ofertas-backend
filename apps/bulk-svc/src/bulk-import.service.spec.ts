@@ -1,8 +1,92 @@
 import { describe, expect, it, vi } from 'vitest';
 import { BulkImportService } from './bulk-import.service.js';
 import { BulkDomainError } from './domain/bulk.errors.js';
+import { BULK_TEMPLATE_HEADERS } from './domain/bulk-template-v2.js';
 
 describe('BulkImportService', () => {
+  it('retains ALTA regular price when deriving required workflow domains', async () => {
+    const createImportBatch = vi
+      .fn()
+      .mockResolvedValue({ batch: { status: 'QUEUED' } });
+    const service = new BulkImportService({ createImportBatch } as never);
+    const values = [
+      'ALTA',
+      '',
+      '',
+      'SKU-1',
+      '',
+      'Producto',
+      'Descripción',
+      'cat-1',
+      'marca-1',
+      'tipo-1',
+      'false',
+      '12.5',
+      '[]',
+      '',
+      '',
+      '0',
+    ];
+    await service.receiveImport({
+      bytes: Buffer.from(
+        `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.join(',')}\r\n`,
+      ),
+      format: 'CSV',
+      templateVersion: 2,
+      correlationId: '11111111-1111-4111-8111-111111111111',
+      contentRef: 'private://stored',
+    });
+    expect(createImportBatch).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rows: [
+          expect.objectContaining({
+            requiredDomains: ['CATALOGO', 'PRICING', 'INVENTARIO'],
+          }),
+        ],
+      }),
+    );
+    expect(
+      createImportBatch.mock.calls[0]?.[0].admissionIntent.rows[0].product
+        .precioBaseInicial,
+    ).toBe(12.5);
+  });
+
+  it('fails closed before persistence for variant ACTUALIZACION while Catalog lookup is unavailable', async () => {
+    const createImportBatch = vi.fn();
+    const service = new BulkImportService({ createImportBatch } as never);
+    const values = [
+      'ACTUALIZACION',
+      '11111111-1111-4111-8111-111111111111',
+      '0',
+      'BASE',
+      'VAR-LOOKUP',
+      'Producto',
+      'Descripción',
+      'cat-1',
+      'marca-1',
+      'tipo-1',
+      'true',
+      '',
+      '[]',
+      '{"identificadores":[],"no_identificadores":[]}',
+      '',
+      '0',
+    ];
+    values[2] = '{"producto":0,"variante":0}';
+    await expect(
+      service.receiveImport({
+        bytes: Buffer.from(
+          `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
+        ),
+        format: 'CSV',
+        templateVersion: 2,
+        correlationId: '11111111-1111-4111-8111-111111111111',
+        contentRef: 'private://stored',
+      }),
+    ).rejects.toMatchObject({ code: 'DEPENDENCY_PENDING' });
+    expect(createImportBatch).not.toHaveBeenCalled();
+  });
+
   it('persists validated normalized rows atomically through the repository', async () => {
     const createImportBatch = vi
       .fn()

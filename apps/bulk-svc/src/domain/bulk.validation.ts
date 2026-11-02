@@ -83,9 +83,10 @@ export function validateBulkImport(input: {
         : row.skuIdentityRequired === false
           ? []
           : row.skuBase
-          ? [row.skuBase]
-          : [];
-    if (skus.length === 0 && row.skuIdentityRequired !== false) invalid('La fila no contiene un SKU vendible.');
+            ? [row.skuBase]
+            : [];
+    if (skus.length === 0 && row.skuIdentityRequired !== false)
+      invalid('La fila no contiene un SKU vendible.');
     for (const sku of skus) {
       if (typeof sku !== 'string' || sku.length === 0)
         invalid('SKU incompleto.');

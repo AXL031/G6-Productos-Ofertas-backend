@@ -109,6 +109,49 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     ).toEqual(['CATALOGO', 'PRICING']);
   });
 
+  it('deduplicates results by command and row identity without colliding across rows', async () => {
+    const batchId = randomUUID();
+    const correlationId = randomUUID();
+    const rowA = randomUUID();
+    const rowB = randomUUID();
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${randomUUID()}` },
+      rows: [rowA, rowB].map((rowId) => ({
+        rowId,
+        requiredDomains: ['CATALOGO' as const],
+      })),
+      admissionIntent: {
+        rows: [rowA, rowB].map((rowId, index) => ({
+          rowId,
+          vendibleSkus: [`SKU-${index}`],
+          stockInicial: 0,
+          defaultLocationId: null,
+        })),
+      },
+    });
+    const commandId = randomUUID();
+    const result = (rowId: string, messageId: string) =>
+      repository.recordDomainResult({
+        batchId,
+        rowId,
+        domain: 'CATALOGO',
+        operationId: commandId,
+        messageId,
+        correlationId,
+        eventName: 'catalog.bulk.upsert.completed',
+        action: 'UPSERT',
+        status: 'COMPLETED',
+      });
+    expect(await result(rowA, randomUUID())).toMatchObject({ processed: true });
+    expect(await result(rowB, randomUUID())).toMatchObject({ processed: true });
+    expect(await result(rowA, randomUUID())).toMatchObject({
+      processed: false,
+    });
+  });
+
   it('matches all seven migration table columns, nullability and default presence', async () => {
     const actual = await pool.query(
       `SELECT table_name, column_name, udt_name, is_nullable, column_default IS NOT NULL AS has_default

@@ -19,19 +19,61 @@ import {
 export class BulkImportService {
   constructor(private readonly repository: BulkPersistenceRepository) {}
 
-  async receiveImport(input: { bytes: Buffer; format: 'CSV' | 'XLSX'; templateVersion: number; correlationId: string; contentRef: string; batchId?: string }) {
-    if (input.templateVersion !== 2) throw new BulkDomainError('PLANTILLA_INCOMPATIBLE', 'template_version debe ser 2.');
+  async receiveImport(input: {
+    bytes: Buffer;
+    format: 'CSV' | 'XLSX';
+    templateVersion: number;
+    correlationId: string;
+    contentRef: string;
+    batchId?: string;
+  }) {
+    if (input.templateVersion !== 2)
+      throw new BulkDomainError(
+        'PLANTILLA_INCOMPATIBLE',
+        'template_version debe ser 2.',
+      );
     const parsed = parseBulkTemplate(input.bytes, input.format);
-    const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({ rowId: row.rowId, productId: row.productId, mode: row.mode, skuIdentityRequired: row.variant !== null ? row.mode === 'ALTA' : true, skuBase: row.skuBase, variantSkus: row.skuVariant ? [row.skuVariant] : [], stockInicial: row.stockInicial, defaultLocationId: row.defaultLocationId }));
-    const result = await this.createImport({ batchId: input.batchId ?? randomUUID(), correlationId: input.correlationId, contentRef: input.contentRef, format: input.format, templateVersion: parsed.templateVersion, rows, intentRows: parsed.rows });
+    assertImportDependencies(parsed);
+    const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
+      rowId: row.rowId,
+      productId: row.productId,
+      mode: row.mode,
+      skuIdentityRequired: true,
+      skuBase: row.skuBase,
+      variantSkus: row.skuVariant ? [row.skuVariant] : [],
+      precioRegular:
+        typeof row.product.precioBaseInicial === 'number'
+          ? row.product.precioBaseInicial
+          : null,
+      stockInicial: row.stockInicial,
+      defaultLocationId: row.defaultLocationId,
+    }));
+    const result = await this.createImport({
+      batchId: input.batchId ?? randomUUID(),
+      correlationId: input.correlationId,
+      contentRef: input.contentRef,
+      format: input.format,
+      templateVersion: parsed.templateVersion,
+      rows,
+      intentRows: parsed.rows,
+    });
     return { ...result, parsed };
   }
 
   async getSnapshot(batchId: string) {
     const batch = await this.repository.findBatchByBatchId(batchId);
-    if (!batch) throw new BulkDomainError('BATCH_NOT_FOUND', 'El lote no existe.');
+    if (!batch)
+      throw new BulkDomainError('BATCH_NOT_FOUND', 'El lote no existe.');
     const rows = await this.repository.listBatchRows(batchId);
-    return { batch, rows: await Promise.all(rows.map(async (row) => ({ row, steps: await this.repository.listRowSteps(batchId, row.rowId) }))) };
+    return {
+      batch,
+      rows: await Promise.all(
+        rows.map(async (row) => ({
+          row,
+          steps: await this.repository.listRowSteps(batchId, row.rowId),
+        })),
+      ),
+    };
   }
 
   async createImport(input: {
@@ -118,8 +160,13 @@ export class BulkImportService {
     try {
       return await this.repository.requeueBatch(batchId);
     } catch (error) {
-      if (error instanceof BulkPersistenceError && error.code === 'FOREIGN_KEY_VIOLATION') {
-        throw new BulkDomainError('BATCH_NOT_FOUND', 'El lote no existe.', { cause: error });
+      if (
+        error instanceof BulkPersistenceError &&
+        error.code === 'FOREIGN_KEY_VIOLATION'
+      ) {
+        throw new BulkDomainError('BATCH_NOT_FOUND', 'El lote no existe.', {
+          cause: error,
+        });
       }
       if (
         error instanceof BulkPersistenceError &&
@@ -131,5 +178,19 @@ export class BulkImportService {
       }
       throw mapBulkPersistenceError(error);
     }
+  }
+}
+
+export function assertImportDependencies(
+  parsed: ReturnType<typeof parseBulkTemplate>,
+): void {
+  if (
+    parsed.mode === 'ACTUALIZACION' &&
+    parsed.rows.some((row) => row.variant !== null)
+  ) {
+    throw new BulkDomainError(
+      'DEPENDENCY_PENDING',
+      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere resolver sku_variante a variant_id mediante la lectura autorizada de Catalog.',
+    );
   }
 }

@@ -344,6 +344,10 @@ export class BulkPersistenceRepository {
             and(
               eq(inbox.handler, handler),
               sql`${inbox.payload}->>'operationId' = ${input.operationId}`,
+              sql`${inbox.payload}->>'batchId' = ${input.batchId}`,
+              sql`${inbox.payload}->>'rowId' = ${input.rowId}`,
+              sql`${inbox.payload}->>'domain' = ${input.domain}`,
+              sql`${inbox.payload}->>'action' = ${input.action}`,
             ),
           )
           .orderBy(desc(inbox.createdAt))
