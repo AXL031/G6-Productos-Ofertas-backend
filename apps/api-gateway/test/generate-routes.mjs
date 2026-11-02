@@ -1,9 +1,11 @@
 // Offline generation from the official OpenAPI converted to JSON by a YAML parser.
+// For one route, pass its operationId as the third argument; only its error codes
+// are refreshed, preserving all other generated route metadata and formatting.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const spec = JSON.parse(readFileSync(process.argv[2], 'utf8'));
-if (spec.info.version !== '0.6.0-rc.1' || spec.servers[0].url !== '/api/v1') {
+if (spec.info.version !== '0.6.0-rc.2' || spec.servers[0].url !== '/api/v1') {
   throw new Error('Unexpected contract version or base path');
 }
 const owners = {
@@ -87,11 +89,12 @@ for (const [path, item] of Object.entries(spec.paths)) {
       responses: Object.fromEntries(
         Object.entries(operation.responses).map(([status, raw]) => {
           const response = dereference(raw);
-          const codes =
-            response.content?.[
-              'application/problem+json'
-            ]?.schema?.allOf?.flatMap((s) => s.properties?.code?.enum || []) ||
-            [];
+          const declaredCodes = operation['x-error-codes']?.[status];
+          const codes = Array.isArray(declaredCodes)
+            ? declaredCodes.flatMap((entry) =>
+                Array.isArray(entry) ? entry : typeof entry === 'string' ? [entry] : [],
+              )
+            : [];
           return [
             status,
             {
@@ -109,12 +112,67 @@ for (const [path, item] of Object.entries(spec.paths)) {
 }
 if (new Set(routes.map((r) => r.operationId)).size !== routes.length)
   throw new Error('Duplicate operationIds');
+const output = fileURLToPath(
+  new URL('../src/routing/contract-routes.ts', import.meta.url),
+);
+const operationId = process.argv[3];
+let generatedRoutes = routes;
+if (operationId) {
+  const existing = readFileSync(output, 'utf8');
+  const replacement = routes.find((route) => route.operationId === operationId);
+  const marker = `operationId: '${operationId}'`;
+  const operationPosition = existing.indexOf(marker);
+  if (!replacement || operationPosition < 0)
+    throw new Error(`Unknown operation ${operationId}`);
+  const objectStart = existing.lastIndexOf('\n  {', operationPosition) + 3;
+  let depth = 0;
+  let quote;
+  let escaped = false;
+  let objectEnd = -1;
+  for (let i = objectStart; i < existing.length; i++) {
+    const character = existing[i];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = undefined;
+      continue;
+    }
+    if (character === "'" || character === '"') quote = character;
+    else if (character === '{') depth++;
+    else if (character === '}' && --depth === 0) {
+      objectEnd = i + 1;
+      break;
+    }
+  }
+  if (objectEnd < 0) throw new Error('Could not locate existing route object');
+  let existingRoute = existing.slice(objectStart, objectEnd);
+  for (const [status, response] of Object.entries(replacement.responses)) {
+    const pattern = new RegExp(
+      `('${status}'\\s*:\\s*\\{[^{}]*?\\bcodes:\\s*)\\[[^\\]]*\\]`,
+    );
+    const declaredCodes = `[${response.codes.map((code) => `'${code}'`).join(', ')}]`;
+    if (!pattern.test(existingRoute))
+      throw new Error(`Could not find ${status} codes for ${operationId}`);
+    existingRoute = existingRoute.replace(pattern, `$1${declaredCodes}`);
+  }
+  writeFileSync(
+    output,
+    `// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: ${operationId}.\n` +
+      existing.slice(existing.indexOf('\n') + 1, objectStart) +
+      existingRoute +
+      existing.slice(objectEnd),
+  );
+  console.log(`Updated ${operationId} only.`);
+  process.exit(0);
+} else if (spec.info.version !== '0.6.0-rc.2') {
+  throw new Error('Full regeneration requires OpenAPI 0.6.0-rc.2');
+}
 writeFileSync(
-  fileURLToPath(new URL('../src/routing/contract-routes.ts', import.meta.url)),
-  '// Generated from Docs c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b; OpenAPI blob f64bfe9a097b2a0f74c2600988305443d92f640e.\n' +
+  output,
+  '// Generated from Docs OpenAPI 0.6.0-rc.2. Use an operationId argument for a focused update.\n' +
     "import type { ContractRoute } from './contract-route.js';\n" +
     'export const CONTRACT_ROUTES: readonly ContractRoute[] = ' +
-    JSON.stringify(routes, null, 2) +
+    JSON.stringify(generatedRoutes, null, 2) +
     ';\n',
 );
 console.log(

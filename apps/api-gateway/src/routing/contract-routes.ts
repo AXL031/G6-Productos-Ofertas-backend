@@ -1,4 +1,4 @@
-// Generated from Docs c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b; OpenAPI blob f64bfe9a097b2a0f74c2600988305443d92f640e.
+// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: verificarCantidadComercial.
 import type { ContractRoute } from './contract-route.js';
 export const CONTRACT_ROUTES: readonly ContractRoute[] = [
   {
@@ -7173,22 +7173,22 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       },
       '400': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['VALIDACION'],
         headers: [],
       },
       '401': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['TOKEN_INVALIDO'],
         headers: [],
       },
       '403': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['SCOPE_INSUFICIENTE'],
         headers: [],
       },
       '422': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['CONTEXTO_ABASTECIMIENTO_INVALIDO'],
         headers: [],
       },
       '429': {
@@ -7198,12 +7198,12 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       },
       '500': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['ERROR_INTERNO'],
         headers: [],
       },
       '503': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
         headers: [],
       },
     },
