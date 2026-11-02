@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
 import {
   batchJobs,
@@ -1359,6 +1359,55 @@ export class BulkPersistenceRepository {
         .from(exportJobs)
         .where(eq(exportJobs.exportId, exportId))
         .limit(1);
+      return job ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async listQueuedExportJobs(): Promise<Array<typeof exportJobs.$inferSelect>> {
+    try {
+      return await this.db
+        .select()
+        .from(exportJobs)
+        .where(eq(exportJobs.status, 'QUEUED'))
+        .orderBy(asc(exportJobs.createdAt));
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async findFileManifest(
+    id: string,
+  ): Promise<typeof fileManifests.$inferSelect | null> {
+    try {
+      const [manifest] = await this.db
+        .select()
+        .from(fileManifests)
+        .where(eq(fileManifests.id, id))
+        .limit(1);
+      return manifest ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async transitionExportJob(
+    exportId: string,
+    from: BulkJobStatus[],
+    to: BulkJobStatus,
+  ): Promise<typeof exportJobs.$inferSelect | null> {
+    try {
+      const [job] = await this.db
+        .update(exportJobs)
+        .set({ status: to })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            inArray(exportJobs.status, from),
+          ),
+        )
+        .returning();
       return job ?? null;
     } catch (error) {
       throw persistenceError(error);

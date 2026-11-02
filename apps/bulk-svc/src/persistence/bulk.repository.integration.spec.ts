@@ -483,6 +483,39 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     expect(done.completedAt).toBeInstanceOf(Date);
   });
 
+  it('persists and conditionally advances an export without exposing partial output', async () => {
+    const job = await repository.createExportJob({
+      exportId: randomUUID(),
+      format: 'XLSX',
+    });
+    expect(job.status).toBe('QUEUED');
+    expect(await repository.listQueuedExportJobs()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ exportId: job.exportId }),
+      ]),
+    );
+    const processing = await repository.transitionExportJob(
+      job.exportId,
+      ['QUEUED'],
+      'PROCESSING',
+    );
+    expect(processing?.status).toBe('PROCESSING');
+    expect(
+      await repository.transitionExportJob(
+        job.exportId,
+        ['QUEUED'],
+        'FAILED_GENERAL',
+      ),
+    ).toBeNull();
+    const failed = await repository.transitionExportJob(
+      job.exportId,
+      ['PROCESSING'],
+      'FAILED_GENERAL',
+    );
+    expect(failed?.status).toBe('FAILED_GENERAL');
+    expect(failed?.outputFileId).toBeNull();
+  });
+
   it('enforces message and operation idempotency in Outbox and lists pending messages', async () => {
     const message = {
       messageId: randomUUID(),
