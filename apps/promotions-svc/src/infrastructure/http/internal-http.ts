@@ -7,9 +7,11 @@ export type InternalOperation =
   | 'consultarDisponibilidadComercial'
   | 'obtenerCategoriaAdmin';
 export type Upstream = 'catalog' | 'pricing' | 'inventory' | 'taxonomy';
-const operations: Record<
-  InternalOperation,
-  { service: Upstream; scope: string; missing: string }
+export const internalOperations: Readonly<
+  Record<
+    InternalOperation,
+    Readonly<{ service: Upstream; scope: string; missing: string }>
+  >
 > = {
   obtenerProducto: {
     service: 'catalog',
@@ -109,7 +111,7 @@ export class InternalHttpReader {
     missing = false,
   ): Promise<unknown> {
     signal.throwIfAborted();
-    const spec = operations[operation];
+    const spec = internalOperations[operation];
     const headers: Record<string, string> = {
       Accept: 'application/json',
       'X-Correlation-Id': randomUUID(),

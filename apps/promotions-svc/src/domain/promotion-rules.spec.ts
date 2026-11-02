@@ -273,7 +273,7 @@ describe('Promotions business rules #72', () => {
         ).discount.toNumber(),
       ).toBe(0);
   });
-  it('does not turn unknown multi-benefit composition into a guessed monetary answer', () => {
+  it('composes automatic promotions using the approved successive-discount rule', () => {
     const a = row(),
       b = row({ id: 'second' });
     a.policy = { ...a.policy!, automaticPromotion: true };
@@ -282,14 +282,22 @@ describe('Promotions business rules #72', () => {
       expect(
         evaluateBasket(request, context, [p], undefined, at).result.toNumber(),
       ).toBe(170);
-    expect(() =>
-      evaluateBasket(request, context, [a, b], undefined, at),
-    ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
-    expect(() =>
-      evaluateBasket(request, context, [b, a], undefined, at),
-    ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+    for (const promotions of [
+      [a, b],
+      [b, a],
+    ]) {
+      const result = evaluateBasket(
+        request,
+        context,
+        promotions,
+        undefined,
+        at,
+      );
+      expect(result.result.toNumber()).toBe(144.5);
+      expect(result.promotionId).toBe(a.id);
+    }
   });
-  it('keeps automatic/coupon stacking blocked even when each alternative is calculable', () => {
+  it('composes a permitted automatic/coupon pair and preserves both campaign identities internally', () => {
     const automatic = row(),
       couponPromotion = row({ id: 'coupon-parent', modality: 'CUPON' });
     automatic.policy = { ...automatic.policy!, coupon: true };
@@ -309,10 +317,12 @@ describe('Promotions business rules #72', () => {
     for (const promotions of [
       [automatic, couponPromotion],
       [couponPromotion, automatic],
-    ])
-      expect(() => evaluateBasket(body, context, promotions, c, at)).toThrow(
-        'COMMERCIAL_CONTEXT_UNAVAILABLE',
-      );
+    ]) {
+      const result = evaluateBasket(body, context, promotions, c, at);
+      expect(result.result.toNumber()).toBe(144.5);
+      expect(result.promotionId).toBe(automatic.id);
+      expect(result.appliedCouponPromotionId).toBe(couponPromotion.id);
+    }
   });
   it.each([
     [{ state: 'INACTIVO' }, undefined, 'CUPON_INACTIVO'],
@@ -358,6 +368,241 @@ describe('Promotions business rules #72', () => {
     expect(first.couponApplicable).toBe(true);
     expect(second.result.compare(first.result)).toBe(0);
     expect(JSON.stringify({ body, context, p, c })).toBe(before);
+  });
+  it('requires bilateral permission and selects the best compatible subset', () => {
+    const make = (
+      id: string,
+      discountValue: string,
+      automaticPromotion: boolean,
+    ) =>
+      row({
+        id,
+        discountValue,
+        policy: { ...row().policy!, automaticPromotion },
+      });
+    const exclusive = make('exclusive', '50', false),
+      a = make('a', '30', true),
+      b = make('b', '40', true);
+    const composed = evaluateBasket(
+      request,
+      context,
+      [exclusive, a, b],
+      undefined,
+      at,
+    );
+    expect(composed.result.toNumber()).toBe(84);
+    expect(composed.promotionId).toBe('a');
+    b.policy = { ...b.policy!, automaticPromotion: false };
+    expect(
+      evaluateBasket(
+        request,
+        context,
+        [exclusive, a, b],
+        undefined,
+        at,
+      ).result.toNumber(),
+    ).toBe(100);
+  });
+  it('applies Pricing offers to a combination only if every member permits them', () => {
+    const make = (id: string, discountValue: string) =>
+      row({
+        id,
+        discountValue,
+        policy: {
+          ...row().policy!,
+          pricingOffer: true,
+          automaticPromotion: true,
+        },
+      });
+    const a = make('a', '10'),
+      b = make('b', '20');
+    const facts = { lines: [{ ...context.lines[0], offer: '90' }] };
+    expect(
+      evaluateBasket(request, facts, [a, b], undefined, at).result.toNumber(),
+    ).toBe(129.6);
+    b.policy = { ...b.policy!, pricingOffer: false };
+    expect(
+      evaluateBasket(request, facts, [a, b], undefined, at).result.toNumber(),
+    ).toBe(144);
+  });
+  it('allocates fixed money proportionally and rounds only the final repeating total', () => {
+    const body = {
+      ...request,
+      lines: [
+        { sku: 'A', quantity: 1 },
+        { sku: 'B', quantity: 1 },
+      ],
+    };
+    const facts = {
+      lines: ['A', 'B'].map((sku, i) => ({
+        ...context.lines[0],
+        sku,
+        quantity: 1,
+        regular: String(i + 1),
+      })),
+    };
+    const fixed = row({
+      id: 'fixed',
+      discountType: 'MONTO_FIJO',
+      discountValue: '1',
+      policy: { ...row().policy!, automaticPromotion: true },
+    });
+    const percent = row({
+      id: 'percent',
+      priority: 2,
+      discountValue: '50',
+      scopes: [{ ...row().scopes[0], productId: null, sku: 'A' }],
+      policy: { ...row().policy!, automaticPromotion: true },
+    });
+    const result = evaluateBasket(body, facts, [fixed, percent], undefined, at);
+    expect(result.original.toNumber()).toBe(3);
+    expect(result.result.toNumber()).toBe(1.67);
+    expect(result.discount.toNumber()).toBe(1.33);
+    expect(result.original.compare(result.discount.add(result.result))).toBe(0);
+    expect(result.promotionId).toBe('fixed');
+  });
+  it('consolidates duplicate SKU lines before applying a fixed discount once', () => {
+    const body = {
+      ...request,
+      lines: [
+        { sku: 'SKU', quantity: 1 },
+        { sku: 'SKU', quantity: 2 },
+      ],
+    };
+    const facts = {
+      lines: body.lines.map((l) => ({
+        ...context.lines[0],
+        quantity: l.quantity,
+      })),
+    };
+    const p = row({ discountType: 'MONTO_FIJO', discountValue: '50' });
+    p.scopes.push({ ...p.scopes[0], productId: null, sku: 'SKU' });
+    const result = evaluateBasket(body, facts, [p], undefined, at);
+    expect(result.original.toNumber()).toBe(300);
+    expect(result.result.toNumber()).toBe(250);
+    expect(
+      evaluateBasket(
+        { ...body, lines: [...body.lines].reverse() },
+        { lines: [...facts.lines].reverse() },
+        [p],
+        undefined,
+        at,
+      ).result.toNumber(),
+    ).toBe(250);
+  });
+  it.each([
+    { productId: 'OTHER' },
+    { regular: '101' },
+    { offer: '99' },
+    { currency: 'USD' },
+  ])('rejects incoherent duplicate SKU facts: %j', (changes) => {
+    const body = { ...request, lines: [request.lines[0], request.lines[0]] };
+    const facts = {
+      lines: [context.lines[0], { ...context.lines[0], ...changes }],
+    };
+    expect(() => evaluateBasket(body, facts, [], undefined, at)).toThrow(
+      'COMMERCIAL_CONTEXT_UNAVAILABLE',
+    );
+  });
+  it('rejects unsupported currency scales, unrepresentable unit prices and lossy HTTP amounts', () => {
+    for (const changes of [
+      { currency: 'USD' },
+      { regular: '100.001' },
+      { offer: '99.999' },
+      { regular: '100000000000000.01' },
+    ]) {
+      expect(() =>
+        evaluateBasket(
+          request,
+          { lines: [{ ...context.lines[0], ...changes }] },
+          [],
+          undefined,
+          at,
+        ),
+      ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+    }
+    expect(() =>
+      evaluateBasket(
+        { ...request, lines: [{ sku: 'SKU', quantity: 1000 }] },
+        { lines: [{ ...context.lines[0], quantity: 1000, regular: '0.001' }] },
+        [],
+        undefined,
+        at,
+      ),
+    ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+  });
+  it('rounds the total half up and picks the exact winner before monetary projection', () => {
+    const body = { ...request, lines: [{ sku: 'SKU', quantity: 1 }] };
+    const facts = {
+      lines: [{ ...context.lines[0], quantity: 1, regular: '0.01' }],
+    };
+    const half = evaluateBasket(
+      body,
+      facts,
+      [row({ discountValue: '50' })],
+      undefined,
+      at,
+    );
+    expect(half.result.toNumber()).toBe(0.01);
+    expect(half.discount.toNumber()).toBe(0);
+    const precise = { lines: [{ ...facts.lines[0], regular: '100' }] };
+    const result = evaluateBasket(
+      body,
+      precise,
+      [
+        row({ id: 'z', discountValue: '10.0046' }),
+        row({ id: 'a', discountValue: '10.0045' }),
+      ],
+      undefined,
+      at,
+    );
+    expect(result.result.toNumber()).toBe(90);
+    expect(result.promotionId).toBe('z');
+  });
+  it('validates the actual coupon independently of a better exclusive Pricing offer', () => {
+    const p = row({ modality: 'CUPON' }),
+      c = { ...coupon(), customerUsed: 0 };
+    const body = { ...request, coupon_code: c.code },
+      facts = { lines: [{ ...context.lines[0], offer: '80' }] };
+    const evaluated = evaluateBasket(body, facts, [p], c, at);
+    expect(evaluated.result.toNumber()).toBe(160);
+    expect(evaluated.appliedCouponPromotionId).toBeNull();
+    const validated = evaluateBasket(body, facts, [p], c, at, true);
+    expect(validated.couponApplicable).toBe(true);
+    expect(validated.couponCandidate?.id).toBe(p.id);
+    expect(validated.couponCandidate?.resultAmount.toNumber()).toBe(170);
+  });
+  it('rejects cardinality and elapsed-time budgets instead of returning a partial winner', () => {
+    const entries = Array.from({ length: 101 }, () => request.lines[0]);
+    expect(() =>
+      evaluateBasket(
+        { ...request, lines: entries },
+        { lines: entries.map(() => context.lines[0]) },
+        [],
+        undefined,
+        at,
+      ),
+    ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+    expect(() =>
+      evaluateBasket(
+        request,
+        context,
+        Array.from({ length: 13 }, (_, i) => row({ id: String(i) })),
+        undefined,
+        at,
+      ),
+    ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+    const clock = vi
+      .spyOn(performance, 'now')
+      .mockReturnValueOnce(0)
+      .mockReturnValue(101);
+    try {
+      expect(() =>
+        evaluateBasket(request, context, [row()], undefined, at),
+      ).toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
+    } finally {
+      clock.mockRestore();
+    }
   });
   it('requires valid active recommendation references and an explicit upsell criterion', () => {
     const rule = {

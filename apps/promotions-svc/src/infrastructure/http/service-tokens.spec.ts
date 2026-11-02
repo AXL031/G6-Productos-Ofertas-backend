@@ -56,6 +56,14 @@ const response = (
     ...overrides,
   });
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 describe('Promotions own G7 client_credentials (explicit contract fixture)', () => {
   const fixture = createEnvironmentFixture();
   const config = (overrides: NodeJS.ProcessEnv = {}) =>
@@ -237,19 +245,24 @@ describe('Promotions own G7 client_credentials (explicit contract fixture)', () 
     }
   });
 
-  it('propagates cancellation to the token request and never uses an aborted cache hit', async () => {
+  it('cancels the transport when its only waiter aborts and rejects an aborted cache hit', async () => {
     const controller = new AbortController();
+    let transport: AbortSignal | null | undefined;
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (_url: string, options: RequestInit) => {
-        controller.abort();
-        expect(options.signal?.aborted).toBe(true);
-        throw new Error('private diagnostic');
+      vi.fn((_url: string, options: RequestInit) => {
+        transport = options.signal;
+        return new Promise<Response>(() => {});
       }),
     );
-    await expect(source()(request, controller.signal)).rejects.toThrow(
+    const pending = source()(request, controller.signal);
+    const rejected = expect(pending).rejects.toThrow(
       'PROMOTIONS_SERVICE_TOKEN_UNAVAILABLE',
     );
+    await vi.waitFor(() => expect(transport).toBeDefined());
+    controller.abort();
+    await rejected;
+    expect(transport?.aborted).toBe(true);
     const tokens = source();
     vi.stubGlobal(
       'fetch',
@@ -261,6 +274,179 @@ describe('Promotions own G7 client_credentials (explicit contract fixture)', () 
     );
   });
 
+  it('shares one in-flight issuance for concurrent operations with the same scope', async () => {
+    const issued = deferred<Response>();
+    const fetcher = vi.fn(() => issued.promise);
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source();
+    const calls = Array.from({ length: 8 }, (_, i) =>
+      tokens(
+        {
+          ...request,
+          operationId: i % 2 ? 'obtenerProducto' : 'obtenerContextoSku',
+        },
+        signal(),
+      ),
+    );
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    const jwt = token();
+    issued.resolve(response(jwt));
+    expect(await Promise.all(calls)).toEqual(Array(8).fill(jwt));
+  });
+
+  it('issues different scopes independently while each scope has concurrent waiters', async () => {
+    const pending = new Map<string, ReturnType<typeof deferred<Response>>>();
+    const fetcher = vi.fn((_url: string, options: RequestInit) => {
+      const scope = new URLSearchParams(String(options.body)).get('scope')!;
+      const issued = deferred<Response>();
+      pending.set(scope, issued);
+      return issued.promise;
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source();
+    const price = {
+      ...request,
+      operationId: 'obtenerPrecioSku',
+      scope: 'precios:leer',
+    } as const;
+    const calls = [
+      tokens(request, signal()),
+      tokens(request, signal()),
+      tokens(price, signal()),
+      tokens(price, signal()),
+    ];
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    for (const [scope, issued] of pending)
+      issued.resolve(response(token({ scope }), { scopes: [scope] }));
+    await Promise.all(calls);
+  });
+
+  it('cancels one waiter promptly without cancelling another waiter or its transport', async () => {
+    const issued = deferred<Response>();
+    let transport: AbortSignal | null | undefined;
+    const fetcher = vi.fn((_url: string, options: RequestInit) => {
+      transport = options.signal;
+      return issued.promise;
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source(),
+      first = new AbortController();
+    const a = tokens(request, first.signal),
+      b = tokens(request, signal());
+    const rejected = expect(a).rejects.toThrow(
+      'PROMOTIONS_SERVICE_TOKEN_UNAVAILABLE',
+    );
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    first.abort();
+    await rejected;
+    expect(transport?.aborted).toBe(false);
+    const jwt = token();
+    issued.resolve(response(jwt));
+    expect(await b).toBe(jwt);
+    expect(await tokens(request, signal())).toBe(jwt);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries immediately after all waiters abort and ignores late abandoned work', async () => {
+    const old = deferred<Response>(),
+      fresh = deferred<Response>();
+    const transports: (AbortSignal | null | undefined)[] = [];
+    const fetcher = vi.fn((_url: string, options: RequestInit) => {
+      transports.push(options.signal);
+      return transports.length === 1 ? old.promise : fresh.promise;
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source(),
+      a = new AbortController(),
+      b = new AbortController();
+    const first = tokens(request, a.signal),
+      second = tokens(request, b.signal);
+    const failures = Promise.allSettled([first, second]);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    a.abort();
+    b.abort();
+    expect((await failures).every((v) => v.status === 'rejected')).toBe(true);
+    expect(transports[0]?.aborted).toBe(true);
+    const retry = tokens(request, signal());
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(2));
+    old.resolve(response(token()));
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const join = tokens(request, signal());
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    const jwt = token();
+    fresh.resolve(response(jwt));
+    expect(await Promise.all([retry, join])).toEqual([jwt, jwt]);
+    expect(await tokens(request, signal())).toBe(jwt);
+  });
+
+  it('releases failed shared requests so a later call can recover', async () => {
+    const failed = deferred<Response>();
+    const fetcher = vi
+      .fn()
+      .mockImplementationOnce(() => failed.promise)
+      .mockImplementationOnce(async () => response());
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source();
+    const results = Promise.allSettled([
+      tokens(request, signal()),
+      tokens(request, signal()),
+    ]);
+    await vi.waitFor(() => expect(fetcher).toHaveBeenCalledTimes(1));
+    failed.resolve(new Response('private diagnostic', { status: 401 }));
+    for (const result of await results) {
+      expect(result.status).toBe('rejected');
+      if (result.status === 'rejected')
+        expect(result.reason.message).toBe(
+          'PROMOTIONS_SERVICE_TOKEN_UNAVAILABLE',
+        );
+    }
+    await expect(tokens(request, signal())).resolves.toEqual(
+      expect.any(String),
+    );
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+
+  it('captures the validated operation scope before asynchronous issuance', async () => {
+    const fetcher = vi.fn(async (_url: string, options: RequestInit) => {
+      expect(new URLSearchParams(String(options.body)).get('scope')).toBe(
+        'catalogo:leer',
+      );
+      return response();
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const tokens = source();
+    const mutable = { ...request, scope: 'catalogo:leer' };
+    const result = tokens(mutable, signal());
+    mutable.scope = 'precios:leer';
+    const issued = await result;
+    expect(await tokens(request, signal())).toBe(issued);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { operationId: 'obtenerProducto', scope: 'precios:leer' },
+    {
+      operationId: 'obtenerContextoSku',
+      scope: 'inventario:disponibilidad:leer',
+    },
+    { operationId: 'obtenerPrecioSku', scope: 'catalogo:leer' },
+    { operationId: 'consultarDisponibilidadComercial', scope: 'precios:leer' },
+    { operationId: 'obtenerCategoriaAdmin', scope: 'precios:leer' },
+  ] as const)(
+    'rejects a permitted scope assigned to the wrong operation: %j',
+    async (invalid) => {
+      const fetcher = vi.fn(async () => response());
+      vi.stubGlobal('fetch', fetcher);
+      const tokens = source();
+      // Warm the catalogue cache: validation must also precede cache reuse.
+      await tokens(request, signal());
+      await expect(
+        tokens({ ...request, ...invalid }, signal()),
+      ).rejects.toThrow('PROMOTIONS_SERVICE_TOKEN_UNAVAILABLE');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('bounds a stalled issuer request and aborts its transport', async () => {
     let transportSignal: AbortSignal | null | undefined;
     vi.stubGlobal(
@@ -270,9 +456,18 @@ describe('Promotions own G7 client_credentials (explicit contract fixture)', () 
         return new Promise<Response>(() => {});
       }),
     );
-    await expect(source()(request, signal())).rejects.toThrow(
-      'PROMOTIONS_SERVICE_TOKEN_UNAVAILABLE',
-    );
+    const tokens = source();
+    const results = await Promise.allSettled([
+      tokens(request, signal()),
+      tokens(request, signal()),
+    ]);
+    expect(results.every((result) => result.status === 'rejected')).toBe(true);
     expect(transportSignal?.aborted).toBe(true);
+    const recovered = token();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => response(recovered)),
+    );
+    expect(await tokens(request, signal())).toBe(recovered);
   });
 });
