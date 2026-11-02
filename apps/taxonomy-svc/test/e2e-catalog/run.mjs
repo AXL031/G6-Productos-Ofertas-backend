@@ -56,7 +56,17 @@ const docker = (...args) => {
     timeout: 60000,
     windowsHide: true,
   });
-  if (r.status !== 0) throw new Error(`docker ${args[0]} falló`);
+  if (r.status !== 0) {
+    const detalle = String(r.stderr || r.error?.message || '')
+      .replaceAll(password, '[redactado]')
+      .replaceAll(catalogPass, '[redactado]')
+      .replace(
+        /(amqps?:\/\/|postgres(?:ql)?:\/\/)[^\s/@]+@/gi,
+        '$1[redactado]@',
+      )
+      .slice(0, 1000);
+    throw new Error(`docker ${args[0]} falló: ${detalle}`);
+  }
   return r.stdout.trim();
 };
 const git = (...args) => {
@@ -238,6 +248,8 @@ try {
         'exec',
         pgName,
         'pg_isready',
+        '-h',
+        '127.0.0.1',
         '-U',
         'postgres',
         '-d',
@@ -247,6 +259,7 @@ try {
       return false;
     }
   });
+  stage = 'Instalación de certificado TLS';
   docker('cp', key, `${pgName}:/tmp/server.key`);
   docker('cp', cert, `${pgName}:/tmp/server.crt`);
   docker(
@@ -258,6 +271,7 @@ try {
     '-c',
     'mv /tmp/server.key /var/lib/postgresql/server.key && mv /tmp/server.crt /var/lib/postgresql/server.crt && chown postgres:postgres /var/lib/postgresql/server.key /var/lib/postgresql/server.crt && chmod 600 /var/lib/postgresql/server.key',
   );
+  stage = 'Configuración de TLS PostgreSQL';
   for (const cmd of [
     "ALTER SYSTEM SET ssl = 'on'",
     "ALTER SYSTEM SET ssl_cert_file = '/var/lib/postgresql/server.crt'",
@@ -274,6 +288,7 @@ try {
       '-c',
       cmd,
     );
+  stage = 'Reinicio de PostgreSQL con TLS';
   docker('restart', pgName);
   await wait('PostgreSQL TLS', () => {
     try {
@@ -281,6 +296,8 @@ try {
         'exec',
         pgName,
         'pg_isready',
+        '-h',
+        '127.0.0.1',
         '-U',
         'postgres',
         '-d',
