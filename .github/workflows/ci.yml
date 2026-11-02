@@ -134,12 +134,23 @@ jobs:
       run: "for app in api-gateway bulk-svc catalog-svc combos-svc inventory-svc price-audit-svc pricing-svc promotions-svc\
         \ taxonomy-svc; do\n  if [ ! -f \"dist/apps/$app/main.js\" ]; then\n    echo \"FALLO: falta el artefacto dist/apps/$app/main.js\"\
         \n    exit 1\n  fi\ndone\necho \"Los nueve componentes tienen artefactos ejecutables válidos.\"\n"
+    - name: Compartir artefactos compilados con las comprobaciones de contenedores
+      uses: actions/upload-artifact@v4
+      with:
+        name: artefactos-compilados
+        path: dist/
+        retention-days: 1
   contenedores:
     name: Validar imágenes de contenedores
     runs-on: ubuntu-latest
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Descargar los artefactos compilados
+      uses: actions/download-artifact@v4
+      with:
+        name: artefactos-compilados
+        path: dist/
     - name: Construir la imagen de Inventory
       run: docker build --file Dockerfile.inventory-svc --tag inventory-svc:ci .
     - name: Validar el registro cerrado de servicios Oracle
@@ -381,6 +392,8 @@ jobs:
       - promotions
     if: always()
     steps:
+    - name: Obtener código fuente
+      uses: actions/checkout@v4
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
@@ -407,6 +420,8 @@ jobs:
     - promotions
     if: always()
     steps:
+    - name: Obtener código fuente
+      uses: actions/checkout@v4
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
