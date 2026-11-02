@@ -132,7 +132,7 @@ coordinado. `getMetrics()` expone contadores locales (conexión, pausa, ACK,
 duplicados, rechazos, fallos, reconexiones). No hay endpoint/exportador de
 métricas.
 
-### 4.1 Topología física AMQP adoptada (Resolución #29 / AsyncAPI 0.6.0-rc.3)
+### 4.1 Topología física AMQP adoptada (Resolución de nombres físicos / AsyncAPI 0.6.0-rc.3 — alcance parcial #29)
 
 El código de Inventory adopta la nomenclatura física en español oficial de Oracle y las ACLs del usuario `g6_inventario`:
 
@@ -143,7 +143,7 @@ El código de Inventory adopta la nomenclatura física en español oficial de Or
 | Exchange de resultados | `po.resultados.x` | `po.results.x` | **write** `po.resultados.x` | **Alineado** |
 | Configure | ninguno | ninguno | ninguno (`^$`) | **Cumplido** (el servicio no declara topología) |
 
-*Nota histórica:* Previo a la actualización contractual AsyncAPI `0.6.0-rc.3` en `master` y la resolución #29, el código utilizaba temporalmente nombres en inglés (`po.inventory.q`, `po.events.x`, `po.results.x`), los cuales diferían de la topología física desplegada en Oracle. Esta discrepancia operativa quedó resuelta adoptando los nombres físicos españoles en el consumidor y publicador Outbox. Este servicio **no crea ni modifica** exchanges, colas, bindings ni ACLs.
+*Nota histórica:* Previo a la actualización contractual AsyncAPI `0.6.0-rc.3` en `master` y la adopción de nombres físicos (alcance de #29), el código utilizaba temporalmente nombres en inglés (`po.inventory.q`, `po.events.x`, `po.results.x`), los cuales diferían de la topología física desplegada en Oracle. Esta discrepancia operativa quedó resuelta adoptando los nombres físicos españoles en el consumidor y publicador Outbox. Este servicio **no crea ni modifica** exchanges, colas, bindings ni ACLs.
 
 La frontera HTTP/PostgreSQL es independiente del broker:
 
@@ -180,7 +180,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 
 | Issue | Estado | Implementación interna | Bloqueo externo (owner · operación · desbloqueo) |
 |---|---|---|---|
-| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline y dry-run en `data/data-f1/`; 38 filas candidatas, `ready_for_load=false`, sin SQL | Poma/#12 confirma SKU vigentes · Marco/Infra aporta baseline y destino · autorización explícita antes de cualquier escritura en Supabase |
+| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline, dry-run contra baseline Supabase (diff: 2 insert, 5 unchanged, 31 conflict) y propuesta SQL atómica (`proposal-load.sql`) en `data/data-f1/`; `ready_for_load=false` | Poma/#12 ratificó los 7 SKU en BORRADOR · Marco autorizó export de lectura · pendiente 2da autorización escrita de Marco para aplicar carga en Supabase |
 | [#25](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/25) | IMPLEMENTAR_PARCIAL | GET comercial y POST verificador sin JWT solo desde el peer Gateway (`INVENTORY_DEMO_GATEWAY_IPS`) | Marco/`api-gateway` #106/#107 · propagación de errores del verificador y exposición demo de Inventory · contrato/registro corregidos y prueba conjunta |
 | [#30](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/30) | IMPLEMENTAR_PARCIAL | Ciclo M1 reserva/consumo/liberación/expiración, estados, errores, replay, correlación | G5/M1 + Marco · secuencia por canal y resultado definitivo · prueba bilateral con entorno identificado; G7 concede grants |
 | [#31](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/31) | IMPLEMENTAR_PARCIAL | Consulta informativa M2 y reintegro F3 internos | G5/M2 · recepción/aptitud física y destino real de `location_id` · prueba bilateral; G7 concede scopes |
@@ -189,7 +189,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 | [#99](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/99) | IMPLEMENTAR_PARCIAL | Invariantes de saldo/reserva/incidencia/traslado/reintegro y política offline pura | Marco + G4/G5/G7 · identidad estable de venta offline, dedupe, actor y ubicación (DEC-F-009/014/015) · política y contrato ejecutables |
 | [#100](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/100) | IMPLEMENTAR_PARCIAL | Lecturas, umbrales, dashboard, traslados y consultas comerciales | Poma/Catálogo · mapping producto/categoría/marca→SKU · Marco · métricas SPEC-016 ausentes del schema HTTP y errores de Gateway |
 | [#101](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/101) | IMPLEMENTAR_PARCIAL | Escrituras contractuales salvo frontera offline | Marco + G4/G5/G7 · autorización offline · homologación antes de conectar la política pura a una mutación persistente |
-| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia | Marco + owners Bulk/Catálogo · payload tipado de bulk/deactivated · Infra y G5/#29 · homologación de topología y retry/DLX |
+| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia; topología física `po.inventario.q`/`po.eventos.x`/`po.resultados.x` adoptada en código y acreditada en CI (alcance parcial #29) | Marco + owners Bulk/Catálogo · payload tipado de bulk/deactivated · contrato ejecutable · Marco/Infra · conexión al broker Oracle con las credenciales individuales, validación bilateral y recuperación AMQP. Retry/DLX no implementado por diseño: el servicio no crea topología y no dispone de retry/DLX |
 | [#103](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/103) | IMPLEMENTAR_PARCIAL | Límites, timeouts, errores sanitizados, contadores internos | Infra/G5 · validar fallos y recuperación con DB/broker reales; sin exporter/endpoint de métricas no contratado |
 | [#104](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/104) | BLOQUEADO_ESPECÍFICO | Provider HTTP; adaptador Frontend de umbrales, KPIs autoritativos de dashboard, distribución `porUbicacion` y traslados con solicitud inmutable, confirmación separada de presentación (`TAC-P0-05`), protección `UNCERTAIN` y matriz de transición (`TAC-P0-02`/`TAC-P1-07`) (33 pruebas unitarias/flujo + 60 Playwright, SHA Frontend `db7c2e6`, `src/features/inventory/INTEGRACION_HTTP.md`); lecturas sin fuente contractual fallan con `CONTRATO_BLOQUEADO` | Marco · cliente compartido #109 y rutas #106/#107 · integración React↔Gateway validada (área Frontend) |
 | [#105](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/105) | BLOQUEADO_ESPECÍFICO | Suites locales/provider (no son E2E real) | Marco/Infra · #104, stack aislado PostgreSQL/RabbitMQ, datos autorizados y #110 · recorrido real React→Gateway→Inventory→persistencia |
@@ -226,7 +226,9 @@ npx tsc -p apps/inventory-svc/test/tsconfig.demo.json
 
 # DATA-004 (#14) — preparador offline, sin conexión
 node --test apps/inventory-svc/data/data-f1/dry-run.test.mjs
+node --test apps/inventory-svc/data/data-f1/proposal-sql.test.mjs
 node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/data/data-f1/baseline-empty.json --report dist/inventory-data-f1-dry-run.json
+node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/data/data-f1/baseline-supabase-2026-11-02.json --report dist/inventory-data-f1-dry-run-supabase.json
 ```
 
 ### 7.1 Suite de integración real (PostgreSQL + RabbitMQ)
@@ -258,11 +260,11 @@ una prueba aprobada.
 - [`AUDITORIA_MARCO_2026-10-17.md`](./AUDITORIA_MARCO_2026-10-17.md) — auditoría por hallazgo y evidencia por runtime.
 - [`AVANCE_BLOQUE_01.md`](./AVANCE_BLOQUE_01.md) … [`AVANCE_BLOQUE_06.md`](./AVANCE_BLOQUE_06.md) — avance por bloque.
 - [`CONFIGURACION.md`](./CONFIGURACION.md) — variables y arranque fail-closed.
-- [`data/data-f1/README.md`](./data/data-f1/README.md) — preparación DATA-004.
+- [`data/data-f1/README.md`](./data/data-f1/README.md) — preparación DATA-004, dry-run Supabase, `proposal-load.sql` y `proposal-rollback.sql`.
 
 ## Integración Marketplace H4
 
-**Corte documental:** rama `taco`, código de operación auditado en `b02615841f63ea3249d9ad16a0cf32f4ea2b20c2` y corte Hito 4 en `7a546e78629683c8258df1a6d9beab24e74ef136`; PR #10 sigue abierto en draft. CI GitHub Actions del SHA `7a546e7` (run 39524047809): PASS en validación general, PostgreSQL Taxonomy e Inventory PostgreSQL/RabbitMQ. Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
+**Corte documental:** rama `taco`, código base de operación auditado y mergeado en `master` vía PR #10 (commit `9f398233481284ca5aa90e0c9da1cbe0477e5d85`), con PR #149 preparado para revisión y merge (HEAD `26198642e8822ee40b9faad41ae152b1ec31f6df`). CI GitHub Actions: PASS integral en validación general, contratos, tipos, lint, formato, PostgreSQL efímero y RabbitMQ (run 41473886405). Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
 
 | OperationId | Método/ruta | Identidad/scope de contrato | Semántica |
 |---|---|---|---|
