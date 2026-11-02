@@ -10,10 +10,16 @@ import {
   validatePromotionsConfiguration,
 } from '../infrastructure/config/promotions-config.js';
 import { createEnvironmentFixture } from '../../test/support/environment.js';
+import { lookup } from 'node:dns/promises';
+
+vi.mock('node:dns/promises', () => ({ lookup: vi.fn() }));
 
 describe('Promotions local demo access', () => {
   const fixture = createEnvironmentFixture();
   afterAll(() => fixture.cleanup());
+  beforeEach(() => {
+    vi.mocked(lookup).mockReset();
+  });
   const setup = (enabled: boolean, id = 'crearCupon', peer = '127.0.0.1') => {
     const config = new PromotionsConfigService(
       validatePromotionsConfiguration({
@@ -34,7 +40,7 @@ describe('Promotions local demo access', () => {
         'x-user-role': 'GESTOR_COMERCIAL',
         'x-forwarded-for': '127.0.0.1',
       },
-      header: () => undefined,
+      header: (): string | undefined => undefined,
     };
     const context = {
       getHandler: () => () => undefined,
@@ -64,6 +70,54 @@ describe('Promotions local demo access', () => {
       status: 401,
     });
     expect(test.authorize).toHaveBeenCalledOnce();
+  });
+
+  it.each(['172.20.0.2', '::ffff:172.20.0.2', 'fd00::2'])(
+    'allows only the private resolved Gateway peer %s without treating a bearer as identity',
+    async (peer) => {
+      vi.mocked(lookup).mockResolvedValue([
+        { address: '172.20.0.2', family: 4 },
+        { address: 'fd00::2', family: 6 },
+      ]);
+      const test = setup(true, 'crearPromocion', peer);
+      test.req.header = () => 'Bearer untrusted';
+      expect(await test.guard.canActivate(test.context)).toBe(true);
+      expect(lookup).toHaveBeenCalledWith('g6-api-gateway', { all: true });
+      expect(test.authorize).not.toHaveBeenCalled();
+      expect(test.req).not.toHaveProperty('user');
+    },
+  );
+
+  it('fails closed on unresolved, public or nonmatching Gateway addresses', async () => {
+    for (const addresses of [
+      [],
+      [{ address: '172.20.0.3', family: 4 }],
+      [{ address: '8.8.8.8', family: 4 }],
+      [
+        { address: '172.20.0.2', family: 4 },
+        { address: '8.8.8.8', family: 4 },
+      ],
+    ]) {
+      vi.mocked(lookup).mockResolvedValue(addresses);
+      const test = setup(true, 'crearPromocion', '172.20.0.2');
+      await expect(test.guard.canActivate(test.context)).rejects.toMatchObject({
+        status: 403,
+      });
+    }
+    vi.mocked(lookup).mockRejectedValue(new Error('DNS unavailable'));
+    const test = setup(true, 'crearPromocion', '172.20.0.2');
+    await expect(test.guard.canActivate(test.context)).rejects.toMatchObject({
+      status: 403,
+    });
+  });
+
+  it('bounds Gateway DNS resolution and never falls back to JWT or demo for an unverified peer', async () => {
+    vi.mocked(lookup).mockImplementation(() => new Promise(() => {}));
+    const test = setup(true, 'crearPromocion', '172.20.0.2');
+    await expect(test.guard.canActivate(test.context)).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(test.authorize).not.toHaveBeenCalled();
   });
 
   it.each(['192.168.1.5', '10.0.0.2', '::ffff:192.168.1.5', ''])(

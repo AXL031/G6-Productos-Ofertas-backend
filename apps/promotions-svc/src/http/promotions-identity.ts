@@ -10,6 +10,7 @@ import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 import type { Request } from 'express';
 import { PromotionsConfigService } from '../infrastructure/config/promotions-config.js';
 import { httpContracts } from './http-contract.generated.js';
+import { restrictedDemoPeer } from './restricted-demo-peer.js';
 import {
   isUuid,
   object,
@@ -215,7 +216,7 @@ export class PromotionsQueryGuard implements CanActivate {
     if (this.config.settings.localDemoEnabled) {
       // Use the TCP peer, never proxy/identity headers supplied by a caller.
       const peer = request.socket.remoteAddress;
-      if (!['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(peer ?? ''))
+      if (!(await restrictedDemoPeer(peer)))
         throw new PromotionsHttpError(403, 'SCOPE_INSUFICIENTE');
       const operation = httpContracts[id];
       const path = new RegExp(

@@ -261,9 +261,13 @@ export class HttpCommercialContext implements CommercialContext {
         >();
         const products = new Map<string, string[]>();
         const at = new Date().toISOString();
-        for (const id of new Set(ids)) {
-          text(id);
-          const p = await this.product(id, channelId, bounded);
+        const uniqueIds = [...new Set(ids)];
+        uniqueIds.forEach(text);
+        const details = await limitedReads(uniqueIds, bounded, (id, signal) =>
+          this.product(id, channelId, signal),
+        );
+        for (const [index, id] of uniqueIds.entries()) {
+          const p = details[index];
           if (!p) {
             result.set(id, null);
             continue;
@@ -310,6 +314,17 @@ export class HttpCommercialContext implements CommercialContext {
             );
           }
         }
+        const positiveSkus = uniqueSkus.filter((sku) =>
+          ['DISPONIBLE', 'STOCK_BAJO'].includes(availability.get(sku) ?? ''),
+        );
+        const priceRows = await limitedReads(
+          positiveSkus,
+          bounded,
+          (sku, signal) => this.price(sku, channelId, at, signal),
+        );
+        const prices = new Map(
+          positiveSkus.map((sku, index) => [sku, priceRows[index]]),
+        );
         let currency: string | undefined;
         for (const [id, skus] of products) {
           const positive = skus.filter((sku) =>
@@ -317,7 +332,7 @@ export class HttpCommercialContext implements CommercialContext {
           );
           let minimum: string | undefined;
           for (const sku of [...positive].sort()) {
-            const price = await this.price(sku, channelId, at, bounded);
+            const price = prices.get(sku);
             if (!price) continue;
             if (currency && price.currency !== currency)
               throw new Error('MIXED_CURRENCIES');
@@ -348,6 +363,34 @@ export class HttpCommercialContext implements CommercialContext {
         return result;
       },
     );
+  }
+}
+
+// Four in-flight reads per recommendation call; preserve input order and stop
+// queued/in-flight work on failure. The caller's total deadline is unchanged.
+async function limitedReads<T, R>(
+  items: readonly T[],
+  parent: AbortSignal,
+  read: (item: T, signal: AbortSignal) => Promise<R>,
+): Promise<R[]> {
+  const controller = new AbortController();
+  const signal = AbortSignal.any([parent, controller.signal]);
+  const results: R[] = [];
+  let next = 0;
+  try {
+    await Promise.all(
+      Array.from({ length: Math.min(4, items.length) }, async () => {
+        while (next < items.length) {
+          signal.throwIfAborted();
+          const index = next++;
+          results[index] = await read(items[index], signal);
+        }
+      }),
+    );
+    return results;
+  } catch (error) {
+    controller.abort();
+    throw error;
   }
 }
 

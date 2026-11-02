@@ -1,6 +1,6 @@
 # Desarrollo funcional local — Promotions
 
-Rama `cueva`, 01/11/2026. Configuración para desarrollar funcionalidad dejando G7 pendiente, según instrucción de Axel. Estado completo por issue: [AVANCE-ISSUES-2026-11-01.md](AVANCE-ISSUES-2026-11-01.md).
+Rama `cueva`. Revisión H4 vigente: [H4-REVISION-2026-11-02.md](H4-REVISION-2026-11-02.md). El avance del 01/11 se conserva como antecedente; no acredita el estado actual del entorno compartido.
 
 ## Inicio local sin JWT
 
@@ -13,7 +13,9 @@ npm run build:promotions-svc
 npm run start:promotions-svc
 ```
 
-Se reutiliza el flag existente. El listener se fija a `127.0.0.1` y el guard comprueba el par TCP loopback. Requiere NODE_ENV explícito development/test; producción o entorno omitido rechazan el arranque con demo activa. Esto no habilita Oracle ni acredita una demo compartida.
+Se reutiliza `GATEWAY_DEMO_NO_AUTH_ENABLED`, deshabilitado por defecto. Con demo explícita y NODE_ENV development/test el listener sigue en `127.0.0.1`. En NODE_ENV production escucha en `0.0.0.0` para permitir contenedores separados; el guard solo admite loopback o la dirección privada del alias fijo `g6-api-gateway`, resuelto desde el contenedor, comparada con el par TCP real. DNS ausente, público, no coincidente o sin respuesta en 500 ms deniega acceso. No se usan cabeceras de identidad/IP como autorización. Un entorno omitido no permite activar demo.
+
+Antes de activar en Oracle, Marco debe verificar el perímetro Caddy/Tailscale del Gateway, la propiedad del alias DNS y la red privada `g6-http`, sin puertos de negocio publicados directamente. El flag no prueba aislamiento ni autoriza despliegue. No se añaden variables ni permisos globales. Quitar el flag restablece JWT en los mismos handlers; issuer/JWKS ausentes o inválidos fallan cerrados. La suite de imagen incluye `test/restricted-demo.container.smoke.mjs`, con dos pares TCP reales y NODE_ENV production; no certifica el perímetro remoto.
 
 Las 22 operaciones conservan sus validaciones, correlación, transacciones y reglas. No se instala una identidad ficticia. El modo normal sigue siendo autenticado, sin fallback a demo ante fallo de G7.
 

@@ -64,7 +64,7 @@ export interface PromotionsConfiguration {
   readonly dependencyProbesEnabled: boolean;
   readonly couponRuntimeEnabled: boolean;
   readonly localDemoEnabled: boolean;
-  readonly listenHost: '127.0.0.1' | '::';
+  readonly listenHost: '127.0.0.1' | '0.0.0.0' | '::';
   readonly auth?: Readonly<{ issuer: string; jwksUrl: string }>;
   readonly upstreams: Readonly<Partial<Record<Upstream, string>>>;
 }
@@ -133,11 +133,13 @@ export function validatePromotionsConfiguration(
       invalid.add(variable);
     }
   }
-  // Local development only. Oracle needs a separately verified Gateway perimeter.
+  // Explicit activation only. Production additionally requires the independently
+  // verified private Gateway perimeter; the guard checks its actual TCP peer.
   if (
     localDemoEnabled &&
     environment.NODE_ENV !== 'development' &&
-    environment.NODE_ENV !== 'test'
+    environment.NODE_ENV !== 'test' &&
+    environment.NODE_ENV !== 'production'
   )
     invalid.add('GATEWAY_DEMO_NO_AUTH_ENABLED');
   const required = Object.fromEntries(
@@ -220,7 +222,11 @@ export function validatePromotionsConfiguration(
     dependencyProbesEnabled,
     couponRuntimeEnabled,
     localDemoEnabled,
-    listenHost: localDemoEnabled ? '127.0.0.1' : '::',
+    listenHost: localDemoEnabled
+      ? nodeEnvironment === 'production'
+        ? '0.0.0.0'
+        : '127.0.0.1'
+      : '::',
     auth,
     upstreams: Object.freeze(upstreams),
   });

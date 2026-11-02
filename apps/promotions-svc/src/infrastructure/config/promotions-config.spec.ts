@@ -98,7 +98,18 @@ describe('Promotions configuration', () => {
           GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         }),
       ).toMatchObject({ localDemoEnabled: true, listenHost: '127.0.0.1' });
-    for (const NODE_ENV of ['production', undefined])
+    expect(
+      validatePromotionsConfiguration({
+        ...fixture.environment,
+        NODE_ENV: 'production',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }),
+    ).toMatchObject({
+      localDemoEnabled: true,
+      listenHost: '0.0.0.0',
+      couponRuntimeEnabled: false,
+    });
+    for (const NODE_ENV of [undefined])
       expect(() =>
         validatePromotionsConfiguration({
           ...fixture.environment,
