@@ -32,6 +32,25 @@ export class CatalogSkuContextClient {
     sku: string,
     correlationId: string,
   ): Promise<PricingCatalogContext> {
+    const context = await this.fetchContext(sku, correlationId);
+    if (!context.active)
+      throw new IntegrationFailure('CATALOG', 'SKU_INACTIVO');
+    if (!context.eligible)
+      throw new IntegrationFailure('CATALOG', 'SKU_INELEGIBLE');
+    return context;
+  }
+
+  async getContextForMapping(
+    sku: string,
+    correlationId: string,
+  ): Promise<PricingCatalogContext> {
+    return this.fetchContext(sku, correlationId);
+  }
+
+  private async fetchContext(
+    sku: string,
+    correlationId: string,
+  ): Promise<PricingCatalogContext> {
     const bearer = this.serviceBearer();
     if (!bearer) throw new IntegrationFailure('CATALOG', 'AUTH_NOT_CONFIGURED');
     const url = `${this.baseUrl.replace(/\/$/, '')}/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`;
@@ -112,11 +131,6 @@ export class CatalogSkuContextClient {
       typeof data.eligible !== 'boolean'
     )
       throw new IntegrationFailure('CATALOG', 'INVALID_RESPONSE');
-    const context = data as unknown as PricingCatalogContext;
-    if (!context.active)
-      throw new IntegrationFailure('CATALOG', 'SKU_INACTIVO');
-    if (!context.eligible)
-      throw new IntegrationFailure('CATALOG', 'SKU_INELEGIBLE');
-    return context;
+    return data as unknown as PricingCatalogContext;
   }
 }
