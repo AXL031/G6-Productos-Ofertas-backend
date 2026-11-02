@@ -1,7 +1,11 @@
 # Pricing: contexto Catalog y canales — 2026-11-02
 
 Rama `vera`; base backend `10a755bf953bf04926a94dea0f3ca222ffa447d8`.
-Cambios locales sin commit, push, cierre de issues, CI nueva ni despliegue.
+Entrega original publicada en PR #163: commit
+`cc0e5fbf59be33892d25d2ff66dee0421d47684c`, seguido por
+`c197f6648d4747fced6e13483b5a025eb227bd57` (integración previa de master).
+Ambos ya estaban publicados al comenzar esta auditoría. No se hace otro merge
+ni se autoriza merge/despliegue con estas correcciones.
 Owner: Leonardo Vera. Alcance concreto: #24/#55 y adaptación de canales de #56.
 
 ## Fuentes
@@ -46,7 +50,91 @@ RLS estaba deshabilitado en las ocho tablas del esquema. Se verificó que
 para esos roles en el esquema. Esto no es una auditoría global de exposición.
 No se cambiaron permisos ni políticas RLS.
 
-## Validación
+## Auditoría de PR #163 y coordinación
+
+CI remoto verificado en el SHA exacto `c197f6648d4747fced6e13483b5a025eb227bd57`:
+[run 41537333579](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/41537333579),
+16 checks completados con SUCCESS (incluidos unitarias, E2E, Pricing/Audit,
+compilación, tipos, formato, lint y validación integral). Este resultado sustituye
+la afirmación obsoleta de que no había commit/push/CI. No se atribuye ese CI a
+los commits nuevos: su SHA y estado se registran separadamente abajo.
+
+- Se retiran del diff los cuatro `scripts/seed/mcp/pricing/006_current_catalog_prices.*`
+  y `tests/docs/__pycache__/test_validate_marketplace_h4_docs.cpython-312.pyc`.
+  Antes de retirarlos se copiaron a `C:/Users/User/.codex/tmp/pr163-out-of-scope-c197f66/`,
+  conservando rutas y verificando SHA-256 origen/copia. También permanecen en
+  el historial de cc0e5fb para revisión independiente. No se ejecuta SQL ni se
+  modifican datos de Supabase.
+- Correlación: el controller usa el UUID validado/generado por PricingReadGuard;
+  se propaga por CommercialPrices y el puerto Catalog hasta el header saliente.
+  Single, todas las filas del batch y Problem de Pricing conservan ese mismo ID.
+  Sin contexto HTTP, el adaptador puede generar un UUID propio; no sustituye
+  una correlación recibida. No se usa estado global compartido entre solicitudes.
+- La prueba local nueva usa Pricing HTTP real y un Catalog de fixture;
+  cubre UUID entrante/ausente/inválido, single/batch y respuestas 200/404/503.
+  Es una prueba de trazabilidad de transporte, no E2E con Catalog/G7 reales.
+
+### Demo privada: BLOQUEADO_ESPECÍFICO
+
+Poma confirmó que obtenerContextoSku rechaza anónimos incluso con demo
+administrativa. La omisión de Authorization por Pricing no acredita una
+integración sin JWT. Se envió a Poma/Marco la
+[solicitud concreta de coordinación en #24](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/24#issuecomment-6590336223).
+La publicación por conector devolvió 403; se publicó mediante API GitHub con
+la identidad local de Git, sin exponer credenciales. No hay aceptación por silencio.
+
+Propuesta pendiente de acuerdo: excepción reversible solo para el GET privado
+obtenerContextoSku y par TCP privado de Pricing verificado; default cerrado,
+ninguna confianza en X-Forwarded-For/Origin/headers de identidad, sin exposición
+en Gateway externo. Poma define/implementa su guard/flags; Marco verifica red,
+IP y perímetro. Se conservan JWT y allowlist al desactivar demo. No se modifica
+Catalog, Gateway, política compartida ni flags desde esta PR.
+
+Condición de desbloqueo: respuesta verificable de Poma/Marco con mecanismo,
+SHA de Catalog y origen/red autorizados, seguida por prueba de ambos procesos
+con PostgreSQL real: permitido/denegado, modo apagado, headers falsos,
+simple/variante/inactivo/inelegible/404/503 y misma correlación en ambos servicios.
+Acuerdo y ejecución conjunta siguen PENDIENTES; el 401/403 de Catalog se
+convierte en fallo técnico 503 de Pricing, nunca en ausencia ni fallback mock.
+
+### G7: BLOQUEADO_ESPECÍFICO independiente
+
+Owner Seguridad G7 y Marco (provisión privada): falta evidencia de grant
+`catalogo:leer` para `modulo-productos`, audiencia `api-productos`, issuer/JWKS
+y secreto client_credentials del entorno. Desbloqueo: token realmente emitido
+por G7, operación positiva y negativos 401/403 por SHA/entorno, sin guardar
+secretos en evidencias. Credenciales, grant e integración autenticada: NO
+VERIFICADOS. Fixtures firmados, YAML y CI no acreditan esos estados, homologación
+ni recorrido E2E completo. Price Audit/evento tipado quedan fuera de esta corrección.
+
+## Corrección publicada y validación nueva
+
+Commit de código/limpieza **4c44fe633f05ea38302c368f1bac94f343b63440**,
+publicado en origin/vera y PR #163 mediante push normal. La revisión documental
+se publica después en otro commit que conserva exactamente ese código probado.
+La CI del SHA nuevo está solicitada y pendiente de conclusión al redactar esta
+revisión; no se le atribuyen los 16 checks verdes de c197f66. El estado final del
+HEAD documental se verificará en el PR y se comunicará por su SHA exacto.
+
+Pruebas locales sobre el contenido del commit 4c44fe6:
+
+| Comando | Resultado actual |
+|---|---|
+| `npm test -- apps/pricing-svc --maxWorkers=1` | PASS: 295 |
+| `PRICING_TEST_POSTGRES=1 PRICING_TEST_AMQP=1 npm run test:e2e -- apps/pricing-svc --maxWorkers=1` | PASS: 52, cero omitidas; PostgreSQL/RabbitMQ descartables |
+| `npm test -- --maxWorkers=2` | PASS: 1813, 56 optativas omitidas |
+| `PRICING_TEST_POSTGRES=1 PRICING_TEST_AMQP=1 npm run test:e2e -- --maxWorkers=1`, OpenSSL Git en PATH | FAIL: 974 PASS, 1 FAIL, 98 omitidas; DATA-002 Catalog :882, 6116 ms frente a 5000 ms |
+| `npm run typecheck`, `npm run lint`, `npm run format:check`, `npm run build:pricing-svc` | PASS cada comando |
+| `git diff --check`, `git diff --cached --check` | PASS |
+
+El fallo DATA-002 conocido se conserva, no se altera el test ni el timeout fuera
+del ownership Vera. Se publica esta corrección acotada por la solicitud expresa
+del auditor de nuevos commits/push después de revisar la entrega y su CI;
+no se declara PASS general local ni autorización de merge. Poma mantiene el
+diagnóstico de DATA-002. Los defectos de Pricing cubiertos por esta corrección
+pasan sus pruebas; la integración demo conjunta y G7 siguen pendientes.
+
+## Validación histórica de la entrega original
 
 Las pruebas HTTP de Catalog y G7 usan servidores locales y firmas RSA reales
 de fixtures. No son Catalog/G7 compartidos ni prueban grants efectivos.
@@ -95,7 +183,7 @@ La repetición E2E general con OpenSSL pasó la preparación TLS, pero falló
 Resultado final: 970 PASS, 1 FAIL y 98 omitidas. No se modificó la prueba ni su
 timeout. Dependencia Poma: diagnosticar el caso DATA-002 y aportar su ejecución
 válida bajo el presupuesto vigente. Este fallo no se atribuye a Pricing, pero
-impide declarar PASS de la regresión general o proponer commit/PR en este corte.
+impidió declarar PASS de aquella ejecución local. El CI posterior de c197f66 y la nueva validación se registran por separado, sin borrar el fallo histórico.
 
 ## Estados y trabajo restante
 
@@ -129,6 +217,6 @@ Todos dentro de `apps/pricing-svc/`:
 - `src/http/pricing-write.controller.ts`.
 - `src/http/pricing-write.dto.ts`, `src/http/pricing-write.dto.spec.ts`.
 - `src/pricing-svc.module.ts`, `test/persistence.e2e-spec.ts`.
+- Auditoría: `src/http/pricing-read.controller.ts`, `test/correlation.e2e-spec.ts`.
 
-Los archivos no rastreados ajenos en scripts/seed/mcp/pricing y tests/docs
-se conservaron sin modificación; no forman parte de esta entrega.
+La publicación original incluyó por error los cinco archivos ajenos indicados arriba; esta auditoría los retira del diff y conserva copia independiente.
