@@ -226,7 +226,9 @@ npx tsc -p apps/inventory-svc/test/tsconfig.demo.json
 
 # DATA-004 (#14) — preparador offline, sin conexión
 node --test apps/inventory-svc/data/data-f1/dry-run.test.mjs
+node --test apps/inventory-svc/data/data-f1/proposal-sql.test.mjs
 node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/data/data-f1/baseline-empty.json --report dist/inventory-data-f1-dry-run.json
+node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/data/data-f1/baseline-supabase-2026-11-02.json --report dist/inventory-data-f1-dry-run-supabase.json
 ```
 
 ### 7.1 Suite de integración real (PostgreSQL + RabbitMQ)
@@ -258,11 +260,11 @@ una prueba aprobada.
 - [`AUDITORIA_MARCO_2026-10-17.md`](./AUDITORIA_MARCO_2026-10-17.md) — auditoría por hallazgo y evidencia por runtime.
 - [`AVANCE_BLOQUE_01.md`](./AVANCE_BLOQUE_01.md) … [`AVANCE_BLOQUE_06.md`](./AVANCE_BLOQUE_06.md) — avance por bloque.
 - [`CONFIGURACION.md`](./CONFIGURACION.md) — variables y arranque fail-closed.
-- [`data/data-f1/README.md`](./data/data-f1/README.md) — preparación DATA-004.
+- [`data/data-f1/README.md`](./data/data-f1/README.md) — preparación DATA-004, dry-run Supabase, `proposal-load.sql` y `proposal-rollback.sql`.
 
 ## Integración Marketplace H4
 
-**Corte documental:** rama `taco`, código de operación auditado en `b02615841f63ea3249d9ad16a0cf32f4ea2b20c2` y corte Hito 4 en `7a546e78629683c8258df1a6d9beab24e74ef136`; PR #10 sigue abierto en draft. CI GitHub Actions del SHA `7a546e7` (run 39524047809): PASS en validación general, PostgreSQL Taxonomy e Inventory PostgreSQL/RabbitMQ. Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
+**Corte documental:** rama `taco`, código base de operación auditado y mergeado en `master` vía PR #10 (commit `9f398233481284ca5aa90e0c9da1cbe0477e5d85`), con PR #149 preparado para revisión y merge (HEAD `26198642e8822ee40b9faad41ae152b1ec31f6df`). CI GitHub Actions: PASS integral en validación general, contratos, tipos, lint, formato, PostgreSQL efímero y RabbitMQ (run 41473886405). Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
 
 | OperationId | Método/ruta | Identidad/scope de contrato | Semántica |
 |---|---|---|---|
