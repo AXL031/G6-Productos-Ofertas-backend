@@ -216,12 +216,62 @@ describeIntegracion(
             .values({ nombre: 'Marca rollback constraint' });
           await tx.insert(marcas).values({ nombre: '  MARATHON  ' });
         }),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        cause: { code: '23505', constraint: 'uq_brands_nombre_normalizado' },
+      });
       const { rows } = await admin.query(
         'SELECT id FROM taxonomy.brands WHERE nombre = $1',
         ['Marca rollback constraint'],
       );
       expect(rows).toHaveLength(0);
+      const original = await admin.query(
+        'SELECT nombre FROM taxonomy.brands WHERE nombre_normalizado = $1',
+        ['marathon'],
+      );
+      expect(original.rows).toEqual([{ nombre: 'Marathon' }]);
+    });
+
+    it.each([
+      [
+        'nombre vacío de categoría',
+        'INSERT INTO taxonomy.categories (nombre) VALUES ($1)',
+        ['   '],
+        'ck_categories_nombre_not_empty',
+      ],
+      [
+        'versión negativa de categoría',
+        'INSERT INTO taxonomy.categories (nombre, taxonomy_version) VALUES ($1, $2)',
+        ['Versión inválida', -1],
+        'ck_categories_version',
+      ],
+      [
+        'versión negativa de marca',
+        'INSERT INTO taxonomy.brands (nombre, taxonomy_version) VALUES ($1, $2)',
+        ['Versión inválida', -1],
+        'ck_brands_version',
+      ],
+      [
+        'categoría autorreferenciada',
+        'INSERT INTO taxonomy.categories (id, nombre, nivel, categoria_padre_id) VALUES ($1, $2, $3, $1)',
+        ['aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', 'Autorreferencia', 2],
+        'ck_categories_no_self_parent',
+      ],
+    ])('rechaza %s', async (_caso, query, params, constraint) => {
+      await expect(app.query(query, params)).rejects.toMatchObject({
+        code: '23514',
+        constraint,
+      });
+    });
+
+    it('rechaza nombre vacío de marca', async () => {
+      const error: unknown = await app
+        .query('INSERT INTO taxonomy.brands (nombre) VALUES ($1)', ['   '])
+        .catch((e: unknown) => e);
+      expect(error).toMatchObject({ code: '23514' });
+      expect([
+        'ck_brands_nombre_not_empty',
+        'ck_brands_nombre_normalizado_not_empty',
+      ]).toContain((error as { constraint?: string }).constraint);
     });
 
     it('aplica las restricciones oficiales de FK y CHECK de categorías', async () => {
@@ -248,6 +298,18 @@ describeIntegracion(
     it('limita los mapeos y claves foráneas Drizzle al schema taxonomy', async () => {
       expect(getTableConfig(categorias).schema).toBe('taxonomy');
       expect(getTableConfig(marcas).schema).toBe('taxonomy');
+      const fks = getTableConfig(categorias).foreignKeys;
+      expect(fks).toHaveLength(1);
+      const referencia = fks[0].reference();
+      expect(fks[0].getName()).toBe('fk_categories_categoria_padre');
+      expect(referencia.foreignTable).toBe(categorias);
+      expect(getTableConfig(referencia.foreignTable).schema).toBe('taxonomy');
+      expect(referencia.columns.map((column) => column.name)).toEqual([
+        'categoria_padre_id',
+      ]);
+      expect(referencia.foreignColumns.map((column) => column.name)).toEqual([
+        'id',
+      ]);
       const { rows } = await admin.query(
         `SELECT n.nspname AS destino FROM pg_constraint c
         JOIN pg_class origen ON origen.oid = c.conrelid

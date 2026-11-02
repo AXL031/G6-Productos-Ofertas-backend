@@ -27,6 +27,8 @@ El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y u
 
 ## Persistencia
 
+**Alcance parcial del issue #35:** los mapeos Drizzle cubren categorías y marcas de las 12 tablas del modelo físico. Queda pendiente mapear las otras diez tablas y validar la persistencia contra las migraciones oficiales; el fixture aislado de estas pruebas no ejecuta dichas migraciones. Este avance no cierra el issue #35.
+
 - Driver `drizzle-orm` sobre `pg` (`node-postgres`).
 - Esquema en `src/persistence/taxonomy.schema.ts`: `taxonomy.categories` y `taxonomy.brands` mapeadas al modelo físico, incluido el enum `taxonomy.estado_entidad` y la columna generada `nombre_normalizado`.
 - `DrizzleTaxonomyRepository` implementa `TaxonomyRepository` y `TaxonomyReadinessIndicator`; las lecturas filtran por `estado = 'ACTIVO'`.
