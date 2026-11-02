@@ -32,14 +32,25 @@ END $$;
 
 SET LOCAL search_path = inventory, public;
 
+-- Adquirir lock transaccional consultivo para serializar reversiones concurrentes
+SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));
+
 -- ----------------------------------------------------------------------------
--- 2. Eliminación selectiva acotada a las identidades de DATA-004
+-- 2. Eliminación selectiva acotada estrictamente a las identidades de DATA-004
 -- ----------------------------------------------------------------------------
+-- Elimina única y exclusivamente los registros con los UUIDs deterministas asignados a DATA-004
+-- y cuyo contenido coincida con la definición de la carga, preservando cualquier umbral
+-- preexistente o creado por otros procesos bajo otros identificadores.
 DELETE FROM inventory.stock_threshold_override
-WHERE (id = '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid)
-   OR (id = '7b49463c-333e-5e63-b8ad-344c20847250'::uuid)
-   OR (sku_id IS NULL AND location_id IS NULL AND umbral_efectivo = 5)
-   OR (sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL AND umbral_efectivo = 3);
+WHERE id IN (
+  '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,
+  '7b49463c-333e-5e63-b8ad-344c20847250'::uuid
+)
+AND (
+  (id = '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid AND sku_id IS NULL AND location_id IS NULL AND umbral_efectivo = 5)
+  OR
+  (id = '7b49463c-333e-5e63-b8ad-344c20847250'::uuid AND sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL AND umbral_efectivo = 3)
+);
 
 -- ----------------------------------------------------------------------------
 -- 3. Verificación de no regresión sobre saldos existentes

@@ -46,6 +46,10 @@ END $$;
 -- Fijar search_path exclusivo para evitar ambigüedades de resolución
 SET LOCAL search_path = inventory, public;
 
+-- Adquirir lock transaccional consultivo para serializar ejecuciones concurrentes
+-- y prevenir colisiones de clave única en WHERE NOT EXISTS
+SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));
+
 -- ----------------------------------------------------------------------------
 -- 2. Verificación estricta de precondiciones (Baseline real de Supabase)
 -- ----------------------------------------------------------------------------

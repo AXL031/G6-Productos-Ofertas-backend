@@ -1680,6 +1680,217 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       }
     });
   });
+
+  describe('DATA-004 — ejecución E2E de scripts SQL en PostgreSQL desechable (#14)', () => {
+    const locLurin = '9129b578-631e-1735-8427-b683fb524380';
+    const locMiraflores = 'aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485';
+    const skus = [
+      'ADI-ENT22-AZU-M',
+      'ADI-STAN-BLA-41',
+      'CAL-NK-AIR-42',
+      'NK-RUN-NEG-42',
+      'NKE-TCH-GRI-L',
+      'PUM-CLAS-NEG-40',
+      'PUM-TRN-NEG-M',
+    ];
+    let loadSql: string;
+    let rollbackSql: string;
+
+    beforeAll(async () => {
+      loadSql = await readFile(
+        new URL('../data/data-f1/proposal-load.sql', import.meta.url),
+        'utf8',
+      );
+      rollbackSql = await readFile(
+        new URL('../data/data-f1/proposal-rollback.sql', import.meta.url),
+        'utf8',
+      );
+    });
+
+    async function setupBaseline(withConflict = false): Promise<void> {
+      await database.query(`DELETE FROM inventory.stock_threshold_override`);
+
+      await database.query(
+        `INSERT INTO inventory.locations (id, code, name, type, active)
+         VALUES ($1, 'ALM-LURIN', 'Almacén Lurín', 'ALMACEN', true),
+                ($2, 'TDA-MIRAFLORES', 'Tienda Miraflores', 'TIENDA', true)
+         ON CONFLICT (id) DO UPDATE SET active = true`,
+        [locLurin, locMiraflores],
+      );
+
+      await database.query(
+        `DELETE FROM inventory.stock_balance WHERE location_id IN ($1, $2)`,
+        [locLurin, locMiraflores],
+      );
+
+      for (const locId of [locLurin, locMiraflores]) {
+        for (const sku of skus) {
+          await database.query(
+            `INSERT INTO inventory.stock_balance
+             (id, location_id, sku_id, on_hand, reserved, allocated, available, backorder, safety_stock)
+             VALUES (gen_random_uuid(), $1, $2, 20, 0, 0, 20, 0, 0)`,
+            [locId, sku],
+          );
+        }
+      }
+
+      await database.query(
+        `INSERT INTO inventory.stock_threshold_override
+         (id, sku_id, location_id, umbral_efectivo)
+         VALUES ('a0000000-0000-0000-0000-000000000001'::uuid, 'PUM-CLAS-NEG-40', NULL, 7)`,
+      );
+
+      if (withConflict) {
+        await database.query(
+          `INSERT INTO inventory.stock_threshold_override
+           (id, sku_id, location_id, umbral_efectivo)
+           VALUES ('b0000000-0000-0000-0000-000000000002'::uuid, NULL, NULL, 99)`,
+        );
+      }
+    }
+
+    it('ejecuta proposal-load.sql: carga atómica, verificación de umbrales y preservación de saldos y umbral previo', async () => {
+      await setupBaseline();
+      const client = new pg.Client({ connectionString: pgUrl });
+      await client.connect();
+      try {
+        await client.query(loadSql);
+
+        const overrides = await client.query<{
+          id: string;
+          sku_id: string | null;
+          umbral_efectivo: number;
+        }>(
+          `SELECT id, sku_id, umbral_efectivo FROM inventory.stock_threshold_override ORDER BY created_at ASC`,
+        );
+        expect(overrides.rowCount).toBe(3);
+
+        const globalRow = overrides.rows.find(
+          (r) => r.id === '0a24fa68-450f-5fa1-827d-78fb5f09fe54',
+        );
+        expect(globalRow).toBeDefined();
+        expect(globalRow?.sku_id).toBeNull();
+        expect(globalRow?.umbral_efectivo).toBe(5);
+
+        const skuRow = overrides.rows.find(
+          (r) => r.id === '7b49463c-333e-5e63-b8ad-344c20847250',
+        );
+        expect(skuRow).toBeDefined();
+        expect(skuRow?.sku_id).toBe('ADI-ENT22-AZU-M');
+        expect(skuRow?.umbral_efectivo).toBe(3);
+
+        const priorRow = overrides.rows.find(
+          (r) => r.id === 'a0000000-0000-0000-0000-000000000001',
+        );
+        expect(priorRow).toBeDefined();
+        expect(priorRow?.sku_id).toBe('PUM-CLAS-NEG-40');
+        expect(priorRow?.umbral_efectivo).toBe(7);
+
+        const balances = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_balance WHERE location_id IN ($1, $2)`,
+          [locLurin, locMiraflores],
+        );
+        expect(balances.rows[0].count).toBe(14);
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('ejecuta replay de proposal-load.sql: idempotencia estricta sin duplicados ni errores', async () => {
+      const client = new pg.Client({ connectionString: pgUrl });
+      await client.connect();
+      try {
+        await client.query(loadSql);
+
+        const overrides = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_threshold_override`,
+        );
+        expect(overrides.rows[0].count).toBe(3);
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('ejecuta proposal-load.sql concurrentemente: pg_advisory_xact_lock serializa sin colisión ni duplicación', async () => {
+      await setupBaseline();
+      const client1 = new pg.Client({ connectionString: pgUrl });
+      const client2 = new pg.Client({ connectionString: pgUrl });
+      await Promise.all([client1.connect(), client2.connect()]);
+
+      try {
+        const [res1, res2] = await Promise.all([
+          client1.query(loadSql),
+          client2.query(loadSql),
+        ]);
+        expect(res1).toBeDefined();
+        expect(res2).toBeDefined();
+
+        const overrides = await client1.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_threshold_override`,
+        );
+        expect(overrides.rows[0].count).toBe(3);
+      } finally {
+        await Promise.all([client1.end(), client2.end()]);
+      }
+    });
+
+    it('ejecuta proposal-rollback.sql: revierte exclusivamente DATA-004 y preserva datos previos y saldos', async () => {
+      const client = new pg.Client({ connectionString: pgUrl });
+      await client.connect();
+      try {
+        await client.query(rollbackSql);
+
+        const overrides = await client.query<{
+          id: string;
+          sku_id: string | null;
+          umbral_efectivo: number;
+        }>(
+          `SELECT id, sku_id, umbral_efectivo FROM inventory.stock_threshold_override`,
+        );
+        expect(overrides.rowCount).toBe(1);
+        expect(overrides.rows[0].id).toBe(
+          'a0000000-0000-0000-0000-000000000001',
+        );
+        expect(overrides.rows[0].sku_id).toBe('PUM-CLAS-NEG-40');
+        expect(overrides.rows[0].umbral_efectivo).toBe(7);
+
+        const balances = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_balance WHERE location_id IN ($1, $2)`,
+          [locLurin, locMiraflores],
+        );
+        expect(balances.rows[0].count).toBe(14);
+
+        await client.query(rollbackSql);
+        const overridesAfterReplay = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_threshold_override`,
+        );
+        expect(overridesAfterReplay.rows[0].count).toBe(1);
+      } finally {
+        await client.end();
+      }
+    });
+
+    it('aborta y hace rollback si se violan las precondiciones del baseline', async () => {
+      await setupBaseline(true);
+      const client = new pg.Client({ connectionString: pgUrl });
+      await client.connect();
+      try {
+        await expect(client.query(loadSql)).rejects.toThrow(
+          /Precondición fallida: ya existe un umbral global incompatible/,
+        );
+
+        const overrides = await client.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM inventory.stock_threshold_override WHERE id IN (
+            '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,
+            '7b49463c-333e-5e63-b8ad-344c20847250'::uuid
+          )`,
+        );
+        expect(overrides.rows[0].count).toBe(0);
+      } finally {
+        await client.end();
+      }
+    });
+  });
 });
 
 async function viWaitFor(

@@ -14,6 +14,10 @@ test('proposal-load.sql: no contiene psql meta-comandos y respeta ANSI/PostgreSQ
   assert.ok(loadSql.trim().endsWith('COMMIT;'), 'Debe finalizar con COMMIT;');
   assert.ok(!loadSql.includes('WARNING'), 'No debe degradar errores a WARNING; debe usar RAISE EXCEPTION');
   assert.ok(loadSql.includes('SET LOCAL search_path = inventory, public;'), 'Debe fijar search_path exclusivo');
+  assert.ok(
+    loadSql.includes("SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));"),
+    'Debe adquirir lock consultivo para concurrencia segura'
+  );
 });
 
 test('proposal-load.sql: no contiene mutaciones destructivas sobre tablas existentes', () => {
@@ -55,17 +59,29 @@ test('proposal-load.sql: implementa idempotencia por clave de negocio funcional 
   );
 });
 
-test('proposal-rollback.sql: es selectivo y seguro', () => {
+test('proposal-rollback.sql: es selectivo, seguro y acotado exclusivamente a DATA-004', () => {
   assert.ok(!rollbackSql.includes('\\set'), 'No debe contener meta-comandos de psql');
   assert.ok(/\nBEGIN;\n/.test(rollbackSql), 'Debe contener bloque transaccional BEGIN;');
   assert.ok(rollbackSql.trim().endsWith('COMMIT;'), 'Debe finalizar con COMMIT;');
   assert.ok(rollbackSql.includes('DELETE FROM inventory.stock_threshold_override'), 'Debe eliminar solo de stock_threshold_override');
+  assert.ok(
+    rollbackSql.includes("SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));"),
+    'Debe adquirir lock consultivo para serialización segura'
+  );
+  assert.ok(
+    rollbackSql.includes("id IN (\n  '0a24fa68-450f-5fa1-827d-78fb5f09fe54'::uuid,\n  '7b49463c-333e-5e63-b8ad-344c20847250'::uuid\n)"),
+    'Debe filtrar estrictamente por los UUIDs atribuibles a DATA-004'
+  );
+  assert.ok(
+    !rollbackSql.includes('OR (sku_id IS NULL AND location_id IS NULL'),
+    'No debe incluir eliminación genérica por clave de negocio que borre registros ajenos'
+  );
   assert.ok(rollbackSql.includes('v_balances <> 14'), 'Debe verificar que los 14 saldos permanezcan intactos');
   assert.ok(rollbackSql.includes('v_locations <> 2'), 'Debe verificar que las 2 ubicaciones permanezcan intactas');
 });
 
-test('simulación de ejecución atómica, idempotencia en segunda pasada y rollback', () => {
-  // Simulación de base con estado del baseline real de Supabase
+test('simulación de ejecución atómica, idempotencia en segunda pasada, rollback y preservación de datos previos', () => {
+  // Simulación de base con estado del baseline real de Supabase y un umbral preexistente
   const db = {
     locations: [
       { id: '9129b578-631e-1735-8427-b683fb524380', code: 'ALM-LURIN', active: true },
@@ -77,7 +93,15 @@ test('simulación de ejecución atómica, idempotencia en segunda pasada y rollb
       sku_id: `SKU-${Math.floor(i / 2)}`,
       on_hand: 10,
     })),
-    stock_threshold_override: [],
+    stock_threshold_override: [
+      // Umbral preexistente ajeno a DATA-004
+      {
+        id: 'a0000000-0000-0000-0000-000000000001',
+        sku_id: 'PRE-EXISTING-SKU',
+        location_id: null,
+        umbral_efectivo: 7,
+      },
+    ],
   };
 
   function executeLoad(state) {
@@ -131,34 +155,43 @@ test('simulación de ejecución atómica, idempotencia en segunda pasada y rollb
   }
 
   function executeRollback(state) {
+    const data004Ids = new Set([
+      '0a24fa68-450f-5fa1-827d-78fb5f09fe54',
+      '7b49463c-333e-5e63-b8ad-344c20847250',
+    ]);
     state.stock_threshold_override = state.stock_threshold_override.filter(
-      t => !(t.sku_id === null && t.location_id === null && t.umbral_efectivo === 5) &&
-           !(t.sku_id === 'ADI-ENT22-AZU-M' && t.location_id === null && t.umbral_efectivo === 3)
+      t => !data004Ids.has(t.id)
     );
     if (state.stock_balance.length !== 14) throw new Error('ROLLBACK_BALANCES_ALTERED');
     if (state.locations.length !== 2) throw new Error('ROLLBACK_LOCATIONS_ALTERED');
   }
 
+  // Baseline inicial: 1 umbral preexistente
+  assert.equal(db.stock_threshold_override.length, 1, 'Debe haber 1 umbral previo');
+
   // Primera ejecución (Carga inicial)
   executeLoad(db);
-  assert.equal(db.stock_threshold_override.length, 2, 'Debe haber insertado exactamente 2 umbrales');
+  assert.equal(db.stock_threshold_override.length, 3, 'Debe contener 3 umbrales (1 previo + 2 de DATA-004)');
+  assert.ok(db.stock_threshold_override.some(t => t.id === 'a0000000-0000-0000-0000-000000000001'), 'El previo debe preservarse');
   assert.equal(db.stock_balance.length, 14, 'Los saldos deben permanecer en 14');
   assert.equal(db.locations.length, 2, 'Las ubicaciones deben permanecer en 2');
 
   // Segunda ejecución (Replay / Idempotencia)
   executeLoad(db);
-  assert.equal(db.stock_threshold_override.length, 2, 'Replay no debe duplicar umbrales');
+  assert.equal(db.stock_threshold_override.length, 3, 'Replay no debe duplicar umbrales');
   assert.equal(db.stock_balance.length, 14, 'Replay no debe modificar saldos');
 
   // Ejecución de Rollback
   executeRollback(db);
-  assert.equal(db.stock_threshold_override.length, 0, 'Rollback debe retirar los umbrales');
+  assert.equal(db.stock_threshold_override.length, 1, 'Rollback debe retirar solo los umbrales de DATA-004');
+  assert.equal(db.stock_threshold_override[0].id, 'a0000000-0000-0000-0000-000000000001', 'El umbral previo debe quedar intacto');
   assert.equal(db.stock_balance.length, 14, 'Rollback no debe tocar los saldos');
   assert.equal(db.locations.length, 2, 'Rollback no debe tocar las ubicaciones');
 
   // Replay de Rollback
   executeRollback(db);
-  assert.equal(db.stock_threshold_override.length, 0, 'Replay de rollback es no-op');
+  assert.equal(db.stock_threshold_override.length, 1, 'Replay de rollback es idempotente');
+  assert.equal(db.stock_threshold_override[0].id, 'a0000000-0000-0000-0000-000000000001', 'El umbral previo sigue intacto tras replay');
 
   // Verificación de precondiciones fallidas
   assert.throws(() => {

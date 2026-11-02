@@ -9,9 +9,10 @@ Owner: Taco. Estado: **IMPLEMENTAR_PARCIAL**. Este directorio prepara una propue
 - `baseline-empty.json`: simulación sintética vacía para pruebas unitarias sin conexión.
 - `baseline-supabase-2026-11-02.json`: snapshot de solo lectura (`READ_ONLY_EXPORT`) obtenido con autorización expresa de Infraestructura (Marco Castilla) sobre el proyecto `slzglmtiyrzygpkiuthf` (PostgreSQL 17, esquema `inventory`). Contiene el estado real: 2 ubicaciones, 14 saldos, 14 operaciones de inicialización y 12 movimientos Kardex.
 - `dry-run.mjs`: validador y comparador offline.
-- `proposal-load.sql`: propuesta de script SQL transaccional atómico e idempotente para la inserción de los 2 umbrales de stock no existentes sin sobrescribir saldos existentes ni afectar otros esquemas.
-- `proposal-rollback.sql`: script de reversión selectiva segura que elimina exclusivamente los 2 umbrales de stock de DATA-004, validando la integridad inmutable de los 14 saldos y las 2 ubicaciones.
-- `proposal-sql.test.mjs`: suite de pruebas automatizadas que valida la sintaxis, precondiciones, idempotencia funcional en replay y reversión selectiva.
+- `proposal-load.sql`: propuesta de script SQL transaccional atómico e idempotente para la inserción de los 2 umbrales de stock no existentes, protegido con `pg_advisory_xact_lock` contra colisiones concurrentes y sin sobrescribir saldos existentes ni afectar otros esquemas.
+- `proposal-rollback.sql`: script de reversión selectiva segura que elimina exclusivamente los 2 umbrales de stock atribuibles a DATA-004 mediante UUID determinista y verificación de payload, preservando cualquier umbral previo o ajeno y validando la integridad inmutable de los 14 saldos y las 2 ubicaciones.
+- `proposal-sql.test.mjs`: suite de pruebas unitarias automatizadas que valida la sintaxis, locks consultivos, precondiciones, idempotencia funcional en replay y reversión selectiva con preservación de umbrales previos.
+- `apps/inventory-svc/test/inventory.real.integration.spec.ts`: suite E2E en PostgreSQL desechable real (PostgreSQL 17) que ejecuta los archivos SQL directamente contra el esquema real de Inventory, cubriendo primera carga, replay, ejecución concurrente serializada, rollback selectivo y rechazo transaccional.
 
 ## 2. Reproducción y ejecución offline
 
@@ -45,12 +46,15 @@ Al ejecutar el preparador contra el snapshot real de Supabase (`baseline-supabas
 
 ## 4. Propuesta SQL Atómica e Idempotente (`proposal-load.sql`)
 
-Conforme a las 4 correcciones requeridas por Marco Castilla en su auditoría:
+Conforme a las observaciones de auditoría de Marco Castilla:
 
-1. **Idempotencia por Clave de Negocio Funcional:**
+1. **Idempotencia por Clave de Negocio Funcional y Protección contra Concurrencia:**
    - La restricción de unicidad no depende únicamente del UUID `id`. Se implementó protección con `WHERE NOT EXISTS` sobre la clave de negocio:
      - Umbral global: valida que no exista una fila con `sku_id IS NULL AND location_id IS NULL` (índice único `ix_threshold_global`).
      - Umbral específico: valida que no exista una fila con `sku_id = 'ADI-ENT22-AZU-M' AND location_id IS NULL` (restricción única `uq_threshold_override`).
+   - Para evitar condiciones de carrera donde dos ejecuciones concurrentes evalúen `WHERE NOT EXISTS` en paralelo y colisionen en el índice único, se adquiere un lock transaccional consultivo al inicio de la transacción:
+     `SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));`
+     Esto serializa limpiamente cualquier ejecución paralela; la segunda espera a que la primera comitee, evalúa `WHERE NOT EXISTS`, detecta la existencia del umbral y completa como `no-op` sin arrojar error.
    - Reejecutar el script (`replay`) produce cero inserciones adicionales y cero conflictos (`no-op`).
 2. **Precondiciones Estrictas con Aborto Transaccional (`RAISE EXCEPTION`):**
    - El script no emite avisos pasivos (`WARNING`). Aborta inmediatamente con `RAISE EXCEPTION` y `ROLLBACK` automático si:
@@ -62,9 +66,9 @@ Conforme a las 4 correcciones requeridas por Marco Castilla en su auditoría:
    - Se retiraron meta-comandos propietarios de consola (como `\set ON_ERROR_STOP on`). El script es ANSI/PostgreSQL puro encapsulado en un bloque transaccional `BEGIN; ... COMMIT;`.
    - **Desde psql:** `psql -v ON_ERROR_STOP=1 -f apps/inventory-svc/data/data-f1/proposal-load.sql`
    - **Desde Editor SQL de Supabase:** Copiar y ejecutar el bloque completo directamente en la consola web del proyecto.
-4. **Validación de Destino y Reversión Selectiva:**
+4. **Validación de Destino y Reversión Selectiva Segura:**
    - Valida activamente que la base conectada posea el esquema `inventory` y la tabla `stock_threshold_override`, fijando `SET LOCAL search_path = inventory, public;`.
-   - Se provee el script de reversión `proposal-rollback.sql` para desaplicar la carga de forma selectiva sin alterar los 14 saldos ni las 2 ubicaciones.
+   - Se provee el script de reversión `proposal-rollback.sql` que revierte **exclusivamente** las inserciones atribuibles y verificables a DATA-004 (filtrando por los UUIDs deterministas asignados y verificando su contenido exacto), protegiendo cualquier otro umbral preexistente en la base de datos.
 
 ## 5. Plan de Verificación y Recuperación
 
@@ -72,9 +76,13 @@ Conforme a las 4 correcciones requeridas por Marco Castilla en su auditoría:
    - Comprueba que el umbral global sea exactamente 5 (`sku_id IS NULL AND location_id IS NULL`).
    - Comprueba que el umbral de `ADI-ENT22-AZU-M` sea exactamente 3 (`location_id IS NULL`).
    - Comprueba que los 14 saldos de `inventory.stock_balance` y las 2 ubicaciones no hayan sufrido ninguna mutación.
-2. **Reversión Selectiva (`proposal-rollback.sql`):**
-   - Elimina exclusivamente los 2 umbrales de DATA-004 (`id` o clave de negocio coincidente).
+2. **Reversión Selectiva Segura (`proposal-rollback.sql`):**
+   - Elimina estrictamente por los identificadores deterministas `0a24fa68-450f-5fa1-827d-78fb5f09fe54` y `7b49463c-333e-5e63-b8ad-344c20847250`, validando que su payload coincida. No incluye cláusulas genéricas `OR` que pudieran eliminar registros previos creados por otros procesos.
+   - Utiliza también `SELECT pg_advisory_xact_lock(hashtext('inventory.data-004.thresholds'));` para serializar reversiones concurrentes.
    - Verifica antes de confirmar (`COMMIT`) que permanezcan exactamente los 14 saldos y las 2 ubicaciones; si no, aborta con `RAISE EXCEPTION`.
+3. **Prueba SQL Real E2E en CI:**
+   - Implementada en `apps/inventory-svc/test/inventory.real.integration.spec.ts` para ejecutarse contra PostgreSQL 17 desechable con el esquema real de Inventory.
+   - Cubre: (a) primera carga, (b) replay idempotente, (c) ejecución concurrente en paralelo, (d) reversión selectiva comprobando la supervivencia de umbrales previos y de los 14 saldos, y (e) aborto con rollback ante precondición fallida.
 
 ## 6. Estado y Dependencias Externas
 
