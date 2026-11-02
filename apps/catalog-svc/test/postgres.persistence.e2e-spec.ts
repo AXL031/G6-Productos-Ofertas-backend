@@ -1610,6 +1610,19 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
             if (safe) diagnostics.push(safe[0]);
           });
         });
+        if (exit !== 0) {
+          try {
+            const rejected = await jointBroker.next('po.catalogo.q.dlq');
+            if (
+              rejected.properties.headers?.['x-catalog-failure'] ===
+                'INVALID_OR_BLOCKED_CONTRACT' &&
+              !rejected.properties.headers?.['x-original-producer-user']
+            )
+              diagnostics.push('BLOCKED_BULK_AMQP_USER_ID_MISSING');
+          } catch {
+            diagnostics.push('NO_DURABLE_TRANSPORT_REJECTION_OBSERVED');
+          }
+        }
         expect(
           exit,
           'Bulk process must durably consume the real Catalog result: ' +

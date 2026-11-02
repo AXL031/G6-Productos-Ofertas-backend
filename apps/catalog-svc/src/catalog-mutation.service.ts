@@ -115,8 +115,12 @@ export class CatalogMutationService {
           )
             catalogError(409, 'SKU_DUPLICADO');
         }
-        if (error.failure === 'serialization' || error.failure === 'deadlock')
+        if (error.failure === 'serialization' || error.failure === 'deadlock') {
+          // Bulk owns the enclosing transaction: a transient SQL failure must
+          // roll back the chunk, not become a durable business rejection.
+          if (transaction) throw error;
           catalogError(409, 'VERSION_CONFLICT');
+        }
         if (
           ['check', 'deferred_constraint', 'foreign_key', 'not_null'].includes(
             error.failure,

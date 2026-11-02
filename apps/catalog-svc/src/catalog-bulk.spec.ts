@@ -89,3 +89,55 @@ it('canonicalizes object key order without conflating array order or opaque SKU 
   expect(canonicalBulk({ a: 1, b: 2 })).toBe(canonicalBulk({ b: 2, a: 1 }));
   expect(canonicalBulk(['0', '00'])).not.toBe(canonicalBulk(['00', '0']));
 });
+
+import { CatalogMutationService } from './catalog-mutation.service.js';
+import { CatalogTransactionManager } from './catalog-transaction.js';
+import { PostgresCatalogWriteRepository } from './postgres-catalog-write.repository.js';
+import type { CatalogMasterClient } from './catalog-master.client.js';
+import type { Database, CatalogTransaction } from './database.js';
+import { CatalogPersistenceError } from './database-errors.js';
+
+it.each(['deadlock', 'serialization'] as const)(
+  'keeps SQL %s retryable for Bulk while preserving the existing HTTP conflict',
+  async (failure) => {
+    const error = new CatalogPersistenceError(
+      failure,
+      failure === 'deadlock' ? '40P01' : '40001',
+    );
+    const boundary = {
+      transaction: async () => {
+        throw error;
+      },
+    };
+    const mutations = new CatalogMutationService(
+      new CatalogTransactionManager(boundary as unknown as Database),
+      new PostgresCatalogWriteRepository(),
+      {} as CatalogMasterClient,
+      { resolve: async () => ({ slug: 'fixture', moneda: 'PEN' }) },
+    );
+    const input = {
+      nombre: 'Fixture',
+      descripcion: 'Disposable',
+      categoriaId: 'c',
+      marcaId: 'b',
+      tipoProductoId: 't',
+      precioBaseInicial: 20,
+      skuBase: 'sku',
+      tieneVariantes: false,
+    };
+    const actor = {
+      authorization: 'Bearer fixture',
+      correlationId: randomUUID(),
+    };
+    await expect(
+      mutations.createProduct(
+        input,
+        actor,
+        boundary as unknown as CatalogTransaction,
+      ),
+    ).rejects.toBe(error);
+    await expect(mutations.createProduct(input, actor)).rejects.toMatchObject({
+      status: 409,
+    });
+  },
+);

@@ -163,3 +163,34 @@ el parser productivo exige CRLF/RFC 4180. Se corrigen las fixtures sin relajar e
 consumidor ni sus aserciones. El CSV exacto de BULK-JOINT ya fue validado localmente
 por el parser productivo compilado de Bulk; tsc estricto de las pruebas PASS.
 El SHA posterior debe acreditar de nuevo PostgreSQL y el recorrido conjunto en CI.
+
+### Bloqueo de transporte observado al probar Bulk real
+
+CI de 3d71250 (run 41537281504): los tres casos PostgreSQL del handler Bulk y
+los dos HTTP-50 pasan; BULK-JOINT sigue fallando al esperar el resultado real.
+El CSV ya fue admitido y publicado. La auditoría del código revela una brecha
+entre el productor y la validación del consumidor:
+
+- `apps/bulk-svc/src/messaging/bulk-outbox-relay.ts`: channel.publish no incluye
+  la propiedad AMQP userId. Autenticarse en la conexión no coloca esa propiedad
+  automáticamente en las opciones del mensaje.
+- `apps/catalog-svc/src/catalog-amqp.ts`, handle: exige que properties.userId
+  coincida con CATALOG_AMQP_PRODUCER_USERS[bulk-svc]. Sin ese dato rechaza la
+  entrega antes de entrar al handler de negocio. Se conserva esa protección.
+- La prueba conjunta conserva su aserción de éxito, sin skip ni bypass. Añade
+  diagnóstico de la disposición durable en la DLQ exclusivamente desechable para
+  identificar ausencia del productor original; no modifica retry/DLX productivo.
+
+BLOQUEADO_ESPECIFICO, owner Marco/Bulk: publicar userId con el usuario AMQP real
+ de la conexión de Bulk y probar su validación por el broker, sin tocar el payload
+ni los DTO. Reejecutar BULK-JOINT y CI por SHA conjunto. Catalog no puede inferir
+esa identidad de producer, appId o un header arbitrario ni relajar la allowlist.
+No se modifica Bulk por instrucción de ownership. No es un bloqueo del payload
+AsyncAPI ni de los casos de uso ALTA/ACTUALIZACION de Catalog.
+
+El PR queda como borrador y PARTIAL hasta ese cambio del productor. La prueba
+real no se presenta como aprobada; se mantienen sus fallos visibles en CI.
+Además se conserva el fallo SQL de deadlock/serialización como técnico dentro de
+una transacción Bulk para revertir el chunk antes del ACK, en lugar de guardar
+VERSION_CONFLICT terminal. Dos regresiones enfocadas confirman que el HTTP
+normal conserva 409 y Bulk propaga el error reintentable (11 pruebas PASS).
