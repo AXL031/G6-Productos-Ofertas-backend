@@ -42,6 +42,7 @@ export interface CreateImportBatchInput {
   inputFile: Omit<FileManifestInput, 'role'>;
   rows: ImportRowInput[];
   admissionIntent?: Record<string, unknown>;
+  catalogCommands?: OutboxInput[];
 }
 export interface CreateImportBatchResult {
   manifest: typeof fileManifests.$inferSelect;
@@ -113,11 +114,46 @@ export interface DomainResultInput {
   errorDetail?: string | null;
 }
 
+export interface CatalogBulkResultInput {
+  messageId: string;
+  operationId: string;
+  causationId: string;
+  eventName: 'catalog.bulk.upsert.completed' | 'catalog.bulk.upsert.rejected';
+  correlationId: string;
+  payload: Record<string, unknown>;
+}
+
 type BulkTx = Parameters<Parameters<BulkDatabase['transaction']>[0]>[0];
 
 const inconsistent = (message: string): never => {
   throw new BulkPersistenceError('CHECK_VIOLATION', new Error(message));
 };
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (typeof value === 'object' && value !== null) {
+    return `{${Object.entries(value)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
+function admissionIntentWithoutCommandTimes(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const commands = Array.isArray(value.catalogCommands)
+    ? value.catalogCommands.map((item) => {
+        if (typeof item !== 'object' || item === null) return item;
+        const command = structuredClone(item) as Record<string, unknown>;
+        if (typeof command.occurred_at === 'string')
+          command.occurred_at = '<persisted-at-first-admission>';
+        return command;
+      })
+    : value.catalogCommands;
+  return { ...value, catalogCommands: commands };
+}
 
 const domainFailure = (
   code:
@@ -167,19 +203,17 @@ export class BulkPersistenceRepository {
               ),
             )
             .limit(1);
-          const [sameIntent] =
+          const sameIntent =
             intentReceipt && input.admissionIntent
-              ? await tx
-                  .select({ id: inbox.id })
-                  .from(inbox)
-                  .where(
-                    and(
-                      eq(inbox.id, intentReceipt.id),
-                      sql`${inbox.payload} = ${JSON.stringify(input.admissionIntent)}::jsonb`,
-                    ),
-                  )
-                  .limit(1)
-              : [];
+              ? canonicalJson(
+                  admissionIntentWithoutCommandTimes(
+                    intentReceipt.payload as Record<string, unknown>,
+                  ),
+                ) ===
+                canonicalJson(
+                  admissionIntentWithoutCommandTimes(input.admissionIntent),
+                )
+              : false;
           if (!sameIntent) {
             throw new BulkPersistenceError('UNIQUE_CONFLICT');
           }
@@ -259,6 +293,19 @@ export class BulkPersistenceRepository {
             correlationId: input.correlationId,
             payload: input.admissionIntent,
             result: 'ADMITTED',
+          });
+        }
+        for (const command of input.catalogCommands ?? []) {
+          await tx.insert(outbox).values({
+            messageId: command.messageId,
+            eventName: command.eventName,
+            kind: command.kind,
+            schemaVersion: command.schemaVersion ?? 1,
+            correlationId: command.correlationId,
+            causationId: command.causationId ?? null,
+            operationId: command.operationId ?? null,
+            occurredAt: command.occurredAt,
+            payload: command.payload,
           });
         }
         return { manifest, batch, rows: createdRows };
@@ -740,6 +787,388 @@ export class BulkPersistenceRepository {
     }
   }
 
+  async recordCatalogBulkResult(
+    input: CatalogBulkResultInput,
+  ): Promise<{ processed: boolean; result: string }> {
+    const messageHandler = 'bulk.catalog.bulk-upsert.result';
+    try {
+      return await this.db.transaction(async (tx) => {
+        const envelope = input.payload;
+        const data = envelope.data as Record<string, unknown> | undefined;
+        if (
+          !data ||
+          envelope.message_id !== input.messageId ||
+          envelope.operation_id !== input.operationId ||
+          envelope.causation_id !== input.causationId ||
+          envelope.correlation_id !== input.correlationId ||
+          envelope.name !== input.eventName ||
+          envelope.producer !== 'catalog-svc' ||
+          envelope.kind !== 'result' ||
+          envelope.schema_version !== 1
+        )
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result envelope identity is inconsistent.',
+          );
+        const batchIdValue = data?.batch_id;
+        if (typeof batchIdValue !== 'string')
+          domainFailure('INVALID_INPUT', 'Catalog result has no batch_id.');
+        const batchId = batchIdValue as string;
+        const resultData = data as Record<string, unknown>;
+        const [batch] = await tx
+          .select()
+          .from(batchJobs)
+          .where(eq(batchJobs.batchId, batchId))
+          .for('update')
+          .limit(1);
+        if (!batch)
+          domainFailure('INVALID_INPUT', 'Catalog result batch is unknown.');
+        if (input.correlationId !== batch.correlationId)
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result correlation_id does not match its batch.',
+          );
+        const [admission] = await tx
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, batchId),
+              eq(inbox.handler, 'bulk.import.admission'),
+            ),
+          )
+          .limit(1);
+        const admissionPayload = admission?.payload;
+        if (!admissionPayload)
+          domainFailure(
+            'PERSISTENCE_FAILURE',
+            'The admitted batch command relationship is missing.',
+          );
+        const catalogCommands = Array.isArray(admissionPayload.catalogCommands)
+          ? admissionPayload.catalogCommands
+          : [];
+        const matchingCommand = catalogCommands.find((candidate) => {
+          if (typeof candidate !== 'object' || candidate === null) return false;
+          const command = candidate as Record<string, unknown>;
+          return (
+            command.message_id === input.causationId &&
+            command.operation_id === input.operationId
+          );
+        }) as Record<string, unknown> | undefined;
+        if (!matchingCommand)
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result causation/operation identity does not match an admitted command.',
+          );
+        const commandData = (matchingCommand as Record<string, unknown>)
+          .data as Record<string, unknown> | undefined;
+        const batchOperationId =
+          typeof commandData?.batch_operation_id === 'string'
+            ? commandData.batch_operation_id
+            : domainFailure(
+                'INVALID_INPUT',
+                'Admitted Catalog chunk has no batch_operation_id.',
+              );
+        if (resultData.batch_operation_id !== batchOperationId)
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result batch_operation_id does not match its admitted chunk.',
+          );
+        const commandRows = Array.isArray(commandData?.rows)
+          ? commandData.rows
+          : [];
+        const admittedRows = Array.isArray(admissionPayload.rows)
+          ? admissionPayload.rows
+          : [];
+        const commandRowOperations = new Set(
+          commandRows.map((value) =>
+            typeof value === 'object' && value !== null
+              ? Reflect.get(value, 'row_operation_id')
+              : null,
+          ),
+        );
+        const normalizedRows = admittedRows.filter(
+          (value) =>
+            typeof value === 'object' &&
+            value !== null &&
+            commandRowOperations.has(Reflect.get(value, 'rowOperationId')),
+        );
+        const [existingMessage] = await tx
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, input.messageId),
+              eq(inbox.handler, messageHandler),
+            ),
+          )
+          .limit(1);
+        if (existingMessage) {
+          const same =
+            existingMessage.eventName === input.eventName &&
+            existingMessage.correlationId === input.correlationId &&
+            canonicalJson(existingMessage.payload) ===
+              canonicalJson(input.payload);
+          if (!same)
+            domainFailure(
+              'IDEMPOTENCY_CONFLICT',
+              'message_id was reused with a different Catalog result.',
+            );
+          return { processed: false, result: existingMessage.result };
+        }
+
+        const rawResults =
+          input.eventName === 'catalog.bulk.upsert.completed'
+            ? resultData.results
+            : null;
+        if (
+          input.eventName === 'catalog.bulk.upsert.completed' &&
+          (!Array.isArray(rawResults) || rawResults.length === 0)
+        )
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog completed result must include row results.',
+          );
+        const results: Array<{
+          row_number: number;
+          row_operation_id: string;
+          product_id: string | null;
+          sku_base: string;
+          status: 'COMPLETED' | 'REJECTED';
+          code: string | null;
+        }> =
+          input.eventName === 'catalog.bulk.upsert.completed'
+            ? (rawResults as Array<{
+                row_number: number;
+                row_operation_id: string;
+                product_id: string | null;
+                sku_base: string;
+                status: 'COMPLETED' | 'REJECTED';
+                code: string | null;
+              }>)
+            : normalizedRows.map((value) => {
+                const row = value as Record<string, unknown>;
+                return {
+                  row_number: Number(row.rowNumber),
+                  row_operation_id: String(row.rowOperationId),
+                  product_id: null,
+                  sku_base: String(row.skuBase),
+                  status: 'REJECTED',
+                  code: String(resultData.code),
+                };
+              });
+        if (
+          input.eventName === 'catalog.bulk.upsert.rejected' &&
+          (!resultData.code || typeof resultData.detail !== 'string')
+        )
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog rejected result is missing its command-level reason.',
+          );
+        const seen = new Set<string>();
+        for (const result of results) {
+          const normalized = normalizedRows.find((candidate) => {
+            if (typeof candidate !== 'object' || candidate === null)
+              return false;
+            const row = candidate as Record<string, unknown>;
+            return row.rowOperationId === result.row_operation_id;
+          }) as Record<string, unknown> | undefined;
+          if (
+            !normalized ||
+            seen.has(result.row_operation_id) ||
+            Number(normalized.rowNumber) !== result.row_number ||
+            normalized.skuBase !== result.sku_base
+          )
+            domainFailure(
+              'INVALID_INPUT',
+              'Catalog result row identity does not belong to the admitted batch.',
+            );
+          seen.add(result.row_operation_id);
+          if (
+            input.eventName === 'catalog.bulk.upsert.completed' &&
+            (result.status === 'COMPLETED'
+              ? result.code !== null
+              : typeof result.code !== 'string')
+          )
+            domainFailure(
+              'INVALID_INPUT',
+              'Catalog row status and code are inconsistent.',
+            );
+
+          const rowId = String((normalized as Record<string, unknown>).rowId);
+          const rowHandler = `bulk.catalog-result-row:${result.row_operation_id}`;
+          const rowIntent = {
+            batchId,
+            batchOperationId,
+            eventName: input.eventName,
+            result,
+          };
+          const [priorOperation] = await tx
+            .select()
+            .from(inbox)
+            .where(and(eq(inbox.handler, rowHandler)))
+            .orderBy(desc(inbox.createdAt))
+            .limit(1);
+          if (priorOperation) {
+            if (
+              canonicalJson(priorOperation.payload) !== canonicalJson(rowIntent)
+            )
+              domainFailure(
+                'IDEMPOTENCY_CONFLICT',
+                'row_operation_id was replayed with a different Catalog result.',
+              );
+            continue;
+          }
+          const [row] = await tx
+            .select()
+            .from(batchRows)
+            .where(
+              and(
+                eq(batchRows.batchJobId, batch.id),
+                eq(batchRows.rowId, rowId),
+              ),
+            )
+            .for('update')
+            .limit(1);
+          if (!row)
+            domainFailure(
+              'INVALID_INPUT',
+              'Catalog result row is not persisted.',
+            );
+          const [step] = await tx
+            .select()
+            .from(rowDomainSteps)
+            .where(
+              and(
+                eq(rowDomainSteps.batchRowId, row.id),
+                eq(rowDomainSteps.domain, 'CATALOGO'),
+              ),
+            )
+            .for('update')
+            .limit(1);
+          if (!step || !row.requiredDomains.includes('CATALOGO'))
+            domainFailure(
+              'INVALID_INPUT',
+              'Catalog result does not match a required workflow step.',
+            );
+          if (step.status === 'COMPLETED' || step.status === 'FAILED') {
+            domainFailure(
+              'INVALID_TRANSITION',
+              'Catalog step is already terminal.',
+            );
+          }
+          const status = result.status === 'COMPLETED' ? 'COMPLETED' : 'FAILED';
+          const pendingSteps = await tx
+            .select()
+            .from(rowDomainSteps)
+            .where(eq(rowDomainSteps.batchRowId, row.id));
+          const changes: WorkflowStepChange[] = [
+            {
+              domain: 'CATALOGO',
+              status,
+              errorCode:
+                status === 'FAILED'
+                  ? (result.code ?? 'CATALOG_REJECTED')
+                  : null,
+              errorDetail:
+                status === 'FAILED'
+                  ? input.eventName === 'catalog.bulk.upsert.rejected'
+                    ? String(resultData.detail)
+                    : null
+                  : null,
+            },
+          ];
+          if (status === 'FAILED') {
+            for (const dependency of pendingSteps) {
+              if (
+                dependency.domain !== 'CATALOGO' &&
+                dependency.status === 'PENDING'
+              )
+                changes.push({
+                  domain: dependency.domain as BulkDomain,
+                  status: 'FAILED',
+                  errorCode: 'DEPENDENCY_REJECTED',
+                  errorDetail:
+                    'Catalog rechazó la fila; el paso dependiente no se ejecutó.',
+                });
+            }
+          }
+          const statusByDomain = new Map(
+            changes.map((change) => [change.domain, change.status]),
+          );
+          const allTerminal = row.requiredDomains.every((domain) => {
+            const current =
+              statusByDomain.get(domain as BulkDomain) ??
+              pendingSteps.find((candidate) => candidate.domain === domain)
+                ?.status;
+            return current === 'COMPLETED' || current === 'FAILED';
+          });
+          const allCompleted = row.requiredDomains.every(
+            (domain) =>
+              (statusByDomain.get(domain as BulkDomain) ??
+                pendingSteps.find((candidate) => candidate.domain === domain)
+                  ?.status) === 'COMPLETED',
+          );
+          const rowStatus: BulkRowStatus = !allTerminal
+            ? 'PROCESSING'
+            : allCompleted
+              ? 'COMPLETED'
+              : 'FAILED';
+          await updateWorkflowStateIn(tx, {
+            batchId,
+            rowId,
+            steps: changes,
+            status: rowStatus,
+            failedDomain:
+              rowStatus === 'FAILED'
+                ? (changes.find((change) => change.status === 'FAILED')
+                    ?.domain ?? 'CATALOGO')
+                : null,
+            errorCode:
+              status === 'FAILED' ? (result.code ?? 'CATALOG_REJECTED') : null,
+            errorDetail:
+              status === 'FAILED' &&
+              input.eventName === 'catalog.bulk.upsert.rejected'
+                ? String(resultData.detail)
+                : null,
+          });
+          await tx.insert(inbox).values({
+            messageId: input.messageId,
+            handler: rowHandler,
+            eventName: input.eventName,
+            correlationId: input.correlationId,
+            payload: rowIntent,
+            result: status,
+          });
+        }
+        if (
+          input.eventName === 'catalog.bulk.upsert.completed' &&
+          seen.size !== normalizedRows.length
+        )
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result omitted one or more admitted rows.',
+          );
+        const outcome =
+          input.eventName === 'catalog.bulk.upsert.rejected'
+            ? 'COMMAND_REJECTED'
+            : 'RESULTS_APPLIED';
+        await tx.insert(inbox).values({
+          messageId: input.messageId,
+          handler: messageHandler,
+          eventName: input.eventName,
+          correlationId: input.correlationId,
+          payload: input.payload,
+          result: outcome,
+        });
+        return { processed: true, result: outcome };
+      });
+    } catch (error) {
+      if (error instanceof BulkDomainError) throw error;
+      throw persistenceError(error);
+    }
+  }
+
   async findBatchByBatchId(
     batchId: string,
   ): Promise<typeof batchJobs.$inferSelect | null> {
@@ -750,6 +1179,26 @@ export class BulkPersistenceRepository {
         .where(eq(batchJobs.batchId, batchId))
         .limit(1);
       return batch ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async findImportAdmissionIntent(
+    batchId: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const [receipt] = await this.db
+        .select({ payload: inbox.payload })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.messageId, batchId),
+            eq(inbox.handler, 'bulk.import.admission'),
+          ),
+        )
+        .limit(1);
+      return (receipt?.payload as Record<string, unknown> | undefined) ?? null;
     } catch (error) {
       throw persistenceError(error);
     }

@@ -8,7 +8,10 @@ describe('BulkImportService', () => {
     const createImportBatch = vi
       .fn()
       .mockResolvedValue({ batch: { status: 'QUEUED' } });
-    const service = new BulkImportService({ createImportBatch } as never);
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     const values = [
       'ALTA',
       '',
@@ -53,7 +56,10 @@ describe('BulkImportService', () => {
 
   it('fails closed before persistence for variant ACTUALIZACION while Catalog lookup is unavailable', async () => {
     const createImportBatch = vi.fn();
-    const service = new BulkImportService({ createImportBatch } as never);
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     const values = [
       'ACTUALIZACION',
       '11111111-1111-4111-8111-111111111111',
@@ -91,7 +97,10 @@ describe('BulkImportService', () => {
     const createImportBatch = vi
       .fn()
       .mockResolvedValue({ batch: { status: 'QUEUED' } });
-    const service = new BulkImportService({ createImportBatch } as never);
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     await expect(
       service.createImport({
         batchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -124,7 +133,10 @@ describe('BulkImportService', () => {
 
   it('rejects invalid requests before persistence is called', async () => {
     const createImportBatch = vi.fn();
-    const service = new BulkImportService({ createImportBatch } as never);
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     await expect(
       service.createImport({
         batchId: 'batch',
