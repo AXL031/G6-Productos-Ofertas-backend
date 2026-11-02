@@ -2,14 +2,17 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { Pool } from 'pg';
+import amqp from 'amqplib';
 import {
   BULK_ENVIRONMENT,
   BULK_READINESS_POOL,
   type BulkEnvironment,
 } from '../config/bulk-environment.js';
+import { BULK_AMQP_URL } from '../messaging/bulk-rabbitmq.js';
 
 export interface BulkReadinessPool {
   query(sql: string): Promise<unknown>;
@@ -45,12 +48,19 @@ export class BulkReadinessService implements OnModuleDestroy {
     @Inject(BULK_ENVIRONMENT) private readonly config: BulkEnvironment,
     @Inject(BULK_READINESS_POOL)
     private readonly pool: BulkReadinessPool | null,
+    @Optional()
+    @Inject(BULK_AMQP_URL)
+    private readonly amqpUrl: string | null = null,
   ) {}
 
   async check(): Promise<boolean> {
     if (!this.config.databaseUrl || !this.pool) return false;
     try {
       await this.pool.query('SELECT 1 FROM bulk.batch_jobs LIMIT 0');
+      if (this.amqpUrl) {
+        const connection = await amqp.connect(this.amqpUrl, { timeout: 1500 });
+        await connection.close();
+      }
       return true;
     } catch {
       this.logger.warn('La comprobación de PostgreSQL no está disponible.');

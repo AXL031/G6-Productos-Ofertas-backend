@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import {
+  buildCatalogBulkCommands,
+  type CatalogBulkRow,
+} from './messaging/catalog-bulk-upsert.js';
 import { parseBulkTemplate } from './domain/bulk-template-v2.js';
 import {
   BulkDomainError,
@@ -102,6 +106,31 @@ export class BulkImportService {
       rowId: row.rowId,
       requiredDomains: row.requiredDomains,
     }));
+    const catalogRows = (input.intentRows ?? []).map((value) => {
+      if (typeof value !== 'object' || value === null) {
+        throw new BulkDomainError(
+          'INVALID_INPUT',
+          'La intención normalizada de Catalog está incompleta.',
+        );
+      }
+      const row = value as Record<string, unknown>;
+      return {
+        row_number: Number(row.rowNumber),
+        row_operation_id: String(row.rowOperationId),
+        producto_id: typeof row.productId === 'string' ? row.productId : null,
+        sku_base: String(row.skuBase),
+        product: row.product as Record<string, unknown>,
+        variant_id: typeof row.variantId === 'string' ? row.variantId : null,
+        variant: (row.variant as Record<string, unknown> | null) ?? null,
+      } satisfies CatalogBulkRow;
+    });
+    const commands = catalogRows.length
+      ? buildCatalogBulkCommands({
+          batchId: input.batchId,
+          correlationId: input.correlationId,
+          rows: catalogRows,
+        })
+      : [];
     try {
       return await this.repository.createImportBatch({
         batchId: input.batchId,
@@ -112,11 +141,23 @@ export class BulkImportService {
           contentRef: input.contentRef,
         },
         rows: persistedRows,
+        catalogCommands: commands.map(({ envelope }) => ({
+          messageId: envelope.message_id,
+          eventName: envelope.name,
+          kind: envelope.kind,
+          schemaVersion: envelope.schema_version,
+          correlationId: envelope.correlation_id,
+          operationId: envelope.operation_id,
+          occurredAt: new Date(envelope.occurred_at),
+          payload: envelope as unknown as Record<string, unknown>,
+        })),
         admissionIntent: {
           format: input.format,
           templateVersion: input.templateVersion,
           contentRef: input.contentRef,
+          batchOperationId: commands[0]?.envelope.data.batch_operation_id,
           rows: input.intentRows ?? normalized,
+          catalogCommands: commands.map(({ envelope }) => envelope),
         },
       });
     } catch (error) {
