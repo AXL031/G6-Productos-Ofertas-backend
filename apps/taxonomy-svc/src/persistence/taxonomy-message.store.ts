@@ -12,7 +12,7 @@ export interface CheckedEnvelope {
   message_id: string;
   correlation_id: string;
   operation_id: string;
-  causation_id: string | null;
+  causation_id?: string | null;
   schema_version: 1;
   occurred_at: string;
   producer: 'catalog-svc';
@@ -47,8 +47,7 @@ export function parseChecked(value: unknown): CheckedEnvelope {
     !esUuid(value.operation_id) ||
     typeof value.correlation_id !== 'string' ||
     !esUuid(value.correlation_id) ||
-    typeof value.causation_id !== 'string' ||
-    !esUuid(value.causation_id) ||
+    (value.causation_id != null && typeof value.causation_id !== 'string') ||
     value.schema_version !== 1 ||
     typeof value.occurred_at !== 'string' ||
     !Number.isFinite(Date.parse(value.occurred_at)) ||
@@ -75,6 +74,7 @@ export function parseChecked(value: unknown): CheckedEnvelope {
 
 @Injectable()
 export class TaxonomyMessageStore {
+  private cursorOutbox: { fecha: string; id: string } | null = null;
   constructor(
     private readonly database: Database,
     private readonly intentos: DeactivationIntentService,
@@ -107,7 +107,7 @@ export class TaxonomyMessageStore {
           return;
         }
         const solicitud = await tx.execute(
-          sql`SELECT 1 FROM taxonomy.outbox WHERE operation_id = ${envelope.operation_id}::uuid AND event_name = 'taxonomy.master.deactivation.check.requested' AND message_id = ${envelope.causation_id}::uuid`,
+          sql`SELECT 1 FROM taxonomy.outbox WHERE operation_id = ${envelope.operation_id}::uuid AND correlation_id = ${envelope.correlation_id}::uuid AND event_name = 'taxonomy.master.deactivation.check.requested' AND (${envelope.causation_id ?? null}::text IS NULL OR message_id::text = ${envelope.causation_id ?? null}::text)`,
         );
         const resultado = solicitud.rows.length
           ? await this.intentos.finalizarEnTransaccion(tx, identidad)
@@ -141,27 +141,46 @@ export class TaxonomyMessageStore {
   }
   async publicarUno(
     publicar: (row: Record<string, unknown>) => Promise<void>,
-  ): Promise<boolean> {
-    return this.database.read((db) =>
+  ): Promise<'VACIO' | 'PENDIENTE' | 'PUBLICADO'> {
+    const cursor = this.cursorOutbox;
+    const resultado = await this.database.read((db) =>
       db.transaction(async (tx) => {
-        const result = await tx.execute(
-          sql`SELECT id, message_id, event_name, kind, correlation_id, payload FROM taxonomy.outbox WHERE published_at IS NULL AND event_name IN ('taxonomy.master.deactivation.check.requested', 'taxonomy.master.deactivated', 'taxonomy.master.deactivation.rejected') ORDER BY occurred_at, id LIMIT 1 FOR UPDATE SKIP LOCKED`,
-        );
+        // Respetar orden causal por operación, sin bloquear las demás operaciones.
+        const result = await tx.execute(sql`
+          SELECT o.id, o.message_id, o.event_name, o.kind, o.correlation_id, o.payload,
+                 o.occurred_at::text AS cursor_fecha
+          FROM taxonomy.outbox o
+          WHERE o.published_at IS NULL
+            AND o.event_name IN ('taxonomy.master.deactivation.check.requested', 'taxonomy.master.deactivated', 'taxonomy.master.deactivation.rejected')
+            AND (${cursor?.fecha ?? null}::timestamptz IS NULL OR
+                 (o.occurred_at, o.id) > (${cursor?.fecha ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
+            AND NOT EXISTS (
+              SELECT 1 FROM taxonomy.outbox anterior
+              WHERE anterior.operation_id = o.operation_id AND anterior.published_at IS NULL
+                AND (anterior.occurred_at, anterior.id) < (o.occurred_at, o.id)
+            )
+          ORDER BY o.occurred_at, o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED
+        `);
         const row = result.rows[0];
-        if (!row) return false;
+        if (!row) return { estado: 'VACIO' as const, cursor: null };
+        if (typeof row.cursor_fecha !== 'string' || typeof row.id !== 'string')
+          throw new Error('INVALID_OUTBOX_CURSOR');
+        const siguiente = { fecha: row.cursor_fecha, id: row.id };
         try {
           await publicar(row);
         } catch {
           await tx.execute(
             sql`UPDATE taxonomy.outbox SET attempts = attempts + 1, last_error = 'BROKER_PUBLISH_UNCONFIRMED' WHERE id = ${row.id}::uuid`,
           );
-          return false;
+          return { estado: 'PENDIENTE' as const, cursor: siguiente };
         }
         await tx.execute(
           sql`UPDATE taxonomy.outbox SET published_at = statement_timestamp(), attempts = attempts + 1, last_error = NULL WHERE id = ${row.id}::uuid`,
         );
-        return true;
+        return { estado: 'PUBLICADO' as const, cursor: siguiente };
       }),
     );
+    this.cursorOutbox = resultado.cursor;
+    return resultado.estado;
   }
 }

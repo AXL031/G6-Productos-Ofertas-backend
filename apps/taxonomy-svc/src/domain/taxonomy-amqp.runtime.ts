@@ -127,12 +127,10 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
       }
     }
     for (let i = 0; i < 20 && !this.stopped && this.publisher; i++) {
-      if (
-        !(await this.store.publicarUno((row) =>
-          this.publicar(row, this.publisher!),
-        ))
-      )
-        break;
+      const estado = await this.store.publicarUno((row) =>
+        this.publicar(row, this.publisher!),
+      );
+      if (estado === 'VACIO') break;
     }
   }
   private async handle(

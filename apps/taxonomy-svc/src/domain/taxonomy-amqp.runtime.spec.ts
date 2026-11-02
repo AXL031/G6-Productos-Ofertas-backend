@@ -61,7 +61,7 @@ function fixture() {
   });
   mocks.connect.mockResolvedValue(connection);
   const store = {
-    publicarUno: vi.fn().mockResolvedValue(false),
+    publicarUno: vi.fn().mockResolvedValue('VACIO'),
     consumir: vi.fn().mockResolvedValue(undefined),
     guardarInvalido: vi.fn().mockResolvedValue(undefined),
   };
@@ -171,10 +171,10 @@ describe('Taxonomy AMQP', () => {
               data: {},
             },
           });
-          return true;
+          return 'PUBLICADO';
         },
       )
-      .mockResolvedValue(false);
+      .mockResolvedValue('VACIO');
     f.runtime.iniciar();
     await esperar();
     expect(f.publisher.publish).toHaveBeenCalledWith(
@@ -222,7 +222,7 @@ describe('Taxonomy AMQP', () => {
         } catch {
           fallo = true;
         }
-        return false;
+        return 'PENDIENTE';
       },
     );
     f.runtime.iniciar();
