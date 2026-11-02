@@ -31,9 +31,9 @@ latest_status="$(printf '%s\n' "$statuses" | sort | tail -n 1 | cut -f 2)"
 }
 
 run="$(gh api "repos/${repository}/actions/runs/${run_id}" --jq '[.name,.path,.event,.head_branch,.head_sha,.conclusion,.head_repository.full_name] | @tsv')"
-expected="$(printf 'CD servicios Oracle\t.github/workflows/cd-services-oracle.yml\tworkflow_dispatch\tmaster\t%s\tsuccess\t%s' "$sha" "$repository")"
+expected="$(printf 'Despliegue continuo de servicios Oracle\t.github/workflows/cd-services-oracle.yml\tworkflow_dispatch\tmaster\t%s\tsuccess\t%s' "$sha" "$repository")"
 [[ "${run,,}" == "${expected,,}" ]] || {
   echo 'La ejecución manual no coincide con el Deployment, servicio y SHA registrados.' >&2
   exit 1
 }
-printf 'PASS: liberación manual de %s acreditada por workflow_dispatch y evidencia funcional registrada.\n' "$service"
+printf 'CORRECTO: liberación manual de %s acreditada por workflow_dispatch y evidencia funcional registrada.\n' "$service"

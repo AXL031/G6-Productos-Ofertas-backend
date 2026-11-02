@@ -16,6 +16,7 @@
 | Redes y dependencias | [`MATRIZ_DEPENDENCIAS.md`](MATRIZ_DEPENDENCIAS.md) |
 | RabbitMQ | [`RABBITMQ_COMPATIBILIDAD.md`](RABBITMQ_COMPATIBILIDAD.md) |
 | Gates y formato de entrega | [`CHECKLIST_PREDEPLOY.md`](CHECKLIST_PREDEPLOY.md) |
+| Evidencia CI/CD de Hito 4 y migración del check requerido | [`CI-CD-HITO4.md`](CI-CD-HITO4.md) |
 | Procedimientos CD, operación y rollback | Secciones posteriores de este README y scripts enlazados |
 | Evidencia histórica | [`auditorias/README.md`](auditorias/README.md) |
 
