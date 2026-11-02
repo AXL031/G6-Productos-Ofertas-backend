@@ -235,8 +235,7 @@ jobs:
         \ fi\n    sleep 2\n  done\n  if [[ -z \"$response\" ]]; then\n    printf 'FALLO: %s no respondió /health\
         \ con HTTP 200.\\n' \"$service\" >&2\n    docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}}'\
         \ \"$name\" >&2\n    exit 1\n  fi\n  node -e '\n    const payload = JSON.parse(process.argv[1]);\n    if\
-        \ (payload.status !== \"ok\" || payload.service !== process.argv[2]) {\n      console.error(\"Unexpected\
-        \ generic health payload:\", payload);\n      process.exit(1);\n    }\n  ' \"$response\" \"$service\"\n\
+        \ (payload.status !== \"ok\" || payload.service !== process.argv[2]) {\n      console.error(\"Respuesta de salud inesperada del servicio:\", payload);\n      process.exit(1);\n    }\n  ' \"$response\" \"$service\"\n\
         \  if [[ \"$service\" == pricing-svc || \"$service\" == price-audit-svc ]]; then\n    readiness_status=\"\
         $(curl --silent --output /dev/null --write-out '%{http_code}' \"http://127.0.0.1:${host_port}/health/ready\"\
         )\"\n    if [[ \"$readiness_status\" != 503 ]]; then\n      printf 'FALLO: %s debe responder readiness=503\
@@ -252,7 +251,7 @@ jobs:
         \ 3005/tcp | awk -F: '{print $NF}')\"\nresponse=''\nfor attempt in {1..30}; do\n  if response=\"$(curl --fail\
         \ --silent \"http://127.0.0.1:${port}/health\")\"; then\n    break\n  fi\n  sleep 2\ndone\nnode -e '\n \
         \ const payload = JSON.parse(process.argv[1]);\n  if (payload.status !== \"ok\" || payload.service !== \"\
-        inventory-svc\") {\n    console.error(\"Unexpected inventory-svc health payload:\", payload);\n    process.exit(1);\n\
+        inventory-svc\") {\n    console.error(\"Respuesta de salud inesperada de inventory-svc:\", payload);\n    process.exit(1);\n\
         \  }\n  console.log(\"inventory-svc salud del proceso correcta; esto no verifica readiness de Supabase.\");\n\
         ' \"$response\"\n"
     - name: Rechazar arranques sin configuración PostgreSQL

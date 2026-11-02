@@ -27,4 +27,8 @@ No cambiar el nombre requerido remoto antes de que el check nuevo exista en una 
 
 Se pueden mostrar en el PR: jobs de CI separados, salida de actionlint, pruebas del agregador para éxito/fallo/cancelación/omisión, pruebas de selector/procedencia, ciclo simulado de GitHub Deployments, aislamiento de publicación/recuperación, validaciones del registro cerrado y builds/smokes locales con contenedores desechables. Estas evidencias corresponden al SHA de la rama y no demuestran actividad en Oracle.
 
-Pendiente: ejecutar los jobs en GitHub con el SHA final; confirmar la aparición simultánea de ambos checks en el ruleset; en una autorización independiente posterior, verificar publicación con digest, ejecución y salud/readiness/operación funcional en Oracle, y recuperación real. Las nueve autorizaciones automáticas permanecen deshabilitadas.
+## Ejecución verificada en GitHub
+
+El run [41382158746](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/41382158746) terminó correctamente para el SHA `cf0e34fa00bcce4eadb64ef57a63665adf8e8f55`: GitHub Actions reportó satisfactorios los 14 trabajos obligatorios de CI y ambos agregadores (16 trabajos en total). Esto acredita únicamente las comprobaciones ejecutadas por ese run en GitHub, incluidas las pruebas con dependencias desechables. No acredita publicación productiva en GHCR, conexión ni despliegue en Oracle, salud/readiness remota, operaciones funcionales remotas ni recuperación real.
+
+Pendiente: ejecutar y revisar un run para el SHA final de esta corrección; confirmar la aparición simultánea de ambos checks en el ruleset. Las comprobaciones remotas de Oracle —publicación con digest, ejecución, salud/readiness/operación funcional y recuperación— requieren autorización independiente e infraestructura operativa. Las nueve autorizaciones automáticas permanecen deshabilitadas.
