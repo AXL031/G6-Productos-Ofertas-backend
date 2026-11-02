@@ -1,5 +1,16 @@
 # DATA-005: preparación de maestros de Inka Athletics
 
+## Propuesta local de locking — revisión pendiente
+
+Marco aceptó la preparación interna y encargó a Axel/López validar una solución
+mínima; no autorizó cargas ni grants compartidos. Ver
+[PROPUESTA-LOCKING-SEED.md](PROPUESTA-LOCKING-SEED.md) y su runner
+`node scripts/seed/mcp/promotions/test/seed-locking-proposal.mjs`.
+La candidata se probó solo en PostgreSQL descartable con login seed restringido:
+ACL UPDATE(id) limitada y guard invoker que rechaza toda mutación. Requiere
+revisión de López/BD y aprobación específica de Marco; el gate productivo sigue
+`SEED_TRIGGER_LOCK_PRIVILEGE_UNRESOLVED`. No es una migración ni un modo apply.
+
 ## Correcciones previas al merge — 26/10/2026
 
 Ver [AUDIT-2026-10-26.md](AUDIT-2026-10-26.md) para las regresiones de estados

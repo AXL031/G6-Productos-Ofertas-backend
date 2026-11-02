@@ -1,6 +1,10 @@
 import { assignedEventContracts } from './event-contract.generated.js';
 import type { BrokerDelivery } from './coupon-consumer.js';
-import { record, matchesSchema } from './schema-validator.js';
+import {
+  record,
+  matchesSchema,
+  type MessageContract,
+} from './schema-validator.js';
 import {
   inPromotionsTransaction,
   type SqlClient,
@@ -24,7 +28,18 @@ export interface AssignedEventAdapter {
   // acceptance alone says nothing about product/SKU/price/stock field semantics.
   validate(data: Record<string, unknown>): boolean;
   // Local projection changes only; never remote I/O while holding this client.
-  apply(client: SqlClient, event: AssignedEvent): Promise<void>;
+  apply(
+    client: SqlClient,
+    event: AssignedEvent,
+  ): Promise<void | AssignedInvalidation>;
+}
+export interface AssignedInvalidation {
+  domain: 'price' | 'stock';
+  targetType: 'PRODUCTO' | 'SKU';
+  targetId: string;
+  channelId?: string | null;
+  locationId?: string;
+  sourceVersion: string;
 }
 export const ASSIGNED_EVENT_ADAPTERS = Symbol('ASSIGNED_EVENT_ADAPTERS');
 export type AssignedEventAdapters = Readonly<
@@ -46,24 +61,27 @@ export const blockedBrokerIdentity: PromotionsBrokerIdentity = {
 const handler = 'promotions-assigned-events-v1';
 
 // Does not declare topology, connect at construction, ACK or enable a consumer.
-// A failed/missing mapping never becomes a completed Inbox receipt.
+// Applied events and permanent rejections have distinct durable dispositions.
+// A missing mapping never completes Inbox or permits ACK.
 export class PromotionsAssignedEventDispatcher {
   constructor(
     private readonly pool: SqlPool,
     private readonly adapters: AssignedEventAdapters,
+    private readonly contracts: Readonly<
+      Record<string, MessageContract & { producer: string }>
+    > = assignedEventContracts,
+    private readonly durableRejections = false,
   ) {}
 
   assertReady(): void {
-    if (
-      Object.keys(assignedEventContracts).some((name) => !this.adapters[name])
-    )
+    if (Object.keys(this.contracts).some((name) => !this.adapters[name]))
       throw new Error('PROMOTIONS_EVENT_ADAPTERS_UNAVAILABLE');
   }
 
   async process(
     delivery: BrokerDelivery,
     actor: string,
-  ): Promise<'processed' | 'replayed'> {
+  ): Promise<'processed' | 'replayed' | 'rejected'> {
     if (
       delivery.content.length > 65536 ||
       delivery.properties.contentType !== 'application/json'
@@ -79,25 +97,39 @@ export class PromotionsAssignedEventDispatcher {
     }
     if (!record(body) || typeof body.name !== 'string')
       throw new Error('INVALID_ASSIGNED_EVENT');
-    const contract = assignedEventContracts[body.name];
+    const contract = this.contracts[body.name];
     if (
       !contract ||
       actor !== contract.producer ||
-      !matchesSchema(body, contract.schema) ||
+      body.producer !== actor ||
+      body.kind !== 'event' ||
       delivery.fields.exchange !== contract.exchange ||
       delivery.fields.routingKey !== contract.routingKey ||
       (delivery.properties.messageId !== undefined &&
         delivery.properties.messageId !== body.message_id)
     )
       throw new Error('INVALID_ASSIGNED_EVENT');
+    const validContract = matchesSchema(body, contract.schema);
+    // The first allOf member is the official common envelope. Invalid raw
+    // envelopes cannot be recorded in the current Inbox schema: pause, no ACK.
+    if (
+      !validContract &&
+      (!this.durableRejections ||
+        !contract.schema.allOf?.[0] ||
+        !matchesSchema(body, contract.schema.allOf[0]))
+    )
+      throw new Error('INVALID_ASSIGNED_EVENT');
     const event = body as unknown as AssignedEvent;
     const adapter = this.adapters[event.name];
     if (!adapter) throw new Error('PROMOTIONS_EVENT_ADAPTER_UNAVAILABLE');
+    let rejected = !validContract;
     try {
-      if (!adapter.validate(event.data)) throw new Error();
+      if (!rejected && !adapter.validate(event.data)) rejected = true;
     } catch {
-      throw new Error('INVALID_ASSIGNED_EVENT_DATA');
+      rejected = true;
     }
+    if (rejected && !this.durableRejections)
+      throw new Error('INVALID_ASSIGNED_EVENT_DATA');
     try {
       return await inPromotionsTransaction(this.pool, async (client) => {
         const fresh = await client.query(
@@ -112,17 +144,30 @@ export class PromotionsAssignedEventDispatcher {
           if (
             !previous.rows[0]?.completed_at ||
             !record(previous.rows[0].result) ||
-            previous.rows[0].result.handled !== true
+            (previous.rows[0].result.handled !== true &&
+              previous.rows[0].result.rejected !== true)
           )
             throw new Error('INCOMPLETE_ASSIGNED_EVENT');
           return 'replayed';
         }
-        await adapter.apply(client, event);
+        const invalidation = rejected
+          ? undefined
+          : await adapter.apply(client, event);
         await client.query(
           'UPDATE promotions.inbox SET completed_at=clock_timestamp(),result=$3::jsonb WHERE message_id=$1 AND handler=$2',
-          [event.message_id, handler, JSON.stringify({ handled: true })],
+          [
+            event.message_id,
+            handler,
+            JSON.stringify({
+              handled: !rejected,
+              ...(rejected
+                ? { rejected: true, reason: 'INVALID_ASSIGNED_EVENT_DATA' }
+                : {}),
+              ...(invalidation ? { invalidation } : {}),
+            }),
+          ],
         );
-        return 'processed';
+        return rejected ? 'rejected' : 'processed';
       });
     } catch {
       throw new Error('PROMOTIONS_ASSIGNED_EVENT_FAILED');

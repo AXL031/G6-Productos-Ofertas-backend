@@ -26,6 +26,8 @@ import {
   officialMigrations,
 } from './support/official-migrations.mjs';
 import { verifyHttpReadQueries } from './support/http-query-checks.mjs';
+import { verifyHttpUpstreams } from './support/http-upstream-checks.mjs';
+import { verifyH4Invalidations } from './support/h4-invalidation-checks.mjs';
 
 const { Pool } = pg;
 const directory = mkdtempSync(join(tmpdir(), 'g6-promotions-persistence-'));
@@ -639,7 +641,9 @@ try {
   );
 
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
+  checks.push(...(await verifyH4Invalidations(resources.pool)));
   checks.push(...(await verifyHttpWrites(resources, runtimeConfig, admin)));
+  checks.push(...(await verifyHttpUpstreams(resources, runtimeConfig)));
   checks.push(...(await verifyHttpReadQueries(resources, runtimeConfig)));
   if (process.env.G6_PROMOTIONS_GATEWAY_E2E === 'true') {
     stage = 'native Gateway/Promotions flow with real PostgreSQL';

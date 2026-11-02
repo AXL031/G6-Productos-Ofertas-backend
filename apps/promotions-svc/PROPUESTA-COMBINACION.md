@@ -2,9 +2,10 @@
 
 Owner: Axel Cueva · rama `cueva` · issue #72 · actualización 23/10/2026.
 
-**Estado: propuesta v1 implementada como motor interno acotado, sin activar HTTP.** El usuario pidió
-resolver la decisión pendiente al no existir acuerdo. Este documento concreta la
-regla propuesta por Promotions; no acredita aceptación de Marco ni de otros módulos.
+**Estado: composición v1 adoptada internamente por Marco el 26/10/2026; HTTP sin activar.**
+Ver [registro de la decisión y dependencias](DECISIONES-MARCO-2026-10-26.md).
+La comunicación fue aportada por Axel, quien autorizó su registro y verificación.
+La aprobación interna no acredita compatibilidad ni homologación de consumidores.
 No crea una DEC-F ni modifica OpenAPI, AsyncAPI, datos persistentes o runtime.
 
 ## Base normativa y decisiones nuevas
@@ -26,7 +27,8 @@ Fuentes G6 consultadas en el commit
 
 La fórmula sucesiva, el reparto proporcional, el significado de la campaña
 principal, el desempate de conjuntos y el redondeo de las secciones siguientes
-son **decisiones propuestas aquí**, no citas de reglas ya aprobadas.
+fueron propuestas aquí y **adoptadas internamente por Marco** según el registro
+anterior; no se atribuyen a una aprobación externa ni crean una DEC-F nueva.
 
 ## Regla elegida
 
@@ -69,7 +71,7 @@ son **decisiones propuestas aquí**, no citas de reglas ya aprobadas.
 
 ## Identidad y frontera contractual
 
-Se propone que `EvaluacionPromocionesResponse.promotion_id` identifique la primera
+La decisión interna establece que `EvaluacionPromocionesResponse.promotion_id` identifique la primera
 campaña **efectivamente aplicada** según `(prioridad, id)`, o `null` si solo hay
 oferta de Pricing o ningún beneficio. **No identifica todo el conjunto ni el cupón.**
 No fabricar un UUID concatenado, una campaña sintética o un identificador de pedido.
@@ -92,7 +94,7 @@ El cálculo usa fracciones exactas, incluidas asignaciones como `1/3`. No se eli
 una precisión decimal arbitraria durante el reparto ni se redondea cada paso.
 Así se evita que el orden de las líneas cree o destruya descuento.
 
-Para la futura salida monetaria se propone:
+Para la salida monetaria, la decisión interna aprobada establece:
 
 - PEN: dos decimales; otras monedas necesitan escala explícita acordada.
 - Redondear el resultado total una sola vez, al más cercano y mitad hacia arriba.
@@ -104,28 +106,28 @@ Para la futura salida monetaria se propone:
 - Antes de salida, exigir precios regulares/oferta representables en la escala de
   la moneda. Si no lo son, la integración debe resolver esa discrepancia con Pricing.
 
-**Este redondeo está implementado internamente y sigue pendiente de homologación.**
+**Este redondeo está implementado y adoptado internamente; la activación HTTP sigue pendiente de compatibilidad externa.**
 `projectBenefitMoney` exige escala explícita (0–6), devuelve unidades mínimas
 `bigint`, valida precios representables y conserva total/saldos/descuento. No hay
 registro implícito de monedas. El ejemplo PEN usa escala 2 como entrada explícita.
 No se convierten fracciones a `number` ni se conectan al DTO.
-Elegir una regla aquí no acredita que Pricing/Ventas la hayan aceptado.
+La aprobación de Marco no acredita que Pricing/Ventas o los demás consumidores la hayan aceptado.
 
 ## Ejemplos de aceptación
 
 Todos usan políticas compatibles, importes antes del redondeo y ausencia de oferta
 de Pricing salvo que se indique. La prioridad fija el orden mostrado.
 
-| Caso | Cálculo | Resultado |
-| --- | --- | --- |
-| 10 % y después 20 % sobre 100 | 100 × 0,9 × 0,8 | 72; no sumar porcentajes. |
-| A=60, B=40; fijo 30 en ambos; después 50 % solo en A | Reparto 18/12; saldos 42/28; A queda 21 | 49. |
-| A=1, B=2; fijo 1 en ambos; después 50 % en A | Reparto 1/3 y 2/3; saldos finales 1/3 y 4/3 | 5/3 exacto; propuesta PEN 1,67. |
-| Regular 100, oferta 80 y automática 15 % exclusiva | Comparar 80 con 85 | 80, campaña principal null. |
-| Caso anterior con permiso para Pricing | 80 × 0,85 | 68. |
-| Exclusiva 50 % frente a combinación autorizada de 30 % y 40 % | Comparar 50 con 100 × 0,7 × 0,6 | 42. |
-| Fijo 50 sobre subtotal 30 | min(50,30) | 0; no consume un cupón adicional sin ahorro. |
-| Automática 10 % prioridad 1 y cupón 10 % prioridad 2 | 100 → 90 → 81 | Principal: automática; cupón identificado aparte. |
+| Caso                                                          | Cálculo                                     | Resultado                                         |
+| ------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------- |
+| 10 % y después 20 % sobre 100                                 | 100 × 0,9 × 0,8                             | 72; no sumar porcentajes.                         |
+| A=60, B=40; fijo 30 en ambos; después 50 % solo en A          | Reparto 18/12; saldos 42/28; A queda 21     | 49.                                               |
+| A=1, B=2; fijo 1 en ambos; después 50 % en A                  | Reparto 1/3 y 2/3; saldos finales 1/3 y 4/3 | 5/3 exacto; propuesta PEN 1,67.                   |
+| Regular 100, oferta 80 y automática 15 % exclusiva            | Comparar 80 con 85                          | 80, campaña principal null.                       |
+| Caso anterior con permiso para Pricing                        | 80 × 0,85                                   | 68.                                               |
+| Exclusiva 50 % frente a combinación autorizada de 30 % y 40 % | Comparar 50 con 100 × 0,7 × 0,6             | 42.                                               |
+| Fijo 50 sobre subtotal 30                                     | min(50,30)                                  | 0; no consume un cupón adicional sin ahorro.      |
+| Automática 10 % prioridad 1 y cupón 10 % prioridad 2          | 100 → 90 → 81                               | Principal: automática; cupón identificado aparte. |
 
 ## Implementación, pruebas y activación
 
@@ -152,24 +154,24 @@ pruebas monetarias/budgets ejercitan el mismo motor compilado.
 npm test -- apps/promotions-svc/test/proposals/combination-policy.spec.ts --maxWorkers=1
 ```
 
-| Dimensión | Estado |
-| --- | --- |
-| Regla propuesta | Definida en versión 1; no cambia DEC-F adoptadas. |
-| Motor interno | Implementado en src: fórmula, compatibilidad, identidades, conservación exacta y búsqueda acotada. |
-| Pruebas | Ejecución y resultado por separado en el reporte de la entrega. |
-| Redondeo/límites | Implementados internamente como propuesta v1; adopción y límites operativos pendientes. Snapshot contractual aún pendiente. |
-| HTTP en producción | Sin cambios; mantiene el gate de combinación múltiple y el provider comercial bloqueado. |
-| Homologación externa / despliegue | No realizados. |
+| Dimensión                         | Estado                                                                                                                                     |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Regla interna                     | Versión 1 adoptada por Marco el 26/10; no cambia DEC-F adoptadas.                                                                          |
+| Motor interno                     | Implementado en src: fórmula, compatibilidad, identidades, conservación exacta y búsqueda acotada.                                         |
+| Pruebas                           | Ejecución y resultado por separado en el reporte de la entrega.                                                                            |
+| Redondeo/límites                  | Redondeo v1 adoptado internamente. Límites operativos requieren revisión antes de activar HTTP; snapshot/desglose depende de consumidores. |
+| HTTP en producción                | Sin cambios; mantiene el gate de combinación múltiple y el provider comercial bloqueado.                                                   |
+| Homologación externa / despliegue | No realizados.                                                                                                                             |
 
 ## Responsables y desbloqueo verificable
 
-| Owner | Operación | Evidencia necesaria |
-| --- | --- | --- |
-| Axel/Promotions + Marco/arquitectura G6 | Adoptar composición interna | Revisión registrada de esta versión: orden, reparto, desempate y límites de producción. |
+| Owner                                                          | Operación                                  | Evidencia necesaria                                                                                                                                             |
+| -------------------------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Axel/Promotions + Marco/arquitectura G6                        | Composición interna y límites              | Regla v1 adoptada y verificada; revisión operativa de límites antes de activar HTTP.                                                                            |
 | G6 + owners de Marketplace, Chatbot, Retail y Ventas/Postventa | Respuesta/snapshot de múltiples beneficios | Aceptación verificable de `promotion_id` principal; si hace falta desglose, contrato versionado y pruebas de consumidor. No se presume aceptación por silencio. |
-| Pricing + Ventas/Postventa + G6 | Salida monetaria y conciliación | Confirmar escala/redondeo/reparto y ejemplos monetarios; verificar la implementación candidata contra la regla homologada. |
-| Catálogo/Pricing + integración G6/G7 | Evaluación comercial real | Adaptadores con identidad autorizada y precios/elegibilidad coherentes para canal/instante. |
+| Pricing + Ventas/Postventa + G6                                | Salida monetaria y conciliación            | Confirmar escala/redondeo/reparto y ejemplos monetarios; verificar la implementación candidata contra la regla homologada.                                      |
+| Catálogo/Pricing + integración G6/G7                           | Evaluación comercial real                  | Adaptadores con identidad autorizada y precios/elegibilidad coherentes para canal/instante.                                                                     |
 
-Este documento queda listo para revisión; no se enviaron mensajes ni se atribuyó
-aprobación a otros owners. #72 permanece parcial y las demás fronteras de #73 no
-se desbloquean por definir la fórmula de composición.
+La decisión interna queda registrada y verificada; no se atribuye aprobación a
+otros owners. #72 permanece parcial por compatibilidad de consumidores y las
+fronteras comerciales de #73 no se desbloquean por adoptar la fórmula.
