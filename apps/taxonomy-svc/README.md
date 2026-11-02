@@ -37,6 +37,12 @@ El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y u
 
 ## Pruebas de integración (Postgres aislado)
 
+### Observabilidad y reconciliación de bajas vencidas
+
+Al ejecutar `recuperarVencidas()`, las operaciones con entidad ausente, estado distinto o versión no coincidente permanecen `IN_PROGRESS`: no se modifica la entidad, no se emite resultado terminal y no se libera ninguna barrera de Catálogo. El servicio registra el aviso estructurado `taxonomy.deactivation.recovery_discrepancy`, con `operation_id`, tipo, motivo y total observado; omite datos de conexión y payloads. Cada ejecución registra hasta 50 identificadores, pero el total incluye todas las discrepancias detectadas. Los casos discrepantes no ocupan los 50 lugares destinados a recuperaciones válidas. Un cambio concurrente durante la restauración se reporta como `CAMBIO_CONCURRENTE`.
+
+El owner de Taxonomy debe investigar la operación y contrastar su versión autoritativa, estado e integración con Catálogo antes de decidir una reconciliación. No debe forzar una versión, liberar barreras ni aplicar SQL a la base compartida sin el proceso autorizado. Una vez corregida y verificada la causa mediante ese proceso, una ejecución posterior puede recuperar la operación; la transacción registra el resultado en outbox. La publicación real y la ejecución periódica del runner siguen pendientes. Configurar una alerta operativa sobre este evento y monitorear su persistencia también queda pendiente de la plataforma; un aviso local no acredita alerta desplegada ni reconciliación externa.
+
 `scripts/ci/run-taxonomy-integration.mjs` aprovisiona y elimina su propio contenedor `postgres:17-alpine`, publica el puerto solo en loopback y genera la URL/credenciales internamente. Rechaza `TAXONOMY_TEST_DATABASE_URL` recibida desde el entorno. PostgreSQL se inicia con un identificador aleatorio de sesión que el preflight coteja mediante `current_setting()` antes de permitir cualquier DDL; un testigo insertado en una URL recibida no se considera acreditación. No apuntar pruebas destructivas a Supabase ni a bases compartidas.
 
 ```sh

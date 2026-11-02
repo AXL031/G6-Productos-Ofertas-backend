@@ -1,4 +1,4 @@
-import { HttpStatus } from '@nestjs/common';
+import { HttpStatus, Logger } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
@@ -806,6 +806,50 @@ describeIntegracion(
       }
     });
 
+    it('rechaza la baja de una categoría con subcategorías activas sin crear operación ni evento', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const operationId = '77777777-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      try {
+        await expect(
+          new DeactivationIntentService(database).registrar({
+            operationId,
+            correlationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+            entityType: 'CATEGORY',
+            entityId: '11111111-1111-4111-8111-111111111111',
+            version: 0,
+          }),
+        ).resolves.toBe('NO_DISPONIBLE');
+        expect(
+          (
+            await admin.query(
+              'SELECT operation_id FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        expect(
+          (
+            await admin.query(
+              'SELECT message_id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        expect(
+          (
+            await admin.query(
+              "SELECT estado FROM taxonomy.categories WHERE id = '11111111-1111-4111-8111-111111111111'",
+            )
+          ).rows,
+        ).toEqual([{ estado: 'ACTIVO' }]);
+      } finally {
+        vi.restoreAllMocks();
+      }
+    });
+
     it('falla cerrado cuando falta la configuración de timeout', async () => {
       const database = new Database();
       vi.spyOn(database, 'read').mockImplementation(async (query) =>
@@ -884,6 +928,215 @@ describeIntegracion(
         ).toEqual([{ estado: 'ACTIVO' }]);
       } finally {
         await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('notifica una versión discrepante sin cerrar y recupera tras reconciliación', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const aviso = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const operationId = '88888888-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      try {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION', taxonomy_version = 1 WHERE id = $1",
+          [entityId],
+        );
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [operationId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', entityId],
+        );
+        const service = new DeactivationIntentService(database);
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'taxonomy.deactivation.recovery_discrepancy',
+            operation_id: operationId,
+            reason: 'VERSION_DISTINTA',
+            total: 1,
+          }),
+        );
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+        await admin.query(
+          'UPDATE taxonomy.brands SET taxonomy_version = 0 WHERE id = $1',
+          [entityId],
+        );
+        await expect(service.recuperarVencidas()).resolves.toBe(1);
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'FAILED' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(1);
+      } finally {
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('notifica estado distinto y no modifica la entidad ni cierra la operación', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const aviso = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const operationId = '88888888-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      try {
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [operationId, 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', entityId],
+        );
+        await expect(
+          new DeactivationIntentService(database).recuperarVencidas(),
+        ).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledWith(
+          expect.objectContaining({
+            operation_id: operationId,
+            reason: 'ESTADO_DISTINTO',
+          }),
+        );
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado FROM taxonomy.brands WHERE id = $1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'ACTIVO' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT id FROM taxonomy.outbox WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toHaveLength(0);
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [operationId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('no bloquea recuperaciones válidas si hay más de 50 entidades ausentes', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const aviso = vi
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const correlationId = '99999999-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const operationId = '99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      try {
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          SELECT gen_random_uuid(), $1, 'BRAND', gen_random_uuid(), 'IN_PROGRESS', 0,
+            statement_timestamp() - interval '120 seconds' FROM generate_series(1, 51)`,
+          [correlationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          [entityId],
+        );
+        await admin.query(
+          `INSERT INTO taxonomy.master_deactivation_operations
+          (operation_id, correlation_id, entity_type, entity_id, status, source_version, created_at)
+          VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
+          [operationId, correlationId, entityId],
+        );
+        await expect(
+          new DeactivationIntentService(database).recuperarVencidas(),
+        ).resolves.toBe(1);
+        expect(aviso).toHaveBeenCalledTimes(50);
+        expect(aviso).toHaveBeenCalledWith(
+          expect.objectContaining({
+            event: 'taxonomy.deactivation.recovery_discrepancy',
+            reason: 'ENTIDAD_AUSENTE',
+            total: 51,
+          }),
+        );
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::integer AS n FROM taxonomy.master_deactivation_operations WHERE correlation_id = $1 AND status = 'IN_PROGRESS'",
+              [correlationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 51 }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'FAILED' }]);
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.outbox WHERE correlation_id = $1',
+          [correlationId],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE correlation_id = $1',
+          [correlationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO' WHERE id = $1",
+          [entityId],
+        );
         vi.restoreAllMocks();
       }
     });
