@@ -123,6 +123,41 @@ export class DisposableCatalogBroker {
       'po.dlx.x',
       'po.catalogo.q',
     );
+    this.command([
+      'exec',
+      this.name,
+      'rabbitmqctl',
+      'add_user',
+      'bulk-joint',
+      this.password,
+    ]);
+    this.command([
+      'exec',
+      this.name,
+      'rabbitmqctl',
+      'set_permissions',
+      '-p',
+      'g6-productos-ofertas',
+      'bulk-joint',
+      '.*',
+      '.*',
+      '.*',
+    ]);
+    await this.channel.assertQueue('po.masivos.q', {
+      durable: true,
+      arguments: { 'x-queue-type': 'quorum' },
+    });
+    await this.channel.bindQueue(
+      'po.catalogo.q',
+      'po.comandos.x',
+      'catalog.bulk.upsert.requested',
+    );
+    for (const suffix of ['completed', 'rejected'])
+      await this.channel.bindQueue(
+        'po.masivos.q',
+        'po.resultados.x',
+        'catalog.bulk.upsert.' + suffix,
+      );
     this.settings = {
       isolatedTestRecovery: true,
       connection: {
@@ -136,6 +171,23 @@ export class DisposableCatalogBroker {
         },
       },
     };
+  }
+  get bulkUrl(): string {
+    return 'amqp://bulk-joint:' + this.password + this.base;
+  }
+  bulkQueueStats(): string {
+    return this.command([
+      'exec',
+      this.name,
+      'rabbitmqctl',
+      'list_queues',
+      '-p',
+      'g6-productos-ofertas',
+      'name',
+      'messages_ready',
+      'messages_unacknowledged',
+      '--no-table-headers',
+    ]);
   }
   private async open(user: string): Promise<ChannelModel> {
     const deadline = Date.now() + 60000;

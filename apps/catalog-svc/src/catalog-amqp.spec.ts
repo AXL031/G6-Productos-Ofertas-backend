@@ -103,13 +103,47 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
         result: 'IN_USE',
       },
     ],
-    ['catalog.bulk.upsert.completed', 'po.resultados.x', {}],
-    ['catalog.bulk.upsert.rejected', 'po.resultados.x', {}],
+    [
+      'catalog.bulk.upsert.completed',
+      'po.resultados.x',
+      {
+        batch_id: randomUUID(),
+        batch_operation_id: randomUUID(),
+        results: [
+          {
+            row_number: 2,
+            row_operation_id: randomUUID(),
+            product_id: 'p',
+            sku_base: '0001',
+            status: 'COMPLETED',
+            code: null,
+          },
+        ],
+      },
+    ],
+    [
+      'catalog.bulk.upsert.rejected',
+      'po.resultados.x',
+      {
+        batch_id: randomUUID(),
+        batch_operation_id: randomUUID(),
+        code: 'VALIDACION',
+        detail: 'Comando inválido.',
+      },
+    ],
   ] as const)(
     'uses the reconciled physical exchange for %s without rewriting the envelope',
     async (name, exchange, data) => {
       const { channel, publisher } = fixture();
-      const message = envelope(name, data, randomUUID(), randomUUID());
+      const operation =
+        'batch_operation_id' in data ? data.batch_operation_id : randomUUID();
+      const message = envelope(
+        name,
+        data,
+        randomUUID(),
+        operation,
+        randomUUID(),
+      );
       const work = publisher.publish(message);
       await Promise.resolve();
       const args = channel.publish.mock.calls[0];
