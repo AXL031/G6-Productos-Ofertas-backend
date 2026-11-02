@@ -33,6 +33,8 @@ type ConfigurationVariable =
   | 'GATEWAY_DEMO_NO_AUTH_ENABLED'
   | 'AUTH_ISSUER'
   | 'AUTH_JWKS_URL'
+  | 'PROMOTIONS_SERVICE_TOKEN_URL'
+  | 'PROMOTIONS_SERVICE_CLIENT_SECRET'
   | 'ENV_FILE';
 
 export class PromotionsConfigurationError extends Error {
@@ -66,6 +68,10 @@ export interface PromotionsConfiguration {
   readonly localDemoEnabled: boolean;
   readonly listenHost: '127.0.0.1' | '0.0.0.0' | '::';
   readonly auth?: Readonly<{ issuer: string; jwksUrl: string }>;
+  readonly serviceCredentials?: Readonly<{
+    tokenUrl: string;
+    clientSecret: string;
+  }>;
   readonly upstreams: Readonly<Partial<Record<Upstream, string>>>;
 }
 
@@ -85,6 +91,7 @@ export function validatePromotionsConfiguration(
     ConfigurationVariable | (typeof upstreamVariables)[Upstream]
   >();
   let auth: PromotionsConfiguration['auth'];
+  let serviceCredentials: PromotionsConfiguration['serviceCredentials'];
   if (
     environment.AUTH_ISSUER !== undefined ||
     environment.AUTH_JWKS_URL !== undefined
@@ -110,6 +117,34 @@ export function validatePromotionsConfiguration(
         issuer: environment.AUTH_ISSUER!,
         jwksUrl: environment.AUTH_JWKS_URL!,
       });
+  }
+  if (
+    environment.PROMOTIONS_SERVICE_TOKEN_URL !== undefined ||
+    environment.PROMOTIONS_SERVICE_CLIENT_SECRET !== undefined
+  ) {
+    try {
+      const tokenUrl = environment.PROMOTIONS_SERVICE_TOKEN_URL ?? '';
+      const clientSecret = environment.PROMOTIONS_SERVICE_CLIENT_SECRET ?? '';
+      const url = new URL(tokenUrl);
+      if (
+        !auth ||
+        url.origin !== new URL(auth.issuer).origin ||
+        url.protocol !== 'https:' ||
+        url.pathname !== '/api/v1/auth/token' ||
+        url.username ||
+        url.password ||
+        url.search ||
+        url.hash ||
+        tokenUrl.trim() !== tokenUrl ||
+        !clientSecret.trim() ||
+        /[\r\n\0]/.test(clientSecret)
+      )
+        throw new Error();
+      serviceCredentials = Object.freeze({ tokenUrl: url.href, clientSecret });
+    } catch {
+      invalid.add('PROMOTIONS_SERVICE_TOKEN_URL');
+      invalid.add('PROMOTIONS_SERVICE_CLIENT_SECRET');
+    }
   }
   const enabled = (name: ConfigurationVariable): boolean => {
     const value = environment[name] ?? 'false';
@@ -228,6 +263,7 @@ export function validatePromotionsConfiguration(
         : '127.0.0.1'
       : '::',
     auth,
+    serviceCredentials,
     upstreams: Object.freeze(upstreams),
   });
 }

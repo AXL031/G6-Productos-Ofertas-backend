@@ -102,7 +102,10 @@ export class PromotionsIdentity {
     @Inject(PROMOTIONS_JWKS) private readonly keys: PromotionsKeySource,
   ) {}
   async authorize(
-    operation: HttpOperation,
+    operation: Pick<
+      HttpOperation,
+      'security' | 'audience' | 'scope' | 'clients'
+    >,
     authorization: string | undefined,
   ): Promise<void> {
     const bearer = /^Bearer ([^\s]+)$/i.exec(authorization ?? '');

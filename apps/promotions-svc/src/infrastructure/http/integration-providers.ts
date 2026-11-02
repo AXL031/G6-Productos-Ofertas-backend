@@ -15,7 +15,8 @@ import type {
 } from './internal-http.js';
 
 export const PROMOTIONS_SERVICE_TOKENS = Symbol('PROMOTIONS_SERVICE_TOKENS');
-// A real G7 integration can override this source later. Never forward user bearer.
+// Explicit unavailable source for isolated provider tests. Runtime uses the
+// configured client_credentials source; neither path forwards a user bearer.
 export const unavailableServiceTokens: ServiceAccessTokenSource = async () =>
   null;
 function options(
