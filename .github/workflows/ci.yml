@@ -151,6 +151,13 @@ jobs:
       with:
         name: artefactos-compilados
         path: dist/
+    - name: Configurar Node.js para las comprobaciones de arranque
+      uses: actions/setup-node@v4
+      with:
+        node-version: '24.15.0'
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
     - name: Construir la imagen de Inventory
       run: docker build --file Dockerfile.inventory-svc --tag inventory-svc:ci .
     - name: Validar el registro cerrado de servicios Oracle
