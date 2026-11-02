@@ -12,6 +12,8 @@ export interface PricingConfig {
   auth?: { issuer: string; jwksUrl: string };
   demoNoAuthEnabled?: boolean;
   amqpUrl?: string;
+  catalogUrl?: string;
+  serviceToken?: { url: string; secret: string };
 }
 
 export class InvalidPricingConfig extends Error {}
@@ -166,11 +168,73 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       );
     }
   }
+  let serviceToken: PricingConfig['serviceToken'];
+  if (
+    env.PRICING_SERVICE_TOKEN_URL !== undefined ||
+    env.PRICING_SERVICE_CLIENT_SECRET !== undefined
+  ) {
+    try {
+      const endpoint = new URL(env.PRICING_SERVICE_TOKEN_URL!);
+      const issuer = new URL(env.AUTH_ISSUER!);
+      const testLoopback =
+        nodeEnv === 'test' &&
+        endpoint.protocol === 'http:' &&
+        ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname);
+      if (
+        !env.PRICING_SERVICE_CLIENT_SECRET?.trim() ||
+        endpoint.username ||
+        endpoint.password ||
+        endpoint.hash ||
+        endpoint.search ||
+        endpoint.pathname !== '/api/v1/auth/token' ||
+        endpoint.origin !== issuer.origin ||
+        (endpoint.protocol !== 'https:' && !testLoopback) ||
+        (!demoNoAuthEnabled && !auth)
+      )
+        throw new Error();
+      serviceToken = {
+        url: endpoint.toString(),
+        secret: env.PRICING_SERVICE_CLIENT_SECRET!,
+      };
+    } catch {
+      throw new InvalidPricingConfig(
+        'Credenciales G7 requieren secreto, issuer/JWKS y endpoint seguro /api/v1/auth/token del issuer.',
+      );
+    }
+  }
+  let catalogUrl: string | undefined;
+  if (env.PRICING_CATALOG_URL !== undefined) {
+    try {
+      const endpoint = new URL(env.PRICING_CATALOG_URL);
+      const privateHttp =
+        endpoint.protocol === 'http:' &&
+        ((demoNoAuthEnabled && endpoint.hostname === 'catalog-svc') ||
+          (nodeEnv === 'test' &&
+            ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)));
+      if (
+        env.PRICING_CATALOG_URL !== env.PRICING_CATALOG_URL.trim() ||
+        endpoint.username ||
+        endpoint.password ||
+        endpoint.search ||
+        endpoint.hash ||
+        endpoint.pathname !== '/' ||
+        (endpoint.protocol !== 'https:' && !privateHttp)
+      )
+        throw new Error();
+      catalogUrl = endpoint.origin;
+    } catch {
+      throw new InvalidPricingConfig(
+        'PRICING_CATALOG_URL requiere origen HTTPS; HTTP solo en Catalog privado demo o loopback test.',
+      );
+    }
+  }
   return {
     nodeEnv,
     port,
     databaseUrl: url.toString(),
     databaseSsl,
+    ...(catalogUrl ? { catalogUrl } : {}),
+    ...(serviceToken ? { serviceToken } : {}),
     ...(auth ? { auth } : {}),
     ...(demoNoAuthEnabled ? { demoNoAuthEnabled: true } : {}),
     ...(env.PRICING_AMQP_URL === undefined
