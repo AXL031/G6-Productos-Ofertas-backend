@@ -75,7 +75,7 @@ assert.match(
   'LOCAL_DOCKER_REQUIRED',
 );
 const password = randomUUID();
-let container, admin, seed, inherited, report;
+let container, admin, seed, inherited, runtime, report;
 const checks = [];
 try {
   container = docker(
@@ -126,7 +126,11 @@ try {
     CREATE ROLE po_promotions_runtime NOLOGIN;
     CREATE ROLE test_seed_login LOGIN NOINHERIT PASSWORD '${password}';
     CREATE ROLE test_seed_inherited LOGIN INHERIT PASSWORD '${password}';
+    CREATE ROLE test_seed_delegate NOLOGIN;
+    CREATE ROLE test_runtime_login LOGIN NOINHERIT PASSWORD '${password}';
     GRANT po_promotions_seed TO test_seed_login, test_seed_inherited;
+    GRANT test_seed_delegate TO test_seed_login;
+    GRANT po_promotions_runtime TO test_runtime_login;
     CREATE SCHEMA promotions AUTHORIZATION po_promotions_owner;
     REVOKE ALL ON SCHEMA promotions FROM PUBLIC;`);
   const installer = await admin.connect();
@@ -143,6 +147,7 @@ try {
   }
   seed = new Pool({ ...config, user: 'test_seed_login' });
   inherited = new Pool({ ...config, user: 'test_seed_inherited' });
+  runtime = new Pool({ ...config, user: 'test_runtime_login' });
   const tables = (
     await admin.query(
       "SELECT tablename FROM pg_tables WHERE schemaname='promotions' ORDER BY tablename",
@@ -179,7 +184,14 @@ try {
         "BEGIN; SET LOCAL statement_timeout='5s'; SET LOCAL lock_timeout='250ms'",
       );
       if (role) {
-        assert.ok(['po_promotions_seed', 'po_promotions_owner'].includes(role));
+        assert.ok(
+          [
+            'po_promotions_seed',
+            'po_promotions_owner',
+            'test_seed_delegate',
+            'po_promotions_runtime',
+          ].includes(role),
+        );
         await c.query(`SET LOCAL ROLE ${role}`);
       }
       return await work(c);
@@ -222,6 +234,50 @@ try {
     await c.query(fixture);
     await c.query('COMMIT');
   });
+  // A NOINHERIT login can SET ROLE away from seed; session_user must still guard it.
+  await admin.query(`GRANT USAGE ON SCHEMA promotions TO test_seed_delegate;
+    GRANT SELECT,UPDATE(id) ON promotions.promotions,promotions.recommendation_rules TO test_seed_delegate;`);
+  for (const table of ['promotions', 'recommendation_rules'])
+    await rejected(
+      seed,
+      'test_seed_delegate',
+      `UPDATE promotions.${table} SET id=id WHERE false`,
+      '42501',
+      'SEED_APPEND_ONLY',
+    );
+  await tx(runtime, 'po_promotions_runtime', async (c) => {
+    assert.equal(
+      (
+        await c.query(
+          "SELECT pg_has_role(session_user,'po_promotions_seed','MEMBER') AS seed",
+        )
+      ).rows[0].seed,
+      false,
+    );
+    await c.query('UPDATE promotions.promotions SET name=name WHERE false');
+  });
+  checks.push(
+    'SET ROLE escape by NOINHERIT seed login rejected through session_user membership; independent authenticated runtime remains writable',
+  );
+  await admin.query(
+    'ALTER ROLE po_promotions_seed RENAME TO test_missing_seed_role',
+  );
+  try {
+    await rejected(
+      runtime,
+      'po_promotions_runtime',
+      'UPDATE promotions.promotions SET name=name WHERE false',
+      '42501',
+      'SEED_ROLE_UNAVAILABLE',
+    );
+  } finally {
+    await admin.query(
+      'ALTER ROLE test_missing_seed_role RENAME TO po_promotions_seed',
+    );
+  }
+  checks.push(
+    'Missing expected seed role fails closed even for independent runtime; role restored in disposable database',
+  );
   await tx(seed, 'po_promotions_seed', async (c) => {
     for (const t of Object.keys(columns)) {
       const p = (
@@ -330,14 +386,14 @@ try {
       'INSERT INTO promotions.promotion_scopes(id,promotion_id,sku) VALUES ($1,$2,$3)',
       [randomUUID(), batch.rows.promotions[0].id, 'TEST_ONLY_LOCK_SCOPE'],
     );
-    await tx(admin, 'po_promotions_owner', async (c) => {
+    await tx(runtime, 'po_promotions_runtime', async (c) => {
       await c.query('UPDATE promotions.promotions SET name=name WHERE id=$1', [
         batch.rows.promotions[1].id,
       ]);
     });
     await rejected(
-      admin,
-      'po_promotions_owner',
+      runtime,
+      'po_promotions_runtime',
       `UPDATE promotions.promotions SET name=name WHERE id='${batch.rows.promotions[0].id}'`,
       '55P03',
     );
@@ -347,7 +403,7 @@ try {
   }
   assert.deepEqual(await snapshot(), baseline);
   checks.push(
-    'Original child trigger keeps parent row lock: concurrent owner UPDATE on same parent times out (55P03), independent parent works; rollback preserves fixture',
+    'Original child trigger keeps parent row lock: authenticated runtime UPDATE on same parent times out (55P03), independent parent works; rollback preserves fixture',
   );
 
   await assert.rejects(
@@ -430,12 +486,17 @@ try {
     production_seed_gate: 'SEED_TRIGGER_LOCK_PRIVILEGE_UNRESOLVED',
   };
 } finally {
-  await Promise.all([seed?.end(), inherited?.end(), admin?.end()]);
+  await Promise.all([
+    seed?.end(),
+    inherited?.end(),
+    runtime?.end(),
+    admin?.end(),
+  ]);
   if (container) docker(['rm', '--force', container]);
 }
 report.disposable_container_removed = true;
 writeFileSync(
-  new URL('./evidence/seed-locking-proposal-2026-10-26.json', import.meta.url),
+  new URL('./evidence/seed-locking-proposal-2026-11-01.json', import.meta.url),
   `${JSON.stringify(report, null, 2)}\n`,
 );
 console.log(JSON.stringify(report, null, 2));

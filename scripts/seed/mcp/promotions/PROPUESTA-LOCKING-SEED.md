@@ -1,5 +1,32 @@
 # Candidata de locking seed — revisión Axel/López/BD/Marco
 
+## Revisión de López recibida el 01/11/2026
+
+Axel aportó aceptación técnica **condicionada** de López: guard invoker antes de
+ACL UPDATE(id), auditoría por columna y retirada en orden inverso. No equivale a
+aprobación de BD/Marco ni levanta `SEED_TRIGGER_LOCK_PRIVILEGE_UNRESOLVED`.
+
+La candidata se reforzó con `to_regrole` y rechazo si el rol esperado no existe;
+evalúa además membresía transitiva MEMBER del `session_user`, para impedir que un
+login seed NOINHERIT eluda el guard mediante SET ROLE a otro rol. La auditoría
+mantiene `has_any_column_privilege`/`has_column_privilege`. Se prueba un login
+runtime separado, sin membresía seed, que conserva escritura y contención real
+de locks por PK; los límites transaccionales siguen acotados.
+
+Una sesión superuser también puede satisfacer MEMBER: no se usa como sustituto
+del runtime en el ensayo de coexistencia. El primer ensayo con la protección
+nueva rechazó correctamente ese uso del fixture; se reemplazó por un login runtime
+autenticado, sin relajar el guard. Nueve grupos PASS en PostgreSQL 17.11.
+La evidencia nueva se conserva en
+[seed-locking-proposal-2026-11-01.json](test/evidence/seed-locking-proposal-2026-11-01.json);
+el archivo del 26/10 conserva intacta la evidencia anterior.
+
+BD debe revisar roles/membresías y ventanas de lock reales; Marco debe autorizar
+una entrega BD versionada separada de DATA-005 y cada carga/destino. Ningún SQL
+de esta propuesta se ha aplicado en un sistema compartido.
+
+## Antecedente del 26/10 (implementación anterior al refuerzo)
+
 Issue #15, rama cueva. **Propuesta local validada, PENDIENTE DE REVISIÓN Y
 APROBACIÓN ESPECÍFICA.** Marco aceptó la preparación interna y autorizó proponer
 y validar una solución; no aprobó grants, triggers ni cargas compartidas.
