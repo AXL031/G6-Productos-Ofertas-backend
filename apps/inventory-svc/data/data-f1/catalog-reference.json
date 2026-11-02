@@ -7,7 +7,7 @@
     "path": "scripts/seed/mcp/pricing/003_price_matrix.json",
     "git_blob": "4113948e8a686d46ce9c40b325d8574aa751489b",
     "captured_at": "2026-10-16T23:38:05.750873+00:00",
-    "notice": "Referencia derivada de auditoría publicada por Pricing; requiere ratificación vigente de Catálogo #12. No acredita publicación ni estado actual."
+    "notice": "Referencia ratificada por Gabriel Poma (Catálogo #12) el 2026-11-02 tras cotejo directo con Supabase (catalog.products, catalog.variants, catalog.sku_identity). Se confirman los 7 SKU como identidades válidas en estado BORRADOR (no publicados comercialmente); los SKU -BASE son no vendibles y quedan excluidos de saldos."
   },
   "rows": [
     {
