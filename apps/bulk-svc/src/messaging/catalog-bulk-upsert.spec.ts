@@ -20,6 +20,7 @@ describe('Catalog bulk upsert command construction', () => {
       batchId: 'batch-1',
       correlationId: 'correlation-1',
       rows: [row(0, 'FAM-A'), row(1, 'FAM-A'), row(2, 'FAM-B')],
+      occurredAt: new Date('2026-11-02T15:00:00.000Z'),
     };
     const first = buildCatalogBulkCommands(input);
     const retry = buildCatalogBulkCommands(input);
@@ -44,6 +45,21 @@ describe('Catalog bulk upsert command construction', () => {
       rows,
     });
     expect(commands.length).toBeGreaterThan(1);
+    expect(
+      new Set(commands.map((command) => command.envelope.occurred_at)).size,
+    ).toBe(1);
+    expect(
+      new Set(
+        commands.map((command) => command.envelope.data.batch_operation_id),
+      ).size,
+    ).toBe(commands.length);
+    expect(
+      commands.every(
+        (command) =>
+          command.envelope.operation_id ===
+          command.envelope.data.batch_operation_id,
+      ),
+    ).toBe(true);
     expect(
       commands.every(
         (command) =>
@@ -70,6 +86,36 @@ describe('Catalog bulk upsert command construction', () => {
           ),
       ),
     ).toBe(true);
+    const occurredAt = new Date('2026-11-02T15:00:00.000Z');
+    const replay = buildCatalogBulkCommands({
+      batchId: 'batch-2',
+      correlationId: 'correlation-2',
+      rows,
+      occurredAt,
+    });
+    const firstAdmission = buildCatalogBulkCommands({
+      batchId: 'batch-2',
+      correlationId: 'correlation-2',
+      rows,
+      occurredAt,
+    });
+    expect(replay).toEqual(firstAdmission);
+    expect(
+      replay.every(
+        (command) => command.envelope.occurred_at === occurredAt.toISOString(),
+      ),
+    ).toBe(true);
+  });
+
+  it('uses a current timestamp when a direct builder caller omits admission time', () => {
+    const [command] = buildCatalogBulkCommands({
+      batchId: 'batch-date',
+      correlationId: 'correlation-date',
+      rows: [row(0, 'A')],
+    });
+    expect(Date.parse(command!.envelope.occurred_at)).toBeGreaterThan(
+      Date.parse('2000-01-01T00:00:00.000Z'),
+    );
   });
 
   it('rejects a single family that cannot fit without splitting it', () => {

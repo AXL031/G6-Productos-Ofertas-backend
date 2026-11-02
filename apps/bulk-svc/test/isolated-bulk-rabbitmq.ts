@@ -127,6 +127,36 @@ export class IsolatedBulkRabbitmq {
     }
   }
 
+  async suspend(): Promise<void> {
+    await this.adminChannel?.close().catch(() => undefined);
+    await this.adminConnection?.close().catch(() => undefined);
+    this.adminChannel = null;
+    this.adminConnection = null;
+    await exec('docker', ['exec', this.name, 'rabbitmqctl', 'stop_app'], {
+      timeout: 15000,
+      windowsHide: true,
+    });
+  }
+
+  async resume(): Promise<void> {
+    await exec('docker', ['exec', this.name, 'rabbitmqctl', 'start_app'], {
+      timeout: 15000,
+      windowsHide: true,
+    });
+    const deadline = Date.now() + 30000;
+    while (!this.adminConnection && Date.now() < deadline) {
+      try {
+        this.adminConnection = await amqp.connect(this.url, { timeout: 1000 });
+      } catch {
+        await pause(250);
+      }
+    }
+    if (!this.adminConnection)
+      throw new Error('RabbitMQ aislado no se recuperó tras reiniciarlo.');
+    this.adminConnection.on('error', () => undefined);
+    this.adminChannel = await this.adminConnection.createChannel();
+  }
+
   async stop(): Promise<void> {
     await this.adminChannel?.close().catch(() => undefined);
     await this.adminConnection?.close().catch(() => undefined);

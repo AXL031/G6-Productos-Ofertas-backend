@@ -68,7 +68,7 @@ export function buildCatalogBulkCommands(input: {
   occurredAt?: Date;
 }): CatalogBulkCommand[] {
   if (input.rows.length === 0) return [];
-  const batchOperationId = uuidOrStable(input.batchId, 'catalog-bulk-upsert');
+  const commandInput = { ...input, occurredAt: input.occurredAt ?? new Date() };
   const groups: CatalogBulkRow[][] = [];
   for (const row of input.rows) {
     const previous = groups.at(-1);
@@ -82,14 +82,13 @@ export function buildCatalogBulkCommands(input: {
     const candidate = [...current, ...family];
     if (
       current.length > 0 &&
-      !fits(makeEnvelope(input, batchOperationId, candidate, chunks.length))
+      !fits(makeEnvelope(commandInput, candidate, chunks.length))
     ) {
       chunks.push(current);
       current = [];
     }
     const familyEnvelope = makeEnvelope(
-      input,
-      batchOperationId,
+      commandInput,
       [...current, ...family],
       chunks.length,
     );
@@ -102,7 +101,7 @@ export function buildCatalogBulkCommands(input: {
   if (current.length > 0) chunks.push(current);
 
   return chunks.map((rows, index) => {
-    const envelope = makeEnvelope(input, batchOperationId, rows, index);
+    const envelope = makeEnvelope(commandInput, rows, index);
     const serialized = encode(envelope);
     if (
       Buffer.byteLength(serialized, 'utf8') >
@@ -123,7 +122,6 @@ function makeEnvelope(
     rows: CatalogBulkRow[];
     occurredAt?: Date;
   },
-  batchOperationId: string,
   rows: CatalogBulkRow[],
   index: number,
 ): CatalogBulkEnvelope {
@@ -146,7 +144,7 @@ function makeEnvelope(
       `catalog-bulk-upsert:${index}:message`,
     ),
     schema_version: 1,
-    occurred_at: (input.occurredAt ?? new Date(0)).toISOString(),
+    occurred_at: (input.occurredAt ?? new Date()).toISOString(),
     correlation_id: input.correlationId,
     causation_id: null,
     operation_id: uuidOrStable(
@@ -158,7 +156,10 @@ function makeEnvelope(
     name: CATALOG_BULK_UPSERT_ROUTING_KEY,
     data: {
       batch_id: input.batchId,
-      batch_operation_id: batchOperationId,
+      batch_operation_id: uuidOrStable(
+        input.batchId,
+        `catalog-bulk-upsert:${index}:operation`,
+      ),
       template_version: 2,
       mode,
       rows,

@@ -94,13 +94,11 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
       this.failureCount = 0;
       this.retryAfter = 0;
     } catch {
-      this.failureCount += 1;
-      this.retryAfter = Date.now() + 250 * 2 ** (this.failureCount - 1);
-      this.paused = this.failureCount >= 3;
+      this.failureCount = Math.min(this.failureCount + 1, 8);
+      const backoffMs = Math.min(30_000, 250 * 2 ** (this.failureCount - 1));
+      this.retryAfter = Date.now() + backoffMs;
       this.logger.warn(
-        this.paused
-          ? 'Relay Outbox pausado tras tres fallos; los comandos permanecen pendientes.'
-          : 'Relay Outbox indisponible; los comandos permanecen pendientes y se reintentará con backoff.',
+        'Relay Outbox indisponible; los comandos permanecen pendientes y se reintentará con backoff limitado.',
       );
       await this.closeTransport();
     } finally {

@@ -140,6 +140,21 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
+function admissionIntentWithoutCommandTimes(
+  value: Record<string, unknown>,
+): Record<string, unknown> {
+  const commands = Array.isArray(value.catalogCommands)
+    ? value.catalogCommands.map((item) => {
+        if (typeof item !== 'object' || item === null) return item;
+        const command = structuredClone(item) as Record<string, unknown>;
+        if (typeof command.occurred_at === 'string')
+          command.occurred_at = '<persisted-at-first-admission>';
+        return command;
+      })
+    : value.catalogCommands;
+  return { ...value, catalogCommands: commands };
+}
+
 const domainFailure = (
   code:
     | 'INVALID_INPUT'
@@ -188,19 +203,17 @@ export class BulkPersistenceRepository {
               ),
             )
             .limit(1);
-          const [sameIntent] =
+          const sameIntent =
             intentReceipt && input.admissionIntent
-              ? await tx
-                  .select({ id: inbox.id })
-                  .from(inbox)
-                  .where(
-                    and(
-                      eq(inbox.id, intentReceipt.id),
-                      sql`${inbox.payload} = ${JSON.stringify(input.admissionIntent)}::jsonb`,
-                    ),
-                  )
-                  .limit(1)
-              : [];
+              ? canonicalJson(
+                  admissionIntentWithoutCommandTimes(
+                    intentReceipt.payload as Record<string, unknown>,
+                  ),
+                ) ===
+                canonicalJson(
+                  admissionIntentWithoutCommandTimes(input.admissionIntent),
+                )
+              : false;
           if (!sameIntent) {
             throw new BulkPersistenceError('UNIQUE_CONFLICT');
           }
@@ -826,18 +839,10 @@ export class BulkPersistenceRepository {
           )
           .limit(1);
         const admissionPayload = admission?.payload;
-        if (
-          !admissionPayload ||
-          typeof admissionPayload.batchOperationId !== 'string'
-        )
+        if (!admissionPayload)
           domainFailure(
             'PERSISTENCE_FAILURE',
-            'The admitted batch operation identity is missing.',
-          );
-        if (resultData.batch_operation_id !== admissionPayload.batchOperationId)
-          domainFailure(
-            'INVALID_INPUT',
-            'Catalog result batch_operation_id does not match the admitted batch.',
+            'The admitted batch command relationship is missing.',
           );
         const catalogCommands = Array.isArray(admissionPayload.catalogCommands)
           ? admissionPayload.catalogCommands
@@ -857,6 +862,18 @@ export class BulkPersistenceRepository {
           );
         const commandData = (matchingCommand as Record<string, unknown>)
           .data as Record<string, unknown> | undefined;
+        const batchOperationId =
+          typeof commandData?.batch_operation_id === 'string'
+            ? commandData.batch_operation_id
+            : domainFailure(
+                'INVALID_INPUT',
+                'Admitted Catalog chunk has no batch_operation_id.',
+              );
+        if (resultData.batch_operation_id !== batchOperationId)
+          domainFailure(
+            'INVALID_INPUT',
+            'Catalog result batch_operation_id does not match its admitted chunk.',
+          );
         const commandRows = Array.isArray(commandData?.rows)
           ? commandData.rows
           : [];
@@ -982,7 +999,7 @@ export class BulkPersistenceRepository {
           const rowHandler = `bulk.catalog-result-row:${result.row_operation_id}`;
           const rowIntent = {
             batchId,
-            batchOperationId: admissionPayload.batchOperationId,
+            batchOperationId,
             eventName: input.eventName,
             result,
           };
@@ -1162,6 +1179,26 @@ export class BulkPersistenceRepository {
         .where(eq(batchJobs.batchId, batchId))
         .limit(1);
       return batch ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async findImportAdmissionIntent(
+    batchId: string,
+  ): Promise<Record<string, unknown> | null> {
+    try {
+      const [receipt] = await this.db
+        .select({ payload: inbox.payload })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.messageId, batchId),
+            eq(inbox.handler, 'bulk.import.admission'),
+          ),
+        )
+        .limit(1);
+      return (receipt?.payload as Record<string, unknown> | undefined) ?? null;
     } catch (error) {
       throw persistenceError(error);
     }

@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
+  type CatalogBulkCommand,
   type CatalogBulkRow,
 } from './messaging/catalog-bulk-upsert.js';
 import { parseBulkTemplate } from './domain/bulk-template-v2.js';
@@ -124,13 +125,30 @@ export class BulkImportService {
         variant: (row.variant as Record<string, unknown> | null) ?? null,
       } satisfies CatalogBulkRow;
     });
-    const commands = catalogRows.length
-      ? buildCatalogBulkCommands({
-          batchId: input.batchId,
-          correlationId: input.correlationId,
-          rows: catalogRows,
+    let priorAdmission: Record<string, unknown> | null;
+    try {
+      priorAdmission = await this.repository.findImportAdmissionIntent(
+        input.batchId,
+      );
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
+    }
+    const persistedCommands = Array.isArray(priorAdmission?.catalogCommands)
+      ? priorAdmission.catalogCommands
+      : null;
+    const commands: CatalogBulkCommand[] = persistedCommands
+      ? persistedCommands.map((value) => {
+          const envelope = value as CatalogBulkCommand['envelope'];
+          return { envelope, serialized: JSON.stringify(envelope) };
         })
-      : [];
+      : catalogRows.length
+        ? buildCatalogBulkCommands({
+            batchId: input.batchId,
+            correlationId: input.correlationId,
+            rows: catalogRows,
+            occurredAt: new Date(),
+          })
+        : [];
     try {
       return await this.repository.createImportBatch({
         batchId: input.batchId,
@@ -155,7 +173,6 @@ export class BulkImportService {
           format: input.format,
           templateVersion: input.templateVersion,
           contentRef: input.contentRef,
-          batchOperationId: commands[0]?.envelope.data.batch_operation_id,
           rows: input.intentRows ?? normalized,
           catalogCommands: commands.map(({ envelope }) => envelope),
         },

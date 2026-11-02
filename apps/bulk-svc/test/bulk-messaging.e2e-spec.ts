@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BulkOutboxRelay } from '../src/messaging/bulk-outbox-relay.js';
 import { BulkImportService } from '../src/bulk-import.service.js';
 import { BULK_TEMPLATE_HEADERS } from '../src/domain/bulk-template-v2.js';
@@ -14,6 +14,8 @@ const databaseUrl = process.env.BULK_TEST_DATABASE_URL;
 const integration =
   databaseUrl && process.env.NODE_ENV === 'test' ? describe : describe.skip;
 const id = () => randomUUID();
+const fingerprint = (value: unknown) =>
+  createHash('sha256').update(JSON.stringify(value)).digest('hex');
 
 integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   let pool: Pool;
@@ -50,6 +52,12 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     consumer = new CatalogBulkResultConsumer(repository, broker.url);
     await consumer.onModuleInit();
   }, 90000);
+
+  beforeEach(async () => {
+    await pool.query(
+      'TRUNCATE bulk.inbox, bulk.outbox, bulk.row_domain_steps, bulk.batch_rows, bulk.export_jobs, bulk.batch_jobs, bulk.file_manifests CASCADE',
+    );
+  });
 
   afterAll(async () => {
     await consumer?.onModuleDestroy();
@@ -113,6 +121,193 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       ),
     ).toBe(false);
   }, 30000);
+
+  it('persists, replays and consolidates multiple 1 MiB chunks with distinct chunk identities', async () => {
+    const batchId = id();
+    const correlationId = id();
+    const service = new BulkImportService(repository);
+    const rows = [
+      { rowId: id(), rowOperationId: id(), rowNumber: 2, skuBase: 'FAMILY-A' },
+      { rowId: id(), rowOperationId: id(), rowNumber: 3, skuBase: 'FAMILY-A' },
+      { rowId: id(), rowOperationId: id(), rowNumber: 4, skuBase: 'FAMILY-B' },
+    ];
+    const input = {
+      batchId,
+      correlationId,
+      contentRef: `test://${id()}`,
+      format: 'CSV',
+      templateVersion: 2,
+      rows: rows.map((row, index) => ({
+        rowId: row.rowId,
+        productId: null,
+        mode: 'ALTA' as const,
+        skuIdentityRequired: true,
+        skuBase: row.skuBase,
+        variantSkus: [`${row.skuBase}-${index}`],
+        stockInicial: 0,
+      })),
+      intentRows: rows.map((row, index) => ({
+        ...row,
+        productId: null,
+        variantId: null,
+        product: { nombre: `Producto ${index} ${'x'.repeat(400_000)}` },
+        variant: null,
+      })),
+    };
+    await service.createImport(input);
+    const original = (await repository.findPendingOutbox(10))
+      .filter((item) => item.correlationId === correlationId)
+      .sort((left, right) => {
+        const leftRows = (
+          left.payload as { data: { rows: Array<{ row_number: number }> } }
+        ).data.rows;
+        const rightRows = (
+          right.payload as { data: { rows: Array<{ row_number: number }> } }
+        ).data.rows;
+        return leftRows[0]!.row_number - rightRows[0]!.row_number;
+      });
+    expect(original).toHaveLength(2);
+    const originalById = new Map(
+      original.map((item) => [item.messageId, item]),
+    );
+    const firstEnvelopes = original.map((item) => item.payload);
+    const identityValues = firstEnvelopes.map((value) => {
+      const envelope = value as {
+        operation_id: string;
+        data: { batch_operation_id: string; rows: Array<{ sku_base: string }> };
+      };
+      expect(envelope.operation_id).toBe(envelope.data.batch_operation_id);
+      return envelope.data.batch_operation_id;
+    });
+    expect(new Set(identityValues).size).toBe(2);
+    expect(
+      firstEnvelopes.map((value) =>
+        (
+          value as { data: { rows: Array<{ sku_base: string }> } }
+        ).data.rows.map((row) => row.sku_base),
+      ),
+    ).toEqual([['FAMILY-A', 'FAMILY-A'], ['FAMILY-B']]);
+
+    await service.createImport(input);
+    const replayed = (await repository.findPendingOutbox(10))
+      .filter((item) => item.correlationId === correlationId)
+      .sort((left, right) => {
+        const leftRows = (
+          left.payload as { data: { rows: Array<{ row_number: number }> } }
+        ).data.rows;
+        const rightRows = (
+          right.payload as { data: { rows: Array<{ row_number: number }> } }
+        ).data.rows;
+        return leftRows[0]!.row_number - rightRows[0]!.row_number;
+      });
+    expect(replayed.map((item) => fingerprint(item.payload))).toEqual(
+      firstEnvelopes.map(fingerprint),
+    );
+    expect(replayed.map((item) => item.messageId)).toEqual(
+      original.map((item) => item.messageId),
+    );
+
+    const relay = new BulkOutboxRelay(repository, broker.url);
+    await relay.flush();
+    const delivered = [
+      await broker.nextCommand(),
+      await broker.nextCommand(),
+    ].sort((left, right) => {
+      const leftRows = (
+        left as { data: { rows: Array<{ row_number: number }> } }
+      ).data.rows;
+      const rightRows = (
+        right as { data: { rows: Array<{ row_number: number }> } }
+      ).data.rows;
+      return leftRows[0]!.row_number - rightRows[0]!.row_number;
+    });
+    expect(delivered.map(fingerprint)).toEqual(firstEnvelopes.map(fingerprint));
+
+    for (const [chunkIndex, commandValue] of firstEnvelopes.entries()) {
+      const command = commandValue as {
+        message_id: string;
+        operation_id: string;
+        occurred_at: string;
+        correlation_id: string;
+        data: {
+          batch_operation_id: string;
+          rows: Array<{
+            row_number: number;
+            row_operation_id: string;
+            sku_base: string;
+          }>;
+        };
+      };
+      const results = command.data.rows.map((row) => ({
+        row_number: row.row_number,
+        row_operation_id: row.row_operation_id,
+        product_id: `product-${row.row_number}`,
+        sku_base: row.sku_base,
+        status: 'COMPLETED',
+        code: null,
+      }));
+      const resultMessageId = id();
+      await broker.publishResult({
+        message_id: resultMessageId,
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        correlation_id: correlationId,
+        causation_id: command.message_id,
+        operation_id: command.operation_id,
+        producer: 'catalog-svc',
+        kind: 'result',
+        name: 'catalog.bulk.upsert.completed',
+        data: {
+          batch_id: batchId,
+          batch_operation_id: command.data.batch_operation_id,
+          results,
+        },
+      });
+      await waitFor(async () => {
+        const receipt = await pool.query(
+          'SELECT payload FROM bulk.inbox WHERE message_id = $1 AND handler = $2',
+          [resultMessageId, 'bulk.catalog.invalid-result'],
+        );
+        if (receipt.rows.length > 0)
+          throw new Error(
+            `Chunk result was durably rejected: ${JSON.stringify(receipt.rows[0]?.payload)}`,
+          );
+        const row = rows[chunkIndex];
+        if (chunkIndex === 0 && row) {
+          const statuses = await Promise.all(
+            rows
+              .slice(0, 2)
+              .map(async (entry) =>
+                repository.listRowSteps(batchId, entry.rowId),
+              ),
+          );
+          return statuses
+            .flat()
+            .every(
+              (step) =>
+                step.domain !== 'CATALOGO' || step.status === 'COMPLETED',
+            );
+        }
+        const statuses = await repository.listRowSteps(batchId, rows[2]!.rowId);
+        return statuses.some(
+          (step) => step.domain === 'CATALOGO' && step.status === 'COMPLETED',
+        );
+      });
+      expect(originalById.has(command.message_id)).toBe(true);
+      expect(command.occurred_at).not.toBe('1970-01-01T00:00:00.000Z');
+    }
+    for (const row of rows) {
+      const steps = await repository.listRowSteps(batchId, row.rowId);
+      expect(steps.find((step) => step.domain === 'CATALOGO')?.status).toBe(
+        'COMPLETED',
+      );
+      expect(
+        steps
+          .filter((step) => step.domain !== 'CATALOGO')
+          .every((step) => step.status === 'PENDING'),
+      ).toBe(true);
+    }
+  }, 60000);
 
   it('confirms Outbox publication, applies multi-row mixed results atomically, deduplicates transport and operation replay', async () => {
     const batchId = id();
@@ -434,6 +629,49 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       ),
     ).toBe(true);
   }, 30000);
+
+  it('recovers a transient broker outage in the same relay process without losing the pending command', async () => {
+    const messageId = id();
+    await repository.enqueueOutbox({
+      messageId,
+      eventName: 'catalog.bulk.upsert.requested',
+      kind: 'command',
+      schemaVersion: 1,
+      correlationId: id(),
+      operationId: id(),
+      occurredAt: new Date(),
+      payload: {
+        message_id: messageId,
+        name: 'catalog.bulk.upsert.requested',
+      },
+    });
+    const relay = new BulkOutboxRelay(repository, broker.url);
+    await broker.suspend();
+    await relay.flush();
+    expect(
+      (await repository.findPendingOutbox(10)).some(
+        (item) => item.messageId === messageId && item.publishedAt === null,
+      ),
+    ).toBe(true);
+
+    await broker.resume();
+    await waitFor(async () => {
+      await relay.flush();
+      return !(await repository.findPendingOutbox(10)).some(
+        (item) => item.messageId === messageId,
+      );
+    });
+    const delivered = await broker.nextCommand();
+    expect(delivered).toEqual({
+      message_id: messageId,
+      name: 'catalog.bulk.upsert.requested',
+    });
+    expect(
+      (await repository.findPendingOutbox(10)).some(
+        (item) => item.messageId === messageId,
+      ),
+    ).toBe(false);
+  }, 90000);
 });
 
 async function waitFor(
