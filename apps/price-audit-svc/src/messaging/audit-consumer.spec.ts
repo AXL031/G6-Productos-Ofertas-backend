@@ -29,6 +29,7 @@ describe('Límite del consumidor de auditoría', () => {
       correlationId: value.correlation_id,
       payload: value,
       data: {},
+      occurredAt: new Date(value.occurred_at),
     });
   });
   it.each([

@@ -1,14 +1,15 @@
 import { AuditHttpError } from '../http/audit-http.error.js';
 
 export interface AuditChange {
-  sku: string;
+  targetType?: 'PRODUCTO' | 'SKU';
+  sku: string | null;
   productId: string;
   priceType: 'REGULAR' | 'OFERTA';
   previous: string | null;
   next: string | null;
   variation: string | null;
   operation: 'CREACION' | 'MODIFICACION' | 'RETIRO_OFERTA';
-  channel: string;
+  channel: string | null;
   reason: string;
   batchId: string | null;
   userId: string | null;
@@ -19,7 +20,7 @@ export interface AuditChange {
 export const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export function validMoney(value: unknown): value is string {
-  return typeof value === 'string' && /^\d{1,10}(?:\.\d{1,2})?$/.test(value);
+  return typeof value === 'string' && /^\d+(?:\.\d+)?$/.test(value);
 }
 export function validateChange(change: AuditChange): AuditChange {
   const invalid = () => {
@@ -27,8 +28,17 @@ export function validateChange(change: AuditChange): AuditChange {
   };
   if (
     !change ||
-    ![change.sku, change.productId, change.channel, change.reason].every(
+    ![change.productId, change.reason].every(
       (v) => typeof v === 'string' && v.trim(),
+    ) ||
+    (change.targetType !== undefined &&
+      !['PRODUCTO', 'SKU'].includes(change.targetType)) ||
+    (change.targetType === 'PRODUCTO'
+      ? change.sku !== null
+      : typeof change.sku !== 'string' || !change.sku.trim()) ||
+    !(
+      change.channel === null ||
+      (typeof change.channel === 'string' && change.channel.trim())
     ) ||
     !['REGULAR', 'OFERTA'].includes(change.priceType) ||
     !(change.at instanceof Date) ||
@@ -56,7 +66,9 @@ export function validateChange(change: AuditChange): AuditChange {
     if (
       change.previous === null ||
       change.next === null ||
-      change.variation === null
+      (change.previous !== null &&
+        !/^0(?:\.0+)?$/.test(change.previous) &&
+        change.variation === null)
     )
       invalid();
   } else if (change.operation === 'RETIRO_OFERTA') {
@@ -68,8 +80,10 @@ export function validateChange(change: AuditChange): AuditChange {
     )
       invalid();
   } else invalid();
-  // La variación viene del mapeo aprobado del emisor; P-AUD-02 no define precisión ni divisor cero.
   return {
+    ...(change.targetType === undefined
+      ? {}
+      : { targetType: change.targetType }),
     sku: change.sku,
     productId: change.productId,
     priceType: change.priceType,

@@ -12,6 +12,15 @@ import { Database } from './database.js';
 import { PostgresTaxonomyRepository } from './postgres-taxonomy.repository.js';
 import { DeactivationCheckService } from './domain/deactivation-check.service.js';
 import { DeactivationIntentService } from './domain/deactivation-intent.service.js';
+import { BrandReactivationService } from './domain/brand-reactivation.service.js';
+import { CategoryReactivationService } from './domain/category-reactivation.service.js';
+import { CategoryCreateService } from './domain/category-create.service.js';
+import { CategoryUpdateService } from './domain/category-update.service.js';
+import { BrandWriteService } from './domain/brand-write.service.js';
+import { TaxonomyWriteController } from './taxonomy-write.controller.js';
+import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
+import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
+import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
 import {
   TAXONOMY_SECURITY_CONFIG,
   TaxonomyAuthGuard,
@@ -19,6 +28,7 @@ import {
   readTaxonomySecurityConfig,
   TAXONOMY_DEMO_ENABLED,
   readTaxonomyDemoConfig,
+  TaxonomyUserGuard,
 } from './taxonomy-auth.js';
 
 export interface OpcionesModuloTaxonomy {
@@ -28,13 +38,27 @@ export interface OpcionesModuloTaxonomy {
 
 @Module({
   imports: [],
-  controllers: [TaxonomySvcController, TaxonomyController, ReadinessController],
+  controllers: [
+    TaxonomySvcController,
+    TaxonomyController,
+    TaxonomyWriteController,
+    ReadinessController,
+  ],
   providers: [
     TaxonomySvcService,
     Database,
     DeactivationCheckService,
     DeactivationIntentService,
+    DeactivationRecoveryRunner,
+    TaxonomyAmqpRuntime,
+    TaxonomyMessageStore,
     TaxonomyAuthGuard,
+    TaxonomyUserGuard,
+    BrandReactivationService,
+    CategoryReactivationService,
+    CategoryCreateService,
+    CategoryUpdateService,
+    BrandWriteService,
     TaxonomyTokenVerifier,
     {
       provide: TAXONOMY_DEMO_ENABLED,

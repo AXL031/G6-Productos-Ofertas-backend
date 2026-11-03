@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import {
   categorias,
+  categorySeo,
   esquemaTaxonomia,
   marcas,
   operacionesBaja,
@@ -10,6 +11,22 @@ import {
 
 describe('taxonomy.schema (#35)', () => {
   const db = drizzle.mock({ schema: esquemaTaxonomia });
+
+  it('mapea SEO de categoría con unicidad y FK solo al esquema propio', () => {
+    const tabla = getTableConfig(categorySeo);
+    expect(tabla.schema).toBe('taxonomy');
+    expect(tabla.name).toBe('category_seo');
+    expect(tabla.uniqueConstraints.map((item) => item.name)).toEqual(
+      expect.arrayContaining([
+        'uq_category_seo_categoria',
+        'uq_category_seo_slug',
+      ]),
+    );
+    expect(tabla.foreignKeys).toHaveLength(1);
+    expect(
+      getTableConfig(tabla.foreignKeys[0]!.reference().foreignTable).schema,
+    ).toBe('taxonomy');
+  });
 
   it('mapea taxonomy.categories con nombres snake_case', () => {
     const { sql } = db
