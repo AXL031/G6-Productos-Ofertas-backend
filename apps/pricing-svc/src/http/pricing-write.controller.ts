@@ -25,11 +25,6 @@ import {
   parsePriceUpdateRequest,
 } from './pricing-write.dto.js';
 import { wireMoney, wireVersion } from './pricing-reads.js';
-import {
-  channels,
-  PRICING_CHANNEL_IDS,
-  serializeCommercialChannel,
-} from './commercial-prices.js';
 
 type WriteOperation =
   | 'actualizarPrecioSku'
@@ -64,11 +59,6 @@ export class PricingWriteController {
     @Optional()
     @Inject(PRICING_FACT_FACTORY)
     private readonly fact?: PricingFactFactory,
-    @Optional()
-    @Inject(PRICING_CHANNEL_IDS)
-    private readonly channelIds?: Partial<
-      Record<(typeof channels)[number], string>
-    >,
   ) {}
   private async prerequisites(
     operation: WriteOperation,
@@ -121,12 +111,6 @@ export class PricingWriteController {
       response,
     );
     const { channelId, expectedVersion, input } = parsePriceUpdateRequest(body);
-    if (channelId !== null && !uuid.test(channelId))
-      throw new PricingHttpError(400, 'VALIDACION');
-    const responseChannel =
-      'sku' in target
-        ? serializeCommercialChannel(channelId, this.channelIds)
-        : channelId;
     const result = await this.mutations.update(
       target,
       channelId,
@@ -153,7 +137,7 @@ export class PricingWriteController {
       precio_oferta:
         current.precioOferta === null ? null : wireMoney(current.precioOferta),
       currency: current.currency,
-      channel_id: responseChannel,
+      channel_id: channelId,
       valid_from: current.validFrom.toISOString(),
       valid_until: current.validUntil?.toISOString() ?? null,
       price_version: wireVersion(result.definition.priceVersion),
@@ -195,8 +179,6 @@ export class PricingWriteController {
       response,
     );
     const { channelId, input } = parsePriceScheduleRequest(body);
-    if (channelId !== null && !uuid.test(channelId))
-      throw new PricingHttpError(400, 'VALIDACION');
     const result = await this.mutations.schedule(
       target,
       channelId,

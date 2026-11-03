@@ -69,11 +69,17 @@ export class TaxonomySvcService {
 
   async listarCategorias(): Promise<{ categories: CategoriaDto[] }> {
     const filas = await this.taxonomyRepository.findCategoriasActivas();
-    return { categories: filas.map(mapCategoria) };
+    return {
+      categories: filas
+        .filter((fila) => fila.estado === 'ACTIVO')
+        .map(mapCategoria),
+    };
   }
 
   async listarMarcas(): Promise<{ brands: MarcaDto[] }> {
     const filas = await this.taxonomyRepository.findMarcasActivas();
-    return { brands: filas.map(mapMarca) };
+    return {
+      brands: filas.filter((fila) => fila.estado === 'ACTIVO').map(mapMarca),
+    };
   }
 }

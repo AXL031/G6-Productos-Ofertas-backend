@@ -35,6 +35,28 @@ describe('Preparación contractual de escrituras, sin exponer mutaciones', () =>
     expect(input.precioOferta).toBeNull();
   });
 
+  it.each(['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'])(
+    'acepta canal textual %s',
+    (channelId) => {
+      expect(parsePriceUpdateRequest({ ...body, channelId }).channelId).toBe(
+        channelId,
+      );
+    },
+  );
+  it.each([
+    'OTHER',
+    'retail',
+    ' RETAIL',
+    '74ed2f19-7e70-4915-a6f6-bbc691b82587',
+    12,
+  ])('rechaza canal no contractual %s', (channelId) => {
+    expect(() => parsePriceUpdateRequest({ ...body, channelId })).toThrow(
+      'VALIDACION',
+    );
+    expect(() =>
+      parsePriceScheduleRequest({ ...scheduled, channelId }),
+    ).toThrow('VALIDACION');
+  });
   it('permite conservar el regular omitido y no crea un precio cero', () => {
     const parsed = parsePriceUpdateRequest({ ...body, precioRegular: null });
     expect(parsed.input.precioRegular).toBeUndefined();

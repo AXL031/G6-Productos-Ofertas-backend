@@ -1,4 +1,5 @@
-import { Controller, Get, Headers, Query } from '@nestjs/common';
+import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
+import { TaxonomyAuthGuard } from './taxonomy-auth.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
 import type { CategoriaDto, MarcaDto } from './taxonomy-svc.service.js';
@@ -23,6 +24,7 @@ function validarEntrada(consulta: Consulta, correlationId?: string): void {
 }
 
 @Controller('api/v1')
+@UseGuards(TaxonomyAuthGuard)
 export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomySvcService) {}
 

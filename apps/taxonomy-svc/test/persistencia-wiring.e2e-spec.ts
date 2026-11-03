@@ -3,13 +3,17 @@ import { Test, TestingModule } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { TaxonomySvcModule } from './../src/taxonomy-svc.module.js';
+import { TaxonomyAuthGuard } from '../src/taxonomy-auth.js';
 
 const URL_CAIDA = 'postgresql://postgres:postgres@127.0.0.1:1/taxonomy';
 
 async function crearApp(databaseUrl: string): Promise<INestApplication<App>> {
   const moduleFixture: TestingModule = await Test.createTestingModule({
     imports: [TaxonomySvcModule.forRoot({ databaseUrl })],
-  }).compile();
+  })
+    .overrideGuard(TaxonomyAuthGuard)
+    .useValue({ canActivate: () => true })
+    .compile();
   const app = moduleFixture.createNestApplication();
   await app.init();
   return app;
