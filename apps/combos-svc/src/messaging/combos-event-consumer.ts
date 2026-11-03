@@ -9,7 +9,7 @@ import amqp, {
   type ChannelModel,
   type ConsumeMessage,
 } from 'amqplib';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   CombosRepository,
   InboxMessageConflictError,
@@ -363,10 +363,25 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
         catalogUrl,
         () => process.env.COMBOS_CATALOG_SERVICE_BEARER,
       );
+      const catalogRequestCorrelationId = UUID.test(envelope.correlation_id)
+        ? envelope.correlation_id
+        : randomUUID();
+      if (catalogRequestCorrelationId !== envelope.correlation_id) {
+        this.logger.log(
+          JSON.stringify({
+            event: 'catalog_request_correlation_mapped',
+            message_id: safeLog(envelope.message_id),
+            event_correlation_id: safeLog(envelope.correlation_id),
+            catalog_request_correlation_id: safeLog(
+              catalogRequestCorrelationId,
+            ),
+          }),
+        );
+      }
       const resolveProductSkus = async (candidates: string[]) => {
         const contexts = await Promise.all(
           candidates.map((sku) =>
-            catalog.getContextForMapping(sku, envelope.correlation_id),
+            catalog.getContextForMapping(sku, catalogRequestCorrelationId),
           ),
         );
         return contexts

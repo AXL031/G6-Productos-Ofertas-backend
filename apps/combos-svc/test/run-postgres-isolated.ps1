@@ -1,6 +1,7 @@
 param(
   [switch]$TestEnvironmentRestoration,
-  [ValidateSet('app.e2e-spec.ts', 'combos-postgres.e2e-spec.ts', 'combos-rabbitmq.e2e-spec.ts')]
+  [string]$EvidenceDirectory,
+  [ValidateSet('app.e2e-spec.ts', 'combos-postgres.e2e-spec.ts', 'combos-rabbitmq.e2e-spec.ts', 'combos-catalog-rabbitmq.e2e-spec.ts')]
   [string]$TestFile,
   [string]$TestNamePattern
 )
@@ -8,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $environmentNames = @(
   'COMBOS_TEST_EPHEMERAL', 'COMBOS_TEST_DATABASE_URL', 'COMBOS_TEST_CA',
-  'COMBOS_TEST_RABBITMQ_URL', 'COMBOS_TEST_RABBITMQ_CONTAINER',
+  'COMBOS_TEST_RABBITMQ_URL', 'COMBOS_TEST_RABBITMQ_CONTAINER', 'COMBOS_TEST_CATALOG_PASSWORD', 'COMBOS_TEST_CWD',
   'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD', 'PGHOST', 'PGSSLMODE', 'PGSSLROOTCERT'
 )
 $originalEnvironment = @{}
@@ -18,6 +19,14 @@ foreach ($name in $environmentNames) {
     Defined = $processEnvironment.Contains($name)
     Value = [Environment]::GetEnvironmentVariable($name, 'Process')
   }
+}
+
+if ($EvidenceDirectory) {
+  if (Test-Path -LiteralPath $EvidenceDirectory) {
+    throw "El directorio de evidencia ya existe; no se sobrescribirá: $EvidenceDirectory"
+  }
+  $null = New-Item -ItemType Directory -Path $EvidenceDirectory
+  $EvidenceDirectory = (Resolve-Path -LiteralPath $EvidenceDirectory).Path
 }
 
 function Restore-HarnessEnvironment {
@@ -51,7 +60,10 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $docsCandidate = if ($env:COMBOS_TEST_DOCS_ROOT) { $env:COMBOS_TEST_DOCS_ROOT } else { Join-Path $repoRoot '..\docs' }
 $docsRoot = (Resolve-Path $docsCandidate).Path
 $migration = Join-Path $docsRoot 'datos\combos\migrations\0001_create_combos_persistence.sql'
-if (-not (Test-Path -LiteralPath $migration)) { throw "No se encontró la migración oficial: $migration" }
+$catalogMigration = Join-Path $docsRoot 'datos\catalog-svc\migrations\0001_create_catalog.sql'
+foreach ($requiredMigration in @($migration, $catalogMigration)) {
+  if (-not (Test-Path -LiteralPath $requiredMigration)) { throw "No se encontró la migración oficial: $requiredMigration" }
+}
 $dockerInfo = & docker info --format '{{.ServerVersion}}' 2>$null
 if ($LASTEXITCODE -ne 0) { throw 'Docker daemon no disponible; PostgreSQL aislado no ejecutado.' }
 $id = [guid]::NewGuid().ToString('N')
@@ -64,6 +76,9 @@ if (-not $folder.StartsWith($tempRoot, [StringComparison]::OrdinalIgnoreCase)) {
 $randomBytes = [byte[]]::new(24)
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($randomBytes)
 $password = [BitConverter]::ToString($randomBytes).Replace('-', '')
+$catalogRandomBytes = [byte[]]::new(24)
+[Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($catalogRandomBytes)
+$catalogPassword = [BitConverter]::ToString($catalogRandomBytes).Replace('-', '')
 $harnessLabel = 'com.taller-sw.g6.combos-harness'
 $started = $false
 $rabbitStarted = $false
@@ -113,27 +128,101 @@ try {
   $rabbitPort = [int]$Matches[1]
   Assert-ContainerRunning $container 'PostgreSQL antes de preparar el esquema'
   Assert-ContainerRunning $rabbitContainer 'RabbitMQ antes de preparar el esquema'
-  & docker exec $container psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -c 'CREATE ROLE po_combos_owner NOLOGIN; CREATE SCHEMA combos AUTHORIZATION po_combos_owner;'
-  if ($LASTEXITCODE -ne 0) { throw "No se pudo preparar el owner/schema propio en la base desechable (psql exit $LASTEXITCODE)." }
-  $migrationSql = [IO.File]::ReadAllText($migration)
-  $bootstrapSql = Join-Path $folder 'apply-combos.sql'
-  [IO.File]::WriteAllText($bootstrapSql, "SET ROLE po_combos_owner;`n$migrationSql", [Text.UTF8Encoding]::new($false))
-  & docker cp $bootstrapSql "${container}:/tmp/apply-combos.sql" | Out-Null
-  & docker exec $container psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -f /tmp/apply-combos.sql
-  if ($LASTEXITCODE -ne 0) { throw "Falló la migración oficial en la instancia desechable (psql exit $LASTEXITCODE)." }
+  & docker exec $container psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -c "CREATE ROLE po_combos_owner NOLOGIN; CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE catalog_app LOGIN PASSWORD '$catalogPassword'; CREATE SCHEMA combos AUTHORIZATION po_combos_owner; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner;"
+  if ($LASTEXITCODE -ne 0) { throw "No se pudieron preparar owners/schemas de prueba en la base desechable (psql exit $LASTEXITCODE)." }
+  foreach ($migrationSpec in @(
+    @{ Path = $catalogMigration; Owner = 'po_catalog_owner'; Name = 'catalog' },
+    @{ Path = $migration; Owner = 'po_combos_owner'; Name = 'combos' }
+  )) {
+    $migrationSql = [IO.File]::ReadAllText($migrationSpec.Path)
+    $bootstrapSql = Join-Path $folder "apply-$($migrationSpec.Name).sql"
+    [IO.File]::WriteAllText($bootstrapSql, "SET ROLE $($migrationSpec.Owner);`n$migrationSql", [Text.UTF8Encoding]::new($false))
+    & docker cp $bootstrapSql "${container}:/tmp/apply-$($migrationSpec.Name).sql" | Out-Null
+    & docker exec $container psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -f "/tmp/apply-$($migrationSpec.Name).sql"
+    if ($LASTEXITCODE -ne 0) { throw "Falló la migración oficial de $($migrationSpec.Name) en la instancia desechable (psql exit $LASTEXITCODE)." }
+  }
   $env:COMBOS_TEST_EPHEMERAL = '1'; $env:COMBOS_TEST_DATABASE_URL = 'harness-owned'; $env:COMBOS_TEST_CA = Join-Path $folder 'server.crt'
+  $env:COMBOS_TEST_CATALOG_PASSWORD = $catalogPassword
+  $env:COMBOS_TEST_CWD = $folder
   $env:COMBOS_TEST_RABBITMQ_URL = "amqp://combos_test:${rabbitPassword}@127.0.0.1:${rabbitPort}/%2f"
   $env:COMBOS_TEST_RABBITMQ_CONTAINER = $rabbitContainer
   $env:PGPORT = $port; $env:PGDATABASE = 'combos_test'; $env:PGUSER = 'postgres'; $env:PGPASSWORD = $password
   $env:PGHOST = '127.0.0.1'; $env:PGSSLMODE = 'verify-full'; $env:PGSSLROOTCERT = $env:COMBOS_TEST_CA
   Push-Location $repoRoot
+  & npm.cmd run build:catalog-svc
+  if ($LASTEXITCODE -ne 0) { throw 'Falló el build de Catalog requerido por la suite de integración real.' }
   $testTarget = if ($TestFile) { "apps/combos-svc/test/$TestFile" } else { 'apps/combos-svc' }
   $testArguments = @($testTarget, '--maxWorkers=1', '--no-file-parallelism')
   if ($TestNamePattern) { $testArguments += @('--testNamePattern', $TestNamePattern) }
-  try { & npm.cmd run test:e2e -- @testArguments; if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' } }
+  $testReport = Join-Path $folder 'vitest-results.json'
+  $testArguments += @('--reporter=json', "--outputFile=$testReport")
+  try {
+    & npm.cmd run test:e2e -- @testArguments
+    if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' }
+    if (-not (Test-Path -LiteralPath $testReport)) { throw 'Vitest no produjo el reporte JSON requerido.' }
+    $testResult = [IO.File]::ReadAllText($testReport) | ConvertFrom-Json
+    $expectedFiles = if ($TestFile) { @($TestFile) } else { @('app.e2e-spec.ts', 'combos-postgres.e2e-spec.ts', 'combos-rabbitmq.e2e-spec.ts', 'combos-catalog-rabbitmq.e2e-spec.ts') }
+    if (
+      -not ($testResult.PSObject.Properties.Name -contains 'numPassedTests') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numFailedTests') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numPendingTests') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numTodoTests') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numTotalTests') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numTotalTestSuites') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numPassedTestSuites') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numFailedTestSuites') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'numPendingTestSuites') -or
+      -not ($testResult.PSObject.Properties.Name -contains 'testResults') -or
+      [int]$testResult.numPassedTests -lt 1 -or
+      [int]$testResult.numFailedTests -ne 0 -or
+      [int]$testResult.numPendingTests -ne 0 -or
+      [int]$testResult.numTodoTests -ne 0 -or
+      [int]$testResult.numTotalTests -ne ([int]$testResult.numPassedTests + [int]$testResult.numFailedTests + [int]$testResult.numPendingTests + [int]$testResult.numTodoTests) -or
+      [int]$testResult.numTotalTestSuites -lt $expectedFiles.Count -or
+      [int]$testResult.numPassedTestSuites -ne [int]$testResult.numTotalTestSuites -or
+      [int]$testResult.numFailedTestSuites -ne 0 -or
+      [int]$testResult.numPendingTestSuites -ne 0
+    ) { throw 'La suite E2E crítica quedó sin pruebas ejecutadas, con fallos o con pruebas omitidas.' }
+    $reportedFiles = @($testResult.testResults | ForEach-Object { [IO.Path]::GetFileName([string]$_.name) })
+    if (@($testResult.testResults | Where-Object { $_.status -ne 'passed' }).Count -ne 0) { throw 'Vitest reportó una suite que no terminó en estado passed.' }
+    foreach ($expectedFile in $expectedFiles) {
+      if (@($reportedFiles | Where-Object { $_ -eq $expectedFile }).Count -ne 1) {
+        throw "La suite E2E prevista no aparece exactamente una vez en el reporte: $expectedFile"
+      }
+    }
+    if ($reportedFiles.Count -ne $expectedFiles.Count) { throw 'Vitest ejecutó un inventario de suites distinto al esperado.' }
+    Write-Output "HARNESS_TEST_COUNTS: PASS passed=$($testResult.numPassedTests) failed=$($testResult.numFailedTests) skipped=$($testResult.numPendingTests)"
+    if ($EvidenceDirectory) {
+      Copy-Item -LiteralPath $testReport -Destination (Join-Path $EvidenceDirectory 'vitest-results.json')
+      $sha = (& git -C $repoRoot rev-parse HEAD).Trim()
+      $status = & git -C $repoRoot status --short
+      @("result=PASS", "sha=$sha", "passed=$($testResult.numPassedTests)", "failed=$($testResult.numFailedTests)", "skipped=$($testResult.numPendingTests)", "suites=$($reportedFiles -join ',')", "working_tree_status:", $status) |
+        Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'run-summary.txt') -Encoding utf8
+      Write-Output "HARNESS_EVIDENCE: $EvidenceDirectory"
+    }
+  }
   finally { Pop-Location }
 } catch {
   Write-Host "HARNESS_FAILURE: $($_.Exception.Message)"
+  if (Get-Variable -Name testReport -ErrorAction SilentlyContinue) {
+    if (Test-Path -LiteralPath $testReport) {
+      try {
+        $failedReport = [IO.File]::ReadAllText($testReport) | ConvertFrom-Json
+        foreach ($suite in $failedReport.testResults) {
+          foreach ($assertion in $suite.assertionResults | Where-Object { $_.status -eq 'failed' }) {
+            Write-Host "TEST_FAILURE[$([IO.Path]::GetFileName([string]$suite.name))]: $($assertion.fullName)"
+            Write-Host ($assertion.failureMessages -join "`n")
+          }
+        }
+        Write-Host "HARNESS_TEST_COUNTS: passed=$($failedReport.numPassedTests) failed=$($failedReport.numFailedTests) skipped=$($failedReport.numPendingTests)"
+        if ($EvidenceDirectory) {
+          Copy-Item -LiteralPath $testReport -Destination (Join-Path $EvidenceDirectory 'vitest-results.json')
+          @("result=FAIL", "sha=$((& git -C $repoRoot rev-parse HEAD).Trim())", "passed=$($failedReport.numPassedTests)", "failed=$($failedReport.numFailedTests)", "skipped=$($failedReport.numPendingTests)") |
+            Set-Content -LiteralPath (Join-Path $EvidenceDirectory 'run-summary.txt') -Encoding utf8
+        }
+      } catch { Write-Host "HARNESS_REPORT_DIAGNOSTIC_FAILURE: $($_.Exception.Message)" }
+    }
+  }
   foreach ($target in @($container, $rabbitContainer)) {
     $inspect = & docker inspect --format '{{json .State}}|{{.Config.Image}}|{{json .Config.Labels}}|{{json .HostConfig.Memory}}' $target 2>$null
     if ($LASTEXITCODE -eq 0) { Write-Host "CONTAINER_INSPECT[$target]: $inspect" }
