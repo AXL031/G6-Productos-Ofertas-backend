@@ -48,14 +48,15 @@ export const auditLog = audit.table(
   {
     id: uuid('id_auditoria').notNull().defaultRandom(),
     inboxId: uuid('inbox_id').notNull(),
-    sku: text('sku').notNull(),
+    targetType: text('target_type').notNull().default('SKU'),
+    sku: text('sku'),
     productId: text('product_id').notNull(),
     priceType: text('tipo_precio').notNull(),
-    previous: numeric('precio_anterior', { precision: 12, scale: 2 }),
-    next: numeric('precio_nuevo', { precision: 12, scale: 2 }),
+    previous: numeric('precio_anterior'),
+    next: numeric('precio_nuevo'),
     variation: numeric('variacion_porcentual'),
     operation: text('tipo_operacion').notNull(),
-    channel: text('canal_origen').notNull(),
+    channel: text('canal_origen'),
     reason: text('motivo_cambio').notNull(),
     batchId: uuid('batch_id'),
     userId: text('usuario_id'),
@@ -82,6 +83,10 @@ export const auditLog = audit.table(
     index('ix_price_audit_log_canal_timestamp').on(t.channel, t.at.desc()),
     index('ix_price_audit_log_batch_timestamp').on(t.batchId, t.at.desc()),
     check(
+      'ck_price_audit_log_target',
+      sql`(${t.targetType} = 'PRODUCTO' AND ${t.sku} IS NULL) OR (${t.targetType} = 'SKU' AND ${t.sku} IS NOT NULL AND length(${t.sku}) > 0)`,
+    ),
+    check(
       'ck_price_audit_log_type',
       sql`${t.priceType} IN ('REGULAR','OFERTA')`,
     ),
@@ -96,7 +101,7 @@ export const auditLog = audit.table(
     ),
     check(
       'ck_price_audit_log_null_semantics',
-      sql`(${t.operation} = 'CREACION' AND ${t.previous} IS NULL AND ${t.next} IS NOT NULL AND ${t.variation} IS NULL) OR (${t.operation} = 'MODIFICACION' AND ${t.previous} IS NOT NULL AND ${t.next} IS NOT NULL AND ${t.variation} IS NOT NULL) OR (${t.operation} = 'RETIRO_OFERTA' AND ${t.priceType} = 'OFERTA' AND ${t.previous} IS NOT NULL AND ${t.next} IS NULL AND ${t.variation} IS NULL)`,
+      sql`(${t.operation} = 'CREACION' AND ${t.previous} IS NULL AND ${t.next} IS NOT NULL AND ${t.variation} IS NULL) OR (${t.operation} = 'MODIFICACION' AND ${t.previous} IS NOT NULL AND ${t.next} IS NOT NULL AND (${t.previous} = 0 OR ${t.variation} IS NOT NULL)) OR (${t.operation} = 'RETIRO_OFERTA' AND ${t.priceType} = 'OFERTA' AND ${t.previous} IS NOT NULL AND ${t.next} IS NULL AND ${t.variation} IS NULL)`,
     ),
   ],
 );

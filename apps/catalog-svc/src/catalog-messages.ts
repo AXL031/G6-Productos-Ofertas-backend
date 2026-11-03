@@ -89,6 +89,46 @@ export function assertCatalogPublication(message: CatalogEnvelope): void {
   )
     throw new InvalidCatalogMessage();
   const data = message.data;
+  if (message.name.startsWith('catalog.bulk.upsert.')) {
+    if (
+      message.kind !== 'result' ||
+      !UUID.test(String(message.operation_id)) ||
+      !UUID.test(String(message.causation_id)) ||
+      !UUID.test(String(data.batch_id)) ||
+      !UUID.test(String(data.batch_operation_id)) ||
+      data.batch_operation_id !== message.operation_id
+    )
+      throw new InvalidCatalogMessage();
+    if (message.name.endsWith('.completed')) {
+      if (
+        Object.keys(data).length !== 3 ||
+        !Array.isArray(data.results) ||
+        !data.results.length ||
+        data.results.some(
+          (row) =>
+            !object(row) ||
+            Object.keys(row).length !== 6 ||
+            !Number.isSafeInteger(row.row_number) ||
+            Number(row.row_number) < 2 ||
+            !UUID.test(String(row.row_operation_id)) ||
+            !(row.product_id === null || typeof row.product_id === 'string') ||
+            typeof row.sku_base !== 'string' ||
+            !row.sku_base ||
+            (row.status === 'COMPLETED'
+              ? row.code !== null || typeof row.product_id !== 'string'
+              : row.status !== 'REJECTED' || typeof row.code !== 'string'),
+        )
+      )
+        throw new InvalidCatalogMessage();
+    } else if (
+      Object.keys(data).length !== 4 ||
+      typeof data.code !== 'string' ||
+      !data.code ||
+      typeof data.detail !== 'string' ||
+      !data.detail
+    )
+      throw new InvalidCatalogMessage();
+  }
   if (message.name === 'catalog.master.deactivation.checked') {
     assertMasterData(data, message.operation_id);
     if (
@@ -165,7 +205,11 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     !object(value) ||
     !UUID.test(String(value.message_id)) ||
     !UUID.test(String(value.correlation_id)) ||
-    value.schema_version !== 1 ||
+    (value.schema_version !== 1 &&
+      !(
+        value.name === 'catalog.bulk.upsert.requested' &&
+        value.schema_version === 2
+      )) ||
     typeof value.occurred_at !== 'string' ||
     !Number.isFinite(Date.parse(value.occurred_at)) ||
     typeof value.name !== 'string' ||

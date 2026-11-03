@@ -207,7 +207,6 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     expect(delivered.correlationId).toBe(correlationId);
     expect(delivered.routingKey).toBe('catalog.bulk.upsert.requested');
   }, 30000);
-
   it('RabbitMQ rechaza un userId distinto al usuario AMQP autenticado', async () => {
     await expect(
       broker.publishCommandWithUserId('bulk93-usuario-distinto'),

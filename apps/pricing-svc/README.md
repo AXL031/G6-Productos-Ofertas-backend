@@ -1,5 +1,39 @@
 # pricing-svc — configuración y persistencia (#52, #53)
 
+## Actualización 2026-11-02: contexto Catalog y canales (#24/#55/#56)
+
+Este corte sustituye las restricciones históricas de UUID/canales y ausencia
+de adaptador Catalog descritas abajo. Fuentes: Docs
+`783a60efa5772548fce66ef63198e17361d8460b`, OpenAPI 0.6.0-rc.2,
+AsyncAPI 0.6.0-rc.4, SPEC-013, DEC-F-006 y DEC-G6-INT-01/04/13.
+
+- Canales textuales MARKETPLACE, CHATBOT, RETAIL, VENTAS; global null.
+  Se elimina PRICING_CHANNEL_IDS. GET conserva fallback global; PATCH/POST
+  rechazan UUID y canales desconocidos antes de persistir.
+- modulo-productos con precios:leer puede usar consultarPrecios y obtenerPrecioSku;
+  sus permisos no se extienden a operaciones administrativas.
+- PRICING_CATALOG_CONTEXT usa CatalogContextHttp: GET privado
+  /api/v1/productos/skus/{sku}/contexto, SKU codificado sin alterar identidad,
+  DTO y flags validados; solo 404 SKU_NO_ENCONTRADO se convierte a null.
+  Otros fallos resultan en 503 para el consumidor de Pricing.
+  Timeout HTTP 2 s, JSON máximo 64 KiB, sin redirects.
+- PRICING_CATALOG_URL es un origen HTTPS sin path/credenciales/query.
+  HTTP solo hacia catalog-svc en demo explícita o loopback en test.
+  En demo se omite Authorization y no se consulta G7. La activación sigue
+  requiriendo aislamiento privado verificado; esta entrega no activa el modo.
+- En autenticado, configurar AUTH_ISSUER/AUTH_JWKS_URL y el par opcional
+  PRICING_SERVICE_TOKEN_URL / PRICING_SERVICE_CLIENT_SECRET. Endpoint del
+  mismo origen del issuer, ruta /api/v1/auth/token, HTTPS salvo test loopback.
+  Se solicita client_credentials de modulo-productos con catalogo:leer;
+  nunca se reenvía el bearer entrante. Respuesta G7 limitada a 64 KiB/1 s;
+  JWT verificado con RS256/JWKS/issuer/exp/audience/tipo/sub/scope. Caché hasta
+  el mínimo de exp y expiresIn, con margen de 5 s. JWKS conserva timeout 2 s.
+  Sin configuración o dependencia disponible, se falla cerrado con 503.
+
+G7: Modulo-de-Seguridad `6045c013fd454cff998169bd1b114323324cda72`,
+emitirTokenServicio/TokenServicio. Firmas de fixture no acreditan grants reales.
+Ver [evidencia y pendientes](REVISION-PRICING-2026-11-02.md).
+
 ## Entrega Vera 2026-10-23: #24 y #55–60
 
 Esta sección actualiza el estado del candidato; las secciones siguientes son

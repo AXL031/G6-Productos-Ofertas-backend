@@ -375,6 +375,49 @@ jobs:
       run: node --test scripts/ci/run-taxonomy-integration.test.mjs
     - name: Ejecutar pruebas de integración Taxonomy (obligatorias)
       run: node scripts/ci/run-taxonomy-integration.mjs
+  taxonomia_catalogo:
+    name: Probar E2E aislado Taxonomy y Catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener backend y su historia
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        fetch-depth: 0
+    - name: Obtener migraciones oficiales fijadas
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: e6a8ec28dad2d0eba8dc2f273ec9cc6891376df6
+        path: G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - name: Instalar dependencias
+      run: npm ci
+    - name: Ejecutar E2E con PostgreSQL y RabbitMQ aislados
+      run: |
+        set -o pipefail
+        node apps/taxonomy-svc/test/e2e-catalog/run.mjs 2>&1 | tee apps/taxonomy-svc/test/e2e-catalog/run.log
+    - name: Conservar evidencia de la ejecución
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: taxonomy-catalog-e2e-${{ github.sha }}
+        path: |
+          backend/apps/taxonomy-svc/test/e2e-catalog/evidence-latest.json
+          backend/apps/taxonomy-svc/test/e2e-catalog/run.log
+        if-no-files-found: warn
   inventario:
     name: Probar integración de Inventory con PostgreSQL y RabbitMQ desechables
     runs-on: ubuntu-latest
@@ -509,6 +552,7 @@ jobs:
       - persistencia
       - oracle
       - taxonomia
+      - taxonomia_catalogo
       - inventario
       - promotions
       - combos_catalogo
@@ -525,7 +569,7 @@ jobs:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions
   compatibilidad:
     name: Lint, Typecheck, Test, Build & Smoke Test
     runs-on: ubuntu-latest
@@ -542,6 +586,7 @@ jobs:
     - persistencia
     - oracle
     - taxonomia
+    - taxonomia_catalogo
     - inventario
     - promotions
     - combos_catalogo
@@ -558,4 +603,4 @@ jobs:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions

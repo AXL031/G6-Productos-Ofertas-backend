@@ -74,7 +74,11 @@ export class PricingReadGuard implements CanActivate {
     return true;
   }
 
-  async authorize(token: string, commercial = false): Promise<void> {
+  async authorize(
+    token: string,
+    commercial = false,
+    serviceScope: 'precios:leer' | 'catalogo:leer' = 'precios:leer',
+  ): Promise<void> {
     if (!this.config.auth)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     try {
@@ -143,10 +147,13 @@ export class PricingReadGuard implements CanActivate {
           throw new PricingHttpError(401, 'TOKEN_INVALIDO');
         if (
           typeof claims.scope !== 'string' ||
-          !claims.scope.split(' ').includes('precios:leer') ||
-          !['modulo-marketplace', 'modulo-chatbot', 'modulo-retail'].includes(
-            claims.sub,
-          )
+          !claims.scope.split(' ').includes(serviceScope) ||
+          ![
+            'modulo-marketplace',
+            'modulo-chatbot',
+            'modulo-retail',
+            'modulo-productos',
+          ].includes(claims.sub)
         )
           throw new PricingHttpError(403, 'SCOPE_INSUFICIENTE');
         return;

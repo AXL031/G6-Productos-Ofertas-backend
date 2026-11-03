@@ -43,23 +43,25 @@ const columns = [
   'usuario_email',
   'ip_origen',
   'timestamp',
+  'target_type',
 ];
 const values = (row: Row): string[] => [
   row.id,
-  row.sku,
+  row.sku ?? '',
   row.productId,
   row.priceType,
   row.previous ?? 'Sin precio anterior',
   row.next ?? 'Sin oferta',
   row.variation ?? 'No aplicable',
   row.operation,
-  row.channel,
+  row.channel ?? '',
   row.reason,
   row.batchId ?? '',
   row.userId ?? '',
   row.email ?? '',
   row.ip ?? '',
   row.at.toISOString(),
+  row.targetType,
 ];
 
 export function renderCsv(rows: Row[]): Buffer {

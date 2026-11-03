@@ -87,6 +87,42 @@ export const categorias = taxonomia.table(
   ],
 );
 
+// Mapeo de la tabla oficial existente; no modifica migraciones aplicadas.
+export const categorySeo = taxonomia.table(
+  'category_seo',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    categoriaId: uuid('categoria_id').notNull(),
+    slug: text('slug').notNull(),
+    metaTitulo: text('meta_titulo'),
+    metaDescripcion: text('meta_descripcion'),
+    taxonomyVersion: bigint('taxonomy_version', { mode: 'number' })
+      .notNull()
+      .default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (tabla) => [
+    foreignKey({
+      columns: [tabla.categoriaId],
+      foreignColumns: [categorias.id],
+      name: 'fk_category_seo_categoria',
+    }).onDelete('restrict'),
+    unique('uq_category_seo_categoria').on(tabla.categoriaId),
+    unique('uq_category_seo_slug').on(tabla.slug),
+    check(
+      'ck_category_seo_slug_format',
+      sql`${tabla.slug} ~ '^[a-z0-9]+(-[a-z0-9]+)*$'`,
+    ),
+    check('ck_category_seo_version', sql`${tabla.taxonomyVersion} >= 0`),
+    index('ix_category_seo_categoria_id').on(tabla.categoriaId),
+  ],
+);
+
 export const marcas = taxonomia.table(
   'brands',
   {
@@ -159,6 +195,7 @@ export const operacionesBaja = taxonomia.table(
 export const esquemaTaxonomia = {
   estadoEntidad,
   categorias,
+  categorySeo,
   marcas,
   tipoEntidadMaestra,
   estadoOperacionBaja,

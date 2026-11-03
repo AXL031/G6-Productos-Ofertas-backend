@@ -1,16 +1,17 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { resolvePrice } from '../domain/resolve-price.js';
 import { PriceRuleError } from '../domain/price.js';
-import { uuid } from './pricing-read.guard.js';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import { PricingHttpError } from './pricing-http.error.js';
 import { wireMoney, wireVersion } from './pricing-reads.js';
 
 export const PRICING_CATALOG_CONTEXT = Symbol('PRICING_CATALOG_CONTEXT');
-export const PRICING_CHANNEL_IDS = Symbol('PRICING_CHANNEL_IDS');
 // Puerto interno: requiere un provider autoritativo; no define otro endpoint de Catálogo.
 export interface PricingCatalogContext {
-  resolve(sku: string): Promise<{
+  resolve(
+    sku: string,
+    correlationId?: string,
+  ): Promise<{
     sku: string;
     productId: string;
     isVariant: boolean;
@@ -19,21 +20,6 @@ export interface PricingCatalogContext {
   } | null>;
 }
 export const channels = ['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'] as const;
-export function serializeCommercialChannel(
-  channelId: string | null,
-  channelIds: Partial<Record<(typeof channels)[number], string>> | undefined,
-  requested?: (typeof channels)[number],
-): (typeof channels)[number] | null {
-  if (channelId === null) return null;
-  const matches = channels.filter(
-    (channel) =>
-      (requested === undefined || channel === requested) &&
-      channelIds?.[channel] === channelId,
-  );
-  if (matches.length !== 1)
-    throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
-  return matches[0];
-}
 export function parseCommercialQuery(
   query: Record<string, unknown>,
   batch = false,
@@ -86,24 +72,20 @@ export class CommercialPrices {
     @Optional()
     @Inject(PRICING_CATALOG_CONTEXT)
     private readonly catalog?: PricingCatalogContext,
-    @Optional()
-    @Inject(PRICING_CHANNEL_IDS)
-    private readonly channelIds?: Partial<
-      Record<(typeof channels)[number], string>
-    >,
   ) {}
   async sku(
     sku: string,
     channel: (typeof channels)[number] | undefined,
     at: Date,
     historical = false,
+    correlationId?: string,
   ) {
     if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
     try {
-      context = await this.catalog.resolve(sku);
+      context = await this.catalog.resolve(sku, correlationId);
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
@@ -121,12 +103,7 @@ export class CommercialPrices {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     if (!context.active || !context.eligible)
       throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
-    const channelId = channel === undefined ? null : this.channelIds?.[channel];
-    if (
-      channelId === undefined ||
-      (channelId !== null && !uuid.test(channelId))
-    )
-      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    const channelId = channel ?? null;
     const definitions = await this.repository.readCandidates(
       context.productId,
       sku,
@@ -138,11 +115,7 @@ export class CommercialPrices {
     if (resolved.definition.channelId !== null) {
       if (channel === undefined || resolved.definition.channelId !== channelId)
         throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
-      effectiveChannel = serializeCommercialChannel(
-        resolved.definition.channelId,
-        this.channelIds,
-        channel,
-      );
+      effectiveChannel = channel;
     }
     const validity = definitions
       .flatMap((d) => d.validities)
@@ -170,11 +143,12 @@ export class CommercialPrices {
     channel: (typeof channels)[number] | undefined,
     at: Date,
     historical = false,
+    correlationId?: string,
   ) {
     const items: Awaited<ReturnType<CommercialPrices['sku']>>[] = [];
     for (const sku of skus) {
       try {
-        items.push(await this.sku(sku, channel, at, historical));
+        items.push(await this.sku(sku, channel, at, historical, correlationId));
       } catch (error) {
         // ConsultaPrecios no tiene errores por fila: solo se omite ausencia de precio contractual.
         if (

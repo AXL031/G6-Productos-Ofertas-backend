@@ -1,5 +1,6 @@
 import type { IdentidadBaja } from './deactivation-check.js';
-import type { DeactivationIntentService } from './deactivation-intent.service.js';
+import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import { DeactivationIntentService } from './deactivation-intent.service.js';
 
 /** Frontera pendiente: el transporte debe validar el envelope y deduplicar el message_id. */
 export interface DeactivationCheckedConsumer {
@@ -14,11 +15,38 @@ export interface DeactivationOutboxPublisher {
   publicarPendientes(): Promise<void>;
 }
 
-/** Ejecución explícita; no instala temporizadores ni conexión a RabbitMQ. */
-export class DeactivationRecoveryRunner {
+/** Inicia solo tras verificar la identidad de DB; nunca solapa ejecuciones. */
+@Injectable()
+export class DeactivationRecoveryRunner implements OnModuleDestroy {
+  private readonly logger = new Logger(DeactivationRecoveryRunner.name);
+  private timer?: ReturnType<typeof setInterval>;
+  private enCurso?: Promise<void>;
+  private cerrado = false;
   constructor(private readonly intentos: DeactivationIntentService) {}
 
   ejecutarUnaVez(): Promise<number> {
     return this.intentos.recuperarVencidas();
+  }
+
+  iniciar(): void {
+    if (this.timer || this.cerrado) return;
+    this.timer = setInterval(() => {
+      if (this.enCurso || this.cerrado) return;
+      this.enCurso = this.ejecutarUnaVez()
+        .then(() => undefined)
+        .catch(() =>
+          this.logger.error({ event: 'taxonomy.deactivation.recovery_failed' }),
+        )
+        .finally(() => {
+          this.enCurso = undefined;
+        });
+    }, 10_000);
+    this.timer.unref();
+  }
+
+  async onModuleDestroy(): Promise<void> {
+    this.cerrado = true;
+    if (this.timer) clearInterval(this.timer);
+    await this.enCurso;
   }
 }

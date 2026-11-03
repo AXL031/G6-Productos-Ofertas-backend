@@ -44,6 +44,8 @@ function codigoPorEstado(estado: number): string {
       return 'CONFLICTO';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'RATE_LIMIT_EXCEDIDO';
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return 'LOGO_EXCEDE_LIMITE';
     case HttpStatus.SERVICE_UNAVAILABLE:
       return 'SERVICIO_NO_DISPONIBLE';
     default:

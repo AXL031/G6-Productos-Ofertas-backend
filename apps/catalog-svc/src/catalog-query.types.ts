@@ -2,7 +2,7 @@ import type { Attribute } from './commercial.types.js';
 
 export interface PhysicalSkuData {
   sku: string;
-  estado: 'ACTIVO' | 'INACTIVO';
+  estado: 'ACTIVO' | 'INACTIVO' | 'BORRADOR';
   pesoKg: number;
   dimensionesCm: { largo: number; ancho: number; alto: number };
   actualizadoEn: string;

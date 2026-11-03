@@ -68,6 +68,16 @@ export function construirSentenciasDdl(
         (categoria_padre_id IS NOT NULL AND nivel = 2)
       )
     )`,
+    `CREATE TABLE taxonomy.category_seo (
+      id uuid NOT NULL DEFAULT gen_random_uuid(), categoria_id uuid NOT NULL,
+      slug text NOT NULL, meta_titulo text NULL, meta_descripcion text NULL,
+      taxonomy_version bigint NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pk_category_seo PRIMARY KEY (id),
+      CONSTRAINT fk_category_seo_categoria FOREIGN KEY (categoria_id) REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
+      CONSTRAINT uq_category_seo_categoria UNIQUE (categoria_id), CONSTRAINT uq_category_seo_slug UNIQUE (slug),
+      CONSTRAINT ck_category_seo_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+      CONSTRAINT ck_category_seo_version CHECK (taxonomy_version >= 0)
+    )`,
     `CREATE TABLE taxonomy.brands (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,
@@ -109,6 +119,16 @@ export function construirSentenciasDdl(
       occurred_at timestamptz NOT NULL, payload jsonb NOT NULL,
       created_at timestamptz NOT NULL DEFAULT now(), published_at timestamptz NULL,
       attempts integer NOT NULL DEFAULT 0, last_error text NULL
+    )`,
+    `CREATE TABLE taxonomy.inbox (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      message_id uuid NOT NULL, handler text NOT NULL, event_name text NOT NULL,
+      correlation_id uuid NULL, payload jsonb NOT NULL,
+      processed_at timestamptz NOT NULL DEFAULT now(), result text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT uq_inbox_message_handler UNIQUE (message_id, handler),
+      CONSTRAINT ck_inbox_handler_not_empty CHECK (length(trim(handler)) > 0),
+      CONSTRAINT ck_inbox_result CHECK (result IN ('PROCESSED', 'IGNORED', 'FAILED'))
     )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
     'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
