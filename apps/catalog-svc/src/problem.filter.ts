@@ -88,7 +88,7 @@ export class ProblemFilter implements ExceptionFilter {
         title: code,
         status,
         code,
-        ...(code === 'DATOS_FISICOS_INCOMPLETOS' &&
+        ...((code === 'DATOS_FISICOS_INCOMPLETOS' || code === 'SKU_INVALIDO') &&
         body &&
         typeof body === 'object' &&
         'details' in body &&

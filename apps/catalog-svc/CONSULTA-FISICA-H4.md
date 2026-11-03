@@ -60,9 +60,16 @@ vendible consultable por esta operación. Reutiliza código existente y no inven
 perfil. noEncontrados se reserva a identidades ausentes. La validación de base
 no física precede a la validación de perfiles del lote, independientemente del
 orden de entrada; no hay 200 parcial ni perfil padre inventado. Se prueban base
-sola, lote mixto, ausencia real y coexistencia con perfil incompleto. No se añaden
-códigos o detalles al contrato. Marco/G2 deben registrar la nueva semántica del
-422 y comprobar compatibilidad antes de acreditar integración externa.
+sola, múltiples bases, lote mixto, ausencia real y coexistencia con perfil incompleto.
+La corrección bilateral solicitada conserva el código e incluye en
+details.skusAfectados todas las bases no físicas solicitadas, únicas, literales
+y en orden de entrada. No incluye SKU ausentes ni perfiles incompletos en ese
+detalle. ProblemFilter conserva únicamente esa lista y descarta campos internos;
+las validaciones ordinarias conservan su respuesta sin details. La precedencia
+bases no físicas → perfiles incompletos se mantiene y queda pendiente de
+confirmación por G2. Marco actualizará por separado la documentación normativa
+y la traducción pública G2 a DESP_ERROR_PRODUCTO_NO_ELEGIBLE. Las regresiones
+HTTP con JWT local y PostgreSQL desechable no acreditan E2E real con G2/G7.
 
 ## Lectura Bulk sku_variante → variant_id — BLOQUEADO_ESPECÍFICO
 

@@ -103,8 +103,18 @@ export class CatalogQueryRepository {
             const bySku = new Map(rows.map((row) => [row.sku, row]));
             // D-G2-02: an existing base with variants is not a physical unit.
             // Validate the whole batch before profiles, regardless of SKU order.
-            if (rows.some((row) => row.productHasVariants && !row.variantId))
-              throw new HttpException({ code: 'SKU_INVALIDO' }, 422);
+            const basesNoFisicas = [...new Set(skus)].filter((sku) => {
+              const row = bySku.get(sku);
+              return row?.productHasVariants && !row.variantId;
+            });
+            if (basesNoFisicas.length)
+              throw new HttpException(
+                {
+                  code: 'SKU_INVALIDO',
+                  details: { skusAfectados: basesNoFisicas },
+                },
+                422,
+              );
             const productos: PhysicalSkuData[] = [];
             const noEncontrados: string[] = [];
             const skusAfectados: string[] = [];

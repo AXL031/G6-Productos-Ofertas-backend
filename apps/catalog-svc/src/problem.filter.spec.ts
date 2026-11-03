@@ -25,6 +25,45 @@ describe('ProblemFilter persistence status mapping', () => {
     return response;
   }
 
+  it.each(['SKU_INVALIDO', 'DATOS_FISICOS_INCOMPLETOS'])(
+    'preserves only unique affected SKUs for %s',
+    (code) => {
+      const response = responseFor(
+        new HttpException(
+          {
+            code,
+            secret: 'private-sql',
+            details: {
+              skusAfectados: ['000AbC,/ñ', 'base', '000AbC,/ñ'],
+              secret: 'private-sql',
+            },
+          },
+          422,
+        ),
+      );
+      const body = response.json.mock.calls[0]?.[0];
+      expect(body).toMatchObject({ code, status: 422 });
+      expect(body.details).toEqual({ skusAfectados: ['000AbC,/ñ', 'base'] });
+      expect(JSON.stringify(body)).not.toContain('private-sql');
+    },
+  );
+
+  it.each([
+    undefined,
+    {},
+    { skusAfectados: [] },
+    { skusAfectados: ['base', 12] },
+    { secret: 'private-sql' },
+  ])(
+    'keeps ordinary SKU validation errors free of invalid details: %j',
+    (details) => {
+      const response = responseFor(
+        new HttpException({ code: 'SKU_INVALIDO', details }, 422),
+      );
+      expect(response.json.mock.calls[0]?.[0]).not.toHaveProperty('details');
+    },
+  );
+
   it.each([
     [409, 'VERSION_CONFLICT'],
     [409, 'SKU_DUPLICADO'],

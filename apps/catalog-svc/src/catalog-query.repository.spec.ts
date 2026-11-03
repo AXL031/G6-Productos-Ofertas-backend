@@ -103,20 +103,36 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
     },
   );
   it.each([
-    ['base'],
-    ['valid', 'base', 'missing'],
-    ['bad', 'base'],
-    ['base', 'bad'],
-  ])('D-G2-02 rejects a nonphysical base atomically in %j', async (...skus) => {
-    const rows = [
-      { ...row('base'), productHasVariants: true },
-      row('valid'),
-      { ...row('bad'), weight: null },
-    ];
-    await expect(repositoryWith(rows).physicalData(skus)).rejects.toMatchObject(
-      { status: 422, response: { code: 'SKU_INVALIDO' } },
-    );
-  });
+    { skus: ['base'], affected: ['base'] },
+    { skus: ['valid', 'base', 'missing'], affected: ['base'] },
+    { skus: ['bad', 'base'], affected: ['base'] },
+    { skus: ['base', 'bad'], affected: ['base'] },
+    { skus: ['000AbC,/ñ', 'base'], affected: ['000AbC,/ñ', 'base'] },
+    {
+      skus: ['bad', 'base', 'missing', '000AbC,/ñ', 'valid'],
+      affected: ['base', '000AbC,/ñ'],
+    },
+    { skus: ['base', 'base', '000AbC,/ñ'], affected: ['base', '000AbC,/ñ'] },
+  ])(
+    'D-G2-02 reports all and only nonphysical bases: $skus',
+    async ({ skus, affected }) => {
+      const rows = [
+        { ...row('base'), productHasVariants: true },
+        { ...row('000AbC,/ñ'), productHasVariants: true },
+        row('valid'),
+        { ...row('bad'), weight: null },
+      ];
+      await expect(
+        repositoryWith(rows).physicalData(skus),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'SKU_INVALIDO',
+          details: { skusAfectados: affected },
+        },
+      });
+    },
+  );
   it.each([
     { weight: null },
     { weight: '0' },

@@ -4652,11 +4652,16 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           [bases[0]],
           [bases[1], ...skus.slice(0, 3)],
           [incomplete.sku_base, bases[2], 'missing'],
+          [bases[2], bases[0], bases[1]],
+          [incomplete.sku_base, bases[1], partial.sku, bases[0], skus[0]],
         ]) {
           const result = await call(batch);
           expect(result.status).toBe(422);
           expect(result.type).toContain('application/problem+json');
           expect(result.body.code).toBe('SKU_INVALIDO');
+          expect(result.body.details).toEqual({
+            skusAfectados: batch.filter((sku) => bases.includes(sku)),
+          });
           expect(result.body).not.toHaveProperty('productos');
         }
         const invalidProfile = await call([
@@ -4675,6 +4680,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           const result = await call(batch);
           expect(result.status).toBe(422);
           expect(result.body.code).toBe('SKU_INVALIDO');
+          expect(result.body).not.toHaveProperty('details');
         }
         expect((await call([skus[0]], null)).status).toBe(401);
         for (const [patch, status] of [
