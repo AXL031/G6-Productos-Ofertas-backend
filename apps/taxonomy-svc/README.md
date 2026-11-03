@@ -10,7 +10,7 @@ El modo demo local es optativo y reversible: `ALLOW_DEMO_UNAUTHENTICATED=true` s
 
 ## Escrituras de categorías y marcas (#38)
 
-Las mutaciones administrativas requieren JWT humano con audiencia `api-productos`; el modo demo no las habilita anónimamente. Las operaciones de marca aceptan `multipart/form-data` y validan tamaño, MIME y firma del logo. Conforme a la instrucción de integración recibida, Taxonomy solo persiste `logo_url`: usa `logoUrl`/`logo_url` si se proporciona o construye `https://cdn.marketplace.local/brands/logos/<nombre>` a partir del archivo. **Taxonomy descarta el binario y no verifica que esa URL exista ni que el CDN aloje el archivo**; su publicación efectiva y accesibilidad quedan pendientes del mecanismo externo responsable. El guardado de metadatos no acredita almacenamiento del logo, homologación ni despliegue.
+Las mutaciones administrativas requieren JWT humano con audiencia `api-productos`; el modo demo no las habilita anónimamente. Las marcas aceptan multipart y conservan la URI explícita si se proporciona; si se envía un archivo sin URI, se guarda `logo_url = NULL`. Taxonomy no conserva el binario ni comprueba la disponibilidad de la URI; almacenar el archivo corresponde a un responsable externo. La validación revisa tamaño y estructura de PNG/JPEG/WebP, e integridad CRC y descompresión de PNG; no decodifica completamente los píxeles JPEG/WebP. En la edición multipart, enviar `descripcion`, `paisOrigenIso` o `logo` como campo vacío borra el valor correspondiente; omitirlo conserva el valor. El registro de una URI no acredita almacenamiento, homologación ni despliegue.
 
 ## Variables de entorno
 

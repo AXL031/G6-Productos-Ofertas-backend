@@ -1,16 +1,30 @@
 import { validarLogo } from './brand-logo.js';
 import { ProblemDetailsException } from '../errors/taxonomy.errors.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 describe('validación contractual de logo', () => {
   it.each([
-    ['image/png', Buffer.from('89504e470d0a1a0a', 'hex')],
-    ['image/jpeg', Buffer.from('ffd8ff00', 'hex')],
-    ['image/webp', Buffer.from('524946460400000057454250', 'hex')],
+    [
+      'image/png',
+      readFileSync(resolve('apps/taxonomy-svc/test/fixtures/logo.png')),
+    ],
+    [
+      'image/jpeg',
+      readFileSync(resolve('apps/taxonomy-svc/test/fixtures/logo.jpg')),
+    ],
+    [
+      'image/webp',
+      readFileSync(resolve('apps/taxonomy-svc/test/fixtures/logo.webp')),
+    ],
   ])('acepta firma y MIME %s', (mimetype, buffer) => {
     expect(validarLogo({ buffer, mimetype })).toEqual({
       bytes: buffer,
       mime: mimetype,
     });
+    expect(() =>
+      validarLogo({ buffer: buffer.subarray(0, buffer.length - 1), mimetype }),
+    ).toThrow(ProblemDetailsException);
   });
   it('rechaza ausencia y contenido que no corresponde al MIME', () => {
     expect(() => validarLogo(undefined)).toThrow(ProblemDetailsException);
@@ -24,6 +38,16 @@ describe('validación contractual de logo', () => {
         'LOGO_INVALIDO',
       );
     }
+  });
+  it('rechaza PNG con datos alterados aun cuando conserve la cabecera', () => {
+    const png = readFileSync(
+      resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
+    );
+    const corrupto = Buffer.from(png);
+    corrupto[corrupto.length - 6] = (corrupto[corrupto.length - 6] ?? 0) ^ 1;
+    expect(() =>
+      validarLogo({ buffer: corrupto, mimetype: 'image/png' }),
+    ).toThrow(ProblemDetailsException);
   });
   it('rechaza archivos de más de 5 MiB con código 413 contractual', () => {
     try {

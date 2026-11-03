@@ -24,6 +24,7 @@ import {
   type EntradaMarca,
 } from './domain/brand-write.service.js';
 import { validarLogo } from './domain/brand-logo.js';
+import { esPaisIso } from './domain/iso-country.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
 
 @Controller('api/v1')
@@ -155,7 +156,7 @@ export class TaxonomyWriteController {
         typeof input.descripcion !== 'string') ||
       (input.paisOrigenIso !== undefined &&
         (typeof input.paisOrigenIso !== 'string' ||
-          !/^[A-Z]{2}$/.test(input.paisOrigenIso))) ||
+          (input.paisOrigenIso !== '' && !esPaisIso(input.paisOrigenIso)))) ||
       (input.version !== undefined &&
         (typeof input.version !== 'string' ||
           !/^\d+$/.test(input.version) ||
@@ -163,10 +164,12 @@ export class TaxonomyWriteController {
     )
       throw ProblemDetailsException.validacion('Datos de marca inválidos.');
     if (crear || file) validarLogo(file);
+    if (input.logo !== undefined && (input.logo !== '' || crear || file))
+      throw ProblemDetailsException.validacion('Campo logo inválido.');
     const url = input.logoUrl ?? input.logo_url;
     if (url !== undefined && (typeof url !== 'string' || !url.trim()))
       throw ProblemDetailsException.validacion('logoUrl inválida.');
-    let logoUrl: string | undefined;
+    let logoUrl: string | null | undefined;
     if (typeof url === 'string') {
       try {
         const parsed = new URL(url);
@@ -182,21 +185,17 @@ export class TaxonomyWriteController {
           'logoUrl debe ser una URL HTTP(S) válida.',
         );
       }
-    } else if (file) {
-      const name = file.originalname.replaceAll('\\', '/').split('/').pop();
-      if (!name || name === '.' || name === '..')
-        throw ProblemDetailsException.validacion('Nombre de logo inválido.');
-      logoUrl =
-        'https://cdn.marketplace.local/brands/logos/' +
-        encodeURIComponent(name);
-    }
+    } else if ((crear && file) || (!crear && (input.logo === '' || file))) logoUrl = null;
     return {
       ...(typeof input.nombre === 'string' ? { nombre: input.nombre } : {}),
       ...(typeof input.descripcion === 'string'
-        ? { descripcion: input.descripcion }
+        ? { descripcion: input.descripcion === '' ? null : input.descripcion }
         : {}),
       ...(typeof input.paisOrigenIso === 'string'
-        ? { paisOrigenIso: input.paisOrigenIso }
+        ? {
+            paisOrigenIso:
+              input.paisOrigenIso === '' ? null : input.paisOrigenIso,
+          }
         : {}),
       ...(typeof input.version === 'string'
         ? { version: Number(input.version) }
@@ -329,18 +328,21 @@ export class TaxonomyWriteController {
         );
       }
     }
-    const result = await this.crearCategorias.crear({
-      nombre: data.nombre,
-      descripcion:
-        typeof data.descripcion === 'string' ? data.descripcion : null,
-      categoriaPadreId:
-        typeof data.categoriaPadreId === 'string'
-          ? data.categoriaPadreId
-          : null,
-      orden: typeof data.orden === 'number' ? data.orden : 0,
-      imagenUrl: typeof data.imagenUrl === 'string' ? data.imagenUrl : null,
-      slugConfirmado: data.slugConfirmado,
-    });
+    const result = await this.crearCategorias.crear(
+      {
+        nombre: data.nombre,
+        descripcion:
+          typeof data.descripcion === 'string' ? data.descripcion : null,
+        categoriaPadreId:
+          typeof data.categoriaPadreId === 'string'
+            ? data.categoriaPadreId
+            : null,
+        orden: typeof data.orden === 'number' ? data.orden : 0,
+        imagenUrl: typeof data.imagenUrl === 'string' ? data.imagenUrl : null,
+        slugConfirmado: data.slugConfirmado,
+      },
+      correlationId,
+    );
     if (result.estado === 'PADRE_INVALIDO')
       throw ProblemDetailsException.validacion(
         'Categoría padre no encontrada.',
@@ -406,7 +408,7 @@ export class TaxonomyWriteController {
       throw ProblemDetailsException.validacion(
         'X-Correlation-Id debe ser un UUID válido.',
       );
-    const result = await this.categorias.reactivar(categoriaId);
+    const result = await this.categorias.reactivar(categoriaId, correlationId);
     if (result.estado === 'NO_ENCONTRADA')
       throw new ProblemDetailsException({
         type: '/errores/categoria-no-encontrada',

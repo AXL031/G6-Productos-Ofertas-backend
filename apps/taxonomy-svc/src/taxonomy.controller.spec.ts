@@ -1,4 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { ProblemDetailsException } from './errors/taxonomy.errors.js';
 import { TaxonomyController } from './taxonomy.controller.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
@@ -555,7 +557,9 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   it('crear y actualizar marcas requieren usuario y aceptan multipart', async () => {
     const human =
       'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
-    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    const png = readFileSync(
+      resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
+    );
     await request(app.getHttpServer())
       .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
       .set('Authorization', human)
@@ -573,16 +577,43 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
       .expect(201);
     expect(brandWrite.crear).toHaveBeenCalledWith(
-      expect.objectContaining({
-        nombre: 'Marca',
-        logoUrl: 'https://cdn.marketplace.local/brands/logos/logo.png',
-      }),
+      expect.objectContaining({ nombre: 'Marca', logoUrl: null }),
+    );
+    await request(app.getHttpServer())
+      .post('/api/v1/marcas')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .field('logoUrl', 'https://example.org/logo.png')
+      .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(201);
+    expect(brandWrite.crear).toHaveBeenLastCalledWith(
+      expect.objectContaining({ logoUrl: 'https://example.org/logo.png' }),
     );
     await request(app.getHttpServer())
       .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
       .set('Authorization', human)
       .field('nombre', 'Marca')
       .expect(200);
+    await request(app.getHttpServer())
+      .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', human)
+      .field('descripcion', '')
+      .field('paisOrigenIso', '')
+      .field('logo', '')
+      .expect(200);
+    expect(brandWrite.actualizar).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        descripcion: null,
+        paisOrigenIso: null,
+        logoUrl: null,
+      }),
+    );
+    await request(app.getHttpServer())
+      .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', human)
+      .field('paisOrigenIso', 'ZZ')
+      .expect(400);
     const invalid = await request(app.getHttpServer())
       .post('/api/v1/marcas')
       .set('Authorization', human)
@@ -593,6 +624,16 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       })
       .expect(422);
     expect(invalid.body.code).toBe('LOGO_INVALIDO');
+    const truncated = await request(app.getHttpServer())
+      .post('/api/v1/marcas')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .attach('logo', png.subarray(0, 8), {
+        filename: 'truncado.png',
+        contentType: 'image/png',
+      })
+      .expect(422);
+    expect(truncated.body.code).toBe('LOGO_INVALIDO');
     const tooLarge = await request(app.getHttpServer())
       .post('/api/v1/marcas')
       .set('Authorization', human)

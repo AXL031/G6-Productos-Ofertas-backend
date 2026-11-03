@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { Database } from '../database.js';
 
 export interface CategoriaNueva {
@@ -37,7 +38,10 @@ class SlugDuplicado extends Error {}
 @Injectable()
 export class CategoryCreateService {
   constructor(private readonly database: Database) {}
-  async crear(entrada: CategoriaNueva): Promise<Resultado> {
+  async crear(
+    entrada: CategoriaNueva,
+    correlationId: string = randomUUID(),
+  ): Promise<Resultado> {
     return this.database.read(async (db) => {
       try {
         return await db.transaction(async (tx) => {
@@ -67,6 +71,9 @@ export class CategoryCreateService {
             sql`INSERT INTO taxonomy.category_seo (categoria_id, slug) VALUES (${row.id}::uuid, ${entrada.slugConfirmado}) ON CONFLICT (slug) DO NOTHING RETURNING slug`,
           );
           if (!seo.rows.length) throw new SlugDuplicado();
+          await tx.execute(
+            sql`WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha) INSERT INTO taxonomy.outbox (message_id, event_name, kind, schema_version, correlation_id, occurred_at, payload) SELECT evento.message_id, 'taxonomy.category.updated', 'event', 1, ${correlationId}::uuid, evento.fecha, jsonb_build_object('message_id', evento.message_id, 'schema_version', 1, 'occurred_at', evento.fecha, 'correlation_id', ${correlationId}::uuid, 'producer', 'taxonomy-svc', 'kind', 'event', 'name', 'taxonomy.category.updated', 'data', jsonb_build_object('categoria_id', ${row.id}::text, 'version', ${Number(row.taxonomy_version)}::bigint)) FROM evento`,
+          );
           return {
             estado: 'CREADA',
             categoria: {

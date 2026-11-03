@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
 
@@ -27,12 +28,13 @@ export class CategoryReactivationService {
 
   async reactivar(
     categoriaId: string,
+    correlationId: string = randomUUID(),
   ): Promise<ResultadoReactivacionCategoria> {
     if (!esUuid(categoriaId)) return { estado: 'NO_ENCONTRADA' };
     return this.database.read((db) =>
       db.transaction(async (tx) => {
         const result = await tx.execute(
-          sql`SELECT id, estado, categoria_padre_id FROM taxonomy.categories WHERE id = ${categoriaId}::uuid FOR UPDATE`,
+          sql`SELECT id, nombre, descripcion, categoria_padre_id, orden, imagen_url, estado, taxonomy_version FROM taxonomy.categories WHERE id = ${categoriaId}::uuid FOR UPDATE`,
         );
         const current = result.rows[0];
         if (!current) return { estado: 'NO_ENCONTRADA' } as const;
@@ -48,10 +50,13 @@ export class CategoryReactivationService {
           if (parent.rows[0]?.estado !== 'ACTIVO')
             return { estado: 'PADRE_INACTIVO' } as const;
         }
-        const updated = await tx.execute(
-          sql`UPDATE taxonomy.categories SET estado = 'ACTIVO', taxonomy_version = taxonomy_version + CASE WHEN estado = 'INACTIVO' THEN 1 ELSE 0 END, updated_at = CASE WHEN estado = 'INACTIVO' THEN statement_timestamp() ELSE updated_at END WHERE id = ${categoriaId}::uuid AND estado IN ('ACTIVO','INACTIVO') RETURNING id, nombre, descripcion, categoria_padre_id, orden, imagen_url, estado, taxonomy_version`,
-        );
-        const row = updated.rows[0];
+        const updated =
+          current.estado === 'ACTIVO'
+            ? undefined
+            : await tx.execute(
+                sql`UPDATE taxonomy.categories SET estado = 'ACTIVO', taxonomy_version = taxonomy_version + 1, updated_at = statement_timestamp() WHERE id = ${categoriaId}::uuid AND estado = 'INACTIVO' RETURNING id, nombre, descripcion, categoria_padre_id, orden, imagen_url, estado, taxonomy_version`,
+              );
+        const row = updated ? updated.rows[0] : current;
         if (
           !row ||
           typeof row.id !== 'string' ||
@@ -61,6 +66,11 @@ export class CategoryReactivationService {
           !Number.isSafeInteger(row.orden)
         )
           throw new Error('Estado de categoría inválido');
+        if (current.estado === 'INACTIVO') {
+          await tx.execute(
+            sql`WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha) INSERT INTO taxonomy.outbox (message_id, event_name, kind, schema_version, correlation_id, occurred_at, payload) SELECT evento.message_id, 'taxonomy.category.updated', 'event', 1, ${correlationId}::uuid, evento.fecha, jsonb_build_object('message_id', evento.message_id, 'schema_version', 1, 'occurred_at', evento.fecha, 'correlation_id', ${correlationId}::uuid, 'producer', 'taxonomy-svc', 'kind', 'event', 'name', 'taxonomy.category.updated', 'data', jsonb_build_object('categoria_id', ${categoriaId}::text, 'version', ${Number(row.taxonomy_version)}::bigint)) FROM evento`,
+          );
+        }
         return {
           estado: 'ACTIVA',
           categoria: {
