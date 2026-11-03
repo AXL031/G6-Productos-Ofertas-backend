@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
@@ -29,7 +29,9 @@ import {
 export class BulkImportService {
   constructor(
     private readonly repository: BulkPersistenceRepository,
-    @Inject(BULK_ENVIRONMENT) private readonly environment: BulkEnvironment,
+    @Optional()
+    @Inject(BULK_ENVIRONMENT)
+    private readonly environment?: BulkEnvironment,
   ) {}
 
   async receiveImport(input: {
@@ -58,7 +60,7 @@ export class BulkImportService {
     };
     await this.assertImportDependencies(parsed, batchId);
     const commandV2 =
-      this.environment.catalogCommandV2Enabled &&
+      (this.environment?.catalogCommandV2Enabled ?? false) &&
       parsed.mode === 'ACTUALIZACION' &&
       parsed.rows.some((row) => row.variant !== null);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
@@ -248,7 +250,7 @@ export class BulkImportService {
     batchId?: string,
   ): Promise<void> {
     if (
-      this.environment.catalogCommandV2Enabled ||
+      (this.environment?.catalogCommandV2Enabled ?? false) ||
       parsed.mode !== 'ACTUALIZACION' ||
       !parsed.rows.some((row) => row.variant !== null)
     ) {
