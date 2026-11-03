@@ -6,8 +6,21 @@ Rama `vera`, owner Leonardo Vera. El SHA publicado auditado es
 `29a6f2990e1b8773d5c0e16b433bebf7c2a54db1`:
 [CI 41576029124](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/41576029124)
 terminó **success, 16/16 jobs** (verificado remotamente). No equivale a despliegue.
-La evidencia del cambio de revisión se incorporará después de su publicación;
-no se atribuye la CI anterior a código posterior.
+La implementacion de esta revision esta publicada en
+`08dc055efc38c1e7f04f69df62f41b117f8c0d4b`:
+[CI 41578340213](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/41578340213)
+termino **success, 16/16 jobs**, verificado remotamente para ese SHA exacto.
+Este registro se incorpora en un commit posterior exclusivamente documental;
+no se atribuye una ejecucion de CI a otro SHA. La verificacion del HEAD
+final del PR se reporta aparte despues de publicar este registro.
+
+El job de persistencia/mensajeria Pricing y Price Audit
+([log del job](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/41578340213/job/125727008828))
+ejecuto **81 pruebas PASS** combinadas, con los flags de integracion habilitados,
+incluidas las 29 propias. Son dependencias reales aisladas y emisores/JWKS de
+fixture; no equivalen a una integracion autenticada Pricing real, G7 o despliegue.
+Tambien pasaron E2E general e imagenes con los comandos originales del workflow,
+sin ampliar su timeout: el fallo local DATA-002 de Windows no se reprodujo en CI.
 
 ### Precisión de la respuesta HTTP
 
