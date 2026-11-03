@@ -7,6 +7,7 @@ import {
 import { PricingClient, sumPrice } from './integrations/pricing.client.js';
 import { CombosDatabase } from './persistence/combos.database.js';
 import {
+  CatalogComponentDeactivatedError,
   CombosRepository,
   type ComboAggregate,
   type ComboComponentRecord,
@@ -71,18 +72,25 @@ export class CombosSvcService {
   getHealth() {
     return { status: 'ok', service: 'combos-svc' };
   }
-  async readiness() {
-    return (await this.database.ready())
-      ? {
-          status: 'ok',
-          service: 'combos-svc',
-          dependencies: { postgres: 'ok' },
-        }
-      : {
-          status: 'error',
-          service: 'combos-svc',
-          dependencies: { postgres: 'error' },
-        };
+  async readiness(
+    amqpStatus: 'disabled' | 'ready' | 'not_ready' = process.env
+      .COMBOS_AMQP_ENABLED === 'true'
+      ? 'not_ready'
+      : 'disabled',
+  ) {
+    const postgresReady = await this.database.ready();
+    const amqpRequired =
+      process.env.COMBOS_AMQP_ENABLED === 'true' || amqpStatus !== 'disabled';
+    const amqpReady = amqpStatus === 'ready';
+    const ready = postgresReady && (!amqpRequired || amqpReady);
+    return {
+      status: ready ? 'ok' : 'error',
+      service: 'combos-svc',
+      dependencies: {
+        postgres: postgresReady ? 'ok' : 'error',
+        ...(amqpRequired ? { rabbitmq: amqpReady ? 'ok' : 'error' } : {}),
+      },
+    };
   }
 
   async get(id: string) {
@@ -176,7 +184,7 @@ export class CombosSvcService {
     items: ComponentInput[],
     comboPrice: bigint,
     correlationId: string = randomUUID(),
-  ): Promise<string> {
+  ): Promise<{ currency: string; productIds: Map<string, string> }> {
     const catalogUrl = process.env.COMBOS_CATALOG_URL;
     const pricingUrl = process.env.COMBOS_PRICING_URL;
     if (
@@ -194,8 +202,11 @@ export class CombosSvcService {
         catalogUrl,
         () => process.env.COMBOS_CATALOG_SERVICE_BEARER,
       );
-      for (const item of items)
-        await catalog.getContext(item.sku, correlationId);
+      const productIds = new Map<string, string>();
+      for (const item of items) {
+        const context = await catalog.getContext(item.sku, correlationId);
+        productIds.set(item.sku, context.productId);
+      }
       const pricing = new PricingClient(
         pricingUrl,
         () => process.env.COMBOS_PRICING_SERVICE_BEARER,
@@ -221,7 +232,7 @@ export class CombosSvcService {
           'COMBO_PRECIO_INVALIDO',
           'El precio del combo debe ser menor que los totales regular y público',
         );
-      return prices[0]!.currency;
+      return { currency: prices[0]!.currency, productIds };
     } catch (error) {
       if (error instanceof ComboError) throw error;
       if (
@@ -252,21 +263,29 @@ export class CombosSvcService {
     this.validateCreate(input);
     const components = input.componentes!;
     const price = decimal(input.precioCombo!);
-    const currency = await this.validateReferences(
+    const references = await this.validateReferences(
       components,
       price,
       correlationId,
     );
-    const id = await this.repository.create({
-      name: input.nombre!,
-      description: input.descripcion ?? null,
-      price: priceString(price),
-      currency,
-      components: components.map((item) => ({
-        sku: item.sku,
-        quantity: item.cantidad,
-      })),
-    });
+    let id: string;
+    try {
+      id = await this.repository.create({
+        name: input.nombre!,
+        description: input.descripcion ?? null,
+        price: priceString(price),
+        currency: references.currency,
+        components: components.map((item) => ({
+          sku: item.sku,
+          quantity: item.cantidad,
+          productId: references.productIds.get(item.sku)!,
+        })),
+      });
+    } catch (error) {
+      if (error instanceof CatalogComponentDeactivatedError)
+        throw new ComboError(404, 'SKU_NO_ENCONTRADO', 'SKU inactivo');
+      throw error;
+    }
     return this.get(id);
   }
 
@@ -309,27 +328,36 @@ export class CombosSvcService {
       input.version === undefined
         ? current.combo.version
         : BigInt(input.version);
-    const currency =
+    const references =
       input.componentes === undefined && input.precioCombo === undefined
-        ? current.combo.currency.trim()
+        ? undefined
         : await this.validateReferences(components, cents, correlationId);
-    const changed = await this.repository.update(id, {
-      name: input.nombre ?? current.combo.name,
-      description: Object.hasOwn(input, 'descripcion')
-        ? (input.descripcion ?? null)
-        : current.combo.description,
-      price: priceString(cents),
-      currency,
-      expectedVersion,
-      ...(input.componentes === undefined
-        ? {}
-        : {
-            components: components.map((item) => ({
-              sku: item.sku,
-              quantity: item.cantidad,
-            })),
-          }),
-    });
+    const currency = references?.currency ?? current.combo.currency.trim();
+    let changed: boolean;
+    try {
+      changed = await this.repository.update(id, {
+        name: input.nombre ?? current.combo.name,
+        description: Object.hasOwn(input, 'descripcion')
+          ? (input.descripcion ?? null)
+          : current.combo.description,
+        price: priceString(cents),
+        currency,
+        expectedVersion,
+        ...(input.componentes === undefined
+          ? {}
+          : {
+              components: components.map((item) => ({
+                sku: item.sku,
+                quantity: item.cantidad,
+                productId: references!.productIds.get(item.sku)!,
+              })),
+            }),
+      });
+    } catch (error) {
+      if (error instanceof CatalogComponentDeactivatedError)
+        throw new ComboError(404, 'SKU_NO_ENCONTRADO', 'SKU inactivo');
+      throw error;
+    }
     if (!changed) {
       if (!(await this.repository.get(id)))
         throw new ComboError(404, 'COMBO_NO_ENCONTRADO', 'Combo no encontrado');

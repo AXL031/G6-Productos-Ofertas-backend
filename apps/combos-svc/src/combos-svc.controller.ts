@@ -14,6 +14,7 @@ import {
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { readCombosEnvironment } from './config/combos-environment.js';
+import { CombosEventConsumer } from './messaging/combos-event-consumer.js';
 import { isAllowedDemoGatewayIp } from './http/combos-demo-origin.js';
 import {
   ComboError,
@@ -23,12 +24,17 @@ import {
 
 @Controller()
 export class CombosSvcController {
-  constructor(private readonly service: CombosSvcService) {}
+  constructor(
+    private readonly service: CombosSvcService,
+    private readonly consumer: CombosEventConsumer,
+  ) {}
   @Get('health') getHealth() {
     return this.service.getHealth();
   }
   @Get('ready') async ready(@Res() res: Response) {
-    const result = await this.service.readiness();
+    const result = await this.service.readiness(
+      this.consumer.readinessStatus(),
+    );
     return res.status(result.status === 'ok' ? 200 : 503).json(result);
   }
   private auth(req: Request) {

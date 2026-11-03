@@ -492,6 +492,50 @@ jobs:
       run: node apps/promotions-svc/test/persistence.isolated.smoke.mjs
     - name: Validar transporte de cupones y Outbox con dependencias desechables
       run: node apps/promotions-svc/test/coupons.isolated.smoke.mjs
+  combos_catalogo:
+    name: Probar integración de Combos con PostgreSQL, RabbitMQ y Catalog desechables
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener backend y su historia de integración
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        fetch-depth: 0
+    - name: Obtener Docs fijado en AsyncAPI rc.4
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 40b566976fb94d924116dcd01d41b3276c2bc9e3
+        path: docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - name: Instalar dependencias
+      run: npm ci
+    - name: Ejecutar las cuatro suites E2E de Combos sin filtros
+      env:
+        COMBOS_TEST_DOCS_ROOT: ${{ github.workspace }}/docs
+        COMBOS_TEST_EVIDENCE_DIR: apps/combos-svc/test/evidence-ci
+      run: bash apps/combos-svc/test/run-postgres-isolated.sh
+    - name: Conservar evidencia E2E de Combos
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: combos-catalog-e2e-${{ github.sha }}
+        path: |
+          backend/apps/combos-svc/test/evidence-ci/vitest-results.json
+          backend/apps/combos-svc/test/evidence-ci/run-summary.txt
+        if-no-files-found: warn
   integral:
     name: Validación integral de integración continua
     runs-on: ubuntu-latest
@@ -511,10 +555,15 @@ jobs:
       - taxonomia_catalogo
       - inventario
       - promotions
+      - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
@@ -540,10 +589,15 @@ jobs:
     - taxonomia_catalogo
     - inventario
     - promotions
+    - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
