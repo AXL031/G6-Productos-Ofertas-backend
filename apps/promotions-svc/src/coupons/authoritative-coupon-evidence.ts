@@ -153,9 +153,9 @@ export class AuthoritativeCouponEvidence implements CouponEvidenceProvider<PoolC
     return {
       ...proof,
       eligible:
+        // The primary automatic campaign does not identify the actual coupon.
         evaluation.couponApplicable &&
-        evaluation.winner.usesCoupon &&
-        evaluation.winner.id === coupon.promotionId,
+        evaluation.appliedCouponPromotionId === coupon.promotionId,
     };
   }
 }

@@ -15,9 +15,18 @@ import { DeactivationIntentService } from './domain/deactivation-intent.service.
 import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
 import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
+import {
+  TAXONOMY_SECURITY_CONFIG,
+  TaxonomyAuthGuard,
+  TaxonomyTokenVerifier,
+  readTaxonomySecurityConfig,
+  TAXONOMY_DEMO_ENABLED,
+  readTaxonomyDemoConfig,
+} from './taxonomy-auth.js';
 
 export interface OpcionesModuloTaxonomy {
   databaseUrl?: string;
+  env?: Readonly<NodeJS.ProcessEnv>;
 }
 
 @Module({
@@ -31,16 +40,36 @@ export interface OpcionesModuloTaxonomy {
     DeactivationRecoveryRunner,
     TaxonomyAmqpRuntime,
     TaxonomyMessageStore,
+    TaxonomyAuthGuard,
+    TaxonomyTokenVerifier,
+    {
+      provide: TAXONOMY_DEMO_ENABLED,
+      useFactory: () => readTaxonomyDemoConfig(process.env),
+    },
+    {
+      provide: TAXONOMY_SECURITY_CONFIG,
+      useFactory: () => readTaxonomySecurityConfig(process.env),
+    },
     proveedorDeRepositorio(),
     { provide: TAXONOMY_READINESS, useExisting: TAXONOMY_REPOSITORY },
     { provide: APP_FILTER, useClass: ProblemDetailsFilter },
   ],
 })
 export class TaxonomySvcModule {
-  static forRuntime(): DynamicModule {
+  static forRuntime(
+    env: Readonly<NodeJS.ProcessEnv> = process.env,
+  ): DynamicModule {
     return {
       module: TaxonomySvcModule,
       providers: [
+        {
+          provide: TAXONOMY_DEMO_ENABLED,
+          useValue: readTaxonomyDemoConfig(env),
+        },
+        {
+          provide: TAXONOMY_SECURITY_CONFIG,
+          useValue: readTaxonomySecurityConfig(env),
+        },
         {
           provide: TAXONOMY_REPOSITORY,
           useFactory: (db: Database) => new PostgresTaxonomyRepository(db),
@@ -54,6 +83,16 @@ export class TaxonomySvcModule {
     if (!opciones.databaseUrl) {
       return {
         module: TaxonomySvcModule,
+        providers: [
+          {
+            provide: TAXONOMY_DEMO_ENABLED,
+            useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
+          },
+          {
+            provide: TAXONOMY_SECURITY_CONFIG,
+            useValue: readTaxonomySecurityConfig(opciones.env ?? process.env),
+          },
+        ],
       };
     }
     if (process.env.NODE_ENV === 'production') {
@@ -63,7 +102,17 @@ export class TaxonomySvcModule {
     }
     return {
       module: TaxonomySvcModule,
-      providers: [proveedorDeRepositorio(opciones.databaseUrl)],
+      providers: [
+        {
+          provide: TAXONOMY_DEMO_ENABLED,
+          useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
+        },
+        proveedorDeRepositorio(opciones.databaseUrl),
+        {
+          provide: TAXONOMY_SECURITY_CONFIG,
+          useValue: readTaxonomySecurityConfig(opciones.env ?? process.env),
+        },
+      ],
     };
   }
 }

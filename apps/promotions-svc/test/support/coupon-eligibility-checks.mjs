@@ -20,13 +20,14 @@ export async function verifyCouponEligibility({
   channel,
 }) {
   const promotion = randomUUID();
+  const automatic = randomUUID();
   const coupon = randomUUID();
   await admin.query('BEGIN');
   try {
     await admin.query('SET LOCAL ROLE po_promotions_owner');
     await admin.query(
       `INSERT INTO promotions.promotions(id,name,discount_type,discount_value,modality,state,valid_from,valid_until,priority,enabled_channels)
-       VALUES ($1,'Eligibility fixture','PORCENTAJE',10,'CUPON','ACTIVO','2026-10-01','2026-12-01',1,ARRAY['MARKETPLACE'])`,
+       VALUES ($1,'Eligibility fixture','PORCENTAJE',10,'CUPON','ACTIVO','2026-10-01','2026-12-01',2,ARRAY['MARKETPLACE'])`,
       [promotion],
     );
     await admin.query(
@@ -34,13 +35,26 @@ export async function verifyCouponEligibility({
       [promotion],
     );
     await admin.query(
-      'INSERT INTO promotions.combination_policy VALUES ($1,false,false,false)',
+      'INSERT INTO promotions.combination_policy VALUES ($1,false,true,false)',
       [promotion],
     );
     await admin.query(
       `INSERT INTO promotions.coupons(id,promotion_id,code,state,minimum_amount,max_global_uses,cancellation_policy)
        VALUES ($1,$2,'ELIGIBILITY_FIXTURE','ACTIVO',100,1,'RESTAURAR_EN_CANCELACION')`,
       [coupon, promotion],
+    );
+    await admin.query(
+      `INSERT INTO promotions.promotions(id,name,discount_type,discount_value,modality,state,valid_from,valid_until,priority,enabled_channels)
+       VALUES ($1,'Combined automatic fixture','PORCENTAJE',5,'AUTOMATICA','ACTIVO','2026-10-01','2026-12-01',1,ARRAY['MARKETPLACE'])`,
+      [automatic],
+    );
+    await admin.query(
+      "INSERT INTO promotions.promotion_scopes(promotion_id,sku) VALUES ($1,'ELIGIBILITY-SKU')",
+      [automatic],
+    );
+    await admin.query(
+      'INSERT INTO promotions.combination_policy VALUES ($1,false,false,true)',
+      [automatic],
     );
     await admin.query('COMMIT');
   } catch (error) {
@@ -130,6 +144,34 @@ export async function verifyCouponEligibility({
     '0',
   );
   mutate = (f) => f;
+  // The coupon may be selected alongside an earlier automatic campaign. The
+  // principal campaign is not the identity of the coupon to consume.
+  await admin.query('BEGIN');
+  await admin.query('SET LOCAL ROLE po_promotions_owner');
+  await admin.query(
+    'UPDATE promotions.promotions SET discount_value=50 WHERE id=$1',
+    [automatic],
+  );
+  await admin.query(
+    'UPDATE promotions.combination_policy SET coupon=false WHERE promotion_id=$1',
+    [automatic],
+  );
+  await admin.query('COMMIT');
+  assert.equal(
+    (await processor.process(input(), 'modulo-ventas')).data.result_code,
+    'COUPON_NOT_ELIGIBLE',
+  );
+  await admin.query('BEGIN');
+  await admin.query('SET LOCAL ROLE po_promotions_owner');
+  await admin.query(
+    'UPDATE promotions.promotions SET discount_value=5 WHERE id=$1',
+    [automatic],
+  );
+  await admin.query(
+    'UPDATE promotions.combination_policy SET coupon=true WHERE promotion_id=$1',
+    [automatic],
+  );
+  await admin.query('COMMIT');
   // The existing SQL limit remains authoritative, even for independent orders
   // whose evidence/scope/minimum all pass concurrently.
   const attempts = await Promise.all(
@@ -328,6 +370,7 @@ export async function verifyCouponEligibility({
     0,
   );
   return [
+    'combined authoritative coupon eligibility: automatic principal and actual coupon remain distinct; a winning compatible coupon consumes once while a losing exclusive coupon is rejected',
     'authoritative eligibility: durable identities, scope, exact minimum, malformed facts rollback, concurrent last use and replay without evidence reload',
     'authoritative evidence through real AMQP/PG: consume and restore; lost ACK/redelivery and fresh-message replay preserve one use and result without loading evidence again',
     'real AMQP results match durable Outbox payloads with broker confirms; ACK observes committed receipt/Inbox/Outbox; distinct restorations preserve history and free the last slot only once',

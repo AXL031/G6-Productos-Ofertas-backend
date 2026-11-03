@@ -1,5 +1,9 @@
 # Reglas y consultas Promotions — #72/#73
 
+Seguimiento actual del 02/11/2026: [PR #159 y composición conectada a HTTP](REVISION-PR159-Y-COMPOSICION-H4.md).
+Los cortes del 23/10 que siguen conservan su evidencia histórica; el gate de
+acumulación fue reemplazado por la composición interna aprobada y probada.
+
 Owner: Axel Cueva. Rama única: `cueva`. Corte: 23/10/2026, America/Lima.
 **Estado: IMPLEMENTAR_PARCIAL.** No se declaran completados los issues ni una
 integración comercial operativa por disponer de handlers y pruebas aisladas.

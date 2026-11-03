@@ -27,3 +27,18 @@ export function configuredBulkAmqpUrl(env: NodeJS.ProcessEnv): string | null {
   }
   return raw;
 }
+
+export function bulkAmqpUserId(amqpUrl: string): string {
+  let username: string;
+  try {
+    const url = new URL(amqpUrl);
+    if (!['amqp:', 'amqps:'].includes(url.protocol))
+      throw new Error('Protocolo AMQP inválido.');
+    if (!url.username && !url.password) return 'guest';
+    username = decodeURIComponent(url.username);
+  } catch {
+    throw new Error('BULK_AMQP_URL debe incluir una identidad AMQP válida.');
+  }
+  if (!username) throw new Error('BULK_AMQP_URL debe incluir un usuario AMQP.');
+  return username;
+}

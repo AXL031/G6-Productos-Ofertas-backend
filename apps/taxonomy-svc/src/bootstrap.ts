@@ -58,7 +58,7 @@ export async function crearAplicacion(
   }
   const logger = new SanitizedLogger(opciones.logger);
   const app = await NestFactory.create(
-    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl }),
+    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl, env }),
     { logger },
   );
   app.useLogger(logger);
@@ -88,7 +88,7 @@ export async function iniciarTaxonomySvc(
   readDatabaseConfig(env);
   const { port, host } = readHttpConfig(env);
   const logger = new SanitizedLogger(opciones.logger);
-  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(), {
+  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(env), {
     logger,
     abortOnError: false,
   });

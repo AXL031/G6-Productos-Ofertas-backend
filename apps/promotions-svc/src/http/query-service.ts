@@ -251,6 +251,7 @@ export class PromotionsQueryService {
           snapshot.promotions,
           snapshot.coupon,
           at,
+          id === 'validarCupon',
         );
         if (id === 'evaluarPromociones')
           result = {

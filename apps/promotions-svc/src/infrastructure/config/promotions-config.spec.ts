@@ -11,6 +11,47 @@ import {
 describe('Promotions configuration', () => {
   const fixture = createEnvironmentFixture();
   afterAll(() => fixture.cleanup());
+  it('validates paired service credentials against the HTTPS G7 issuer without exposing the secret', () => {
+    const credentials = {
+      AUTH_ISSUER: 'https://g7.test/api/v1/auth',
+      AUTH_JWKS_URL: 'https://g7.test/api/v1/auth/.well-known/jwks.json',
+      PROMOTIONS_SERVICE_TOKEN_URL: 'https://g7.test/api/v1/auth/token',
+      PROMOTIONS_SERVICE_CLIENT_SECRET: 'synthetic-secret',
+    };
+    const settings = validatePromotionsConfiguration({
+      ...fixture.environment,
+      ...credentials,
+    });
+    expect(settings.serviceCredentials?.tokenUrl).toBe(
+      credentials.PROMOTIONS_SERVICE_TOKEN_URL,
+    );
+    expect(JSON.stringify(new PromotionsConfigService(settings))).not.toContain(
+      'synthetic-secret',
+    );
+    for (const overrides of [
+      { PROMOTIONS_SERVICE_TOKEN_URL: undefined },
+      { PROMOTIONS_SERVICE_CLIENT_SECRET: undefined },
+      { PROMOTIONS_SERVICE_CLIENT_SECRET: '' },
+      { AUTH_ISSUER: undefined, AUTH_JWKS_URL: undefined },
+      ...[
+        'http://g7.test/api/v1/auth/token',
+        'https://wrong.test/api/v1/auth/token',
+        'https://g7.test/wrong',
+        'https://g7.test/api/v1/auth/token?secret=x',
+        'https://user:secret@g7.test/api/v1/auth/token',
+      ].map((PROMOTIONS_SERVICE_TOKEN_URL) => ({
+        PROMOTIONS_SERVICE_TOKEN_URL,
+      })),
+    ]) {
+      expect(() =>
+        validatePromotionsConfiguration({
+          ...fixture.environment,
+          ...credentials,
+          ...overrides,
+        }),
+      ).toThrow(PromotionsConfigurationError);
+    }
+  });
   it('requires a paired HTTPS issuer/JWKS configuration and does not serialize it', () => {
     for (const auth of [
       { AUTH_ISSUER: 'https://issuer.test' },

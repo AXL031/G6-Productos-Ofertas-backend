@@ -31,8 +31,6 @@ import { PricingMutations } from '../src/application/pricing-mutations.js';
 import {
   CommercialPrices,
   PRICING_CATALOG_CONTEXT,
-  PRICING_CHANNEL_IDS,
-  channels,
   type PricingCatalogContext,
 } from '../src/http/commercial-prices.js';
 import {
@@ -61,10 +59,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       string,
       NonNullable<Awaited<ReturnType<PricingCatalogContext['resolve']>>>
     >();
-    const retailChannel = randomUUID();
-    const channelIds: Partial<Record<(typeof channels)[number], string>> = {
-      RETAIL: retailChannel,
-    };
+    const retailChannel = 'RETAIL';
     let denyWrite = false;
     const actor = '74ed2f19-7e70-4915-a6f6-bbc691b82587';
     const factFactory: PricingFactFactory = (before, after, metadata) => {
@@ -146,8 +141,6 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       })
         .overrideProvider(PRICING_CATALOG_CONTEXT)
         .useValue({ resolve: async (sku: string) => contexts.get(sku) ?? null })
-        .overrideProvider(PRICING_CHANNEL_IDS)
-        .useValue(channelIds)
         .overrideProvider(PRICING_WRITE_AUTHORIZER)
         .useValue(async () => {
           if (denyWrite) throw new PricingHttpError(403, 'SCOPE_INSUFICIENTE');
@@ -311,7 +304,6 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         expect([null, 'MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS']).toContain(
           response.body.channel_id,
         );
-        expect(response.body.channel_id).not.toBe(retailChannel);
       }
       const scopedBatch = await get(
         `/api/v1/precios?skus=${commercialCases.map((c) => c.sku).join(',')}&at=${at}&canal=RETAIL`,
@@ -321,7 +313,6 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         expect([null, 'MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS']).toContain(
           item.channel_id,
         );
-        expect(item.channel_id).not.toBe(retailChannel);
       }
       await get(`/api/v1/precios/productos/${productId}`, serviceToken).expect(
         401,
@@ -331,7 +322,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       ).expect(404);
       await get(
         `/api/v1/precios/skus/${simpleSku}?at=${at}&canal=MARKETPLACE`,
-      ).expect(503);
+      ).expect(200);
       const batch = await get(
         `/api/v1/precios?skus=${simpleSku},missing,${variantSku}&at=${at}`,
       ).expect(200);
@@ -355,7 +346,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       ).rejects.toMatchObject({ status: 503 });
     });
 
-    it('PATCH SKU serializa canal antes de mutar y rechaza mapeos inexistentes/ambiguos sin efectos', async () => {
+    it('PATCH SKU conserva canal textual y rechaza canales invalidos sin efectos', async () => {
       const sku = 'PATCH-CHANNEL-' + randomUUID();
       const unknownChannel = randomUUID();
       await repository.transaction(async (tx) => {
@@ -391,7 +382,6 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
           channel_id: expected,
           price_version: 2,
         });
-        expect(response.body.channel_id).not.toBe(retailChannel);
         expect(
           (await repository.findDefinition({ sku }, channelId))!.channelId,
         ).toBe(channelId);
@@ -414,24 +404,20 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
             .orderBy(outbox.id),
         };
       };
-      for (const ambiguous of [false, true]) {
+      for (const invalidChannel of [unknownChannel, 'OTHER']) {
         const before = await state();
         const update = vi.spyOn(mutations, 'update');
-        if (ambiguous) channelIds.CHATBOT = retailChannel;
         try {
-          const response = await patch(
-            ambiguous ? retailChannel : unknownChannel,
-          ).expect(503);
+          const response = await patch(invalidChannel).expect(400);
           expect(response.body).toMatchObject({
-            status: 503,
-            code: 'SERVICIO_NO_DISPONIBLE',
+            status: 400,
+            code: 'VALIDACION',
             correlationId: correlation,
           });
           expect(update).not.toHaveBeenCalled();
           expect(await state()).toEqual(before);
         } finally {
           update.mockRestore();
-          delete channelIds.CHATBOT;
         }
       }
       const scheduled = await request(app!.getHttpServer())
@@ -794,13 +780,16 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       await request(app!.getHttpServer())
         .patch(path)
         .set('Authorization', jwt)
-        .send({ ...body, channelId: retailChannel })
-        .expect(404);
+        .send({ ...body, channelId: randomUUID() })
+        .expect(400);
       await request(app!.getHttpServer())
         .patch(path)
         .set('Authorization', jwt)
         .send({ ...body, channelId: 'RETAIL' })
-        .expect(400);
+        .expect(404)
+        .expect(({ body: problem }) => {
+          expect(problem.code).toBe('PRECIO_NO_ENCONTRADO');
+        });
       const saved = await request(app!.getHttpServer())
         .patch(path)
         .set('Authorization', jwt)
