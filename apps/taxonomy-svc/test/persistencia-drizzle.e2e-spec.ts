@@ -1962,9 +1962,12 @@ describeIntegracion(
       const opInUse = 'ffffffff-dddd-4ddd-8ddd-dddddddddddd';
       const messageInUse = 'ffffffff-eeee-4eee-8eee-eeeeeeeeeeee';
       const entityInUse = '55555555-5555-4555-8555-555555555555';
+      const operacionCategoria = randomUUID();
+      const mensajeCategoria = randomUUID();
       let broker: ChannelModel | undefined;
       let catalog: ChannelModel | undefined;
       let runtime: TaxonomyAmqpRuntime | undefined;
+      let categoriaPublicada: string | undefined;
       const esperar = async (condicion: () => Promise<boolean> | boolean) => {
         for (let i = 0; i < 150; i++) {
           if (await condicion()) return;
@@ -1996,6 +1999,29 @@ describeIntegracion(
           'po.comandos.x',
           'taxonomy.master.deactivation.check.requested',
         );
+        await canal.assertQueue('prueba.categorias.q', { durable: true });
+        await canal.bindQueue(
+          'prueba.categorias.q',
+          'po.eventos.x',
+          'taxonomy.category.updated',
+        );
+        await canal.assertQueue('prueba.bajas.q', { durable: true });
+        await canal.bindQueue(
+          'prueba.bajas.q',
+          'po.eventos.x',
+          'taxonomy.master.deactivated',
+        );
+        const categoria = await new CategoryCreateService(database).crear({
+          nombre: `Categoria evento ${randomUUID()}`,
+          descripcion: null,
+          categoriaPadreId: null,
+          orden: 0,
+          imagenUrl: null,
+          slugConfirmado: `evento-${randomUUID()}`,
+        });
+        if (categoria.estado !== 'CREADA')
+          throw new Error('Categoría no creada');
+        categoriaPublicada = categoria.categoria.categoriaId;
         catalog = await connect(urls.catalogUrl);
         const productor = await catalog.createConfirmChannel();
         await expect(
@@ -2024,6 +2050,32 @@ describeIntegracion(
         };
         runtime = crearRuntime();
         await esperar(() => runtime!.disponible());
+        await esperar(
+          async () =>
+            (await canal.checkQueue('prueba.categorias.q')).messageCount === 1,
+        );
+        const eventoCategoria = await canal.get('prueba.categorias.q', {
+          noAck: true,
+        });
+        if (!eventoCategoria) throw new Error('Falta evento de categoría');
+        expect(eventoCategoria.fields.routingKey).toBe(
+          'taxonomy.category.updated',
+        );
+        expect(JSON.parse(eventoCategoria.content.toString())).toMatchObject({
+          producer: 'taxonomy-svc',
+          kind: 'event',
+          name: 'taxonomy.category.updated',
+          data: { categoria_id: categoriaPublicada, version: 0 },
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                "SELECT published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+                [categoriaPublicada],
+              )
+            ).rows[0]?.publicado === true,
+        );
         await esperar(
           async () =>
             (await canal.checkQueue('po.catalogo.q')).messageCount === 1,
@@ -2147,6 +2199,130 @@ describeIntegracion(
               )
             ).rows[0].status === 'COMPLETED',
         );
+        await esperar(
+          async () =>
+            (await canal.checkQueue('prueba.bajas.q')).messageCount === 1,
+        );
+        const bajaMarca = await canal.get('prueba.bajas.q', { noAck: true });
+        if (!bajaMarca) throw new Error('Falta evento de baja de marca');
+        expect(JSON.parse(bajaMarca.content.toString())).toMatchObject({
+          name: 'taxonomy.master.deactivated',
+          operation_id: operationId,
+          data: { entity_type: 'BRAND', entity_id: entityId },
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE message_id = $1',
+                [bajaMarca.properties.messageId],
+              )
+            ).rows[0]?.publicado === true,
+        );
+        await expect(
+          intentos.registrar({
+            operationId: operacionCategoria,
+            correlationId,
+            entityType: 'CATEGORY',
+            entityId: categoriaPublicada,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        await esperar(
+          async () =>
+            (await canal.checkQueue('po.catalogo.q')).messageCount === 1,
+        );
+        const solicitudCategoria = await canal.get('po.catalogo.q', {
+          noAck: true,
+        });
+        if (!solicitudCategoria)
+          throw new Error('Falta solicitud de categoría');
+        const respuestaCategoria = {
+          ...respuesta,
+          message_id: mensajeCategoria,
+          operation_id: operacionCategoria,
+          causation_id: JSON.parse(solicitudCategoria.content.toString())
+            .message_id,
+          data: {
+            entity_type: 'CATEGORY',
+            entity_id: categoriaPublicada,
+            version: 0,
+            result: 'CLEAR',
+          },
+        };
+        await new Promise<void>((resolve, reject) => {
+          productor.publish(
+            'po.resultados.x',
+            respuestaCategoria.name,
+            Buffer.from(JSON.stringify(respuestaCategoria)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              userId: 'catalog_test',
+              messageId: mensajeCategoria,
+              correlationId,
+            },
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await esperar(
+          async () =>
+            (await canal.checkQueue('prueba.bajas.q')).messageCount === 1,
+        );
+        const bajaCategoria = await canal.get('prueba.bajas.q', {
+          noAck: true,
+        });
+        if (!bajaCategoria)
+          throw new Error('Falta evento de baja de categoría');
+        expect(JSON.parse(bajaCategoria.content.toString())).toMatchObject({
+          name: 'taxonomy.master.deactivated',
+          operation_id: operacionCategoria,
+          data: { entity_type: 'CATEGORY', entity_id: categoriaPublicada },
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE message_id = $1',
+                [bajaCategoria.properties.messageId],
+              )
+            ).rows[0]?.publicado === true,
+        );
+        await productor.waitForConfirms();
+        const procesadasCategoria = procesar.mock.calls.length;
+        await new Promise<void>((resolve, reject) => {
+          productor.publish(
+            'po.resultados.x',
+            respuestaCategoria.name,
+            Buffer.from(JSON.stringify(respuestaCategoria)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              userId: 'catalog_test',
+              messageId: mensajeCategoria,
+              correlationId,
+            },
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await esperar(() => procesar.mock.calls.length > procesadasCategoria);
+        await procesar.mock.results[procesadasCategoria].value;
+        expect(
+          (
+            await admin.query(
+              'SELECT count(*)::int AS n FROM taxonomy.inbox WHERE message_id=$1',
+              [mensajeCategoria],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+              [operacionCategoria],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
         const canalConsumidor = Reflect.get(runtime, 'consumer') as Channel;
         const ack = vi.spyOn(canalConsumidor, 'ack');
         const recibidasAntes = procesar.mock.calls.length;
@@ -2254,6 +2430,29 @@ describeIntegracion(
         await catalog?.close().catch(() => undefined);
         await broker?.close().catch(() => undefined);
         rabbit.cerrar();
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          mensajeCategoria,
+        ]);
+        await admin.query('DELETE FROM taxonomy.outbox WHERE operation_id=$1', [
+          operacionCategoria,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [operacionCategoria],
+        );
+        if (categoriaPublicada) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+            [categoriaPublicada],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.category_seo WHERE categoria_id = $1',
+            [categoriaPublicada],
+          );
+          await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+            categoriaPublicada,
+          ]);
+        }
         await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
           mensajeAjeno,
         ]);

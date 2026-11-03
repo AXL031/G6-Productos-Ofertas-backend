@@ -1,7 +1,20 @@
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { and, asc, desc, eq, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  sql,
+  type ExtractTablesWithRelations,
+} from 'drizzle-orm';
+import type { NodePgTransaction } from 'drizzle-orm/node-postgres';
 import { CombosDatabase } from './combos.database.js';
-import { combos, comboItems, componentProjection } from './combos.schema.js';
+import {
+  combos,
+  comboItems,
+  combosTables,
+  componentProjection,
+} from './combos.schema.js';
 
 export interface ComboComponentRecord {
   id: string;
@@ -17,7 +30,7 @@ export interface NewCombo {
   description: string | null;
   price: string;
   currency: string;
-  components: Array<{ sku: string; quantity: number }>;
+  components: Array<{ sku: string; quantity: number; productId: string }>;
 }
 export interface ComboPatch {
   name: string;
@@ -25,12 +38,191 @@ export interface ComboPatch {
   price: string;
   currency: string;
   expectedVersion: bigint;
-  components?: Array<{ sku: string; quantity: number }>;
+  components?: Array<{ sku: string; quantity: number; productId: string }>;
+}
+
+const COMPONENT_CATALOG_LOCK_KEY = 840084;
+type CombosTransaction = NodePgTransaction<
+  typeof combosTables,
+  ExtractTablesWithRelations<typeof combosTables>
+>;
+
+export class CatalogComponentDeactivatedError extends Error {
+  constructor() {
+    super('CATALOG_COMPONENT_DEACTIVATED');
+  }
+}
+
+export class InboxMessageConflictError extends Error {
+  constructor() {
+    super('INBOX_MESSAGE_ID_CONFLICT');
+  }
 }
 
 @Injectable()
 export class CombosRepository {
   constructor(private readonly database: CombosDatabase) {}
+
+  async processEvent(input: {
+    messageId: string;
+    handler: string;
+    eventName: string;
+    correlationId: string;
+    operationId: string | null;
+    payload: Record<string, unknown>;
+    disposition: 'PROCESSED' | 'REJECTED_INVALID_EVENT';
+    sku?: string;
+    skus?: string[];
+    resolveProductSkus?: (componentSkus: string[]) => Promise<string[]>;
+    changedAt?: string;
+  }): Promise<'PROCESSED' | 'DUPLICATE'> {
+    return this.database.query(async (client) => {
+      await client.query('BEGIN');
+      try {
+        const productDeactivation =
+          input.eventName === 'catalog.product.deactivated' &&
+          input.handler === 'combos.catalog.product.deactivated';
+        const skuDeactivation =
+          input.eventName === 'catalog.sku.deactivated' &&
+          input.handler === 'combos.catalog.sku.deactivated';
+        const stockChange =
+          input.eventName === 'inventory.stock.changed' &&
+          input.handler === 'combos.inventory.stock.changed';
+        if (productDeactivation) {
+          await client.query('SELECT pg_advisory_xact_lock($1)', [
+            COMPONENT_CATALOG_LOCK_KEY,
+          ]);
+          const prior = await this.existingDisposition(client, input);
+          if (prior) {
+            await client.query('COMMIT');
+            return prior;
+          }
+          if (!input.resolveProductSkus)
+            throw new Error('PRODUCT_SKU_RESOLVER_REQUIRED');
+          const candidates = await client.query(
+            'SELECT DISTINCT sku FROM combos.combo_items ORDER BY sku',
+          );
+          input.skus = await input.resolveProductSkus(
+            candidates.rows.map((row) => String(row.sku)),
+          );
+        } else if (skuDeactivation) {
+          await client.query('SELECT pg_advisory_xact_lock($1)', [
+            COMPONENT_CATALOG_LOCK_KEY,
+          ]);
+        }
+        const inserted = await client.query(
+          `INSERT INTO combos.inbox
+             (message_id, handler, event_name, correlation_id, operation_id, payload, result)
+           VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
+           ON CONFLICT (message_id, handler) DO NOTHING
+           RETURNING id`,
+          [
+            input.messageId,
+            input.handler,
+            input.eventName,
+            input.correlationId,
+            input.operationId,
+            JSON.stringify(input.payload),
+            input.disposition,
+          ],
+        );
+        if (inserted.rowCount === 0) {
+          const duplicate = await this.existingDisposition(client, input);
+          if (!duplicate) throw new InboxMessageConflictError();
+          await client.query('COMMIT');
+          return duplicate;
+        }
+
+        if (productDeactivation && input.skus) {
+          await client.query(
+            `INSERT INTO combos.component_projection
+               (combo_item_id, catalog_deactivated, catalog_observed_at)
+             SELECT id, true, $2::timestamptz
+             FROM combos.combo_items WHERE sku = ANY($1::text[])
+             ON CONFLICT (combo_item_id) DO UPDATE
+             SET catalog_deactivated = true,
+                 catalog_observed_at = EXCLUDED.catalog_observed_at
+             WHERE combos.component_projection.catalog_observed_at IS NULL
+                OR combos.component_projection.catalog_observed_at <= EXCLUDED.catalog_observed_at`,
+            [input.skus, input.changedAt],
+          );
+        }
+
+        if (skuDeactivation && input.sku) {
+          await client.query(
+            `INSERT INTO combos.component_projection
+               (combo_item_id, catalog_deactivated, catalog_observed_at)
+             SELECT id, true, $2::timestamptz
+             FROM combos.combo_items WHERE sku = $1
+             ON CONFLICT (combo_item_id) DO UPDATE
+             SET catalog_deactivated = true,
+                 catalog_observed_at = EXCLUDED.catalog_observed_at
+             WHERE combos.component_projection.catalog_observed_at IS NULL
+                OR combos.component_projection.catalog_observed_at <= EXCLUDED.catalog_observed_at`,
+            [input.sku, input.changedAt],
+          );
+        }
+
+        if (stockChange && input.sku) {
+          await client.query(
+            `INSERT INTO combos.component_projection
+               (combo_item_id, catalog_deactivated, projected_available, inventory_observed_at)
+             SELECT id, false, NULL, $2::timestamptz
+             FROM combos.combo_items WHERE sku = $1
+             ON CONFLICT (combo_item_id) DO UPDATE
+             SET projected_available = NULL,
+                 inventory_observed_at = GREATEST(
+                   COALESCE(combos.component_projection.inventory_observed_at, EXCLUDED.inventory_observed_at),
+                   EXCLUDED.inventory_observed_at
+                 )`,
+            [input.sku, input.changedAt],
+          );
+        }
+        await client.query('COMMIT');
+        return 'PROCESSED';
+      } catch (error) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        throw error;
+      }
+    });
+  }
+
+  private async existingDisposition(
+    client: import('pg').PoolClient,
+    input: {
+      messageId: string;
+      handler: string;
+      eventName: string;
+      correlationId: string;
+      operationId: string | null;
+      payload: Record<string, unknown>;
+      disposition: 'PROCESSED' | 'REJECTED_INVALID_EVENT';
+    },
+  ): Promise<'DUPLICATE' | null> {
+    const existing = await client.query(
+      `SELECT 1 FROM combos.inbox
+       WHERE message_id = $1 AND handler = $2`,
+      [input.messageId, input.handler],
+    );
+    if (existing.rowCount === 0) return null;
+    const identical = await client.query(
+      `SELECT 1 FROM combos.inbox
+       WHERE message_id = $1 AND handler = $2 AND event_name = $3
+         AND correlation_id = $4 AND operation_id IS NOT DISTINCT FROM $5
+         AND payload = $6::jsonb AND result = $7`,
+      [
+        input.messageId,
+        input.handler,
+        input.eventName,
+        input.correlationId,
+        input.operationId,
+        JSON.stringify(input.payload),
+        input.disposition,
+      ],
+    );
+    if (identical.rowCount === 0) throw new InboxMessageConflictError();
+    return 'DUPLICATE';
+  }
 
   private throwIfUnavailable(error: unknown): never {
     let current: unknown = error;
@@ -116,6 +308,10 @@ export class CombosRepository {
   async create(input: NewCombo): Promise<string> {
     try {
       return await this.database.drizzle().transaction(async (tx) => {
+        await tx.execute(
+          sql`SELECT pg_advisory_xact_lock(${COMPONENT_CATALOG_LOCK_KEY})`,
+        );
+        await this.assertComponentsNotDeactivated(tx, input.components);
         const [combo] = await tx
           .insert(combos)
           .values({
@@ -143,6 +339,12 @@ export class CombosRepository {
   async update(id: string, patch: ComboPatch): Promise<boolean> {
     try {
       return await this.database.drizzle().transaction(async (tx) => {
+        if (patch.components !== undefined) {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(${COMPONENT_CATALOG_LOCK_KEY})`,
+          );
+          await this.assertComponentsNotDeactivated(tx, patch.components);
+        }
         const changed = await tx
           .update(combos)
           .set({
@@ -176,6 +378,38 @@ export class CombosRepository {
     } catch (error) {
       return this.throwIfUnavailable(error);
     }
+  }
+
+  private async assertComponentsNotDeactivated(
+    tx: CombosTransaction,
+    components: Array<{ sku: string; productId: string }>,
+  ): Promise<void> {
+    const skus = [...new Set(components.map((component) => component.sku))];
+    const productIds = [
+      ...new Set(components.map((component) => component.productId)),
+    ];
+    const result = await tx.execute(sql`
+      SELECT
+        EXISTS (
+          SELECT 1 FROM combos.inbox
+          WHERE handler = 'combos.catalog.sku.deactivated'
+            AND result = 'PROCESSED'
+            AND payload #>> '{data,sku}' IN (${sql.join(
+              skus.map((sku) => sql`${sku}`),
+              sql`, `,
+            )})
+        ) OR EXISTS (
+          SELECT 1 FROM combos.inbox
+          WHERE handler = 'combos.catalog.product.deactivated'
+            AND result = 'PROCESSED'
+            AND payload #>> '{data,product_id}' IN (${sql.join(
+              productIds.map((productId) => sql`${productId}`),
+              sql`, `,
+            )})
+        ) AS blocked
+    `);
+    if (result.rows[0]?.blocked === true)
+      throw new CatalogComponentDeactivatedError();
   }
 
   async deactivate(id: string): Promise<boolean> {
