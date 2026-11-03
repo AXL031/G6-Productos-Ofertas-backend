@@ -325,6 +325,11 @@ import request from 'supertest';
 import { TaxonomySvcModule } from './taxonomy-svc.module.js';
 import { TAXONOMY_SECURITY_CONFIG } from './taxonomy-auth.js';
 import { ProblemDetailsFilter } from './errors/problem-details.filter.js';
+import { BrandReactivationService } from './domain/brand-reactivation.service.js';
+import { CategoryReactivationService } from './domain/category-reactivation.service.js';
+import { CategoryCreateService } from './domain/category-create.service.js';
+import { CategoryUpdateService } from './domain/category-update.service.js';
+import { BrandWriteService } from './domain/brand-write.service.js';
 
 // Verifies actual Nest guard, JWT signature, JWKS and problem responses.
 describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
@@ -333,6 +338,65 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   let demoApp: INestApplication;
   let origin: string;
   const issuer = 'https://security.example.test';
+  const actualizarCategoria = vi.fn().mockResolvedValue({
+    estado: 'OK',
+    categoria: {
+      categoriaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Actualizada',
+      estado: 'ACTIVO',
+      version: 1,
+    },
+  });
+  const brandWrite = {
+    crear: vi.fn().mockResolvedValue({
+      estado: 'OK',
+      marca: {
+        marcaId: '11111111-1111-4111-8111-111111111111',
+        nombre: 'Marca',
+        estado: 'ACTIVO',
+        version: 0,
+      },
+    }),
+    actualizar: vi.fn().mockResolvedValue({
+      estado: 'OK',
+      marca: {
+        marcaId: '11111111-1111-4111-8111-111111111111',
+        nombre: 'Marca',
+        estado: 'ACTIVO',
+        version: 1,
+      },
+    }),
+  };
+  const crearCategoria = vi.fn().mockResolvedValue({
+    estado: 'CREADA',
+    categoria: {
+      categoriaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Running',
+      slug: 'running',
+      estado: 'ACTIVO',
+      version: 0,
+    },
+  });
+  const reactivarCategoria = vi.fn().mockResolvedValue({
+    estado: 'ACTIVA',
+    categoria: {
+      categoriaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Prueba',
+      estado: 'ACTIVO',
+      version: 1,
+    },
+  });
+  const reactivar = vi.fn().mockResolvedValue({
+    estado: 'ACTIVA',
+    marca: {
+      marcaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Prueba',
+      estado: 'ACTIVO',
+      version: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+    },
+  });
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
 
   function token(
@@ -407,6 +471,16 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       })
       .overrideProvider(TAXONOMY_REPOSITORY)
       .useValue(new RepositorioPrueba())
+      .overrideProvider(BrandReactivationService)
+      .useValue({ reactivar })
+      .overrideProvider(CategoryReactivationService)
+      .useValue({ reactivar: reactivarCategoria })
+      .overrideProvider(CategoryCreateService)
+      .useValue({ crear: crearCategoria })
+      .overrideProvider(CategoryUpdateService)
+      .useValue({ actualizar: actualizarCategoria })
+      .overrideProvider(BrandWriteService)
+      .useValue(brandWrite)
       .compile();
     app = module.createNestApplication();
     app.useGlobalFilters(new ProblemDetailsFilter());
@@ -424,6 +498,16 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .useValue(true)
       .overrideProvider(TAXONOMY_REPOSITORY)
       .useValue(new RepositorioPrueba())
+      .overrideProvider(BrandReactivationService)
+      .useValue({ reactivar })
+      .overrideProvider(CategoryReactivationService)
+      .useValue({ reactivar: reactivarCategoria })
+      .overrideProvider(CategoryCreateService)
+      .useValue({ crear: crearCategoria })
+      .overrideProvider(CategoryUpdateService)
+      .useValue({ actualizar: actualizarCategoria })
+      .overrideProvider(BrandWriteService)
+      .useValue(brandWrite)
       .compile();
     demoApp = demoModule.createNestApplication();
     await demoApp.init();
@@ -434,6 +518,204 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+  });
+  it('actualizarCategoria valida JWT, cuerpo y conflictos', async () => {
+    const path = '/api/v1/categorias/11111111-1111-4111-8111-111111111111';
+    const human =
+      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    await request(demoApp.getHttpServer())
+      .patch(path)
+      .send({ nombre: 'X' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', human)
+      .send({ nombre: '' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', human)
+      .send({ nombre: 'Actualizada' })
+      .expect(200);
+    actualizarCategoria.mockResolvedValueOnce({ estado: 'VERSION_CONFLICT' });
+    const conflict = await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', human)
+      .send({ version: 0 })
+      .expect(409);
+    expect(conflict.body.code).toBe('VERSION_CONFLICT');
+    actualizarCategoria.mockResolvedValueOnce({ estado: 'PROFUNDIDAD' });
+    const depth = await request(app.getHttpServer())
+      .patch(path)
+      .set('Authorization', human)
+      .send({ categoriaPadreId: '11111111-1111-4111-8111-111111111111' })
+      .expect(422);
+    expect(depth.body.code).toBe('PROFUNDIDAD_CATEGORIA_EXCEDIDA');
+  });
+  it('crear y actualizar marcas requieren usuario y aceptan multipart', async () => {
+    const human =
+      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    const png = Buffer.from('89504e470d0a1a0a', 'hex');
+    await request(app.getHttpServer())
+      .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', human)
+      .send({ nombre: 'Marca' })
+      .expect(400);
+    await request(demoApp.getHttpServer())
+      .post('/api/v1/marcas')
+      .field('nombre', 'Marca')
+      .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(401);
+    await request(app.getHttpServer())
+      .post('/api/v1/marcas')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
+      .expect(201);
+    expect(brandWrite.crear).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nombre: 'Marca',
+        logoUrl: 'https://cdn.marketplace.local/brands/logos/logo.png',
+      }),
+    );
+    await request(app.getHttpServer())
+      .patch('/api/v1/marcas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .expect(200);
+    const invalid = await request(app.getHttpServer())
+      .post('/api/v1/marcas')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .attach('logo', Buffer.from('fake'), {
+        filename: 'bad.png',
+        contentType: 'image/png',
+      })
+      .expect(422);
+    expect(invalid.body.code).toBe('LOGO_INVALIDO');
+    const tooLarge = await request(app.getHttpServer())
+      .post('/api/v1/marcas')
+      .set('Authorization', human)
+      .field('nombre', 'Marca')
+      .attach('logo', Buffer.alloc(5 * 1024 * 1024 + 1), {
+        filename: 'grande.png',
+        contentType: 'image/png',
+      })
+      .expect(413);
+    expect(tooLarge.body.code).toBe('LOGO_EXCEDE_LIMITE');
+  });
+  it('crearCategoria exige JWT humano y valida el slug confirmado', async () => {
+    const path = '/api/v1/categorias';
+    const body = { nombre: 'Running', slugConfirmado: 'running' };
+    const human =
+      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    await request(demoApp.getHttpServer()).post(path).send(body).expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .send({ nombre: 'Running' })
+      .expect(400);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .send(body)
+      .expect(201);
+    crearCategoria.mockResolvedValueOnce({ estado: 'SLUG_DUPLICADO' });
+    const result = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .send(body)
+      .expect(409);
+    expect(result.body.code).toBe('SLUG_DUPLICADO');
+  });
+  it('reactivarCategoria exige usuario y comunica conflicto de padre inactivo', async () => {
+    const path =
+      '/api/v1/categorias/11111111-1111-4111-8111-111111111111/reactivar';
+    const human =
+      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    await request(demoApp.getHttpServer()).post(path).expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', 'Bearer ' + token())
+      .expect(403);
+    const result = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .expect(200);
+    expect(result.body).toMatchObject({ estado: 'ACTIVO', version: 1 });
+    reactivarCategoria.mockResolvedValueOnce({ estado: 'PADRE_INACTIVO' });
+    const conflict = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .expect(409);
+    expect(conflict.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(conflict.body.code).toBe('CATEGORIA_PADRE_INACTIVA');
+  });
+  it('reactivarMarca exige JWT humano válido incluso con demo activada', async () => {
+    const path =
+      '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
+    const human = token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    await request(demoApp.getHttpServer()).post(path).expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', 'Bearer ' + token())
+      .expect(403);
+    await request(app.getHttpServer())
+      .post(path)
+      .set(
+        'Authorization',
+        'Bearer ' +
+          token({ tipo: 'acceso', sub: randomUUID(), roles: [], aud: 'wrong' }),
+      )
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set(
+        'Authorization',
+        'Bearer ' +
+          token({ tipo: 'acceso', sub: randomUUID(), roles: [], exp: 1 }),
+      )
+      .expect(401);
+    const result = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', 'Bearer ' + human)
+      .expect(200);
+    expect(result.body).toMatchObject({
+      marcaId: '11111111-1111-4111-8111-111111111111',
+      estado: 'ACTIVO',
+      version: 1,
+    });
+    await request(app.getHttpServer())
+      .post(path)
+      .set(
+        'Authorization',
+        'Bearer ' +
+          token({ tipo: 'acceso', sub: randomUUID(), roles: undefined }),
+      )
+      .expect(200);
+  });
+  it('reactivarMarca retorna Problem Details si la marca no existe o la baja sigue en curso', async () => {
+    const path =
+      '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
+    const human =
+      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    reactivar.mockResolvedValueOnce({ estado: 'NO_ENCONTRADA' });
+    const missing = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .expect(404);
+    expect(missing.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    expect(missing.body.code).toBe('MARCA_NO_ENCONTRADA');
+    reactivar.mockResolvedValueOnce({ estado: 'BAJA_EN_PROCESO' });
+    const pending = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', human)
+      .expect(503);
+    expect(pending.body.code).toBe('SERVICIO_NO_DISPONIBLE');
   });
   it.each(['categorias', 'marcas'])(
     'demo local restringida valida solicitudes a %s',
@@ -455,7 +737,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       await request(demoApp.getHttpServer())
         .get(url + '?pagina=1')
         .expect(400);
-      await request(demoApp.getHttpServer()).post(url).expect(404);
+      await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url + '/desconocido')
         .expect(404);

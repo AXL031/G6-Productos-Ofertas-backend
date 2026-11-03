@@ -68,6 +68,16 @@ export function construirSentenciasDdl(
         (categoria_padre_id IS NOT NULL AND nivel = 2)
       )
     )`,
+    `CREATE TABLE taxonomy.category_seo (
+      id uuid NOT NULL DEFAULT gen_random_uuid(), categoria_id uuid NOT NULL,
+      slug text NOT NULL, meta_titulo text NULL, meta_descripcion text NULL,
+      taxonomy_version bigint NOT NULL DEFAULT 0, created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pk_category_seo PRIMARY KEY (id),
+      CONSTRAINT fk_category_seo_categoria FOREIGN KEY (categoria_id) REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
+      CONSTRAINT uq_category_seo_categoria UNIQUE (categoria_id), CONSTRAINT uq_category_seo_slug UNIQUE (slug),
+      CONSTRAINT ck_category_seo_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
+      CONSTRAINT ck_category_seo_version CHECK (taxonomy_version >= 0)
+    )`,
     `CREATE TABLE taxonomy.brands (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,

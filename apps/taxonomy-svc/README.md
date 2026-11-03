@@ -8,6 +8,10 @@ Microservicio de taxonomía (categorías y marcas) del backend G6.
 
 El modo demo local es optativo y reversible: `ALLOW_DEMO_UNAUTHENTICATED=true` solo se acepta con `NODE_ENV=test` o `development`, y permite únicamente GET `/api/v1/categorias` y `/api/v1/marcas` sin Authorization desde un par TCP de loopback. Un Authorization presente siempre sigue el guard JWT. No se confía en cabeceras de IP o identidad. Este límite no habilita conexiones entre contenedores ni acredita el aislamiento Gateway/Oracle exigido por la política H4; estas topologías requieren coordinación y evidencia antes de ampliar el acceso.
 
+## Escrituras de categorías y marcas (#38)
+
+Las mutaciones administrativas requieren JWT humano con audiencia `api-productos`; el modo demo no las habilita anónimamente. Las operaciones de marca aceptan `multipart/form-data` y validan tamaño, MIME y firma del logo. Conforme a la instrucción de integración recibida, Taxonomy solo persiste `logo_url`: usa `logoUrl`/`logo_url` si se proporciona o construye `https://cdn.marketplace.local/brands/logos/<nombre>` a partir del archivo. **Taxonomy descarta el binario y no verifica que esa URL exista ni que el CDN aloje el archivo**; su publicación efectiva y accesibilidad quedan pendientes del mecanismo externo responsable. El guardado de metadatos no acredita almacenamiento del logo, homologación ni despliegue.
+
 ## Variables de entorno
 
 El servicio valida la configuración en el arranque y falla cerrado (`fail-closed`): si falta o es inválida alguna variable requerida, no inicia. Nunca imprimir ni registrar valores reales; las credenciales se enmascaran en los logs.
