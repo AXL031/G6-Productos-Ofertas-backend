@@ -1,5 +1,17 @@
-import { spawnSync } from 'node:child_process';
 import {
+  CatalogBulkService,
+  CatalogBulkIdentity,
+  canonicalBulk,
+  type BulkRow,
+  type BulkRowResult,
+} from '../src/catalog-bulk.service.js';
+import { CatalogTokenVerifier } from '../src/catalog-auth.js';
+import { ServiceUnavailableException } from '@nestjs/common';
+import type { CatalogEnvelope } from '../src/catalog-messages.js';
+import { spawn, spawnSync } from 'node:child_process';
+import {
+  writeFileSync,
+  symlinkSync,
   chmodSync,
   mkdirSync,
   readFileSync,
@@ -20,7 +32,10 @@ import type { ProductQuery, ProductSummary } from '../src/commercial.types.js';
 import { CatalogAmqpRuntime } from '../src/catalog-amqp.js';
 import { CatalogTelemetry } from '../src/catalog-telemetry.js';
 import { and, eq, sql } from 'drizzle-orm';
-import { CatalogMutationService } from '../src/catalog-mutation.service.js';
+import {
+  CatalogMutationService,
+  type CatalogProductCreationPolicy,
+} from '../src/catalog-mutation.service.js';
 import type { CatalogMasterClient } from '../src/catalog-master.client.js';
 import { CatalogMessageService } from '../src/catalog-message.service.js';
 import { CatalogQueryRepository } from '../src/catalog-query.repository.js';
@@ -48,6 +63,7 @@ import {
 } from '../src/catalog-master-barriers.js';
 import {
   products,
+  variants,
   masterBarriers,
   inbox,
   activationChecks,
@@ -1177,7 +1193,14 @@ describe.skipIf(!dockerAvailable)(
     });
 
     // These provider tests use authoritative master fixtures, never shared Taxonomy or Supabase writes.
-    function mutationService() {
+    function mutationService(
+      creationPolicy: CatalogProductCreationPolicy = {
+        resolve: async (_input, id) => ({
+          slug: 'fixture-' + id,
+          moneda: 'PEN',
+        }),
+      },
+    ) {
       return new CatalogMutationService(
         transactions,
         repository,
@@ -1185,12 +1208,7 @@ describe.skipIf(!dockerAvailable)(
           masters: async () => ({ schemaVersion: 1 }),
           attributes: async (_type: string, values: Attribute[]) => values,
         } as unknown as CatalogMasterClient,
-        {
-          resolve: async (_input, id) => ({
-            slug: 'fixture-' + id,
-            moneda: 'PEN',
-          }),
-        },
+        creationPolicy,
       );
     }
     const actor = {
@@ -1215,6 +1233,856 @@ describe.skipIf(!dockerAvailable)(
         ...(hasVariants ? {} : { perfilFisico: fullProfile }),
       };
     }
+    function bulkRow(product = createRequest(), rowNumber = 2): BulkRow {
+      return {
+        row_number: rowNumber,
+        row_operation_id: randomUUID(),
+        producto_id: null,
+        sku_base: product.skuBase,
+        product,
+        variant_id: null,
+        variant: null,
+      };
+    }
+    function bulkCommand(
+      rows: BulkRow[],
+      mode = 'ALTA',
+      version: 1 | 2 = 1,
+    ): CatalogEnvelope {
+      const operation = randomUUID();
+      return {
+        message_id: randomUUID(),
+        schema_version: version,
+        occurred_at: new Date().toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: operation,
+        producer: 'bulk-svc',
+        kind: 'command',
+        name: 'catalog.bulk.upsert.requested',
+        data: {
+          batch_id: randomUUID(),
+          batch_operation_id: operation,
+          template_version: 2,
+          mode,
+          rows,
+        },
+      };
+    }
+    function bulkHandler(mutations = mutationService()) {
+      const identity = new CatalogBulkIdentity(
+        undefined,
+        new CatalogTokenVerifier(undefined),
+      );
+      vi.spyOn(identity, 'authorization').mockResolvedValue(
+        actor.authorization,
+      );
+      return new CatalogBulkService(database, mutations, identity);
+    }
+    async function bulkReply(command: CatalogEnvelope) {
+      return database.read(
+        async (db) =>
+          (
+            await db
+              .select()
+              .from(outbox)
+              .where(
+                and(
+                  eq(outbox.causation_id, command.message_id),
+                  sql`${outbox.event_name} LIKE 'catalog.bulk.upsert.%'`,
+                ),
+              )
+          )[0]!,
+      );
+    }
+    it('BULK: persists ALTA, concurrent delivery dedupe, row replay and payload conflicts before acknowledgement', async () => {
+      const row = bulkRow(),
+        message = bulkCommand([row]),
+        service = bulkHandler();
+      expect(
+        (
+          await Promise.all([
+            service.consume(message),
+            service.consume(message),
+          ])
+        ).sort(),
+      ).toEqual(['APPLIED', 'DUPLICATE']);
+      const result = await bulkReply(message),
+        results = result.payload.results as BulkRowResult[];
+      expect(results[0]).toMatchObject({
+        status: 'COMPLETED',
+        code: null,
+        sku_base: row.sku_base,
+      });
+      const id = results[0].product_id!;
+      expect(await requested(id)).toHaveLength(2);
+      const replay = { ...message, message_id: randomUUID() };
+      await service.consume(replay);
+      expect((await bulkReply(replay)).payload).toEqual(result.payload);
+      const rowReplay = bulkCommand([row]);
+      rowReplay.data.batch_id = message.data.batch_id;
+      await service.consume(rowReplay);
+      expect((await bulkReply(rowReplay)).payload.results).toEqual(results);
+      const conflict = bulkCommand([
+        { ...row, product: { ...row.product, nombre: 'conflict' } },
+      ]);
+      conflict.data.batch_id = message.data.batch_id;
+      await service.consume(conflict);
+      expect((await bulkReply(conflict)).payload.results).toMatchObject([
+        { status: 'REJECTED', code: 'IDEMPOTENCY_CONFLICT' },
+      ]);
+      expect(await requested(id)).toHaveLength(2);
+      expect(
+        await database.read((db) =>
+          db.select().from(products).where(eq(products.sku_base, row.sku_base)),
+        ),
+      ).toHaveLength(1);
+      const invalid = bulkCommand([bulkRow()]);
+      invalid.data.template_version = 1;
+      await service.consume(invalid);
+      expect(await bulkReply(invalid)).toMatchObject({
+        event_name: 'catalog.bulk.upsert.rejected',
+        payload: { code: 'VALIDACION' },
+      });
+      const commandConflict = {
+        ...message,
+        message_id: randomUUID(),
+        data: { ...message.data, template_version: 0 },
+      };
+      await service.consume(commandConflict);
+      expect((await bulkReply(commandConflict)).payload.code).toBe(
+        'IDEMPOTENCY_CONFLICT',
+      );
+    });
+    it('BULK: reports a real slug UNIQUE as SLUG_DUPLICADO, never SKU_DUPLICADO, and preserves replay', async () => {
+      const existing = await mutationService().createProduct(
+        createRequest(),
+        actor,
+      );
+      const duplicateSlug = bulkRow(),
+        valid = bulkRow(createRequest(), 3);
+      const mutations = mutationService({
+        resolve: async (input, id) => ({
+          slug:
+            input.skuBase === duplicateSlug.sku_base
+              ? existing.slug
+              : 'fixture-' + id,
+          moneda: 'PEN',
+        }),
+      });
+      const handler = bulkHandler(mutations),
+        message = bulkCommand([duplicateSlug, valid]);
+      await handler.consume(message);
+      const reply = await bulkReply(message);
+      expect(reply.payload.results).toMatchObject([
+        {
+          row_operation_id: duplicateSlug.row_operation_id,
+          status: 'REJECTED',
+          code: 'SLUG_DUPLICADO',
+        },
+        {
+          row_operation_id: valid.row_operation_id,
+          status: 'COMPLETED',
+          code: null,
+        },
+      ]);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(products)
+            .where(eq(products.sku_base, duplicateSlug.sku_base)),
+        ),
+      ).toEqual([]);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(skuIdentity)
+            .where(eq(skuIdentity.sku, duplicateSlug.sku_base)),
+        ),
+      ).toEqual([]);
+      expect(await requested(existing.product_id)).toHaveLength(2);
+      const replay = { ...message, message_id: randomUUID() };
+      await handler.consume(replay);
+      expect((await bulkReply(replay)).payload.results).toEqual(
+        reply.payload.results,
+      );
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(products)
+            .where(eq(products.sku_base, valid.sku_base)),
+        ),
+      ).toHaveLength(1);
+    });
+
+    it('BULK: creates one parent per variant family, applies parent version once on update and rolls back rejected families', async () => {
+      const parent = createRequest(true),
+        sku = 'variant-' + randomUUID();
+      const rows = ['S', 'M'].map((size, i) => ({
+        ...bulkRow(parent, i + 2),
+        variant: {
+          sku: sku + size,
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: size,
+              valor: size,
+            },
+          ],
+          imagenUrl: 'https://example.test/variant',
+        },
+      }));
+      const service = bulkHandler(),
+        message = bulkCommand(rows);
+      await service.consume(message);
+      const results = (await bulkReply(message)).payload
+        .results as BulkRowResult[];
+      expect(results).toMatchObject([
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+      ]);
+      expect(results[0].product_id).toBe(results[1].product_id);
+      const mixedReplay = bulkCommand(
+        rows.map((r, i) =>
+          i === 0
+            ? {
+                ...r,
+                variant: {
+                  ...r.variant,
+                  imagenUrl: 'https://example.test/conflict',
+                },
+              }
+            : r,
+        ),
+      );
+      mixedReplay.data.batch_id = message.data.batch_id;
+      await service.consume(mixedReplay);
+      expect((await bulkReply(mixedReplay)).payload.results).toMatchObject([
+        { status: 'REJECTED', code: 'IDEMPOTENCY_CONFLICT' },
+        { status: 'COMPLETED', code: null },
+      ]);
+
+      const id = results[0].product_id!,
+        reads = new PostgresCatalogRepository(database);
+      const stored = await database.read(
+        async (db) =>
+          (await db.select().from(products).where(eq(products.id, id)))[0]!,
+      );
+      const children = await database.read((db) =>
+        db.select().from(variants).where(eq(variants.product_id, id)),
+      );
+      expect(stored.catalog_version).toBe(0n);
+      expect(children).toHaveLength(2);
+      expect(await requested(id)).toHaveLength(3);
+      const updateRows: BulkRow[] = children.map((v, i) => ({
+        row_number: i + 2,
+        row_operation_id: randomUUID(),
+        producto_id: id,
+        sku_base: parent.skuBase,
+        product: {
+          catalogVersion: Number(stored.catalog_version),
+          descripcion: 'updated once',
+        },
+        variant_id: v.id,
+        variant: {
+          catalogVersion: Number(v.catalog_version),
+          imagenUrl: 'https://example.test/updated',
+        },
+      }));
+      const update = bulkCommand(updateRows, 'ACTUALIZACION');
+      await service.consume(update);
+      expect((await bulkReply(update)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+      ]);
+      for (const child of children)
+        expect(await reads.skuContext(child.sku)).toMatchObject({
+          productId: id,
+          isVariant: true,
+        });
+      const afterUpdate = await database.read(
+        async (db) =>
+          (await db.select().from(products).where(eq(products.id, id)))[0]!,
+      );
+      expect(afterUpdate.catalog_version).toBe(stored.catalog_version + 1n);
+      const missingVersion = bulkCommand(
+        updateRows.map((r) => ({
+          ...r,
+          row_operation_id: randomUUID(),
+          variant: { imagenUrl: 'https://example.test/missing-version' },
+        })),
+        'ACTUALIZACION',
+      );
+      await service.consume(missingVersion);
+      expect((await bulkReply(missingVersion)).payload.results).toMatchObject([
+        { code: 'VALIDACION' },
+        { code: 'VALIDACION' },
+      ]);
+      const stale = bulkCommand(
+        updateRows.map((r) => ({ ...r, row_operation_id: randomUUID() })),
+        'ACTUALIZACION',
+      );
+      await service.consume(stale);
+      expect((await bulkReply(stale)).payload.results).toMatchObject([
+        { code: 'VERSION_CONFLICT' },
+        { code: 'VERSION_CONFLICT' },
+      ]);
+      const badParent = createRequest(true),
+        valid = bulkRow();
+      const bad = rows.map((r, i) => ({
+        ...r,
+        row_number: i + 3,
+        row_operation_id: randomUUID(),
+        sku_base: badParent.skuBase,
+        product: badParent,
+        variant: { ...r.variant, sku: 'duplicate-' + badParent.skuBase },
+      }));
+      const partial = bulkCommand([valid, ...bad]);
+      await service.consume(partial);
+      expect((await bulkReply(partial)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+        { status: 'REJECTED', code: 'SKU_DUPLICADO' },
+        { status: 'REJECTED', code: 'SKU_DUPLICADO' },
+      ]);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(products)
+            .where(eq(products.sku_base, badParent.skuBase)),
+        ),
+      ).toHaveLength(0);
+    });
+    it.each([
+      ['unavailability', new ServiceUnavailableException()],
+      [
+        'unmapped UNIQUE',
+        new CatalogPersistenceError('unique', '23505', 'uq_outbox_message_id'),
+      ],
+    ])(
+      'BULK: %s rolls back aggregate, preparation and receipts; redelivery can then commit',
+      async (_label, failure) => {
+        const mutations = mutationService(),
+          original = mutations.createProduct.bind(mutations);
+        let count = 0;
+        const injected = vi
+          .spyOn(mutations, 'createProduct')
+          .mockImplementation(async (...args) => {
+            if (++count === 2) throw failure;
+            return original(...args);
+          });
+        const rows = [bulkRow(), bulkRow(createRequest(), 3)],
+          message = bulkCommand(rows),
+          service = bulkHandler(mutations);
+        await expect(service.consume(message)).rejects.toBe(failure);
+        expect(await bulkReply(message)).toBeUndefined();
+        for (const row of rows)
+          expect(
+            await database.read((db) =>
+              db
+                .select()
+                .from(products)
+                .where(eq(products.sku_base, row.sku_base)),
+            ),
+          ).toHaveLength(0);
+        injected.mockRestore();
+        await service.consume(message);
+        expect((await bulkReply(message)).payload.results).toMatchObject([
+          { status: 'COMPLETED' },
+          { status: 'COMPLETED' },
+        ]);
+      },
+    );
+    it('BULK-JOINT: real Bulk importer/Outbox/Inbox and Catalog transactions over disposable RabbitMQ and TLS PostgreSQL', async () => {
+      command(
+        'docker',
+        [
+          'exec',
+          '-i',
+          container,
+          'psql',
+          '-U',
+          'postgres',
+          '-v',
+          'ON_ERROR_STOP=1',
+        ],
+        `CREATE ROLE po_bulk_owner NOLOGIN; CREATE ROLE bulk_fixture_app LOGIN PASSWORD 'isolated-bulk-password'; CREATE SCHEMA bulk AUTHORIZATION po_bulk_owner; SET ROLE po_bulk_owner; ${readFileSync(resolve('apps/catalog-svc/test/fixtures/0001_create_bulk_persistence.sql'), 'utf8')}
+GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA bulk TO bulk_fixture_app; GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
+      );
+      writeFileSync(
+        join(directory, 'package.json'),
+        JSON.stringify({ type: 'module' }),
+      );
+      const build = join(directory, 'bulk-build');
+      command(process.execPath, [
+        resolve('node_modules/typescript/bin/tsc'),
+        '-p',
+        resolve('apps/bulk-svc/tsconfig.app.json'),
+        '--outDir',
+        build,
+        '--tsBuildInfoFile',
+        join(directory, 'bulk.tsbuildinfo'),
+      ]);
+      symlinkSync(
+        resolve('node_modules'),
+        join(directory, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const bulk = bulkHandler(),
+        messages = new CatalogMessageService(
+          database,
+          new CatalogTelemetry(),
+          bulk,
+        );
+      jointRuntime = new CatalogAmqpRuntime(messages, jointBroker.settings);
+      jointRuntime.onModuleInit();
+      const sku = 'BULK-JOINT-' + randomUUID(),
+        batch = randomUUID();
+      try {
+        const child = spawn(
+          process.execPath,
+          [resolve('apps/catalog-svc/test/support/bulk-peer.mjs')],
+          {
+            env: {
+              PATH: process.env.PATH,
+              SystemRoot: process.env.SystemRoot,
+              NODE_ENV: 'test',
+            },
+            windowsHide: true,
+            stdio: ['pipe', 'pipe', 'pipe'],
+          },
+        );
+        child.stdin.end(
+          JSON.stringify({
+            build,
+            port: Number(port),
+            ca: caFile,
+            broker: jointBroker.bulkUrl,
+            sku,
+            batch,
+            correlation: randomUUID(),
+          }),
+        );
+        const output: string[] = [],
+          diagnostics: string[] = [];
+        child.stdout.setEncoding('utf8');
+        child.stdout.on('data', (data) => output.push(String(data)));
+        const exit = await new Promise<number | null>((done, reject) => {
+          const timer = setTimeout(() => {
+            child.kill();
+            reject(new Error('Disposable Bulk peer timeout'));
+          }, 90000);
+          child.once('error', (error) => {
+            clearTimeout(timer);
+            reject(error);
+          });
+          child.once('exit', (code) => {
+            clearTimeout(timer);
+            done(code);
+          });
+          child.stderr.setEncoding('utf8');
+          child.stderr.on('data', (data) => {
+            const safe = String(data).match(
+              /Disposable Bulk peer failed at [a-z-]+ \([A-Z0-9_]+\)\./,
+            );
+            if (safe) diagnostics.push(safe[0]);
+          });
+        });
+        if (exit !== 0) {
+          try {
+            const rejected = await jointBroker.next('po.catalogo.q.dlq');
+            if (
+              rejected.properties.headers?.['x-catalog-failure'] ===
+                'INVALID_OR_BLOCKED_CONTRACT' &&
+              !rejected.properties.headers?.['x-original-producer-user']
+            )
+              diagnostics.push('BLOCKED_BULK_AMQP_USER_ID_MISSING');
+          } catch {
+            diagnostics.push('NO_DURABLE_TRANSPORT_REJECTION_OBSERVED');
+          }
+        }
+        expect(
+          exit,
+          'Bulk process must durably consume the real Catalog result: ' +
+            diagnostics.join(' '),
+        ).toBe(0);
+        const line = output
+          .join('')
+          .split('\n')
+          .find((line) => line.startsWith('BULK_FIXTURE_RESULT:'));
+        expect(line).toBeDefined();
+        const result = JSON.parse(line!.slice('BULK_FIXTURE_RESULT:'.length));
+        expect(result).toMatchObject({
+          inbox: 1,
+          rows: [
+            {
+              applied: ['CATALOGO'],
+              status: 'PROCESSING',
+              steps: expect.arrayContaining([
+                { domain: 'CATALOGO', status: 'COMPLETED' },
+                { domain: 'PRICING', status: 'PENDING' },
+                { domain: 'INVENTARIO', status: 'PENDING' },
+              ]),
+            },
+          ],
+        });
+        const parents = await database.read((db) =>
+          db.select().from(products).where(eq(products.sku_base, sku)),
+        );
+        expect(parents).toHaveLength(1);
+        expect(await requested(parents[0].id)).toHaveLength(2);
+        const replies = await database.read((db) =>
+          db
+            .select()
+            .from(outbox)
+            .where(
+              and(
+                eq(outbox.event_name, 'catalog.bulk.upsert.completed'),
+                sql`${outbox.payload}->>'batch_id' = ${batch}`,
+              ),
+            ),
+        );
+        expect(replies).toHaveLength(1);
+        expect(replies[0].published_at).not.toBeNull();
+        // RabbitMQ queue statistics may lag the confirmed process shutdown.
+        // Preserve the zero-delivery assertion, allowing only bounded drainage.
+        await expect
+          .poll(() => jointBroker.bulkQueueStats(), {
+            timeout: 15000,
+            interval: 500,
+          })
+          .toMatch(/po\.masivos\.q\s+0\s+0/);
+        await expect
+          .poll(() => jointBroker.bulkQueueStats(), {
+            timeout: 15000,
+            interval: 500,
+          })
+          .toMatch(/po\.catalogo\.q\s+0\s+0/);
+      } finally {
+        await jointRuntime.onModuleDestroy();
+        jointRuntime = undefined;
+      }
+    }, 150000);
+    it('BULK-v2: resolves opaque SKU under parent lock, validates selectors/versions, serializes concurrent updates and replays original receipts', async () => {
+      const product = createRequest(true),
+        handler = bulkHandler();
+      const rows = ['A', 'B'].map((size, i) => ({
+        ...bulkRow(product, i + 2),
+        variant: {
+          sku: ' 000,/ñ-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: size,
+              valor: size,
+            },
+          ],
+          imagenUrl: 'https://example.test/bulk-v2',
+          perfilFisico: fullProfile,
+        },
+      }));
+      const alta = bulkCommand(rows, 'ALTA', 2);
+      await handler.consume(parseCatalogMessage(alta));
+      const altaReply = await bulkReply(alta);
+      expect(altaReply.schema_version).toBe(1);
+      const parentId = (altaReply.payload.results as BulkRowResult[])[0]
+        .product_id!;
+      const parents = () =>
+        database.read((db) =>
+          db.select().from(products).where(eq(products.id, parentId)),
+        );
+      const children = () =>
+        database.read((db) =>
+          db.select().from(variants).where(eq(variants.product_id, parentId)),
+        );
+      const initialParent = (await parents())[0],
+        initialChildren = await children();
+      const a = initialChildren.find((v) => v.sku === rows[0].variant.sku)!,
+        b = initialChildren.find((v) => v.sku === rows[1].variant.sku)!;
+      const updateRow = (
+        selector: { variant_id?: string | null; sku_variante?: string | null },
+        child = a,
+      ): BulkRow => ({
+        row_number: 2,
+        row_operation_id: randomUUID(),
+        producto_id: parentId,
+        sku_base: product.skuBase,
+        product: {
+          catalogVersion: Number(initialParent.catalog_version),
+          nombre: 'Bulk v2 updated',
+        },
+        variant: {
+          catalogVersion: Number(child.catalog_version),
+          imagenUrl: 'https://example.test/updated-v2',
+        },
+        ...selector,
+      });
+      const foreignParent = await mutationService().createProduct(
+        createRequest(true),
+        actor,
+      );
+      const foreign = await mutationService().createVariant(
+        foreignParent.product_id,
+        {
+          sku: 'foreign-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'F',
+              valor: 'F',
+            },
+          ],
+          imagenUrl: 'https://example.test/foreign',
+          perfilFisico: fullProfile,
+        },
+        actor,
+      );
+      for (const [row, expected] of [
+        [
+          updateRow({ sku_variante: 'missing-' + randomUUID() }),
+          'VARIANTE_NO_ENCONTRADA',
+        ],
+        [updateRow({ sku_variante: foreign.sku }), 'VARIANTE_NO_ENCONTRADA'],
+        [updateRow({ sku_variante: a.sku, variant_id: b.id }), 'VALIDACION'],
+        [
+          {
+            ...updateRow({ sku_variante: a.sku }),
+            variant: { catalogVersion: Number(a.catalog_version) + 1 },
+          },
+          'VERSION_CONFLICT',
+        ],
+      ] as const) {
+        const message = bulkCommand([row], 'ACTUALIZACION', 2);
+        await handler.consume(parseCatalogMessage(message));
+        expect((await bulkReply(message)).payload.results).toMatchObject([
+          { status: 'REJECTED', code: expected },
+        ]);
+      }
+      const duplicate = bulkCommand(
+        [
+          updateRow({ variant_id: a.id }),
+          { ...updateRow({ sku_variante: a.sku }), row_number: 3 },
+        ],
+        'ACTUALIZACION',
+        2,
+      );
+      await handler.consume(duplicate);
+      expect((await bulkReply(duplicate)).payload.results).toMatchObject([
+        { code: 'VALIDACION' },
+        { code: 'VALIDACION' },
+      ]);
+      expect(await parents()).toEqual([initialParent]);
+      expect(await children()).toEqual(initialChildren);
+      const first = bulkCommand(
+        [updateRow({ sku_variante: a.sku })],
+        'ACTUALIZACION',
+        2,
+      );
+      const second = bulkCommand(
+        [updateRow({ sku_variante: a.sku })],
+        'ACTUALIZACION',
+        2,
+      );
+      const original = canonicalBulk(first);
+      const dispositions = await Promise.all([
+        handler.consume(parseCatalogMessage(first)),
+        handler.consume(parseCatalogMessage(first)),
+        handler.consume(parseCatalogMessage(second)),
+      ]);
+      expect(dispositions.sort()).toEqual(['APPLIED', 'APPLIED', 'DUPLICATE']);
+      const replies = [await bulkReply(first), await bulkReply(second)];
+      expect(
+        replies
+          .map((r) => (r.payload.results as BulkRowResult[])[0].code)
+          .sort(),
+      ).toEqual([null, 'VERSION_CONFLICT'].sort());
+      const winner =
+        (replies[0].payload.results as BulkRowResult[])[0].status ===
+        'COMPLETED'
+          ? first
+          : second;
+      expect(canonicalBulk(first)).toBe(original);
+      expect((await parents())[0].catalog_version).toBe(
+        initialParent.catalog_version + 1n,
+      );
+      const after = await children();
+      expect(after.find((v) => v.id === a.id)!.catalog_version).toBe(
+        a.catalog_version + 1n,
+      );
+      const two = [
+        updateRow({ variant_id: b.id }, b),
+        {
+          ...updateRow({ variant_id: a.id, sku_variante: a.sku }),
+          row_number: 3,
+        },
+      ];
+      for (const row of two)
+        row.product.catalogVersion = Number(initialParent.catalog_version + 1n);
+      two[1].variant!.catalogVersion = Number(a.catalog_version + 1n);
+      const multi = bulkCommand(two, 'ACTUALIZACION', 2);
+      await handler.consume(parseCatalogMessage(multi));
+      expect((await bulkReply(multi)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+      ]);
+      const updated = (await parents())[0];
+      expect(updated.catalog_version).toBe(initialParent.catalog_version + 2n);
+      const replay = { ...winner, message_id: randomUUID() };
+      await handler.consume(parseCatalogMessage(replay));
+      expect((await bulkReply(replay)).payload.results).toEqual(
+        (await bulkReply(winner)).payload.results,
+      );
+      expect((await parents())[0]).toEqual(updated);
+      const changed = bulkCommand(
+        [{ ...(winner.data.rows as BulkRow[])[0], variant_id: a.id }],
+        'ACTUALIZACION',
+        2,
+      );
+      changed.data.batch_id = winner.data.batch_id;
+      await handler.consume(changed);
+      expect((await bulkReply(changed)).payload.results).toMatchObject([
+        { code: 'IDEMPOTENCY_CONFLICT' },
+      ]);
+      const simple = await mutationService().createProduct(
+        createRequest(),
+        actor,
+      );
+      const simpleUpdate = bulkCommand(
+        [
+          {
+            row_number: 2,
+            row_operation_id: randomUUID(),
+            producto_id: simple.product_id,
+            sku_base: simple.sku_base,
+            product: {
+              catalogVersion: simple.catalog_version,
+              nombre: 'Simple v2',
+            },
+            variant: null,
+          },
+        ],
+        'ACTUALIZACION',
+        2,
+      );
+      await handler.consume(parseCatalogMessage(simpleUpdate));
+      expect((await bulkReply(simpleUpdate)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+      ]);
+    });
+
+    it('BULK-CONSUMER-v2: real RabbitMQ/PG, SKU resolution and replay (producer fixture; Bulk app remains v1)', async () => {
+      const messages = new CatalogMessageService(
+        database,
+        new CatalogTelemetry(),
+        bulkHandler(),
+      );
+      jointRuntime = new CatalogAmqpRuntime(messages, jointBroker.settings);
+      jointRuntime.onModuleInit();
+      const product = createRequest(true),
+        sku = ' 000,/ñ-broker-' + randomUUID();
+      const alta = bulkCommand(
+        [
+          {
+            ...bulkRow(product),
+            variant: {
+              sku,
+              atributosIdentificadores: [
+                {
+                  caracteristica_id: 'size',
+                  nombre: 'Size',
+                  valor_id: 'B',
+                  valor: 'B',
+                },
+              ],
+              imagenUrl: 'https://example.test/broker-v2',
+              perfilFisico: fullProfile,
+            },
+          },
+        ],
+        'ALTA',
+        2,
+      );
+      const nextReply = async (
+        command: CatalogEnvelope,
+      ): Promise<CatalogEnvelope> => {
+        for (let i = 0; i < 100; i++) {
+          const message = JSON.parse(
+            (await jointBroker.next('po.masivos.q')).content.toString('utf8'),
+          ) as CatalogEnvelope;
+          if (message.causation_id === command.message_id) return message;
+        }
+        throw new Error('No matching consumer-v2 result');
+      };
+      try {
+        await jointBroker.bulkCommand(alta);
+        const created = await nextReply(alta);
+        expect(created.schema_version).toBe(1);
+        const parentId = (created.data.results as BulkRowResult[])[0]
+          .product_id!;
+        const child = (
+          await database.read((db) =>
+            db.select().from(variants).where(eq(variants.product_id, parentId)),
+          )
+        )[0];
+        const parent = (
+          await database.read((db) =>
+            db.select().from(products).where(eq(products.id, parentId)),
+          )
+        )[0];
+        const update = bulkCommand(
+          [
+            {
+              row_number: 2,
+              row_operation_id: randomUUID(),
+              producto_id: parentId,
+              sku_base: product.skuBase,
+              product: {
+                catalogVersion: Number(parent.catalog_version),
+                nombre: 'Broker v2 updated',
+              },
+              variant_id: null,
+              sku_variante: sku,
+              variant: {
+                catalogVersion: Number(child.catalog_version),
+                imagenUrl: 'https://example.test/broker-updated',
+              },
+            },
+          ],
+          'ACTUALIZACION',
+          2,
+        );
+        const original = canonicalBulk(update);
+        await jointBroker.bulkCommand(update);
+        const completed = await nextReply(update);
+        expect(completed.schema_version).toBe(1);
+        expect(completed.data.results).toMatchObject([
+          { status: 'COMPLETED', code: null },
+        ]);
+        const replay = { ...update, message_id: randomUUID() };
+        await jointBroker.bulkCommand(replay);
+        expect((await nextReply(replay)).data.results).toEqual(
+          completed.data.results,
+        );
+        expect(canonicalBulk(update)).toBe(original);
+        const after = (
+          await database.read((db) =>
+            db.select().from(variants).where(eq(variants.id, child.id)),
+          )
+        )[0];
+        expect(after.catalog_version).toBe(child.catalog_version + 1n);
+        expect(await requested(parentId)).toHaveLength(2);
+      } finally {
+        await jointRuntime.onModuleDestroy();
+        jointRuntime = undefined;
+      }
+    }, 60000);
+
     async function requested(productId: string) {
       return database.read((db) =>
         db
@@ -3337,11 +4205,14 @@ describe.skipIf(!dockerAvailable)(
       expect(
         await queries.findVariant(randomUUID(), ready.variant_id),
       ).toBeNull();
-      expect(
-        await queries.physicalData([ready.sku, parent.sku_base, draft.sku]),
-      ).toMatchObject({
-        productos: [{ sku: ready.sku, estado: 'ACTIVO', ...fullProfile }],
-        noEncontrados: [parent.sku_base, draft.sku],
+      await expect(
+        queries.physicalData([ready.sku, draft.sku]),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [draft.sku] },
+        },
       });
       expect(await snapshot()).toEqual(after);
       expect(await requested(parent.product_id)).toEqual(intents);
@@ -3601,6 +4472,380 @@ describe.skipIf(!dockerAvailable)(
       expect((await requested(product.product_id)).length).toBe(2);
     });
 
+    it('OPEN-09-PROVIDER: signed service JWT → real Catalog HTTP → PostgreSQL TLS, effective states, integral batches, 422 and 503', async () => {
+      const service = mutationService(),
+        http = new CatalogGatewayHarness();
+      const expected = new Map<string, string>(),
+        parentIds: string[] = [],
+        childIds: string[] = [],
+        bases: string[] = [];
+      for (const state of ['ACTIVO', 'INACTIVO', 'BORRADOR']) {
+        const simple = await service.createProduct(
+          { ...createRequest(), skuBase: '000,/ñ-' + state + randomUUID() },
+          actor,
+        );
+        parentIds.push(simple.product_id);
+        expected.set(simple.sku_base, state);
+        if (state !== 'BORRADOR') {
+          await complete(simple.product_id);
+          await service.state(
+            simple.product_id,
+            undefined,
+            'activate',
+            {},
+            actor,
+          );
+          if (state === 'INACTIVO')
+            await service.state(
+              simple.product_id,
+              undefined,
+              'deactivate',
+              {},
+              actor,
+            );
+        }
+        const parent = await service.createProduct(createRequest(true), actor);
+        parentIds.push(parent.product_id);
+        bases.push(parent.sku_base);
+        const children = [];
+        for (const [index, ownState] of [
+          'ACTIVA',
+          'INACTIVA',
+          'BORRADOR',
+        ].entries()) {
+          const child = await service.createVariant(
+            parent.product_id,
+            {
+              sku: '000Var,/ñ-' + state + ownState + randomUUID(),
+              atributosIdentificadores: [
+                {
+                  caracteristica_id: 'size',
+                  nombre: 'Size',
+                  valor_id: String(index),
+                  valor: String(index),
+                },
+              ],
+              imagenUrl: 'https://example.test/g2-variant',
+              perfilFisico: fullProfile,
+            },
+            actor,
+          );
+          children.push(child);
+          childIds.push(child.variant_id);
+          expected.set(
+            child.sku,
+            ownState === 'ACTIVA'
+              ? state
+              : ownState === 'INACTIVA'
+                ? 'INACTIVO'
+                : 'BORRADOR',
+          );
+        }
+        await complete(parent.product_id);
+        for (const child of children.slice(0, 2))
+          await service.state(
+            parent.product_id,
+            child.variant_id,
+            'activate',
+            undefined,
+            actor,
+          );
+        await service.state(
+          parent.product_id,
+          children[1].variant_id,
+          'deactivate',
+          undefined,
+          actor,
+        );
+        if (state !== 'BORRADOR') {
+          await service.state(
+            parent.product_id,
+            undefined,
+            'activate',
+            {},
+            actor,
+          );
+          if (state === 'INACTIVO')
+            await service.state(
+              parent.product_id,
+              undefined,
+              'deactivate',
+              {},
+              actor,
+            );
+        }
+      }
+      const incomplete = await service.createProduct(
+        { ...createRequest(), perfilFisico: { pesoKg: 1 } },
+        actor,
+      );
+      const partial = await service.createVariant(
+        parentIds.at(-1)!,
+        {
+          sku: 'incomplete-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'partial',
+              valor: 'partial',
+            },
+          ],
+          imagenUrl: 'https://example.test/g2-partial',
+          perfilFisico: { pesoKg: 1 },
+        },
+        actor,
+      );
+      const snapshot = async () =>
+        database.read(async (db) => ({
+          parents: (await db.select().from(products)).filter((p) =>
+            parentIds.includes(p.id),
+          ),
+          children: (await db.select().from(variants)).filter((v) =>
+            childIds.includes(v.id),
+          ),
+        }));
+      const before = await snapshot();
+      await http.start(persistenceSettings);
+      const claims = {
+        tipo: 'servicio',
+        sub: 'modulo-despacho',
+        aud: 'api-productos',
+        scope: 'productos:fisicos:leer',
+        roles: undefined,
+      };
+      const bearer = http.token(claims),
+        path = '/productos/datos-fisicos/consulta';
+      const call = (skus: string[], token: string | null = bearer) =>
+        http.call('POST', path, { skus }, token, true);
+      const absent = Array.from(
+        { length: 100 - expected.size },
+        (_, i) => 'missing-' + i,
+      );
+      const skus = [...expected.keys(), ...absent];
+      const assertComplete = (result: Awaited<ReturnType<typeof call>>) => {
+        expect(result.status).toBe(200);
+        expect(result.correlation).toBe(http.correlation);
+        expect(result.type).toContain('application/json');
+        expect(result.body.noEncontrados).toEqual(absent);
+        expect(result.body.productos).toHaveLength(expected.size);
+        for (const item of result.body.productos as Array<{
+          sku: string;
+          estado: string;
+        }>)
+          expect(item).toEqual({
+            sku: item.sku,
+            estado: expected.get(item.sku),
+            ...fullProfile,
+            actualizadoEn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          });
+        const classified = [
+          ...result.body.productos.map((p: { sku: string }) => p.sku),
+          ...result.body.noEncontrados,
+        ];
+        expect(classified).toHaveLength(100);
+        expect(new Set(classified)).toEqual(new Set(skus));
+      };
+      try {
+        assertComplete(await call(skus));
+        for (const batch of [
+          [bases[0]],
+          [bases[1], ...skus.slice(0, 3)],
+          [incomplete.sku_base, bases[2], 'missing'],
+          [bases[2], bases[0], bases[1]],
+          [incomplete.sku_base, bases[1], partial.sku, bases[0], skus[0]],
+        ]) {
+          const result = await call(batch);
+          expect(result.status).toBe(422);
+          expect(result.type).toContain('application/problem+json');
+          expect(result.body.code).toBe('SKU_INVALIDO');
+          expect(result.body.details).toEqual({
+            skusAfectados: batch.filter((sku) => bases.includes(sku)),
+          });
+          expect(result.body).not.toHaveProperty('productos');
+        }
+        const invalidProfile = await call([
+          skus[0],
+          incomplete.sku_base,
+          partial.sku,
+          'missing',
+        ]);
+        expect(invalidProfile.status).toBe(422);
+        expect(invalidProfile.body).toMatchObject({
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [incomplete.sku_base, partial.sku] },
+          correlationId: http.correlation,
+        });
+        for (const batch of [[], [skus[0], skus[0]], [...skus, 'overflow']]) {
+          const result = await call(batch);
+          expect(result.status).toBe(422);
+          expect(result.body.code).toBe('SKU_INVALIDO');
+          expect(result.body).not.toHaveProperty('details');
+        }
+        expect((await call([skus[0]], null)).status).toBe(401);
+        for (const [patch, status] of [
+          [{ aud: 'other' }, 401],
+          [{ scope: 'catalogo:leer' }, 403],
+          [{ sub: 'modulo-productos' }, 403],
+        ] as const)
+          expect(
+            (await call([skus[0]], http.token({ ...claims, ...patch }))).status,
+          ).toBe(status);
+        const permissions = (grant: boolean) =>
+          command(
+            'docker',
+            [
+              'exec',
+              '-i',
+              container,
+              'psql',
+              '-U',
+              'postgres',
+              '-v',
+              'ON_ERROR_STOP=1',
+            ],
+            grant
+              ? 'GRANT SELECT ON catalog.sku_identity TO catalog_app;'
+              : 'REVOKE SELECT ON catalog.sku_identity FROM catalog_app;',
+          );
+        try {
+          // Actual PostgreSQL permission failure; no repository/provider replacement.
+          permissions(false);
+          const unavailable = await call(skus);
+          expect(unavailable.status).toBe(503);
+          expect(unavailable.type).toContain('application/problem+json');
+          expect(unavailable.body).toMatchObject({
+            code: 'SERVICIO_NO_DISPONIBLE',
+            status: 503,
+            correlationId: http.correlation,
+          });
+          expect(JSON.stringify(unavailable.body)).not.toMatch(
+            /SELECT|sku_identity|permission|password|catalog_app/,
+          );
+        } finally {
+          permissions(true);
+        }
+        assertComplete(await call(skus));
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        await http.close();
+      }
+    }, 90000);
+
+    it('OPEN-09: reads simple and variant physical profiles in all three states without mutation', async () => {
+      const service = mutationService(),
+        queries = new CatalogQueryRepository(database);
+      const body = { ...createRequest(), skuBase: '000AbC,/ñ-' + randomUUID() };
+      const simple = await service.createProduct(body, actor);
+      const parent = await service.createProduct(createRequest(true), actor);
+      const child = await service.createVariant(
+        parent.product_id,
+        {
+          sku: '000Variant,/ñ-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'S',
+              valor: 'S',
+            },
+          ],
+          imagenUrl: 'https://example.test/variant',
+          perfilFisico: fullProfile,
+        },
+        actor,
+      );
+      const skus = [body.skuBase, child.sku, 'missing'];
+      async function assertState(estado: string) {
+        const result = await queries.physicalData(skus);
+        expect(result).toMatchObject({
+          productos: [
+            { sku: body.skuBase, estado, ...fullProfile },
+            { sku: child.sku, estado, ...fullProfile },
+          ],
+          noEncontrados: ['missing'],
+        });
+        expect(
+          [
+            ...result.productos.map((p) => p.sku),
+            ...result.noEncontrados,
+          ].sort(),
+        ).toEqual([...skus].sort());
+      }
+      await assertState('BORRADOR');
+      await complete(simple.product_id);
+      await complete(parent.product_id);
+      await service.state(simple.product_id, undefined, 'activate', {}, actor);
+      await service.state(
+        parent.product_id,
+        child.variant_id,
+        'activate',
+        undefined,
+        actor,
+      );
+      await service.state(parent.product_id, undefined, 'activate', {}, actor);
+      await assertState('ACTIVO');
+      await service.state(
+        simple.product_id,
+        undefined,
+        'deactivate',
+        {},
+        actor,
+      );
+      await service.state(
+        parent.product_id,
+        child.variant_id,
+        'deactivate',
+        undefined,
+        actor,
+      );
+      await assertState('INACTIVO');
+      const before = await requested(simple.product_id);
+      const absent = Array.from({ length: 98 }, (_, i) => 'absent-' + i);
+      const result = await queries.physicalData([
+        body.skuBase,
+        child.sku,
+        ...absent,
+      ]);
+      expect(result.productos).toHaveLength(2);
+      expect(result.noEncontrados).toEqual(absent);
+      expect(await requested(simple.product_id)).toEqual(before);
+      const incomplete = await service.createProduct(
+        { ...createRequest(), perfilFisico: { pesoKg: 1 } },
+        actor,
+      );
+      const partialVariant = await service.createVariant(
+        parent.product_id,
+        {
+          sku: 'partial-' + randomUUID(),
+          imagenUrl: 'https://example.test/partial-variant',
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'M',
+              valor: 'M',
+            },
+          ],
+        },
+        actor,
+      );
+      await expect(
+        queries.physicalData([
+          body.skuBase,
+          incomplete.sku_base,
+          partialVariant.sku,
+          'missing',
+        ]),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [incomplete.sku_base, partialVariant.sku] },
+        },
+      });
+    });
+
     it('reads contractual preparation, variants and physical SKU data from the committed aggregate', async () => {
       const service = mutationService(),
         simpleBody = createRequest(),
@@ -3640,11 +4885,16 @@ describe.skipIf(!dockerAvailable)(
       });
       const physical = await queries.physicalData([
         simpleBody.skuBase,
-        parentBody.skuBase,
         child.sku,
         'missing',
       ]);
-      expect(physical.noEncontrados).toEqual([parentBody.skuBase, 'missing']);
+      expect(physical.noEncontrados).toEqual(['missing']);
+      await expect(
+        queries.physicalData([parentBody.skuBase, child.sku, 'missing']),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { code: 'SKU_INVALIDO' },
+      });
       expect(physical.productos).toEqual([
         expect.objectContaining({
           sku: simpleBody.skuBase,
