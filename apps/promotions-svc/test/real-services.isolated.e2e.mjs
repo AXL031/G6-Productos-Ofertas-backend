@@ -1,8 +1,8 @@
 // Real, immutable provider processes. All infrastructure is created by this run.
 // No .env loading, shared URLs, production provider edits, demo flags or mocks.
 import assert from 'node:assert/strict';
-import { createHash, randomUUID, sign } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
+import { createHash, createPublicKey, randomUUID, sign } from 'node:crypto';
+import { execFile, execFileSync } from 'node:child_process';
 import {
   mkdtempSync,
   readFileSync,
@@ -15,6 +15,11 @@ import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
+import {
+  assertLiveness,
+  assertReaderDeadline,
+} from './support/real-services-assertions.mjs';
 import pg from 'pg';
 import amqp from 'amqplib';
 import {
@@ -27,7 +32,15 @@ const promotions = '33054c365e6497c14f8bf43a1d259846447d6cb8';
 const docs = '40b566976fb94d924116dcd01d41b3276c2bc9e3';
 let runtime =
   process.env.G6_TEST_RUNTIME_IMAGE ??
-  'sha256:c2d77fe70c56b74fa7518ace3f9fc4a4871a88de9e5611b71a53f582092639df';
+  'g6-promotions-real-test-runtime:20146a5';
+const openssl =
+  process.env.G6_TEST_OPENSSL ??
+  (process.platform === 'win32' &&
+  process.env.LOCALAPPDATA &&
+  existsSync(join(process.env.LOCALAPPDATA, 'Programs/Git/usr/bin/openssl.exe'))
+    ? join(process.env.LOCALAPPDATA, 'Programs/Git/usr/bin/openssl.exe')
+    : 'openssl');
+const execFileAsync = promisify(execFile);
 const root = process.cwd(),
   cache = resolve('node_modules/.cache/promotions-work');
 const source = join(cache, 'real-svc-20146a5');
@@ -190,7 +203,7 @@ const promotionEnv = () => ({
   AUTH_JWKS_URL: issuer + '/.well-known/jwks.json',
   PROMOTIONS_SERVICE_TOKEN_URL: issuer + '/token',
   PROMOTIONS_SERVICE_CLIENT_SECRET: secret,
-  GATEWAY_CATALOG_SVC_URL: 'http://catalog-svc:3001',
+  GATEWAY_CATALOG_SVC_URL: 'https://catalog-tls:4443',
   GATEWAY_PRICING_SVC_URL: 'http://pricing-svc:3002',
   GATEWAY_INVENTORY_SVC_URL: 'http://inventory-svc:3005',
   GATEWAY_TAXONOMY_SVC_URL: 'http://taxonomy-svc:3003',
@@ -279,12 +292,13 @@ async function check(id, operation) {
     console.log('FAIL ' + id + ': ' + safe(error.message));
   }
 }
-function probe(operation, path, deadline = 5000) {
+async function probe(operation, path, deadline = 5000) {
   const env = promotionEnv();
   const args = ['run', '--rm', '--network', network];
   for (const mount of mounts()) args.push('--mount', mount);
   for (const key of Object.keys(env)) args.push('--env', key);
-  const result = docker(
+  const { stdout } = await execFileAsync(
+    'docker',
     [
       ...args,
       runtime,
@@ -294,9 +308,14 @@ function probe(operation, path, deadline = 5000) {
       path,
       String(deadline),
     ],
-    env,
+    {
+      encoding: 'utf8',
+      windowsHide: true,
+      timeout: 30000,
+      env: { ...process.env, ...env },
+    },
   );
-  return JSON.parse(result);
+  return JSON.parse(stdout.trim());
 }
 async function rowCounts() {
   const tables = (
@@ -367,6 +386,27 @@ try {
   }
   verifySource();
   evidence.sourceVerified = true;
+  stage = 'portable runtime image';
+  try {
+    docker(['image', 'inspect', runtime, '--format', '{{.Id}}']);
+  } catch (error) {
+    if (process.env.G6_TEST_RUNTIME_IMAGE) throw error;
+    // Build from the immutable repository Dockerfile, not a machine-local image ID.
+    execute(
+      'docker',
+      [
+        'build',
+        '--file',
+        join(source, 'Dockerfile.service'),
+        '--build-arg',
+        'SERVICE_NAME=promotions-svc',
+        '--tag',
+        runtime,
+        source,
+      ],
+      { timeout: 600000 },
+    );
+  }
   runtime = docker(['image', 'inspect', runtime, '--format', '{{.Id}}']);
   assert.match(runtime, /^sha256:[a-f0-9]{64}$/);
   evidence.runtime = runtime;
@@ -378,6 +418,8 @@ try {
         'local-real-issuer.mjs',
         'local-real-catalog-tls.mjs',
         'local-real-test-access.mjs',
+        'real-services-assertions.mjs',
+        'real-services-assertions.test.mjs',
       ].map((f) => 'support/' + f),
     ].map((f) => [
       f,
@@ -400,11 +442,7 @@ try {
   evidence.build = 'PASS: npm run build:all in immutable snapshot';
   console.log(evidence.build);
   stage = 'disposable TLS';
-  assert.ok(
-    process.env.G6_TEST_OPENSSL,
-    'Set G6_TEST_OPENSSL to the local openssl binary',
-  );
-  execute(process.env.G6_TEST_OPENSSL, [
+  execute(openssl, [
     'req',
     '-x509',
     '-newkey',
@@ -735,19 +773,20 @@ try {
     INVENTORY_SVC_PORT: '3005',
     INVENTORY_DEMO_NO_AUTH_ENABLED: 'false',
     G7_JWT_ISSUER: issuer,
-    G7_JWT_PUBLIC_KEY: execute(process.env.G6_TEST_OPENSSL, [
-      'pkey',
-      '-in',
-      join(directory, 'server.key'),
-      '-pubout',
-    ]),
+    G7_JWT_PUBLIC_KEY: createPublicKey(
+      readFileSync(join(directory, 'server.key')),
+    ).export({ type: 'spki', format: 'pem' }),
     INVENTORY_WORKER_INTERVAL_MS: '60000',
   });
   startApp('promotions-svc', 3004, promotionEnv());
-  for (const name of apps.keys())
-    await waitFor(() =>
-      request(name, '/health').then((r) => assert.ok(r.status > 0)),
-    );
+  for (const name of apps.keys()) {
+    const result = await waitFor(async () => {
+      const response = await request(name, '/health');
+      assertLiveness(name, response);
+      return response;
+    });
+    await check('liveness-' + name, async () => result);
+  }
   // Assert the actual port bindings and network isolation, including services which listen on ::.
   evidence.network = JSON.parse(
     docker(['network', 'inspect', network, '--format', '{{json .Internal}}']),
@@ -780,7 +819,7 @@ try {
     return r;
   });
   await check('promotions-native-token-reader-to-real-catalog', async () => {
-    const r = probe(
+    const r = await probe(
       'obtenerContextoSku',
       '/productos/skus/SYNTHETIC-REAL/contexto',
     );
@@ -884,28 +923,92 @@ try {
   );
   await check('real-pg-lock-timeout-cancellation-and-recovery', async () => {
     const lock = await admin.connect();
-    let timed;
+    const lockPid = (await lock.query('SELECT pg_backend_pid() AS pid')).rows[0]
+      .pid;
+    const sessions = async () =>
+      (
+        await admin.query(`SELECT pid,usename,state,wait_event_type,wait_event,
+      pg_blocking_pids(pid) AS blockers, query LIKE '%sku_identity%' AS sku_query
+      FROM pg_stat_activity WHERE usename='catalog_app' ORDER BY pid`)
+      ).rows;
+    const assertDrained = (rows) =>
+      assert.deepEqual(
+        rows.filter(
+          (r) =>
+            r.wait_event_type === 'Lock' ||
+            r.state.startsWith('idle in transaction') ||
+            (r.sku_query && r.state === 'active'),
+        ),
+        [],
+        'Catalog must have no blocked, unfinished SKU or idle-in-transaction query',
+      );
+    const before = await sessions();
+    assertDrained(before);
+    let timed, inFlight, blocked, pendingAtClientTimeout;
+    const deadlineMs = 2000;
     try {
       await lock.query(
         'BEGIN; LOCK catalog.sku_identity IN ACCESS EXCLUSIVE MODE',
       );
-      timed = probe(
+      inFlight = probe(
         'obtenerContextoSku',
         '/productos/skus/SYNTHETIC-REAL/contexto',
-        800,
+        deadlineMs,
       );
-      assert.equal(timed.outcome, 'REJECTED');
-      assert.ok(timed.elapsedMs >= 700 && timed.elapsedMs < 2500);
+      // Keep a Docker/spawn failure handled while observing PostgreSQL; the
+      // awaited promise below still propagates it as a failed scenario.
+      void inFlight.catch(() => undefined);
+      blocked = await waitFor(async () => {
+        const rows = (await sessions()).filter(
+          (r) =>
+            r.state === 'active' &&
+            r.sku_query &&
+            r.wait_event_type === 'Lock' &&
+            r.blockers.includes(lockPid),
+        );
+        assert.ok(
+          rows.length > 0,
+          'The actual Catalog SKU query must wait on this test lock',
+        );
+        return rows;
+      }, 15);
+      timed = await inFlight;
+      assertReaderDeadline(timed, deadlineMs);
+      pendingAtClientTimeout = await sessions();
     } finally {
       await lock.query('ROLLBACK');
       lock.release();
+      await inFlight?.catch(() => undefined);
     }
-    const recovered = probe(
+    const drainStart = performance.now();
+    const drained = await waitFor(async () => {
+      const rows = await sessions();
+      assertDrained(rows);
+      return rows;
+    }, 25);
+    const drainElapsedMs = Math.round(performance.now() - drainStart);
+    const recovered = await probe(
       'obtenerContextoSku',
       '/productos/skus/SYNTHETIC-REAL/contexto',
     );
     assert.equal(recovered.outcome, 'RETURNED');
-    return { timed, recovered };
+    assert.equal(recovered.body.productId, productId);
+    const afterRecovery = await sessions();
+    assertDrained(afterRecovery);
+    return {
+      deadlineMs,
+      before,
+      lockPid,
+      blocked,
+      timed,
+      pendingAtClientTimeout,
+      drained,
+      afterRecovery,
+      drainElapsedMs,
+      recovered,
+      limitation:
+        'HTTP deadline cancels the client transport; PostgreSQL cancellation is not inferred. Release the test lock and verify server queries drain and recovery succeeds.',
+    };
   });
   stage = 'provider integration blockers';
   for (const [id, service, path, bearer, status, owner, reason] of [
@@ -1027,16 +1130,39 @@ try {
     );
     return r;
   });
-  await check('promotions-native-readiness-real-pg-and-broker', async () => {
-    const r = probe('readiness', '/');
-    assert.equal(r.body.status, 'ready', JSON.stringify(r));
-    assert.deepEqual(r.body.dependencies, { database: 'up', broker: 'up' });
-    return {
-      ...r,
-      transport: 'native internal readiness service, not a new HTTP endpoint',
-    };
-  });
-  await check('promotions-real-http-inactive-sku-fails-closed', async () => {
+  await check(
+    'promotions-independent-passive-readiness-real-pg-and-broker',
+    async () => {
+      const r = await probe('readiness', '/');
+      assert.equal(r.body.status, 'ready', JSON.stringify(r));
+      assert.deepEqual(r.body.dependencies, { database: 'up', broker: 'up' });
+      assert.equal(r.scope.operationalAmqpConsumptionVerified, false);
+      assert.equal(r.scope.runningServiceBrokerProbeEnabled, false);
+      const monitor = docker(['logs', apps.get('promotions-svc')])
+        .split(/\r?\n/)
+        .flatMap((line) => {
+          try {
+            const row = JSON.parse(line);
+            return row.code === 'DEPENDENCIES_READY' ? [row] : [];
+          } catch {
+            return [];
+          }
+        });
+      assert.ok(
+        monitor.some(
+          (row) => row.database === 'up' && row.broker === 'disabled',
+        ),
+      );
+      return {
+        ...r,
+        runningNestMonitor: monitor,
+        transport:
+          'independent test instance with check(true); running Nest monitor has broker disabled; no operational AMQP consumer verified',
+      };
+    },
+  );
+  await check('promotions-real-http-catalog-403-fails-closed', async () => {
+    const beforeTrace = await probe('catalog-transport-evidence', '/');
     const r = await request(
       'promotions-svc',
       '/api/v1/promociones/evaluar',
@@ -1046,16 +1172,32 @@ try {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           channel_id: 'MARKETPLACE',
-          lines: [{ sku: 'SYNTHETIC-REAL', quantity: 1 }],
+          lines: [
+            { product_id: productId, sku: 'SYNTHETIC-REAL', quantity: 1 },
+          ],
         }),
       },
     );
     assert.equal(r.status, 503, JSON.stringify(r.body));
     assert.equal(r.body.code, 'SERVICIO_NO_DISPONIBLE');
+    const upstreamRequests = (
+      await probe('catalog-transport-evidence', '/')
+    ).body.slice(beforeTrace.body.length);
+    assert.equal(upstreamRequests.length, 1);
+    const upstream = upstreamRequests[0];
+    assert.equal(upstream.method, 'GET');
+    assert.equal(
+      upstream.path,
+      '/api/v1/productos/' + productId + '?canal=MARKETPLACE',
+    );
+    assert.equal(upstream.status, 403);
+    assert.match(upstream.correlationId, /^[a-f0-9-]{36}$/i);
+    assert.equal(upstream.correlationId, upstream.responseCorrelationId);
     return {
       ...r,
+      verifiedUpstreamFailure: upstream,
       limitation:
-        'inactive SKU is not evidence of successful commercial evaluation; active data/product/inventory remain pending',
+        'product_id intentionally reaches the real Catalog product guard: traced 403 maps to 503. This does not prove behavior caused by an inactive SKU or a successful commercial evaluation.',
     };
   });
   await check('promotions-invalid-inbound-token', async () => {
@@ -1075,25 +1217,74 @@ try {
     assert.equal(r.status, 401);
     return r;
   });
-  await check('restricted-database-identities-and-tls', async () => {
-    const identities = await admin.query(
-      "SELECT a.usename, s.ssl, s.version FROM pg_stat_activity a JOIN pg_stat_ssl s ON a.pid=s.pid WHERE a.usename IN ('catalog_app','pricing_app','taxonomy_app','inventory_app','promotions_test_login') ORDER BY a.usename",
-    );
-    assert.ok(identities.rows.length >= 3);
-    assert.ok(identities.rows.every((r) => r.ssl));
-    const roles = await admin.query(
-      "SELECT rolname,rolsuper,rolcreatedb,rolcreaterole,rolbypassrls FROM pg_roles WHERE rolname IN ('catalog_app','pricing_app','taxonomy_app','inventory_app','promotions_test_login') ORDER BY rolname",
-    );
-    assert.ok(
-      roles.rows.every(
-        (r) =>
-          !r.rolsuper && !r.rolcreatedb && !r.rolcreaterole && !r.rolbypassrls,
-      ),
-    );
-    return { identities: identities.rows, roles: roles.rows };
-  });
+  for (const [service, schema, user, table] of [
+    ['catalog-svc', 'catalog', 'catalog_app', 'products'],
+    ['pricing-svc', 'pricing', 'pricing_app', 'prices'],
+    ['taxonomy-svc', 'taxonomy', 'taxonomy_app', 'categories'],
+    ['inventory-svc', 'inventory', 'inventory_app', 'stock_balance'],
+    ['promotions-svc', 'promotions', 'promotions_test_login', 'promotions'],
+  ])
+    await check('postgres-identity-' + service, async () => {
+      const client = new pg.Client({
+        host: '127.0.0.1',
+        port: ports.get('postgres'),
+        database: 'postgres',
+        user,
+        password,
+        application_name: 'g6-test-identity-' + service,
+        connectionTimeoutMillis: 2000,
+        ssl: {
+          ca: readFileSync(join(directory, 'server.crt')),
+          rejectUnauthorized: true,
+        },
+      });
+      try {
+        await client.connect();
+        const row = (
+          await client.query(
+            `SELECT current_user,session_user,current_database() AS database,s.ssl,s.version,
+        r.rolsuper,r.rolcreatedb,r.rolcreaterole,r.rolbypassrls,
+        has_schema_privilege(current_user,$1,'USAGE') AS own_schema_usage,
+        pg_has_role(current_user,$2,'MEMBER') AS owner_member
+        FROM pg_roles r JOIN pg_stat_ssl s ON s.pid=pg_backend_pid() WHERE r.rolname=current_user`,
+            [schema, 'po_' + schema + '_owner'],
+          )
+        ).rows[0];
+        assert.ok(row, 'The exact runtime role must exist');
+        assert.equal(row.current_user, user);
+        assert.equal(row.session_user, user);
+        assert.equal(row.database, 'postgres');
+        assert.equal(row.ssl, true);
+        assert.match(row.version, /^TLSv1\.[23]$/);
+        assert.equal(row.own_schema_usage, true);
+        assert.equal(row.owner_member, false);
+        for (const flag of [
+          'rolsuper',
+          'rolcreatedb',
+          'rolcreaterole',
+          'rolbypassrls',
+        ])
+          assert.equal(row[flag], false);
+        const count = (
+          await client.query(
+            `SELECT count(*)::int AS n FROM ${schema}.${table}`,
+          )
+        ).rows[0].n;
+        return {
+          service,
+          schema,
+          ...row,
+          ownTable: table,
+          count,
+          scope:
+            'individual real SQL login probe; not an assertion that the application holds a persistent pool connection',
+        };
+      } finally {
+        await client.end();
+      }
+    });
   await check('real-token-issuance-claims-evidence', async () => {
-    const r = probe('issuer-evidence', '/');
+    const r = await probe('issuer-evidence', '/');
     assert.ok(r.body.length > 0);
     assert.ok(
       r.body.every(

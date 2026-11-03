@@ -17,7 +17,7 @@ const config = new PromotionsConfigService(
 );
 const identity = new PromotionsIdentity(config, remotePromotionsKeys(config));
 const reader = new InternalHttpReader({
-  origin: 'http://catalog-svc:3001',
+  origin: config.settings.upstreams.catalog,
   origins: config.settings.upstreams,
   getServiceAccessToken: promotionsServiceTokens(config, identity),
 });
@@ -31,26 +31,59 @@ try {
     );
     process.exit(0);
   }
+  if (operation === 'catalog-transport-evidence') {
+    const response = await fetch('https://catalog-tls:4443/__test/requests');
+    if (response.status !== 200) throw new Error('TEST_TRACE_UNAVAILABLE');
+    console.log(
+      JSON.stringify({ outcome: 'RETURNED', body: await response.json() }),
+    );
+    process.exit(0);
+  }
   if (operation === 'readiness') {
     const body = await new PromotionsReadinessService(
       nativePromotionsDependencyProbes(config),
     ).check(true);
-    console.log(JSON.stringify({ outcome: 'RETURNED', body }));
+    console.log(
+      JSON.stringify({
+        outcome: 'RETURNED',
+        body,
+        scope: {
+          instance:
+            'independent test PromotionsReadinessService; not the running Nest monitor',
+          passiveBrokerProbe: true,
+          runningServiceBrokerProbeEnabled: false,
+          couponRuntimeEnabled: false,
+          operationalAmqpConsumptionVerified: false,
+        },
+      }),
+    );
     process.exit(0);
   }
-  const body = await reader.read(
-    operation,
-    path,
-    AbortSignal.timeout(Number(milliseconds)),
-    true,
-  );
-  console.log(
-    JSON.stringify({
-      outcome: 'RETURNED',
-      body,
-      elapsedMs: Math.round(performance.now() - start),
-    }),
-  );
+  const signal = AbortSignal.timeout(Number(milliseconds));
+  try {
+    const body = await reader.read(operation, path, signal, true);
+    console.log(
+      JSON.stringify({
+        outcome: 'RETURNED',
+        body,
+        elapsedMs: Math.round(performance.now() - start),
+      }),
+    );
+  } catch (error) {
+    console.log(
+      JSON.stringify({
+        outcome: 'REJECTED',
+        name: error.name,
+        error: error.message,
+        cancellation: {
+          aborted: signal.aborted,
+          reasonName: signal.reason?.name ?? null,
+          matchesReason: error === signal.reason,
+        },
+        elapsedMs: Math.round(performance.now() - start),
+      }),
+    );
+  }
 } catch (error) {
   console.log(
     JSON.stringify({
