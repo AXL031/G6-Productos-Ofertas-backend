@@ -3587,11 +3587,14 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       expect(
         await queries.findVariant(randomUUID(), ready.variant_id),
       ).toBeNull();
-      expect(
-        await queries.physicalData([ready.sku, parent.sku_base, draft.sku]),
-      ).toMatchObject({
-        productos: [{ sku: ready.sku, estado: 'ACTIVO', ...fullProfile }],
-        noEncontrados: [parent.sku_base, draft.sku],
+      await expect(
+        queries.physicalData([ready.sku, parent.sku_base, draft.sku]),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [draft.sku] },
+        },
       });
       expect(await snapshot()).toEqual(after);
       expect(await requested(parent.product_id)).toEqual(intents);
@@ -3849,6 +3852,119 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       ]);
       expect(seen.size).toBe(2);
       expect((await requested(product.product_id)).length).toBe(2);
+    });
+
+    it('OPEN-09: reads simple and variant physical profiles in all three states without mutation', async () => {
+      const service = mutationService(),
+        queries = new CatalogQueryRepository(database);
+      const body = { ...createRequest(), skuBase: '000AbC,/ñ-' + randomUUID() };
+      const simple = await service.createProduct(body, actor);
+      const parent = await service.createProduct(createRequest(true), actor);
+      const child = await service.createVariant(
+        parent.product_id,
+        {
+          sku: '000Variant,/ñ-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'S',
+              valor: 'S',
+            },
+          ],
+          imagenUrl: 'https://example.test/variant',
+          perfilFisico: fullProfile,
+        },
+        actor,
+      );
+      const skus = [body.skuBase, child.sku, 'missing'];
+      async function assertState(estado: string) {
+        const result = await queries.physicalData(skus);
+        expect(result).toMatchObject({
+          productos: [
+            { sku: body.skuBase, estado, ...fullProfile },
+            { sku: child.sku, estado, ...fullProfile },
+          ],
+          noEncontrados: ['missing'],
+        });
+        expect(
+          [
+            ...result.productos.map((p) => p.sku),
+            ...result.noEncontrados,
+          ].sort(),
+        ).toEqual([...skus].sort());
+      }
+      await assertState('BORRADOR');
+      await complete(simple.product_id);
+      await complete(parent.product_id);
+      await service.state(simple.product_id, undefined, 'activate', {}, actor);
+      await service.state(
+        parent.product_id,
+        child.variant_id,
+        'activate',
+        undefined,
+        actor,
+      );
+      await service.state(parent.product_id, undefined, 'activate', {}, actor);
+      await assertState('ACTIVO');
+      await service.state(
+        simple.product_id,
+        undefined,
+        'deactivate',
+        {},
+        actor,
+      );
+      await service.state(
+        parent.product_id,
+        child.variant_id,
+        'deactivate',
+        undefined,
+        actor,
+      );
+      await assertState('INACTIVO');
+      const before = await requested(simple.product_id);
+      const absent = Array.from({ length: 98 }, (_, i) => 'absent-' + i);
+      const result = await queries.physicalData([
+        body.skuBase,
+        child.sku,
+        ...absent,
+      ]);
+      expect(result.productos).toHaveLength(2);
+      expect(result.noEncontrados).toEqual(absent);
+      expect(await requested(simple.product_id)).toEqual(before);
+      const incomplete = await service.createProduct(
+        { ...createRequest(), perfilFisico: { pesoKg: 1 } },
+        actor,
+      );
+      const partialVariant = await service.createVariant(
+        parent.product_id,
+        {
+          sku: 'partial-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'M',
+              valor: 'M',
+            },
+          ],
+        },
+        actor,
+      );
+      await expect(
+        queries.physicalData([
+          body.skuBase,
+          incomplete.sku_base,
+          partialVariant.sku,
+          'missing',
+        ]),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [incomplete.sku_base, partialVariant.sku] },
+        },
+      });
     });
 
     it('reads contractual preparation, variants and physical SKU data from the committed aggregate', async () => {

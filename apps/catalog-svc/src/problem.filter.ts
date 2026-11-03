@@ -88,6 +88,24 @@ export class ProblemFilter implements ExceptionFilter {
         title: code,
         status,
         code,
+        ...(code === 'DATOS_FISICOS_INCOMPLETOS' &&
+        body &&
+        typeof body === 'object' &&
+        'details' in body &&
+        body.details &&
+        typeof body.details === 'object' &&
+        'skusAfectados' in body.details &&
+        Array.isArray(body.details.skusAfectados) &&
+        body.details.skusAfectados.length > 0 &&
+        body.details.skusAfectados.every(
+          (sku: unknown) => typeof sku === 'string',
+        )
+          ? {
+              details: {
+                skusAfectados: [...new Set(body.details.skusAfectados)],
+              },
+            }
+          : {}),
         correlationId: id,
       });
   }

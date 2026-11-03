@@ -1,5 +1,31 @@
 # Catalog ↔ Bulk H4 — implementación del consumidor
 
+## Actualización para nueva auditoría — 2026-11-02
+
+PR #162 continúa **draft**, sin merge. Se incorporó master
+`0ad41e7` mediante merge normal en poma, preservando el handler y sus regresiones.
+Incluye PR #165, merge `163796c51f63a94e89c791d20836e20b14238cfe`:
+Bulk publica properties.userId con el username autenticado de RabbitMQ. El
+bloqueo histórico descrito abajo queda corregido en el productor; su comprobación
+conjunta se repite sobre este HEAD y se registra con CI exacta en el PR.
+
+La evidencia histórica permanece abajo. La prueba BULK-JOINT usa PostgreSQL
+17 y RabbitMQ 4.2.9 reales desechables, Bulk importer/Outbox/Inbox real y handler
+Catalog real, pero Taxonomy y autorización de maestros son fixtures explícitas.
+El recorrido conjunto actual cubre ALTA simple y replay; ACTUALIZACION/familias,
+conflictos y fallos técnicos se verifican en los casos PostgreSQL del handler,
+sin atribuirlos al importador de archivos. No representa AMQP compartido ni H4
+autenticado/desplegado. El archivo ACTUALIZACION de variantes sigue dependiendo
+de lectura autorizada para resolver variant_id.
+
+La revisión de esa lectura y propuestas de aprobación están en
+[CONSULTA-FISICA-H4.md](CONSULTA-FISICA-H4.md), junto a las correcciones #46.
+No se extiende el DTO cerrado skuContext ni se amplían permisos unilateralmente.
+Los SHA, conteos y resultados definitivos se mantienen en la descripción del PR
+para no presentar el diagnóstico histórico siguiente como estado actual.
+
+## Antecedentes y evidencia histórica conservada
+
 Rama: `poma`. Base sincronizada por avance directo a master
 `df5afa226e796b7560efdf4be8b7681d3974bbdd`, que incluye el merge Bulk #155
 `94016a396093fed9fce15da20065316a9788957b` y los avances fusionados de #125.

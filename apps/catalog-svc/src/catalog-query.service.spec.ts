@@ -79,6 +79,49 @@ describe('CatalogQueryService', () => {
     ).toThrow(BadRequestException);
   });
 
+  it.each([
+    { skus: ['same', 'same'] },
+    { skus: [null] },
+    { skus: [12] },
+    { skus: 'sku' },
+    {},
+    { skus: ['valid', ''] },
+  ])('rejects invalid or duplicate physical requests: %j', async (body) => {
+    await expect(service.physicalData(body)).rejects.toMatchObject({
+      status: 422,
+      response: { code: 'SKU_INVALIDO' },
+    });
+    expect(repository.physicalData).not.toHaveBeenCalled();
+  });
+
+  it('accepts 100 distinct opaque SKU without normalizing them', async () => {
+    const skus = [
+      '000AbC,/ñ',
+      'ABC',
+      'abc',
+      ...Array.from({ length: 97 }, (_, i) => '00' + i),
+    ];
+    repository.physicalData.mockResolvedValue({
+      productos: [],
+      noEncontrados: skus,
+    });
+    await expect(service.physicalData({ skus })).resolves.toEqual({
+      productos: [],
+      noEncontrados: skus,
+    });
+    expect(repository.physicalData).toHaveBeenCalledWith(skus);
+  });
+
+  it.each([
+    new Error('SELECT private credentials'),
+    new ServiceUnavailableException(),
+  ])('sanitizes physical repository failures as 503', async (failure) => {
+    repository.physicalData.mockRejectedValueOnce(failure);
+    await expect(service.physicalData({ skus: ['000'] })).rejects.toMatchObject(
+      { status: 503 },
+    );
+  });
+
   it('returns the declared 404 codes for missing product and variant', async () => {
     repository.productPreparation.mockResolvedValue(null);
     repository.listVariants.mockResolvedValue(null);
