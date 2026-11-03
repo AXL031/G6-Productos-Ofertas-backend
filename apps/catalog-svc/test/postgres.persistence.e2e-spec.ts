@@ -3940,6 +3940,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         parent.product_id,
         {
           sku: 'partial-' + randomUUID(),
+          imagenUrl: 'https://example.test/partial-variant',
           atributosIdentificadores: [
             {
               caracteristica_id: 'size',

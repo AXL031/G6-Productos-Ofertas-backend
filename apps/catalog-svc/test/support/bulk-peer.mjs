@@ -45,7 +45,7 @@ try {
   phase = 'replay';
   await pool.query('UPDATE bulk.outbox SET published_at = NULL WHERE correlation_id = $1', [config.correlation]);
   await relay.flush(); await pause(250);
-  const inbox = await pool.query("SELECT count(DISTINCT message_id)::integer AS count FROM bulk.inbox WHERE event_name = 'catalog.bulk.upsert.completed'");
+  const inbox = await pool.query("SELECT count(DISTINCT message_id)::integer AS count FROM bulk.inbox WHERE event_name = 'catalog.bulk.upsert.completed' AND correlation_id = $1", [config.correlation]);
   console.log('BULK_FIXTURE_RESULT:' + JSON.stringify({ rows: snapshot.rows.map(item => ({ applied: item.row.appliedDomains, status: item.row.status, steps: item.steps.map(step => ({ domain: step.domain, status: step.status })) })), inbox: inbox.rows[0].count }));
 } catch (error) {
   const code = typeof error?.code === 'string' && /^[A-Z0-9_]+$/.test(error.code) ? error.code : 'UNAVAILABLE';
