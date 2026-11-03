@@ -188,28 +188,43 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
       await expect.poll(() => rows('db-recovery'), { timeout: 15000 }).toBe(1);
       expect(consumer.paused).toBe(false);
     });
-    it('un envelope inválido pausa consumo sin ACK ni descarte y exige recuperación explícita', async () => {
-      await publish({ ...envelope('invalid'), producer: 'otro-servicio' });
-      await expect.poll(() => consumer.paused, { timeout: 10000 }).toBe(true);
-      await expect
-        .poll(
-          async () =>
-            (await broker.channel!.checkQueue('po.auditoria-precios.q'))
-              .messageCount,
-          { timeout: 10000 },
-        )
-        .toBe(1);
-      expect(await rows('invalid')).toBe(0);
-      await request(app.getHttpServer()).get('/health/ready').expect(503);
-      await request(app.getHttpServer()).get('/health/live').expect(200);
-      const invalid = await broker.channel!.get('po.auditoria-precios.q');
-      if (!invalid) throw new Error('El mensaje no quedó retenido.');
-      broker.channel!.ack(invalid); // Disposición manual exclusiva de la fixture, no política de producción.
-      consumer.start();
-      await expect
-        .poll(() => consumer.available, { timeout: 10000 })
-        .toBe(true);
-    });
+    it.each([
+      { producer: 'otro-servicio' },
+      { data: { fixture_sku: 'legacy-generic-data' } },
+    ])(
+      'retiene envelope incompatible o GenericData antiguo sin ACK: %j',
+      async (incompatible) => {
+        const incoming = { ...envelope('invalid'), ...incompatible };
+        await publish(incoming);
+        await expect.poll(() => consumer.paused, { timeout: 10000 }).toBe(true);
+        await expect
+          .poll(
+            async () =>
+              (await broker.channel!.checkQueue('po.auditoria-precios.q'))
+                .messageCount,
+            { timeout: 10000 },
+          )
+          .toBe(1);
+        expect(await rows('invalid')).toBe(0);
+        expect(
+          (
+            await postgres.admin!.query(
+              'SELECT count(*)::int AS total FROM price_audit.inbox WHERE message_id=$1',
+              [incoming.message_id],
+            )
+          ).rows[0].total,
+        ).toBe(0);
+        await request(app.getHttpServer()).get('/health/ready').expect(503);
+        await request(app.getHttpServer()).get('/health/live').expect(200);
+        const invalid = await broker.channel!.get('po.auditoria-precios.q');
+        if (!invalid) throw new Error('El mensaje no quedó retenido.');
+        broker.channel!.ack(invalid); // Disposición manual exclusiva de la fixture, no política de producción.
+        consumer.start();
+        await expect
+          .poll(() => consumer.available, { timeout: 10000 })
+          .toBe(true);
+      },
+    );
     it('reconecta tras interrupción de broker sin sustituir disponibilidad por liveness', async () => {
       await broker.pause();
       try {

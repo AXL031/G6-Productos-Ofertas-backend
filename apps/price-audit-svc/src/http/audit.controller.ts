@@ -31,12 +31,15 @@ export interface AuditExportWorker {
 }
 function money(value: string | null) {
   if (value === null) return null;
-  const number = Number(value);
-  if (!Number.isFinite(number)) throw new AuditHttpError(500, 'ERROR_INTERNO');
-  return number;
+  if (!/^-?(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value))
+    throw new AuditHttpError(500, 'ERROR_INTERNO');
+  // El contrato exige number; rawJSON conserva el decimal de PostgreSQL en el wire.
+  return (JSON as typeof JSON & { rawJSON(value: string): unknown }).rawJSON(
+    value,
+  );
 }
 export function wireAudit(row: typeof auditLog.$inferSelect) {
-  // OpenAPI rc.3 a�n no admite SKU/canal nulos de DEC-G6-INT-06.
+  // OpenAPI rc.3 aun no admite SKU/canal nulos de DEC-G6-INT-06.
   if (row.sku === null || row.channel === null)
     throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
   return {

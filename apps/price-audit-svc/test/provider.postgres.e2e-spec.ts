@@ -115,6 +115,33 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
       expect(response.body.items[0]).not.toHaveProperty('currency');
       expect(response.body.items[0]).not.toHaveProperty('inboxId');
     });
+    it('listado y detalle conservan los decimales del servidor en el JSON recibido', async () => {
+      for (const value of [
+        '0.10000000000000000001',
+        '9007199254740993.01',
+        '9999999999999999999999999999.99',
+        '1.2300',
+      ]) {
+        const sku = 'precision-' + randomUUID();
+        await repository.append(message(), [
+          entry(sku, {
+            operation: 'MODIFICACION',
+            previous: value,
+            next: value,
+            variation: '-16.67',
+          }),
+        ]);
+        const listing = await get(base + '?sku=' + sku).expect(200);
+        const detail = await get(
+          base + '/' + listing.body.items[0].id_auditoria,
+        ).expect(200);
+        for (const response of [listing, detail]) {
+          expect(response.text).toContain('"precio_anterior":' + value + ',');
+          expect(response.text).toContain('"precio_nuevo":' + value + ',');
+          expect(response.text).toContain('"variacion_porcentual":-16.67,');
+        }
+      }
+    });
     it('revierte Inbox si el INSERT de asientos falla y permite reprocesar', async () => {
       const incoming = message();
       await database.admin!.query(
@@ -316,6 +343,31 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
           'GRANT SELECT ON price_audit.inbox TO price_audit_app',
         );
       }
+    });
+    it.each([
+      { targetType: 'PRODUCTO' as const, sku: null, channel: 'MARKETPLACE' },
+      { targetType: 'SKU' as const, sku: 'global-read', channel: null },
+      { targetType: 'PRODUCTO' as const, sku: null, channel: null },
+    ])('aisla la lectura HTTP pendiente del contrato: %j', async (values) => {
+      const batchId = randomUUID();
+      await repository.append(message(), [
+        entry('ordinary', { batchId }),
+        entry('nullable', { ...values, batchId }),
+      ]);
+      const { items, total } = await repository.list({ batchId }, 1, 20);
+      expect(total).toBe(2);
+      const nullable = items.find(
+        (item) => item.sku === values.sku && item.channel === values.channel,
+      )!;
+      expect(nullable).toBeDefined();
+      const detail = await get(base + '/' + nullable.id).expect(503);
+      const listing = await get(base + '?batchId=' + batchId).expect(503);
+      for (const response of [listing, detail]) {
+        expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+        expect(response.body).not.toHaveProperty('items');
+      }
+      const ordinary = items.find((item) => item.sku === 'ordinary')!;
+      await get(base + '/' + ordinary.id).expect(200);
     });
   },
 );
