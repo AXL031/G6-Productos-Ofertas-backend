@@ -592,6 +592,254 @@ try {
         [operations[name]],
       )
     )[0];
+  for (const entityType of ['BRAND', 'CATEGORY']) {
+    stage = `Correlación incorrecta ${entityType}`;
+    const entityId = randomUUID(),
+      operationId = randomUUID(),
+      correlationId = randomUUID();
+    const table = entityType === 'BRAND' ? 'brands' : 'categories';
+    await admin.query(
+      `INSERT INTO taxonomy.${table}(id,nombre) VALUES($1,$2)`,
+      [entityId, `E2E causal ${entityType} ${token}`],
+    );
+    await admin.query('REVOKE INSERT ON taxonomy.inbox FROM taxonomy_app');
+    assert.equal(
+      await intents().registrar({
+        operationId,
+        correlationId,
+        entityType,
+        entityId,
+        version: 0,
+      }),
+      'REGISTRADA',
+    );
+    await wait(
+      `barrera ${entityType} y pausa`,
+      async () =>
+        !runtime().disponible() &&
+        (
+          await row(
+            'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0]?.is_blocking === true,
+    );
+    const checked = (
+      await row(
+        "SELECT message_id, causation_id, payload FROM catalog.outbox WHERE operation_id=$1 AND event_name='catalog.master.deactivation.checked'",
+        [operationId],
+      )
+    )[0];
+    assert.ok(checked);
+    const wrong = randomUUID(),
+      badFinalId = randomUUID();
+    const wrongFinal = {
+      message_id: badFinalId,
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: wrong,
+      operation_id: operationId,
+      producer: 'taxonomy-svc',
+      kind: 'event',
+      name: 'taxonomy.master.deactivated',
+      data: { entity_type: entityType, entity_id: entityId, version: 0 },
+    };
+    ch.publish(
+      'po.eventos.x',
+      wrongFinal.name,
+      Buffer.from(JSON.stringify(wrongFinal)),
+      {
+        persistent: true,
+        contentType: 'application/json',
+        userId: 'taxonomy_test',
+        messageId: badFinalId,
+        correlationId: wrong,
+      },
+    );
+    await wait(
+      'Catalog registra STALE',
+      async () =>
+        (
+          await row('SELECT result FROM catalog.inbox WHERE message_id=$1', [
+            badFinalId,
+          ])
+        )[0]?.result === 'STALE',
+    );
+    assert.equal(
+      (
+        await row(
+          'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+          [operationId],
+        )
+      )[0].is_blocking,
+      true,
+    );
+    assert.equal(
+      (
+        await row(
+          'SELECT count(*)::int AS n FROM catalog.outbox WHERE operation_id=$1',
+          [operationId],
+        )
+      )[0].n,
+      1,
+    );
+    await taxonomyApp.close();
+    taxonomyApp = undefined;
+    await wait(
+      'respuesta legítima disponible',
+      async () => (await ch.checkQueue('po.taxonomia.q')).messageCount >= 1,
+    );
+    const originalChecked = await ch.get('po.taxonomia.q', { noAck: false });
+    assert.equal(
+      JSON.parse(originalChecked.content.toString()).operation_id,
+      operationId,
+    );
+    await admin.query('GRANT INSERT ON taxonomy.inbox TO taxonomy_app');
+    const invalidId = randomUUID();
+    const invalidChecked = {
+      message_id: invalidId,
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: wrong,
+      causation_id: checked.causation_id,
+      operation_id: operationId,
+      producer: 'catalog-svc',
+      kind: 'result',
+      name: 'catalog.master.deactivation.checked',
+      data: checked.payload,
+    };
+    const catalogConnection = await connect(catalogUrl),
+      publisher = await catalogConnection.createConfirmChannel();
+    await new Promise((resolve, reject) =>
+      publisher.publish(
+        'po.resultados.x',
+        invalidChecked.name,
+        Buffer.from(JSON.stringify(invalidChecked)),
+        {
+          persistent: true,
+          contentType: 'application/json',
+          userId: 'catalog_test',
+          messageId: invalidId,
+          correlationId: wrong,
+        },
+        (error) => (error ? reject(error) : resolve()),
+      ),
+    );
+    taxonomyApp = (await iniciarTaxonomySvc({ env: taxEnv })).app;
+    await wait(
+      'Taxonomy ignora correlación incorrecta',
+      async () =>
+        (
+          await row('SELECT result FROM taxonomy.inbox WHERE message_id=$1', [
+            invalidId,
+          ])
+        )[0]?.result === 'IGNORED',
+    );
+    assert.equal(
+      (
+        await row(
+          'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [operationId],
+        )
+      )[0].status,
+      'IN_PROGRESS',
+    );
+    assert.equal(
+      (
+        await row(`SELECT estado FROM taxonomy.${table} WHERE id=$1`, [
+          entityId,
+        ])
+      )[0].estado,
+      'PENDING_DEACTIVATION',
+    );
+    assert.equal(
+      (
+        await row(
+          'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+          [operationId],
+        )
+      )[0].is_blocking,
+      true,
+    );
+    assert.equal(
+      (
+        await row(
+          "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name IN ('taxonomy.master.deactivated','taxonomy.master.deactivation.rejected')",
+          [operationId],
+        )
+      )[0].n,
+      0,
+    );
+    ch.nack(originalChecked, false, true);
+    await wait(
+      'resultado legítimo procesado',
+      async () =>
+        (
+          await row(
+            'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0]?.status === 'COMPLETED',
+    );
+    await wait(
+      'barrera liberada por resultado legítimo',
+      async () =>
+        (
+          await row(
+            'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0]?.is_blocking === false,
+    );
+    await new Promise((resolve, reject) =>
+      publisher.publish(
+        'po.resultados.x',
+        'catalog.master.deactivation.checked',
+        originalChecked.content,
+        {
+          persistent: true,
+          contentType: 'application/json',
+          userId: 'catalog_test',
+          messageId: originalChecked.properties.messageId,
+          correlationId: originalChecked.properties.correlationId,
+        },
+        (error) => (error ? reject(error) : resolve()),
+      ),
+    );
+    await wait(
+      'duplicado consumido',
+      async () => (await ch.checkQueue('po.taxonomia.q')).messageCount === 0,
+    );
+    assert.equal(
+      (
+        await row(
+          'SELECT count(*)::int AS n FROM taxonomy.inbox WHERE message_id=$1',
+          [originalChecked.properties.messageId],
+        )
+      )[0].n,
+      1,
+    );
+    assert.equal(
+      (
+        await row(
+          "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+          [operationId],
+        )
+      )[0].n,
+      1,
+    );
+    report.scenarios[`CORRELACION_${entityType}`] = {
+      operation_id: operationId,
+      entity_id: entityId,
+      catalogo: 'STALE',
+      taxonomy: 'IGNORED',
+      barrera_antes: true,
+      barrera_final: false,
+      estado_final: 'COMPLETED',
+      duplicado_inbox: 1,
+    };
+    await catalogConnection.close();
+  }
   stage = 'CLEAR real';
   await start('clear');
   await wait(
