@@ -49,6 +49,7 @@ import {
 import {
   products,
   masterBarriers,
+  inbox,
   activationChecks,
   outbox,
   skuIdentity,
@@ -1655,12 +1656,13 @@ describe.skipIf(!dockerAvailable)(
       version = 7,
       name = 'taxonomy.master.deactivation.check.requested',
       extra: Record<string, unknown> = {},
+      correlationId: string = randomUUID(),
     ) {
       return parseCatalogMessage({
         message_id: randomUUID(),
         schema_version: 1,
         occurred_at: new Date().toISOString(),
-        correlation_id: randomUUID(),
+        correlation_id: correlationId,
         operation_id: operation,
         causation_id: randomUUID(),
         producer: 'taxonomy-svc',
@@ -1688,6 +1690,192 @@ describe.skipIf(!dockerAvailable)(
         },
       });
     }
+    const masterTypes = [
+      'CATEGORY',
+      'BRAND',
+      'PRODUCT_TYPE',
+      'CHARACTERISTIC_VALUE',
+      'PRODUCT_TYPE_CHARACTERISTIC',
+    ];
+    const masterEvents = [
+      'taxonomy.master.deactivated',
+      'taxonomy.master.deactivation.rejected',
+      'taxonomy.master.deactivation.check.requested',
+    ];
+    async function masterState(operationId: string) {
+      return database.read(async (db) => ({
+        barriers: await db
+          .select()
+          .from(masterBarriers)
+          .where(eq(masterBarriers.operation_id, operationId)),
+        responses: await db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.operation_id, operationId)),
+        products: await db.select().from(products).orderBy(products.id),
+        checks: await db
+          .select()
+          .from(activationChecks)
+          .orderBy(activationChecks.id),
+      }));
+    }
+    async function expectUnprovenMasterMessage(
+      request: CatalogEnvelope,
+      received: CatalogEnvelope,
+    ) {
+      const telemetry = new CatalogTelemetry();
+      const record = vi.spyOn(telemetry, 'record');
+      const messages = new CatalogMessageService(database, telemetry);
+      const before = await masterState(request.operation_id!);
+      expect(before.barriers[0].is_blocking).toBe(true);
+      expect(await messages.consume(received)).toBe('STALE');
+      expect(await masterState(request.operation_id!)).toEqual(before);
+      const stored = await database.read((db) =>
+        db
+          .select()
+          .from(inbox)
+          .where(eq(inbox.message_id, received.message_id)),
+      );
+      expect(stored).toHaveLength(1);
+      expect(stored[0]).toMatchObject({
+        handler: 'catalog.master-barriers.v1',
+        event_name: received.name,
+        operation_id: request.operation_id,
+        correlation_id: received.correlation_id,
+        result: 'STALE',
+      });
+      expect(record).toHaveBeenCalledExactlyOnceWith(
+        'MASTER_BARRIER_UNPROVEN_FINAL',
+        { operationId: request.operation_id, messageId: received.message_id },
+      );
+      // Redelivery of the ignored envelope remains idempotent and cannot emit a response.
+      expect(await messages.consume(received)).toBe('DUPLICATE');
+      expect(await masterState(request.operation_id!)).toEqual(before);
+    }
+    describe.each(masterTypes)('correlación persistida de %s', (type) => {
+      it.each(masterEvents)(
+        '%s con otra correlación no modifica el negocio',
+        async (name) => {
+          const request = masterMessage(type, 'correlation-' + randomUUID());
+          const messages = new CatalogMessageService(database);
+          expect(await messages.consume(request)).toBe('APPLIED');
+          const received = masterMessage(
+            type,
+            request.data.entity_id as string,
+            request.operation_id!,
+            7,
+            name,
+          );
+          expect(received.correlation_id).not.toBe(request.correlation_id);
+          await expectUnprovenMasterMessage(request, received);
+          // An ignored envelope does not prevent a subsequent correctly correlated final.
+          expect(
+            await messages.consume({
+              ...received,
+              message_id: randomUUID(),
+              correlation_id: request.correlation_id,
+            }),
+          ).toBe('APPLIED');
+          expect(
+            (await masterState(request.operation_id!)).barriers[0].is_blocking,
+          ).toBe(name.endsWith('.check.requested'));
+        },
+      );
+      it.each(masterEvents.slice(0, 2))(
+        '%s conserva CLEAR, reintentos y duplicados válidos',
+        async (name) => {
+          const request = masterMessage(
+            type,
+            'valid-correlation-' + randomUUID(),
+          );
+          const messages = new CatalogMessageService(database);
+          expect(await messages.consume(request)).toBe('APPLIED');
+          const initial = await masterState(request.operation_id!);
+          expect(initial.barriers[0].is_blocking).toBe(true);
+          expect(initial.responses).toHaveLength(1);
+          expect(initial.responses[0].payload.result).toBe('CLEAR');
+          expect(await messages.consume(request)).toBe('DUPLICATE');
+          expect(
+            await messages.consume({ ...request, message_id: randomUUID() }),
+          ).toBe('APPLIED');
+          expect(await masterState(request.operation_id!)).toEqual(initial);
+          const final = masterMessage(
+            type,
+            request.data.entity_id as string,
+            request.operation_id!,
+            7,
+            name,
+            {},
+            request.correlation_id,
+          );
+          expect(await messages.consume(final)).toBe('APPLIED');
+          const completed = await masterState(request.operation_id!);
+          expect(completed.barriers[0]).toMatchObject({
+            is_blocking: false,
+            payload: { request, final },
+          });
+          expect(completed.responses).toEqual(initial.responses);
+          expect(await messages.consume(final)).toBe('DUPLICATE');
+          expect(
+            await messages.consume({ ...final, message_id: randomUUID() }),
+          ).toBe('TERMINAL');
+          expect(
+            await messages.consume({ ...request, message_id: randomUUID() }),
+          ).toBe('TERMINAL');
+          // Correlation is also required once the barrier has already been released.
+          for (const message of [request, final]) {
+            expect(
+              await messages.consume({
+                ...message,
+                message_id: randomUUID(),
+                correlation_id: randomUUID(),
+              }),
+            ).toBe('STALE');
+          }
+          expect(await masterState(request.operation_id!)).toEqual(completed);
+        },
+      );
+    });
+    describe.each([
+      ['sin solicitud', undefined],
+      ['solicitud nula', null],
+      ['solicitud escalar', 'invalid-request'],
+      ['solicitud array', []],
+      ['sin correlación', {}],
+      ['correlación nula', { correlation_id: null }],
+      ['correlación vacía', { correlation_id: '' }],
+      ['correlación de otro tipo', { correlation_id: 7 }],
+    ])('barrera con %s', (_label, storedRequest) => {
+      it.each(masterEvents)(
+        '%s no es verificable y permanece STALE',
+        async (name) => {
+          const request = masterMessage(
+            'CATEGORY',
+            'legacy-correlation-' + randomUUID(),
+          );
+          const messages = new CatalogMessageService(database);
+          expect(await messages.consume(request)).toBe('APPLIED');
+          await transactions.run((tx) =>
+            tx
+              .update(masterBarriers)
+              .set({ payload: { request: storedRequest, result: 'CLEAR' } })
+              .where(eq(masterBarriers.operation_id, request.operation_id!)),
+          );
+          await expectUnprovenMasterMessage(
+            request,
+            masterMessage(
+              'CATEGORY',
+              request.data.entity_id as string,
+              request.operation_id!,
+              7,
+              name,
+              {},
+              request.correlation_id,
+            ),
+          );
+        },
+      );
+    });
     function cleanupMasterBarrier(operationId: string) {
       if (!UUID.test(operationId))
         throw new Error('Invalid isolated fixture operation');
@@ -1785,6 +1973,8 @@ describe.skipIf(!dockerAvailable)(
               command.operation_id!,
               8,
               'taxonomy.master.deactivated',
+              {},
+              command.correlation_id,
             ),
           ),
         ).toBe('STALE');
@@ -1815,6 +2005,8 @@ describe.skipIf(!dockerAvailable)(
             command.operation_id!,
             7,
             'taxonomy.master.deactivation.rejected',
+            {},
+            command.correlation_id,
           ),
         );
         expect((await barrier())!.is_blocking).toBe(false);
@@ -1844,6 +2036,8 @@ describe.skipIf(!dockerAvailable)(
             clear.operation_id!,
             7,
             'taxonomy.master.deactivated',
+            {},
+            clear.correlation_id,
           ),
         );
       }
@@ -1894,6 +2088,8 @@ describe.skipIf(!dockerAvailable)(
           check.operation_id!,
           7,
           'taxonomy.master.deactivation.rejected',
+          {},
+          check.correlation_id,
         ),
       );
       await service.state(
@@ -1928,6 +2124,8 @@ describe.skipIf(!dockerAvailable)(
           clear.operation_id!,
           7,
           'taxonomy.master.deactivated',
+          {},
+          clear.correlation_id,
         ),
       );
     });
@@ -1972,6 +2170,8 @@ describe.skipIf(!dockerAvailable)(
           check.operation_id!,
           7,
           'taxonomy.master.deactivation.rejected',
+          {},
+          check.correlation_id,
         ),
       );
       const blocked = 'blocked-' + randomUUID(),
@@ -1988,7 +2188,7 @@ describe.skipIf(!dockerAvailable)(
           master_id: blocked,
           operation_id: command.operation_id!,
           source_version: 7n,
-          payload: command.data,
+          payload: { request: command },
         });
         barrierReady();
         await barrierGate;
@@ -2009,6 +2209,8 @@ describe.skipIf(!dockerAvailable)(
           command.operation_id!,
           7,
           'taxonomy.master.deactivated',
+          {},
+          command.correlation_id,
         ),
       );
     });
@@ -2057,6 +2259,8 @@ describe.skipIf(!dockerAvailable)(
               command.operation_id!,
               7,
               'taxonomy.master.deactivated',
+              {},
+              command.correlation_id,
             ),
           ),
         ).toBe('STALE');
@@ -2189,6 +2393,7 @@ describe.skipIf(!dockerAvailable)(
             caracteristica_id: 'different',
             schema_version_resultante: 9,
           },
+          check.correlation_id,
         );
         expect(await messages.consume(mismatched)).toBe('STALE');
         expect(
@@ -2205,6 +2410,7 @@ describe.skipIf(!dockerAvailable)(
           7,
           'taxonomy.master.deactivated',
           { ...coords, schema_version_resultante: 9 },
+          check.correlation_id,
         );
         expect(await messages.consume(final)).toBe('APPLIED');
         const [barrier] = await database.read((db) =>
@@ -2255,6 +2461,7 @@ describe.skipIf(!dockerAvailable)(
             9,
             'taxonomy.master.deactivation.rejected',
             coords,
+            active.correlation_id,
           ),
         );
       } finally {
@@ -2326,6 +2533,7 @@ describe.skipIf(!dockerAvailable)(
           7,
           'taxonomy.master.deactivation.rejected',
           coords,
+          check.correlation_id,
         ),
       );
       const clear = masterMessage(
@@ -2361,6 +2569,7 @@ describe.skipIf(!dockerAvailable)(
           7,
           'taxonomy.master.deactivated',
           { ...coords, schema_version_resultante: 8 },
+          clear.correlation_id,
         ),
       );
     });
