@@ -1,0 +1,411 @@
+import { after, before, beforeEach, test } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { createServer } from 'node:net';
+
+const root = dirname(fileURLToPath(import.meta.url));
+const read = (p) => readFileSync(resolve(root, p), 'utf8');
+const audit = JSON.parse(read('evidence/supabase-readonly.json'));
+const map = JSON.parse(read('image-map.json'));
+const covers = JSON.parse(read('cover-map.json')).covers;
+const pgBin =
+  process.env.DATA002_PG_BIN ??
+  (process.platform === 'win32' ? 'C:/Program Files/PostgreSQL/16/bin' : '');
+const native = existsSync(
+  join(pgBin, process.platform === 'win32' ? 'initdb.exe' : 'initdb'),
+);
+const container = 'catalog-data002-' + process.pid + '-' + Date.now();
+let directory,
+  port,
+  started = false,
+  number = 0,
+  database = 'postgres';
+function command(exe, args, input) {
+  const result = spawnSync(exe, args, {
+    input,
+    encoding: 'utf8',
+    windowsHide: true,
+    timeout: 120000,
+    ...(exe.endsWith('pg_ctl') ? { stdio: 'ignore' } : {}),
+  });
+  if (result.error || result.status !== 0)
+    throw Error(`${exe}: ${result.error?.message ?? result.stderr}`);
+  return result.stdout?.trim() ?? '';
+}
+function sql(source, db = database) {
+  const args = [
+    '-X',
+    '-v',
+    'ON_ERROR_STOP=1',
+    '-At',
+    '-U',
+    'postgres',
+    '-d',
+    db,
+  ];
+  return native
+    ? command(
+        join(pgBin, 'psql'),
+        ['-h', '127.0.0.1', '-p', String(port), ...args],
+        source,
+      )
+    : command('docker', ['exec', '-i', container, 'psql', ...args], source);
+}
+function owner(source) {
+  return sql('SET ROLE po_catalog_owner;\n' + source);
+}
+const scalar = (query) => sql(query).split(/\r?\n/).at(-1);
+const canonical = `SELECT jsonb_build_object('p',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM catalog.products p),
+  'v',(SELECT jsonb_agg(to_jsonb(v) ORDER BY id) FROM catalog.variants v),'s',(SELECT jsonb_agg(to_jsonb(s) ORDER BY id) FROM catalog.sku_identity s),
+  'f',(SELECT jsonb_agg(to_jsonb(f) ORDER BY id) FROM catalog.sku_physical_profiles f),'a',(SELECT jsonb_agg(to_jsonb(a) ORDER BY id) FROM catalog.activation_checks a),
+  'foreign',(SELECT jsonb_agg(to_jsonb(f)) FROM foreign_context.sentinel f),'storage',(SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM storage.objects o))`;
+const fullImages = `SELECT jsonb_build_object('p',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i),'v',(SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.variant_images i))`;
+before(async () => {
+  if (native) {
+    directory = mkdtempSync(join(tmpdir(), 'catalog-data002-'));
+    const server = createServer();
+    await new Promise((r) => server.listen(0, '127.0.0.1', r));
+    port = server.address().port;
+    await new Promise((r) => server.close(r));
+    command(join(pgBin, 'initdb'), [
+      '-D',
+      join(directory, 'data'),
+      '-A',
+      'trust',
+      '-U',
+      'postgres',
+      '--no-locale',
+      '--encoding=UTF8',
+    ]);
+    command(join(pgBin, 'pg_ctl'), [
+      '-D',
+      join(directory, 'data'),
+      '-l',
+      join(directory, 'postgres.log'),
+      '-o',
+      `-h 127.0.0.1 -p ${port}`,
+      '-w',
+      'start',
+    ]);
+  } else {
+    command('docker', [
+      'run',
+      '--detach',
+      '--name',
+      container,
+      '--env',
+      'POSTGRES_HOST_AUTH_METHOD=trust',
+      'postgres:17',
+    ]);
+    for (let i = 0; i < 100; i++) {
+      if (
+        spawnSync(
+          'docker',
+          ['exec', container, 'pg_isready', '-U', 'postgres'],
+          { windowsHide: true },
+        ).status === 0
+      )
+        break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+  started = true;
+  sql('CREATE DATABASE data002_template;');
+  database = 'data002_template';
+  sql(`CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE catalog_app NOLOGIN;
+    CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner;
+    CREATE SCHEMA storage; CREATE TABLE storage.buckets(id text PRIMARY KEY,public boolean);
+    CREATE TABLE storage.objects(id uuid PRIMARY KEY,bucket_id text,name text,metadata jsonb);
+    GRANT USAGE ON SCHEMA storage TO po_catalog_owner; GRANT SELECT ON ALL TABLES IN SCHEMA storage TO po_catalog_owner;
+    CREATE SCHEMA foreign_context; CREATE TABLE foreign_context.sentinel(value text); INSERT INTO foreign_context.sentinel VALUES('unchanged');`);
+  owner(read('../test/fixtures/0001_create_catalog.sql'));
+  let fixture = 'BEGIN; SET ROLE po_catalog_owner;\n';
+  for (const [key, table] of [
+    ['products', 'products'],
+    ['variants', 'variants'],
+    ['product_images', 'product_images'],
+    ['variant_images', 'variant_images'],
+    ['product_attributes', 'product_attribute_values'],
+    ['variant_attributes', 'variant_attribute_values'],
+    ['identifying_characteristics', 'product_identifying_characteristics'],
+  ]) {
+    for (const row of audit[key]) {
+      const columns = Object.keys(row);
+      const values = columns.map((c) =>
+        c === 'valor' || (row[c] !== null && typeof row[c] === 'object')
+          ? '$json$' + JSON.stringify(row[c]) + '$json$::jsonb'
+          : row[c] === null
+            ? 'NULL'
+            : typeof row[c] === 'string'
+              ? "'" + row[c].replaceAll("'", "''") + "'"
+              : String(row[c]),
+      );
+      fixture += `INSERT INTO catalog.${table}(${columns.join(',')}) VALUES(${values.join(',')});\n`;
+    }
+  }
+  fixture += 'COMMIT;';
+  owner(fixture);
+  // sku_identity se deriva por triggers; IDs reales se restauran solo en fixture desechable para contrastar perfiles.
+  sql(`ALTER TABLE catalog.sku_identity DISABLE TRIGGER USER; DELETE FROM catalog.sku_identity;
+    INSERT INTO catalog.sku_identity SELECT * FROM jsonb_populate_recordset(NULL::catalog.sku_identity,$json$${JSON.stringify(audit.identities)}$json$::jsonb);
+    ALTER TABLE catalog.sku_identity ENABLE TRIGGER USER;
+    INSERT INTO storage.buckets VALUES('catalog-products',true);
+    INSERT INTO storage.objects SELECT id,'catalog-products',name,metadata FROM jsonb_to_recordset($json$${JSON.stringify(audit.storage)}$json$::jsonb) AS r(id uuid,name text,metadata jsonb);`);
+  database = 'postgres';
+});
+beforeEach(() => {
+  database = 'postgres';
+  const next = 'data002_case_' + ++number;
+  sql('CREATE DATABASE ' + next + ' TEMPLATE data002_template;');
+  database = next;
+});
+after(() => {
+  if (started) {
+    if (native)
+      command(join(pgBin, 'pg_ctl'), [
+        '-D',
+        join(directory, 'data'),
+        '-m',
+        'immediate',
+        '-w',
+        'stop',
+      ]);
+    else command('docker', ['rm', '-f', container]);
+  }
+  if (
+    directory &&
+    resolve(directory).startsWith(resolve(tmpdir()) + '\\') &&
+    dirname(directory) === resolve(tmpdir())
+  )
+    rmSync(directory, { recursive: true, force: true });
+});
+test('preflight detecta exactamente seis placeholders y Pitch faltante', () => {
+  const result = owner(read('images-preflight.sql'));
+  assert.equal(result.split('READY').length - 1, 6);
+  assert.equal(result.split(/\r?\n/).at(-1), 't');
+  assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '3');
+});
+test('corrige siete vínculos, genera UUID estándar y reintenta sin duplicados', () => {
+  const before = sql(canonical);
+  owner(read('images-apply-proposed.sql'));
+  assert.equal(sql(canonical), before);
+  for (const i of map.images)
+    assert.equal(
+      scalar(`SELECT url FROM catalog.variant_images WHERE id='${i.image_id}'`),
+      i.url,
+    );
+  assert.equal(
+    scalar(
+      `SELECT count(*) FROM catalog.product_images WHERE product_id='${map.pitch.product_id}' AND principal AND posicion=0`,
+    ),
+    '1',
+  );
+  const first = sql(fullImages);
+  owner(read('images-apply-proposed.sql'));
+  assert.equal(sql(fullImages), first);
+  const postcheck = owner(read('images-postcheck.sql')).split(/\r?\n/);
+  for (const i of map.images) assert.ok(postcheck.includes(i.sku + '|t'));
+  assert.ok(postcheck.includes('t'));
+});
+for (const [label, mutation] of [
+  [
+    'URL conflictiva',
+    `UPDATE catalog.variant_images SET url='https://example.org/conflict.jpg' WHERE id='${map.images[5].image_id}'`,
+  ],
+  [
+    'imagen asociada a otro SKU',
+    `BEGIN; UPDATE catalog.variant_images SET variant_id=CASE WHEN id='${map.images[1].image_id}' THEN '${map.images[5].variant_id}'::uuid ELSE '${map.images[1].variant_id}'::uuid END WHERE id IN ('${map.images[1].image_id}','${map.images[5].image_id}'); COMMIT;`,
+  ],
+  [
+    'objeto inexistente',
+    `DELETE FROM storage.objects WHERE id='${map.images[5].storage_id}'`,
+  ],
+  [
+    'archivo reemplazado',
+    `UPDATE storage.objects SET metadata=jsonb_set(metadata,'{eTag}','"changed"') WHERE id='${map.images[5].storage_id}'`,
+  ],
+  [
+    'Pitch con imagen divergente',
+    `INSERT INTO catalog.product_images(product_id,url) VALUES('${map.pitch.product_id}','https://example.org/other.jpg')`,
+  ],
+])
+  test(label + ': revierte incluso las sustituciones anteriores', () => {
+    sql(mutation);
+    const before = sql(fullImages);
+    assert.throws(() => owner(read('images-apply-proposed.sql')), /DATA002_/);
+    assert.equal(sql(fullImages), before);
+  });
+test('portadas: 12 faltantes, conservación de existentes, reintento y cuatro bloqueadas', () => {
+  const before = sql(canonical);
+  const originalImages = scalar(
+    'SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i',
+  );
+  owner(read('covers-apply-proposed.sql'));
+  assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '15');
+  assert.equal(sql(canonical), before);
+  const postcheck = owner(read('covers-postcheck.sql')).split(/\r?\n/);
+  for (const c of covers) assert.ok(postcheck.includes(c.sku + '|t'));
+  const first = sql(fullImages);
+  owner(read('covers-apply-proposed.sql'));
+  assert.equal(sql(fullImages), first);
+  assert.equal(
+    scalar(
+      `SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i WHERE product_id NOT IN (${covers.map((c) => `'${c.product_id}'`).join(',')})`,
+    ),
+    originalImages,
+  );
+});
+test('portada existente válida se conserva; fuente incorrecta aborta el paquete', () => {
+  const c = covers[0];
+  owner(
+    `INSERT INTO catalog.product_images(product_id,url,principal,posicion) VALUES('${c.product_id}','${c.url}',true,0)`,
+  );
+  owner(read('covers-apply-proposed.sql'));
+  assert.equal(
+    scalar(
+      `SELECT count(*) FROM catalog.product_images WHERE product_id='${c.product_id}'`,
+    ),
+    '1',
+  );
+  sql(
+    `UPDATE catalog.variant_images SET url='https://example.org/wrong.jpg' WHERE id='${covers.at(-1).source_image_id}'`,
+  );
+  const before = sql(fullImages);
+  assert.throws(
+    () => owner(read('covers-apply-proposed.sql')),
+    /DATA002_COVER_SOURCE_CONFLICT/,
+  );
+  assert.equal(sql(fullImages), before);
+});
+test('0002: unicidad incluso retirada, identidad inmutable y solo SKU vendible', () => {
+  owner(read('../migrations/0002_create_sku_barcodes.sql'));
+  const simple = audit.identities.find((s) => s.sku === map.pitch.sku);
+  const base = audit.identities.find((s) => s.sku === covers[0].sku);
+  owner(
+    `INSERT INTO catalog.sku_barcodes(codigo_barras,sku_identity_id,created_by) VALUES('0000123','${simple.id}','isolated');`,
+  );
+  owner(
+    `UPDATE catalog.sku_barcodes SET retired_at=clock_timestamp(),retired_by='isolated';`,
+  );
+  assert.throws(
+    () =>
+      owner(
+        `INSERT INTO catalog.sku_barcodes(codigo_barras,sku_identity_id,created_by) VALUES('0000123','${simple.id}','isolated')`,
+      ),
+    /duplicate key/,
+  );
+  assert.throws(
+    () =>
+      owner(
+        `INSERT INTO catalog.sku_barcodes(codigo_barras,sku_identity_id,created_by) VALUES('base','${base.id}','isolated')`,
+      ),
+    /Require sellable SKU/,
+  );
+  assert.throws(
+    () => owner("UPDATE catalog.sku_barcodes SET codigo_barras='changed'"),
+    /immutable/,
+  );
+  assert.throws(
+    () => owner('DELETE FROM catalog.sku_barcodes'),
+    /cannot be deleted/,
+  );
+  assert.equal(scalar('SELECT count(*) FROM catalog.activation_checks'), '0');
+});
+test('0003: histórico NULL, nuevo false, activación/rollback atómicos y true irreversible', () => {
+  owner(read('../migrations/0003_product_publication_history.sql'));
+  assert.equal(
+    scalar(
+      'SELECT count(*) FROM catalog.products WHERE publicado_alguna_vez IS NULL',
+    ),
+    '20',
+  );
+  owner(
+    "INSERT INTO catalog.products(nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes,publicado_alguna_vez) VALUES('isolated','isolated','c','t','b','isolated-new','isolated-new',false,true)",
+  );
+  assert.equal(
+    scalar(
+      "SELECT publicado_alguna_vez FROM catalog.products WHERE sku_base='isolated-new'",
+    ),
+    'f',
+  );
+  assert.throws(
+    () =>
+      owner(
+        "UPDATE catalog.products SET publicado_alguna_vez=false WHERE sku_base='NIK-PITCH-05'",
+      ),
+    /PUBLICATION_HISTORY_IMMUTABLE/,
+  );
+  assert.throws(
+    () =>
+      owner(
+        "BEGIN; UPDATE catalog.products SET estado='ACTIVO' WHERE sku_base='isolated-new'; SET CONSTRAINTS ALL IMMEDIATE; COMMIT",
+      ),
+    /requiere/,
+  );
+  assert.equal(
+    scalar(
+      "SELECT publicado_alguna_vez FROM catalog.products WHERE sku_base='isolated-new'",
+    ),
+    'f',
+  );
+  // Fixture explícito solo desechable: imagen, perfil e inicializaciones necesarias.
+  owner(`BEGIN;
+    INSERT INTO catalog.product_images(product_id,url) SELECT id,'https://example.org/fixture.jpg' FROM catalog.products WHERE sku_base='isolated-new';
+    INSERT INTO catalog.sku_physical_profiles(sku_identity_id,peso_kg,largo_cm,ancho_cm,alto_cm) SELECT id,1,1,1,1 FROM catalog.sku_identity WHERE sku='isolated-new';
+    INSERT INTO catalog.activation_checks(product_id,sku,dependency,operation_id,correlation_id,request_payload,state,result_payload,result_message_id)
+      SELECT p.id,p.sku_base,d,gen_random_uuid(),gen_random_uuid(),'{}','COMPLETED','{}',gen_random_uuid() FROM catalog.products p CROSS JOIN (VALUES('PRICING'),('INVENTORY')) dep(d) WHERE sku_base='isolated-new';
+    UPDATE catalog.products SET estado='ACTIVO' WHERE sku_base='isolated-new'; COMMIT;`);
+  assert.equal(
+    scalar(
+      "SELECT publicado_alguna_vez FROM catalog.products WHERE sku_base='isolated-new'",
+    ),
+    't',
+  );
+  owner(
+    "UPDATE catalog.products SET estado='INACTIVO' WHERE sku_base='isolated-new'",
+  );
+  assert.throws(
+    () =>
+      owner(
+        "UPDATE catalog.products SET publicado_alguna_vez=false WHERE sku_base='isolated-new'",
+      ),
+    /PUBLICATION_HISTORY_IMMUTABLE/,
+  );
+});
+test('perfil físico: rechaza padre no vendible y valores no positivos', () => {
+  const base = audit.identities.find((s) => s.sku === covers[0].sku);
+  const simple = audit.identities.find((s) => s.sku === map.pitch.sku);
+  assert.throws(
+    () =>
+      owner(
+        `INSERT INTO catalog.sku_physical_profiles(sku_identity_id,peso_kg) VALUES('${base.id}',1)`,
+      ),
+    /perfil fisico/,
+  );
+  for (const value of ['0', '-1', "'NaN'", "'Infinity'"])
+    assert.throws(
+      () =>
+        owner(
+          `INSERT INTO catalog.sku_physical_profiles(sku_identity_id,peso_kg) VALUES('${simple.id}',${value})`,
+        ),
+      /check constraint/,
+    );
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.sku_physical_profiles'),
+    '0',
+  );
+});
+test('ambos paquetes conservan 20/51/71, cero perfiles/preparaciones y schemas ajenos', () => {
+  const before = sql(canonical);
+  owner(read('images-apply-proposed.sql'));
+  owner(read('covers-apply-proposed.sql'));
+  assert.equal(sql(canonical), before);
+  assert.equal(scalar('SELECT count(*) FROM catalog.products'), '20');
+  assert.equal(scalar('SELECT count(*) FROM catalog.variants'), '51');
+  assert.equal(scalar('SELECT count(*) FROM catalog.sku_identity'), '71');
+  assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '16');
+});

@@ -1,0 +1,29 @@
+{
+  "base": "f995307b7f704f24c5ef0fb5806518947dc41c07",
+  "files": [
+    {
+      "path": "scripts/seed/mcp/catalog/001_preflight_readonly.sql",
+      "sha256": "00d60aecfe75d3c14ededee87fc74e4dbc43a3d29b19c9eacbf2d2d2571d0b60"
+    },
+    {
+      "path": "scripts/seed/mcp/catalog/002_manifest_catalogo.json",
+      "sha256": "9e89065f9a0cc2f40f9fa0c1be3e89f162ceea5b4af685ea18b8186ffa9b639a"
+    },
+    {
+      "path": "scripts/seed/mcp/catalog/003_carga_catalogo.sql",
+      "sha256": "94eb638de51586bbb21775dc9d1275f04724e4f17f9c0445b4ee9463132263d1"
+    },
+    {
+      "path": "scripts/seed/mcp/catalog/004_postcheck_readonly.sql",
+      "sha256": "d734539591f159d91994adc378a365d62d78b11d54e1481d63edf2313310c14b"
+    },
+    {
+      "path": "scripts/seed/mcp/catalog/005_matriz_productos_imagenes.csv",
+      "sha256": "8421776487664f97bd4b6b2329475fa89bcc48113513bbfd2564d536639e3e96"
+    },
+    {
+      "path": "scripts/seed/mcp/catalog/006_reporte_evidencia.md",
+      "sha256": "08c02300cef8f2af63beafa6bf8adaadd516bf7fea08cc572d809cc5d6b7ef81"
+    }
+  ]
+}
