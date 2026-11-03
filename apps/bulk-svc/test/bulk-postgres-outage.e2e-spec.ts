@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { Pool, type PoolClient } from 'pg';
+import { Client, Pool, type PoolClient } from 'pg';
 import { Test } from '@nestjs/testing';
 import type { INestApplication, LoggerService } from '@nestjs/common';
 import request from 'supertest';
@@ -70,7 +70,10 @@ async function findAvailableLoopbackPort(): Promise<number> {
   return address.port;
 }
 
-async function waitForDatabaseReady(deadlineMs = 45_000): Promise<void> {
+async function waitForDatabaseReady(
+  databaseUrl: string,
+  deadlineMs = 45_000,
+): Promise<void> {
   const deadline = Date.now() + deadlineMs;
   while (Date.now() < deadline) {
     try {
@@ -78,12 +81,32 @@ async function waitForDatabaseReady(deadlineMs = 45_000): Promise<void> {
         'exec',
         containerName,
         'pg_isready',
+        '-h',
+        '127.0.0.1',
         '-U',
         'postgres',
         '-d',
         databaseName,
       ]);
-      return;
+      const client = new Client({
+        connectionString: databaseUrl,
+        connectionTimeoutMillis: 1000,
+        query_timeout: 1000,
+        statement_timeout: 1000,
+      });
+      try {
+        await client.connect();
+        const result = await client.query<{ ready: number }>(
+          'SELECT 1 AS ready',
+        );
+        if (result.rows[0]?.ready !== 1)
+          throw new Error(
+            'La consulta de disponibilidad no devolvió el valor esperado.',
+          );
+        return;
+      } finally {
+        await client.end().catch(() => undefined);
+      }
     } catch {
       await new Promise((resolve) => setTimeout(resolve, 250));
     }
@@ -143,7 +166,7 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
     ]);
     databaseUrl = `postgresql://postgres:${password}@127.0.0.1:${hostPort}/${databaseName}?sslmode=disable`;
 
-    await waitForDatabaseReady();
+    await waitForDatabaseReady(databaseUrl);
     const migration = `
       CREATE SCHEMA bulk;
       CREATE TYPE bulk.job_status AS ENUM ('QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED_GENERAL');
@@ -297,7 +320,7 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
       if (!blockerReleased) blocker.release(true);
     }
 
-    await waitForDatabaseReady();
+    await waitForDatabaseReady(databaseUrl);
     const recoveryDeadline = Date.now() + 45_000;
     let recovered = false;
     let lastReadinessStatus = 0;
