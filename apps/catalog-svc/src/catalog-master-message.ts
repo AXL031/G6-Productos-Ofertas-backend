@@ -85,7 +85,15 @@ export async function consumeMasterMessage(
           ? coordinates.productTypeId === storedCoordinates.productTypeId &&
             coordinates.characteristicId === storedCoordinates.characteristicId
           : !check));
+    const request = barrier?.payload.request;
+    const correlationMatches =
+      request !== null &&
+      typeof request === 'object' &&
+      !Array.isArray(request) &&
+      'correlation_id' in request &&
+      request.correlation_id === message.correlation_id;
     const matches =
+      correlationMatches &&
       associationMatches &&
       barrier &&
       barrier.master_type === data.entity_type &&
