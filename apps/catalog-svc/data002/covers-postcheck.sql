@@ -1,4 +1,4 @@
--- 12 padres aprobables; los otros cuatro conservan bloqueo comercial.
+-- 12 padres mapeados; los otros cuatro quedan fuera de esta propuesta.
 SELECT m.sku, EXISTS (SELECT 1 FROM catalog.variant_images i JOIN catalog.variants v ON v.id=i.variant_id
     JOIN catalog.products p ON p.id=v.product_id WHERE i.id=m.source_image_id::uuid
     AND v.id=m.source_variant_id::uuid AND p.id=m.product_id::uuid AND p.sku_base=m.sku

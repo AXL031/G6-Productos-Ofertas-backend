@@ -2,11 +2,13 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { prepareProfiles } from './prepare-profiles.mjs';
 
 // Generación offline: nunca abre conexiones ni ejecuta SQL.
 const root = dirname(fileURLToPath(import.meta.url));
 const read = (file) => readFileSync(resolve(root, file), 'utf8');
 const audit = JSON.parse(read('evidence/supabase-readonly.json'));
+const academicProfiles = prepareProfiles();
 const manifest = JSON.parse(
   read('../../../scripts/seed/mcp/catalog/002_manifest_catalogo.json'),
 );
@@ -110,7 +112,7 @@ const covers = manifest.productos
       source_image_id: candidate.id,
       evidence: p.evidencia_comercial,
       verification:
-        'VERIFICADA_EN_MATRIZ_HISTORICA_005; RECONFIRMAR_ANTES_DE_APROBAR',
+        'REFERENCIA_HISTORICA; CONFIRMACION_COMERCIAL_DISPENSADA_POR_USUARIO_PARA_USO_ACADEMICO',
       ...objectFor(presentation.archivo_storage),
     };
   });
@@ -121,14 +123,14 @@ const blockedCovers = audit.products
   .map((p) => ({
     product_id: p.id,
     sku: p.sku_base,
-    status: 'BLOCKED',
+    status: 'PENDING_SEPARATE_PROPOSAL',
     reason:
-      'Fotografía nueva sin correspondencia comercial acreditada; no incluida en SQL de portadas.',
+      'Sin exigencia de confirmación comercial por instrucción del usuario; ampliación de portadas fuera de este cambio de perfiles.',
   }));
 emit('image-map.json', JSON.stringify({ images, pitch }, null, 2));
 emit(
   'cover-map.json',
-  JSON.stringify({ covers, blocked: blockedCovers }, null, 2),
+  JSON.stringify({ covers, pending_proposal: blockedCovers }, null, 2),
 );
 
 function mapping(rows, cols) {
@@ -267,7 +269,7 @@ emit(
 );
 emit(
   'covers-postcheck.sql',
-  `-- 12 padres aprobables; los otros cuatro conservan bloqueo comercial.
+  `-- 12 padres mapeados; los otros cuatro quedan fuera de esta propuesta.
 SELECT m.sku, ${coverOk} AND ${storageOk} AND EXISTS (SELECT 1 FROM catalog.product_images i JOIN storage.objects o
   ON i.url=${literal(publicBase)}||o.name AND o.bucket_id='catalog-products'
   WHERE i.product_id=m.product_id::uuid AND i.url=m.url AND (o.metadata->>'size')::bigint>0
@@ -315,6 +317,9 @@ emit(
         (p) => p.id === (v?.product_id ?? s.product_id),
       );
       const f = audit.profiles?.find((f) => f.sku_identity_id === s.id);
+      const proposed = academicProfiles.profiles.find(
+        (p) => p.sku_identity_id === s.id,
+      );
       return [
         p.id,
         p.nombre,
@@ -322,16 +327,20 @@ emit(
         s.sku,
         v ? 'VARIANTE' : 'SIMPLE',
         !!f,
-        f?.peso_kg,
-        f?.largo_cm,
-        f?.ancho_cm,
-        f?.alto_cm,
+        proposed.peso_kg,
+        proposed.largo_cm,
+        proposed.ancho_cm,
+        proposed.alto_cm,
         v?.estado ?? p.estado,
         'NO_REGISTRADA',
         'NO_REGISTRADA',
-        'SIN_FUENTE_AUTORITATIVA',
-        'MISSING_DATA',
-        'Medidas acreditadas; Pricing producto; Inventory SKU; imagen/atributos según auditoría',
+        academicProfiles.source.file +
+          '!CARGA_55!F' +
+          proposed.source_row +
+          ':I' +
+          proposed.source_row,
+        'READY_FOR_APPROVAL_ACADEMIC',
+        'Pendiente ejecutar carga autorizada; Pricing producto; Inventory SKU; imagen/atributos según auditoría',
       ];
     }),
   ]),
@@ -599,7 +608,7 @@ emit(
         s.sku,
         v ? 'VARIANTE' : 'SIMPLE',
         v?.estado ?? p.estado,
-        'MISSING_DATA',
+        'PENDING_APPROVED_LOAD',
         'NO_REGISTRADA',
         'NO_REGISTRADA',
         audit.product_images.some((i) => i.product_id === p.id)
@@ -649,6 +658,17 @@ emit(
   ),
 );
 const files = [
+  'prepare-profiles.mjs',
+  'extract-profiles.py',
+  'sources/physical-profiles-academic.xlsx',
+  'sources/physical-profiles-extracted.json',
+  'evidence/profiles-readonly.json',
+  'evidence/profiles-preflight.json',
+  'profile-manifest.json',
+  'profiles-proposed.csv',
+  'profiles-preflight.sql',
+  'profiles-apply-proposed.sql',
+  'profiles-postcheck.sql',
   'image-map.json',
   'cover-map.json',
   'images-preflight.sql',
@@ -676,13 +696,27 @@ const files = [
   '../migrations/0002_create_sku_barcodes.sql',
   '../migrations/0003_product_publication_history.sql',
 ];
-emit('SHA256SUMS', files.map((f) => `${sha(read(f))}  ${f}`).join('\n'));
+emit(
+  'SHA256SUMS',
+  files
+    .map(
+      (f) =>
+        `${
+          f.endsWith('.xlsx')
+            ? createHash('sha256')
+                .update(readFileSync(resolve(root, f)))
+                .digest('hex')
+            : sha(read(f))
+        }  ${f}`,
+    )
+    .join('\n'),
+);
 console.log(
   JSON.stringify({
     images: images.length,
     pitch: 1,
     covers: covers.length,
-    blocked_covers: blockedCovers.length,
+    pending_cover_proposals: blockedCovers.length,
     sellable: sellable.length,
     manifest_differences: diff.length,
     missing_master_references: missingReferences.length,

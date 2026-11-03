@@ -6,12 +6,18 @@ import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:net';
+import { fields, profileSql, resolveProfiles } from './prepare-profiles.mjs';
 
 const root = dirname(fileURLToPath(import.meta.url));
 const read = (p) => readFileSync(resolve(root, p), 'utf8');
 const audit = JSON.parse(read('evidence/supabase-readonly.json'));
 const map = JSON.parse(read('image-map.json'));
 const covers = JSON.parse(read('cover-map.json')).covers;
+const profileManifest = JSON.parse(read('profile-manifest.json'));
+const profileSource = JSON.parse(
+  read('sources/physical-profiles-extracted.json'),
+);
+const profileAudit = JSON.parse(read('evidence/profiles-readonly.json'));
 const pgBin =
   process.env.DATA002_PG_BIN ??
   (process.platform === 'win32' ? 'C:/Program Files/PostgreSQL/16/bin' : '');
@@ -41,6 +47,8 @@ function sql(source, db = database) {
     '-X',
     '-v',
     'ON_ERROR_STOP=1',
+    '-v',
+    'VERBOSITY=terse',
     '-At',
     '-U',
     'postgres',
@@ -239,7 +247,7 @@ for (const [label, mutation] of [
     assert.throws(() => owner(read('images-apply-proposed.sql')), /DATA002_/);
     assert.equal(sql(fullImages), before);
   });
-test('portadas: 12 faltantes, conservación de existentes, reintento y cuatro bloqueadas', () => {
+test('portadas: 12 faltantes, conservación de existentes, reintento y cuatro fuera de propuesta', () => {
   const before = sql(canonical);
   const originalImages = scalar(
     'SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i',
@@ -408,4 +416,159 @@ test('ambos paquetes conservan 20/51/71, cero perfiles/preparaciones y schemas a
   assert.equal(scalar('SELECT count(*) FROM catalog.variants'), '51');
   assert.equal(scalar('SELECT count(*) FROM catalog.sku_identity'), '71');
   assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '16');
+});
+
+test('perfiles académicos: 55 READY y asignación exacta de 51 variantes + 4 simples', () => {
+  const result = owner(read('profiles-preflight.sql')).split(/\r?\n/);
+  assert.equal(result.filter((r) => r.endsWith('|READY')).length, 55);
+  assert.equal(
+    profileManifest.profiles.filter((p) => p.tipo_unidad === 'VARIANTE').length,
+    51,
+  );
+  assert.equal(
+    profileManifest.profiles.filter((p) => p.tipo_unidad === 'PRODUCTO_SIMPLE')
+      .length,
+    4,
+  );
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.sku_physical_profiles'),
+    '0',
+  );
+});
+test('carga exacta de las 220 medidas, UUID de perfil estándar y reintento sin cambios', () => {
+  const before = JSON.parse(sql(canonical));
+  delete before.f;
+  const imagesBefore = sql(fullImages);
+  owner(read('profiles-apply-proposed.sql'));
+  const after = JSON.parse(sql(canonical));
+  delete after.f;
+  assert.deepEqual(after, before);
+  assert.equal(sql(fullImages), imagesBefore);
+  const actual = JSON.parse(
+    scalar(
+      `SELECT jsonb_agg(jsonb_build_object('sku_identity_id',f.sku_identity_id,${fields.map((f) => "'" + f + "',f." + f + '::text').join(',')}) ORDER BY f.sku_identity_id) FROM catalog.sku_physical_profiles f`,
+    ),
+  );
+  const expected = profileManifest.profiles
+    .map((p) =>
+      Object.fromEntries(['sku_identity_id', ...fields].map((f) => [f, p[f]])),
+    )
+    .sort((a, b) => a.sku_identity_id.localeCompare(b.sku_identity_id));
+  assert.deepEqual(actual, expected);
+  const first = scalar(
+    'SELECT jsonb_agg(to_jsonb(f) ORDER BY id) FROM catalog.sku_physical_profiles f',
+  );
+  owner(read('profiles-apply-proposed.sql'));
+  assert.equal(
+    scalar(
+      'SELECT jsonb_agg(to_jsonb(f) ORDER BY id) FROM catalog.sku_physical_profiles f',
+    ),
+    first,
+  );
+  assert.equal(
+    owner(read('profiles-preflight.sql')).split('ALREADY_APPLIED').length - 1,
+    55,
+  );
+  assert.equal(
+    scalar(
+      'SELECT count(*) FROM catalog.sku_physical_profiles f JOIN catalog.sku_identity s ON s.id=f.sku_identity_id JOIN catalog.products p ON p.id=s.product_id WHERE p.tiene_variantes',
+    ),
+    '0',
+  );
+  const postcheck = owner(read('profiles-postcheck.sql')).split(/\r?\n/);
+  assert.equal(postcheck.filter((r) => r.endsWith('|t')).length, 55);
+  assert.equal(postcheck.at(-1), '0');
+});
+test('perfil ya existente idéntico conserva su UUID y timestamps', () => {
+  const p = profileManifest.profiles[0];
+  owner(
+    `INSERT INTO catalog.sku_physical_profiles(sku_identity_id,${fields.join(',')}) VALUES('${p.sku_identity_id}',${fields.map((f) => p[f]).join(',')})`,
+  );
+  const before = scalar(
+    `SELECT to_jsonb(f) FROM catalog.sku_physical_profiles f WHERE sku_identity_id='${p.sku_identity_id}'`,
+  );
+  owner(read('profiles-apply-proposed.sql'));
+  assert.equal(
+    scalar(
+      `SELECT to_jsonb(f) FROM catalog.sku_physical_profiles f WHERE sku_identity_id='${p.sku_identity_id}'`,
+    ),
+    before,
+  );
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.sku_physical_profiles'),
+    '55',
+  );
+});
+test('conflicto con perfil parcial o divergente revierte el lote completo', () => {
+  const p = profileManifest.profiles.at(-1);
+  owner(
+    `INSERT INTO catalog.sku_physical_profiles(sku_identity_id,peso_kg) VALUES('${p.sku_identity_id}',9)`,
+  );
+  const before = sql(canonical);
+  assert.throws(
+    () => owner(read('profiles-apply-proposed.sql')),
+    /DATA002_PROFILE_CONFLICT/,
+  );
+  assert.equal(sql(canonical), before);
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.sku_physical_profiles'),
+    '1',
+  );
+});
+for (const [label, change] of [
+  ['SKU desconocido', (p) => ({ ...p, sku: 'DATA002-NO-EXISTE' })],
+  [
+    'UUID de identidad diferente',
+    (p) => ({ ...p, sku_identity_id: '00000000-0000-4000-8000-000000000000' }),
+  ],
+  [
+    'asignación de padre no vendible',
+    (p) => {
+      const s = audit.identities.find((s) => s.sku === covers[0].sku);
+      return {
+        ...p,
+        sku: s.sku,
+        sku_identity_id: s.id,
+        product_id: s.product_id,
+        variant_id: null,
+        sku_base: s.sku,
+        tipo_unidad: 'PRODUCTO_SIMPLE',
+      };
+    },
+  ],
+  ['medida nula', (p) => ({ ...p, peso_kg: null })],
+  ['medida cero', (p) => ({ ...p, largo_cm: '0' })],
+  ['medida negativa', (p) => ({ ...p, ancho_cm: '-1' })],
+  ['medida no finita', (p) => ({ ...p, alto_cm: 'NaN' })],
+])
+  test(label + ': SQL aborta sin insertar perfiles parciales', () => {
+    const profiles = structuredClone(profileManifest.profiles);
+    profiles[profiles.length - 1] = change(profiles.at(-1));
+    const before = sql(canonical);
+    assert.throws(() => owner(profileSql(profiles).apply), /DATA002_/);
+    assert.equal(sql(canonical), before);
+  });
+test('fuente: rechaza duplicados, filas incompletas, SKU ajenos y tipo erróneo antes de generar SQL', () => {
+  for (const mutation of [
+    (s) => s.profiles.pop(),
+    (s) => {
+      s.profiles[1].sku = s.profiles[0].sku;
+    },
+    (s) => {
+      s.profiles[0].peso_kg = '';
+    },
+    (s) => {
+      s.profiles[0].alto_cm = 'Infinity';
+    },
+    (s) => {
+      s.profiles[0].sku = 'UNKNOWN';
+    },
+    (s) => {
+      s.profiles[0].tipo_unidad = 'PRODUCTO_SIMPLE';
+    },
+  ]) {
+    const source = structuredClone(profileSource);
+    mutation(source);
+    assert.throws(() => resolveProfiles(source, profileAudit), /DATA002_/);
+  }
 });
