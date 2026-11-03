@@ -11,6 +11,7 @@ export interface CatalogBulkRow {
   product: Record<string, unknown>;
   variant_id: string | null;
   variant: Record<string, unknown> | null;
+  sku_variante?: string;
 }
 
 export interface CatalogBulkEnvelope {
@@ -65,10 +66,15 @@ export function buildCatalogBulkCommands(input: {
   batchId: string;
   correlationId: string;
   rows: CatalogBulkRow[];
+  schemaVersion?: 1 | 2;
   occurredAt?: Date;
 }): CatalogBulkCommand[] {
   if (input.rows.length === 0) return [];
-  const commandInput = { ...input, occurredAt: input.occurredAt ?? new Date() };
+  const commandInput = {
+    ...input,
+    schemaVersion: input.schemaVersion ?? 1,
+    occurredAt: input.occurredAt ?? new Date(),
+  };
   const groups: CatalogBulkRow[][] = [];
   for (const row of input.rows) {
     const previous = groups.at(-1);
@@ -120,6 +126,7 @@ function makeEnvelope(
     batchId: string;
     correlationId: string;
     rows: CatalogBulkRow[];
+    schemaVersion: 1 | 2;
     occurredAt?: Date;
   },
   rows: CatalogBulkRow[],
@@ -138,12 +145,30 @@ function makeEnvelope(
       'Un comando Catalog no puede mezclar modos ALTA y ACTUALIZACION.',
     );
   }
+  if (
+    input.schemaVersion === 2 &&
+    (mode !== 'ACTUALIZACION' ||
+      rows.some((row) => row.variant !== null && !row.sku_variante))
+  ) {
+    throw new Error(
+      'schema_version 2 requiere ACTUALIZACION y sku_variante para cada variante.',
+    );
+  }
+  const serializedRows = rows.map((row) => {
+    if (input.schemaVersion !== 2 || row.variant === null) {
+      const legacyRow = { ...row };
+      delete legacyRow.sku_variante;
+      return legacyRow;
+    }
+    const { sku_variante, ...rowWithoutSelector } = row;
+    return { ...rowWithoutSelector, sku_variante };
+  });
   return {
     message_id: uuidOrStable(
       input.batchId,
       `catalog-bulk-upsert:${index}:message`,
     ),
-    schema_version: 1,
+    schema_version: input.schemaVersion,
     occurred_at: (input.occurredAt ?? new Date()).toISOString(),
     correlation_id: input.correlationId,
     causation_id: null,
@@ -162,7 +187,7 @@ function makeEnvelope(
       ),
       template_version: 2,
       mode,
-      rows,
+      rows: serializedRows,
     },
   };
 }

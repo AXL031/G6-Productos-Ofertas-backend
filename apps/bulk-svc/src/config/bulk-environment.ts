@@ -10,6 +10,7 @@ export interface BulkEnvironment {
   readonly nodeEnv: 'development' | 'test' | 'production';
   readonly host: '127.0.0.1' | '0.0.0.0';
   readonly port: number;
+  readonly catalogCommandV2Enabled: boolean;
   readonly databaseUrl?: string;
   readonly databaseSsl: false | Readonly<ConnectionOptions>;
   readonly httpRequestTimeoutMs: 15000;
@@ -96,6 +97,14 @@ export function parseBulkEnvironment(
   }
 
   const port = strictPort(env.BULK_SVC_PORT ?? env.PORT ?? '3008');
+  const commandV2 = env.BULK_CATALOG_COMMAND_V2_ENABLED;
+  if (
+    commandV2 !== undefined &&
+    commandV2 !== 'true' &&
+    commandV2 !== 'false'
+  ) {
+    fail('BULK_CATALOG_COMMAND_V2_ENABLED debe ser true o false.');
+  }
   const host =
     env.BULK_SVC_HOST ?? (nodeEnv === 'production' ? '0.0.0.0' : '127.0.0.1');
   if (host !== '127.0.0.1' && host !== '0.0.0.0') {
@@ -169,6 +178,7 @@ export function parseBulkEnvironment(
     nodeEnv,
     host,
     port,
+    catalogCommandV2Enabled: commandV2 === 'true',
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
     databaseSsl,
     httpRequestTimeoutMs: 15000,
