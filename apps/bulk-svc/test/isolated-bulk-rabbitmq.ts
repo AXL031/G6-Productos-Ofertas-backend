@@ -6,6 +6,14 @@ import amqp, { type Channel, type ChannelModel } from 'amqplib';
 
 const exec = promisify(execFile);
 
+export interface CapturedBulkCommand {
+  payload: Record<string, unknown>;
+  routingKey: string;
+  messageId: string | undefined;
+  correlationId: string | undefined;
+  userId: string | undefined;
+}
+
 /** Disposable loopback broker for integration tests only. */
 export class IsolatedBulkRabbitmq {
   private readonly name = `bulk93-rabbit-${randomUUID()}`;
@@ -81,6 +89,10 @@ export class IsolatedBulkRabbitmq {
   }
 
   async nextCommand(): Promise<Record<string, unknown>> {
+    return (await this.nextCommandDelivery()).payload;
+  }
+
+  async nextCommandDelivery(): Promise<CapturedBulkCommand> {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {
       const message = await this.adminChannel!.get('po.catalogo.q', {
@@ -88,16 +100,52 @@ export class IsolatedBulkRabbitmq {
       });
       if (message) {
         this.adminChannel!.ack(message);
-        return JSON.parse(message.content.toString('utf8')) as Record<
-          string,
-          unknown
-        >;
+        return {
+          payload: JSON.parse(message.content.toString('utf8')) as Record<
+            string,
+            unknown
+          >,
+          routingKey: message.fields.routingKey,
+          messageId: message.properties.messageId,
+          correlationId: message.properties.correlationId,
+          userId: message.properties.userId,
+        };
       }
       await pause(25);
     }
     throw new Error(
       'No llegó el comando Bulk a la cola Catalog del broker aislado.',
     );
+  }
+
+  async publishCommandWithUserId(userId: string): Promise<void> {
+    const connection = await amqp.connect(this.url, { timeout: 1000 });
+    let brokerError: Error | undefined;
+    connection.on('error', (error: Error) => {
+      brokerError = error;
+    });
+    const channel = await connection.createConfirmChannel();
+    try {
+      channel.publish(
+        'po.comandos.x',
+        'catalog.bulk.upsert.requested',
+        Buffer.from('{}'),
+        {
+          mandatory: true,
+          persistent: true,
+          contentType: 'application/json',
+          userId,
+        },
+      );
+      try {
+        await channel.waitForConfirms();
+      } catch (error) {
+        throw brokerError ?? error;
+      }
+    } finally {
+      await channel.close().catch(() => undefined);
+      await connection.close().catch(() => undefined);
+    }
   }
 
   async publishResult(body: Record<string, unknown>): Promise<void> {

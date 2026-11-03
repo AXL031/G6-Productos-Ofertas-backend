@@ -113,13 +113,25 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     expect(replay?.payload).toEqual(command?.payload);
     const relay = new BulkOutboxRelay(repository, broker.url);
     await relay.flush();
-    const sent = await broker.nextCommand();
-    expect(sent).toEqual(command?.payload);
+    const sent = await broker.nextCommandDelivery();
+    expect(sent.payload).toEqual(command?.payload);
+    expect(sent.messageId).toBe(command?.messageId);
+    expect(sent.correlationId).toBe(command?.correlationId);
+    expect(sent.routingKey).toBe(command?.eventName);
+    expect(sent.userId).toBe(new URL(broker.url).username);
     expect(
       (await repository.findPendingOutbox(10)).some(
         (item) => item.messageId === command?.messageId,
       ),
     ).toBe(false);
+  }, 30000);
+
+  it('RabbitMQ rechaza un userId distinto al usuario AMQP autenticado', async () => {
+    await expect(
+      broker.publishCommandWithUserId('bulk93-usuario-distinto'),
+    ).rejects.toThrow(
+      "PRECONDITION_FAILED - user_id property set to 'bulk93-usuario-distinto' but authenticated user was 'bulk93-fixture'",
+    );
   }, 30000);
 
   it('isolates row operation identities across independent batches with identical CSV and preserves each replay', async () => {
@@ -781,6 +793,77 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
           item.lastError === 'PUBLICATION_UNROUTED',
       ),
     ).toBe(true);
+  }, 30000);
+
+  it('preserves the Outbox command when AMQP has no username', async () => {
+    const messageId = id();
+    const correlationId = id();
+    const payload = {
+      message_id: messageId,
+      correlation_id: correlationId,
+      name: 'catalog.bulk.upsert.requested',
+    };
+    await repository.enqueueOutbox({
+      messageId,
+      eventName: 'catalog.bulk.upsert.requested',
+      kind: 'command',
+      schemaVersion: 1,
+      correlationId,
+      operationId: id(),
+      occurredAt: new Date(),
+      payload,
+    });
+
+    const relay = new BulkOutboxRelay(
+      repository,
+      'amqp://:secret@127.0.0.1:5672/g6-productos-ofertas',
+    );
+    await relay.flush();
+
+    expect(await repository.findPendingOutbox(10)).toContainEqual(
+      expect.objectContaining({
+        messageId,
+        correlationId,
+        payload,
+        publishedAt: null,
+        attempts: 0,
+      }),
+    );
+  }, 30000);
+
+  it('keeps the Outbox pending when AMQP is disabled', async () => {
+    const messageId = id();
+    const correlationId = id();
+    const payload = {
+      message_id: messageId,
+      correlation_id: correlationId,
+      name: 'catalog.bulk.upsert.requested',
+    };
+    await repository.enqueueOutbox({
+      messageId,
+      eventName: 'catalog.bulk.upsert.requested',
+      kind: 'command',
+      schemaVersion: 1,
+      correlationId,
+      operationId: id(),
+      occurredAt: new Date(),
+      payload,
+    });
+
+    const relay = new BulkOutboxRelay(repository, null);
+    relay.onModuleInit();
+    await relay.flush();
+    await relay.onModuleDestroy();
+
+    expect(await repository.findPendingOutbox(10)).toContainEqual(
+      expect.objectContaining({
+        messageId,
+        correlationId,
+        payload,
+        publishedAt: null,
+        attempts: 0,
+      }),
+    );
   }, 30000);
 
   it('recovers a transient broker outage in the same relay process without losing the pending command', async () => {
