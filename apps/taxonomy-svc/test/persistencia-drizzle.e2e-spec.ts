@@ -11,6 +11,7 @@ import {
   TAXONOMY_SECURITY_CONFIG,
 } from '../src/taxonomy-auth.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { sql } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { vi } from 'vitest';
 import { Database } from '../src/database.js';
@@ -39,6 +40,10 @@ import {
   categorySeo,
   marcas,
   operacionesBaja,
+  caracteristicas,
+  valoresCaracteristica,
+  tiposProducto,
+  asociacionesTipoCaracteristica,
 } from './../src/persistence/taxonomy.schema.js';
 import type { TaxonomyDb } from './../src/persistence/drizzle-taxonomy.repository.js';
 import type { DrizzleTaxonomyRepository } from './../src/persistence/drizzle-taxonomy.repository.js';
@@ -112,6 +117,184 @@ describeIntegracion(
       app = new Pool({ connectionString: urlApp });
       dbApp = drizzle(app, { schema: esquemaTaxonomia });
       repo = crearRepositorioDrizzle(urlApp);
+    });
+
+    it('evidencia el incremento histórico de schema_version al admitir una baja de asociación', async () => {
+      const nombre = `trigger-${randomUUID()}`;
+      await expect(
+        drizzle(admin, { schema: esquemaTaxonomia }).transaction(async (tx) => {
+          const [caracteristica] = await tx
+            .insert(caracteristicas)
+            .values({ nombre, tipo: 'LISTA' })
+            .returning();
+          const [tipo] = await tx
+            .insert(tiposProducto)
+            .values({ nombre })
+            .returning();
+          if (!caracteristica || !tipo) throw new Error('Datos ausentes');
+          const [asociacion] = await tx
+            .insert(asociacionesTipoCaracteristica)
+            .values({
+              tipoProductoId: tipo.id,
+              caracteristicaId: caracteristica.id,
+            })
+            .returning();
+          if (!asociacion) throw new Error('Asociación ausente');
+          const antes = await tx.execute(
+            sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
+          );
+          await tx.execute(
+            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'PENDING_DEACTIVATION' WHERE id = ${asociacion.id}::uuid`,
+          );
+          const despues = await tx.execute(
+            sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
+          );
+          expect(Number(despues.rows[0]?.schema_version)).toBe(
+            Number(antes.rows[0]?.schema_version) + 1,
+          );
+          await tx.execute(
+            sql.raw(
+              readFileSync(
+                resolve(
+                  'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+                ),
+                'utf8',
+              ),
+            ),
+          );
+          await tx.execute(
+            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'ACTIVO' WHERE id = ${asociacion.id}::uuid`,
+          );
+          await tx.execute(
+            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'PENDING_DEACTIVATION' WHERE id = ${asociacion.id}::uuid`,
+          );
+          const admitida = await tx.execute(
+            sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
+          );
+          expect(Number(admitida.rows[0]?.schema_version)).toBe(
+            Number(despues.rows[0]?.schema_version),
+          );
+          await tx.execute(
+            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'INACTIVO' WHERE id = ${asociacion.id}::uuid`,
+          );
+          const confirmada = await tx.execute(
+            sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
+          );
+          expect(Number(confirmada.rows[0]?.schema_version)).toBe(
+            Number(admitida.rows[0]?.schema_version) + 1,
+          );
+          throw new Error('ROLLBACK_TRIGGER');
+        }),
+      ).rejects.toThrow('ROLLBACK_TRIGGER');
+    });
+
+    it('mapea las tres entidades y revierte sus escrituras en PostgreSQL aislado', async () => {
+      const nombre = `test-${randomUUID()}`;
+      await expect(
+        dbApp.transaction(async (tx) => {
+          const [caracteristica] = await tx
+            .insert(caracteristicas)
+            .values({ nombre, tipo: 'LISTA' })
+            .returning();
+          if (!caracteristica) throw new Error('Característica ausente');
+          const [tipo] = await tx
+            .insert(tiposProducto)
+            .values({ nombre })
+            .returning();
+          if (!tipo) throw new Error('Tipo ausente');
+          const [valor] = await tx
+            .insert(valoresCaracteristica)
+            .values({ nombre, caracteristicaId: caracteristica.id })
+            .returning();
+          const [asociacion] = await tx
+            .insert(asociacionesTipoCaracteristica)
+            .values({
+              tipoProductoId: tipo.id,
+              caracteristicaId: caracteristica.id,
+            })
+            .returning();
+          expect(valor?.taxonomyVersion).toBe(0);
+          expect(tipo.schemaVersion).toBe(1);
+          expect(asociacion?.estado).toBe('ACTIVO');
+          throw new Error('ROLLBACK_AISLADO');
+        }),
+      ).rejects.toThrow('ROLLBACK_AISLADO');
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::int AS n FROM taxonomy.product_types WHERE nombre = $1',
+            [nombre],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::int AS n FROM taxonomy.characteristics WHERE nombre = $1',
+            [nombre],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
+    });
+
+    it('aplica los límites oficiales de valores y asociaciones en PostgreSQL', async () => {
+      const nombre = `limites-${randomUUID()}`;
+      await expect(
+        dbApp.transaction(async (tx) => {
+          const [caracteristica] = await tx
+            .insert(caracteristicas)
+            .values({ nombre, tipo: 'LISTA' })
+            .returning();
+          if (!caracteristica) throw new Error('Característica ausente');
+          await tx.execute(sql`INSERT INTO taxonomy.characteristic_values (caracteristica_id, nombre)
+            SELECT ${caracteristica.id}::uuid, 'valor-' || n FROM generate_series(1, 50) n`);
+          await tx.insert(valoresCaracteristica).values({
+            caracteristicaId: caracteristica.id,
+            nombre: 'valor-excedente',
+          });
+        }),
+      ).rejects.toThrow();
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::int AS n FROM taxonomy.characteristics WHERE nombre = $1',
+            [nombre],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
+
+      await expect(
+        dbApp.transaction(async (tx) => {
+          const [tipo] = await tx
+            .insert(tiposProducto)
+            .values({ nombre })
+            .returning();
+          if (!tipo) throw new Error('Tipo ausente');
+          await tx.execute(sql`INSERT INTO taxonomy.characteristics (nombre, tipo)
+            SELECT ${nombre} || '-' || n, 'LISTA' FROM generate_series(1, 21) n`);
+          await tx.execute(sql`INSERT INTO taxonomy.product_type_characteristics (tipo_producto_id, caracteristica_id)
+            SELECT ${tipo.id}::uuid, id FROM taxonomy.characteristics WHERE nombre LIKE ${nombre + '-%'} ORDER BY nombre LIMIT 20`);
+          const [extra] = await tx
+            .execute(
+              sql`SELECT id FROM taxonomy.characteristics
+            WHERE nombre LIKE ${nombre + '-%'} AND id NOT IN (SELECT caracteristica_id FROM taxonomy.product_type_characteristics WHERE tipo_producto_id = ${tipo.id}::uuid)`,
+            )
+            .then((result) => result.rows);
+          if (!extra || typeof extra.id !== 'string')
+            throw new Error('Característica adicional ausente');
+          await tx
+            .insert(asociacionesTipoCaracteristica)
+            .values({ tipoProductoId: tipo.id, caracteristicaId: extra.id });
+        }),
+      ).rejects.toThrow();
+      expect(
+        (
+          await admin.query(
+            'SELECT count(*)::int AS n FROM taxonomy.product_types WHERE nombre = $1',
+            [nombre],
+          )
+        ).rows,
+      ).toEqual([{ n: 0 }]);
     });
 
     afterAll(async () => {
@@ -651,9 +834,6 @@ describeIntegracion(
           'DELETE FROM taxonomy.master_deactivation_operations',
         );
         await client.query(migration);
-        await client.query(
-          'CREATE TABLE taxonomy.product_type_characteristics (id uuid PRIMARY KEY, tipo_producto_id uuid NOT NULL, caracteristica_id uuid NOT NULL)',
-        );
         await client.query(
           `INSERT INTO taxonomy.master_deactivation_operations
           (operation_id, entity_type, entity_id, correlation_id, source_version, status)
