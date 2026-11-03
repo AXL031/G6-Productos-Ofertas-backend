@@ -55,6 +55,8 @@ El consumidor valida el envelope y la identidad AMQP, registra Inbox y finaliza 
 
 El relay recorre pendientes mediante un cursor en memoria: un fallo conserva la fila, incrementa `attempts` y registra `BROKER_PUBLISH_UNCONFIRMED`, pero permite avanzar a otras operaciones. Los eventos de la misma operación esperan a sus predecesores pendientes para preservar el orden causal. Al terminar el recorrido, el cursor vuelve al principio para reintentar; el reinicio también lo reinicia. Alertar por intentos persistentes y resolver la causa mediante intervención autorizada; no se descarta ningún mensaje ni se supone una DLQ.
 
+El relay también publica `taxonomy.category.updated` desde el Outbox en `po.eventos.x`; una prueba aislada cubre la creación de una categoría, la entrega mediante RabbitMQ y la confirmación en PostgreSQL. Esta evidencia no acredita bindings, ACL ni conectividad del broker compartido. Los eventos de tipos de producto y características dependen de los modelos y operaciones de dominio aún pendientes.
+
 La conexión al broker compartido no está acreditada: Marco debe verificar red, ACL, bindings y topología; López/Poma deben homologar el flujo y su evidencia. Las pruebas con dobles no acreditan integración real RabbitMQ ni despliegue. No habilitar este transporte en Oracle hasta verificar estas condiciones y los permisos de `taxonomy.inbox`/`taxonomy.outbox` en la instalación autorizada.
 
 ## Pruebas de integración (Postgres aislado)
