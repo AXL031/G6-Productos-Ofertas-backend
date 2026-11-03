@@ -1354,215 +1354,6 @@ describe.skipIf(!dockerAvailable)(
         'IDEMPOTENCY_CONFLICT',
       );
     });
-    it('BULK-v2: resolves opaque SKU under parent lock, validates selectors/versions, serializes concurrent updates and replays original receipts', async () => {
-      const product = createRequest(true),
-        handler = bulkHandler();
-      const rows = ['A', 'B'].map((size, i) => ({
-        ...bulkRow(product, i + 2),
-        variant: {
-          sku: ' 000,/ñ-' + randomUUID(),
-          atributosIdentificadores: [
-            {
-              caracteristica_id: 'size',
-              nombre: 'Size',
-              valor_id: size,
-              valor: size,
-            },
-          ],
-          imagenUrl: 'https://example.test/bulk-v2',
-          perfilFisico: fullProfile,
-        },
-      }));
-      const alta = bulkCommand(rows, 'ALTA', 2);
-      await handler.consume(parseCatalogMessage(alta));
-      const altaReply = await bulkReply(alta);
-      expect(altaReply.schema_version).toBe(1);
-      const parentId = (altaReply.payload.results as BulkRowResult[])[0]
-        .product_id!;
-      const parents = () =>
-        database.read((db) =>
-          db.select().from(products).where(eq(products.id, parentId)),
-        );
-      const children = () =>
-        database.read((db) =>
-          db.select().from(variants).where(eq(variants.product_id, parentId)),
-        );
-      const initialParent = (await parents())[0],
-        initialChildren = await children();
-      const a = initialChildren.find((v) => v.sku === rows[0].variant.sku)!,
-        b = initialChildren.find((v) => v.sku === rows[1].variant.sku)!;
-      const updateRow = (
-        selector: { variant_id?: string | null; sku_variante?: string | null },
-        child = a,
-      ): BulkRow => ({
-        row_number: 2,
-        row_operation_id: randomUUID(),
-        producto_id: parentId,
-        sku_base: product.skuBase,
-        product: {
-          catalogVersion: Number(initialParent.catalog_version),
-          nombre: 'Bulk v2 updated',
-        },
-        variant: {
-          catalogVersion: Number(child.catalog_version),
-          imagenUrl: 'https://example.test/updated-v2',
-        },
-        ...selector,
-      });
-      const foreignParent = await mutationService().createProduct(
-        createRequest(true),
-        actor,
-      );
-      const foreign = await mutationService().createVariant(
-        foreignParent.product_id,
-        {
-          sku: 'foreign-' + randomUUID(),
-          atributosIdentificadores: [
-            {
-              caracteristica_id: 'size',
-              nombre: 'Size',
-              valor_id: 'F',
-              valor: 'F',
-            },
-          ],
-          imagenUrl: 'https://example.test/foreign',
-          perfilFisico: fullProfile,
-        },
-        actor,
-      );
-      for (const [row, expected] of [
-        [
-          updateRow({ sku_variante: 'missing-' + randomUUID() }),
-          'VARIANTE_NO_ENCONTRADA',
-        ],
-        [updateRow({ sku_variante: foreign.sku }), 'VARIANTE_NO_ENCONTRADA'],
-        [updateRow({ sku_variante: a.sku, variant_id: b.id }), 'VALIDACION'],
-        [
-          {
-            ...updateRow({ sku_variante: a.sku }),
-            variant: { catalogVersion: Number(a.catalog_version) + 1 },
-          },
-          'VERSION_CONFLICT',
-        ],
-      ] as const) {
-        const message = bulkCommand([row], 'ACTUALIZACION', 2);
-        await handler.consume(parseCatalogMessage(message));
-        expect((await bulkReply(message)).payload.results).toMatchObject([
-          { status: 'REJECTED', code: expected },
-        ]);
-      }
-      const duplicate = bulkCommand(
-        [
-          updateRow({ variant_id: a.id }),
-          { ...updateRow({ sku_variante: a.sku }), row_number: 3 },
-        ],
-        'ACTUALIZACION',
-        2,
-      );
-      await handler.consume(duplicate);
-      expect((await bulkReply(duplicate)).payload.results).toMatchObject([
-        { code: 'VALIDACION' },
-        { code: 'VALIDACION' },
-      ]);
-      expect(await parents()).toEqual([initialParent]);
-      expect(await children()).toEqual(initialChildren);
-      const first = bulkCommand(
-        [updateRow({ sku_variante: a.sku })],
-        'ACTUALIZACION',
-        2,
-      );
-      const second = bulkCommand(
-        [updateRow({ sku_variante: a.sku })],
-        'ACTUALIZACION',
-        2,
-      );
-      const original = canonicalBulk(first);
-      const dispositions = await Promise.all([
-        handler.consume(parseCatalogMessage(first)),
-        handler.consume(parseCatalogMessage(first)),
-        handler.consume(parseCatalogMessage(second)),
-      ]);
-      expect(dispositions.sort()).toEqual(['APPLIED', 'APPLIED', 'DUPLICATE']);
-      const replies = [await bulkReply(first), await bulkReply(second)];
-      expect(
-        replies
-          .map((r) => (r.payload.results as BulkRowResult[])[0].code)
-          .sort(),
-      ).toEqual([null, 'VERSION_CONFLICT'].sort());
-      const winner =
-        (replies[0].payload.results as BulkRowResult[])[0].status ===
-        'COMPLETED'
-          ? first
-          : second;
-      expect(canonicalBulk(first)).toBe(original);
-      expect((await parents())[0].catalog_version).toBe(
-        initialParent.catalog_version + 1n,
-      );
-      const after = await children();
-      expect(after.find((v) => v.id === a.id)!.catalog_version).toBe(
-        a.catalog_version + 1n,
-      );
-      const two = [
-        updateRow({ variant_id: b.id }, b),
-        {
-          ...updateRow({ variant_id: a.id, sku_variante: a.sku }),
-          row_number: 3,
-        },
-      ];
-      for (const row of two)
-        row.product.catalogVersion = Number(initialParent.catalog_version + 1n);
-      two[1].variant!.catalogVersion = Number(a.catalog_version + 1n);
-      const multi = bulkCommand(two, 'ACTUALIZACION', 2);
-      await handler.consume(parseCatalogMessage(multi));
-      expect((await bulkReply(multi)).payload.results).toMatchObject([
-        { status: 'COMPLETED' },
-        { status: 'COMPLETED' },
-      ]);
-      const updated = (await parents())[0];
-      expect(updated.catalog_version).toBe(initialParent.catalog_version + 2n);
-      const replay = { ...winner, message_id: randomUUID() };
-      await handler.consume(parseCatalogMessage(replay));
-      expect((await bulkReply(replay)).payload.results).toEqual(
-        (await bulkReply(winner)).payload.results,
-      );
-      expect((await parents())[0]).toEqual(updated);
-      const changed = bulkCommand(
-        [{ ...(winner.data.rows as BulkRow[])[0], variant_id: a.id }],
-        'ACTUALIZACION',
-        2,
-      );
-      changed.data.batch_id = winner.data.batch_id;
-      await handler.consume(changed);
-      expect((await bulkReply(changed)).payload.results).toMatchObject([
-        { code: 'IDEMPOTENCY_CONFLICT' },
-      ]);
-      const simple = await mutationService().createProduct(
-        createRequest(),
-        actor,
-      );
-      const simpleUpdate = bulkCommand(
-        [
-          {
-            row_number: 2,
-            row_operation_id: randomUUID(),
-            producto_id: simple.product_id,
-            sku_base: simple.sku_base,
-            product: {
-              catalogVersion: simple.catalog_version,
-              nombre: 'Simple v2',
-            },
-            variant: null,
-          },
-        ],
-        'ACTUALIZACION',
-        2,
-      );
-      await handler.consume(parseCatalogMessage(simpleUpdate));
-      expect((await bulkReply(simpleUpdate)).payload.results).toMatchObject([
-        { status: 'COMPLETED' },
-      ]);
-    });
-
     it('BULK: reports a real slug UNIQUE as SLUG_DUPLICADO, never SKU_DUPLICADO, and preserves replay', async () => {
       const existing = await mutationService().createProduct(
         createRequest(),
@@ -1957,13 +1748,234 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         );
         expect(replies).toHaveLength(1);
         expect(replies[0].published_at).not.toBeNull();
-        expect(jointBroker.bulkQueueStats()).toMatch(/po\.masivos\.q\s+0\s+0/);
-        expect(jointBroker.bulkQueueStats()).toMatch(/po\.catalogo\.q\s+0\s+0/);
+        // RabbitMQ queue statistics may lag the confirmed process shutdown.
+        // Preserve the zero-delivery assertion, allowing only bounded drainage.
+        await expect
+          .poll(() => jointBroker.bulkQueueStats(), {
+            timeout: 15000,
+            interval: 500,
+          })
+          .toMatch(/po\.masivos\.q\s+0\s+0/);
+        await expect
+          .poll(() => jointBroker.bulkQueueStats(), {
+            timeout: 15000,
+            interval: 500,
+          })
+          .toMatch(/po\.catalogo\.q\s+0\s+0/);
       } finally {
         await jointRuntime.onModuleDestroy();
         jointRuntime = undefined;
       }
     }, 150000);
+    it('BULK-v2: resolves opaque SKU under parent lock, validates selectors/versions, serializes concurrent updates and replays original receipts', async () => {
+      const product = createRequest(true),
+        handler = bulkHandler();
+      const rows = ['A', 'B'].map((size, i) => ({
+        ...bulkRow(product, i + 2),
+        variant: {
+          sku: ' 000,/ñ-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: size,
+              valor: size,
+            },
+          ],
+          imagenUrl: 'https://example.test/bulk-v2',
+          perfilFisico: fullProfile,
+        },
+      }));
+      const alta = bulkCommand(rows, 'ALTA', 2);
+      await handler.consume(parseCatalogMessage(alta));
+      const altaReply = await bulkReply(alta);
+      expect(altaReply.schema_version).toBe(1);
+      const parentId = (altaReply.payload.results as BulkRowResult[])[0]
+        .product_id!;
+      const parents = () =>
+        database.read((db) =>
+          db.select().from(products).where(eq(products.id, parentId)),
+        );
+      const children = () =>
+        database.read((db) =>
+          db.select().from(variants).where(eq(variants.product_id, parentId)),
+        );
+      const initialParent = (await parents())[0],
+        initialChildren = await children();
+      const a = initialChildren.find((v) => v.sku === rows[0].variant.sku)!,
+        b = initialChildren.find((v) => v.sku === rows[1].variant.sku)!;
+      const updateRow = (
+        selector: { variant_id?: string | null; sku_variante?: string | null },
+        child = a,
+      ): BulkRow => ({
+        row_number: 2,
+        row_operation_id: randomUUID(),
+        producto_id: parentId,
+        sku_base: product.skuBase,
+        product: {
+          catalogVersion: Number(initialParent.catalog_version),
+          nombre: 'Bulk v2 updated',
+        },
+        variant: {
+          catalogVersion: Number(child.catalog_version),
+          imagenUrl: 'https://example.test/updated-v2',
+        },
+        ...selector,
+      });
+      const foreignParent = await mutationService().createProduct(
+        createRequest(true),
+        actor,
+      );
+      const foreign = await mutationService().createVariant(
+        foreignParent.product_id,
+        {
+          sku: 'foreign-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'F',
+              valor: 'F',
+            },
+          ],
+          imagenUrl: 'https://example.test/foreign',
+          perfilFisico: fullProfile,
+        },
+        actor,
+      );
+      for (const [row, expected] of [
+        [
+          updateRow({ sku_variante: 'missing-' + randomUUID() }),
+          'VARIANTE_NO_ENCONTRADA',
+        ],
+        [updateRow({ sku_variante: foreign.sku }), 'VARIANTE_NO_ENCONTRADA'],
+        [updateRow({ sku_variante: a.sku, variant_id: b.id }), 'VALIDACION'],
+        [
+          {
+            ...updateRow({ sku_variante: a.sku }),
+            variant: { catalogVersion: Number(a.catalog_version) + 1 },
+          },
+          'VERSION_CONFLICT',
+        ],
+      ] as const) {
+        const message = bulkCommand([row], 'ACTUALIZACION', 2);
+        await handler.consume(parseCatalogMessage(message));
+        expect((await bulkReply(message)).payload.results).toMatchObject([
+          { status: 'REJECTED', code: expected },
+        ]);
+      }
+      const duplicate = bulkCommand(
+        [
+          updateRow({ variant_id: a.id }),
+          { ...updateRow({ sku_variante: a.sku }), row_number: 3 },
+        ],
+        'ACTUALIZACION',
+        2,
+      );
+      await handler.consume(duplicate);
+      expect((await bulkReply(duplicate)).payload.results).toMatchObject([
+        { code: 'VALIDACION' },
+        { code: 'VALIDACION' },
+      ]);
+      expect(await parents()).toEqual([initialParent]);
+      expect(await children()).toEqual(initialChildren);
+      const first = bulkCommand(
+        [updateRow({ sku_variante: a.sku })],
+        'ACTUALIZACION',
+        2,
+      );
+      const second = bulkCommand(
+        [updateRow({ sku_variante: a.sku })],
+        'ACTUALIZACION',
+        2,
+      );
+      const original = canonicalBulk(first);
+      const dispositions = await Promise.all([
+        handler.consume(parseCatalogMessage(first)),
+        handler.consume(parseCatalogMessage(first)),
+        handler.consume(parseCatalogMessage(second)),
+      ]);
+      expect(dispositions.sort()).toEqual(['APPLIED', 'APPLIED', 'DUPLICATE']);
+      const replies = [await bulkReply(first), await bulkReply(second)];
+      expect(
+        replies
+          .map((r) => (r.payload.results as BulkRowResult[])[0].code)
+          .sort(),
+      ).toEqual([null, 'VERSION_CONFLICT'].sort());
+      const winner =
+        (replies[0].payload.results as BulkRowResult[])[0].status ===
+        'COMPLETED'
+          ? first
+          : second;
+      expect(canonicalBulk(first)).toBe(original);
+      expect((await parents())[0].catalog_version).toBe(
+        initialParent.catalog_version + 1n,
+      );
+      const after = await children();
+      expect(after.find((v) => v.id === a.id)!.catalog_version).toBe(
+        a.catalog_version + 1n,
+      );
+      const two = [
+        updateRow({ variant_id: b.id }, b),
+        {
+          ...updateRow({ variant_id: a.id, sku_variante: a.sku }),
+          row_number: 3,
+        },
+      ];
+      for (const row of two)
+        row.product.catalogVersion = Number(initialParent.catalog_version + 1n);
+      two[1].variant!.catalogVersion = Number(a.catalog_version + 1n);
+      const multi = bulkCommand(two, 'ACTUALIZACION', 2);
+      await handler.consume(parseCatalogMessage(multi));
+      expect((await bulkReply(multi)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+        { status: 'COMPLETED' },
+      ]);
+      const updated = (await parents())[0];
+      expect(updated.catalog_version).toBe(initialParent.catalog_version + 2n);
+      const replay = { ...winner, message_id: randomUUID() };
+      await handler.consume(parseCatalogMessage(replay));
+      expect((await bulkReply(replay)).payload.results).toEqual(
+        (await bulkReply(winner)).payload.results,
+      );
+      expect((await parents())[0]).toEqual(updated);
+      const changed = bulkCommand(
+        [{ ...(winner.data.rows as BulkRow[])[0], variant_id: a.id }],
+        'ACTUALIZACION',
+        2,
+      );
+      changed.data.batch_id = winner.data.batch_id;
+      await handler.consume(changed);
+      expect((await bulkReply(changed)).payload.results).toMatchObject([
+        { code: 'IDEMPOTENCY_CONFLICT' },
+      ]);
+      const simple = await mutationService().createProduct(
+        createRequest(),
+        actor,
+      );
+      const simpleUpdate = bulkCommand(
+        [
+          {
+            row_number: 2,
+            row_operation_id: randomUUID(),
+            producto_id: simple.product_id,
+            sku_base: simple.sku_base,
+            product: {
+              catalogVersion: simple.catalog_version,
+              nombre: 'Simple v2',
+            },
+            variant: null,
+          },
+        ],
+        'ACTUALIZACION',
+        2,
+      );
+      await handler.consume(parseCatalogMessage(simpleUpdate));
+      expect((await bulkReply(simpleUpdate)).payload.results).toMatchObject([
+        { status: 'COMPLETED' },
+      ]);
+    });
+
     it('BULK-CONSUMER-v2: real RabbitMQ/PG, SKU resolution and replay (producer fixture; Bulk app remains v1)', async () => {
       const messages = new CatalogMessageService(
         database,
