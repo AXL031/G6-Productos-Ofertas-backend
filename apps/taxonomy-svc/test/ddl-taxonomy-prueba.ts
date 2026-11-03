@@ -110,6 +110,16 @@ export function construirSentenciasDdl(
       created_at timestamptz NOT NULL DEFAULT now(), published_at timestamptz NULL,
       attempts integer NOT NULL DEFAULT 0, last_error text NULL
     )`,
+    `CREATE TABLE taxonomy.inbox (
+      id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+      message_id uuid NOT NULL, handler text NOT NULL, event_name text NOT NULL,
+      correlation_id uuid NULL, payload jsonb NOT NULL,
+      processed_at timestamptz NOT NULL DEFAULT now(), result text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT uq_inbox_message_handler UNIQUE (message_id, handler),
+      CONSTRAINT ck_inbox_handler_not_empty CHECK (length(trim(handler)) > 0),
+      CONSTRAINT ck_inbox_result CHECK (result IN ('PROCESSED', 'IGNORED', 'FAILED'))
+    )`,
     'CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id)',
     'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',

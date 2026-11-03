@@ -16,8 +16,15 @@ import { vi } from 'vitest';
 import { Database } from '../src/database.js';
 import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
 import { DeactivationIntentService } from '../src/domain/deactivation-intent.service.js';
+import {
+  TaxonomyMessageStore,
+  parseChecked,
+} from '../src/persistence/taxonomy-message.store.js';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { Pool } from 'pg';
+import { connect, type Channel, type ChannelModel } from 'amqplib';
+import { TaxonomyAmqpRuntime } from '../src/domain/taxonomy-amqp.runtime.js';
+import { RabbitTaxonomyDesechable } from './rabbitmq-desechable.js';
 import request from 'supertest';
 import type { App } from 'supertest/types';
 import { ProblemDetailsException } from './../src/errors/taxonomy.errors.js';
@@ -1074,6 +1081,742 @@ describeIntegracion(
       }
     });
 
+    it('publica outbox tras confirmación y procesa checked con Inbox transaccional e idempotente', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const operationId = '77777777-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const correlationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const messageId = '77777777-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      try {
+        await expect(
+          intentos.registrar({
+            operationId,
+            correlationId,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        const solicitud = (
+          await admin.query(
+            'SELECT message_id FROM taxonomy.outbox WHERE operation_id = $1',
+            [operationId],
+          )
+        ).rows[0].message_id as string;
+        await expect(
+          store.publicarUno(async () => {
+            throw new Error('fallo');
+          }),
+        ).resolves.toBe('PENDIENTE');
+        expect(
+          (
+            await admin.query(
+              'SELECT published_at, attempts FROM taxonomy.outbox WHERE message_id = $1',
+              [solicitud],
+            )
+          ).rows,
+        ).toEqual([{ published_at: null, attempts: 1 }]);
+        await expect(store.publicarUno(async () => undefined)).resolves.toBe(
+          'VACIO',
+        );
+        const enviados: unknown[] = [];
+        await expect(
+          store.publicarUno(async (row) => {
+            enviados.push(row.message_id);
+          }),
+        ).resolves.toBe('PUBLICADO');
+        expect(enviados).toEqual([solicitud]);
+        const checked = parseChecked({
+          message_id: messageId,
+          correlation_id: correlationId,
+          operation_id: operationId,
+          causation_id: solicitud,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          producer: 'catalog-svc',
+          kind: 'result',
+          name: 'catalog.master.deactivation.checked',
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityId,
+            version: 0,
+            result: 'CLEAR',
+          },
+        });
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        try {
+          await expect(store.consumir(checked)).rejects.toThrow();
+          expect(
+            (
+              await admin.query(
+                'SELECT id FROM taxonomy.inbox WHERE message_id = $1',
+                [messageId],
+              )
+            ).rows,
+          ).toHaveLength(0);
+          expect(
+            (
+              await admin.query(
+                'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+                [operationId],
+              )
+            ).rows,
+          ).toEqual([{ status: 'IN_PROGRESS' }]);
+        } finally {
+          await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        }
+        await store.consumir(checked);
+        await store.consumir(checked);
+        expect(
+          (
+            await admin.query(
+              'SELECT result FROM taxonomy.inbox WHERE message_id = $1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ result: 'PROCESSED' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'COMPLETED' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = 'taxonomy.master.deactivated'",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+        await expect(
+          store.consumir({
+            ...checked,
+            data: { ...checked.data, result: 'IN_USE' },
+          }),
+        ).rejects.toThrow();
+      } finally {
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id = $1', [
+          messageId,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.outbox WHERE operation_id = $1',
+          [operationId],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('ignora correlation_id distinto del original aunque el resto del mensaje coincida', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const operationId = '77777777-cccc-4ccc-8ccc-cccccccccccc';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const correlationId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      // Ni siquiera operation_id sustituye al correlation_id original.
+      const wrongCorrelation = operationId;
+      const messageId = '77777777-dddd-4ddd-8ddd-dddddddddddd';
+      try {
+        await expect(
+          intentos.registrar({
+            operationId,
+            correlationId,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        const causation = (
+          await admin.query(
+            'SELECT message_id FROM taxonomy.outbox WHERE operation_id=$1',
+            [operationId],
+          )
+        ).rows[0].message_id;
+        const checked = parseChecked({
+          message_id: messageId,
+          correlation_id: wrongCorrelation,
+          operation_id: operationId,
+          causation_id: causation,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          producer: 'catalog-svc',
+          kind: 'result',
+          name: 'catalog.master.deactivation.checked',
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityId,
+            version: 0,
+            result: 'CLEAR',
+          },
+        });
+        await store.consumir(checked);
+        await expect(
+          intentos.finalizar({
+            operationId,
+            correlationId: wrongCorrelation,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+            result: 'CLEAR',
+          }),
+        ).resolves.toBe('IGNORADA');
+        expect(
+          (
+            await admin.query(
+              'SELECT status,correlation_id FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS', correlation_id: correlationId }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado,taxonomy_version FROM taxonomy.brands WHERE id=$1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'PENDING_DEACTIVATION', taxonomy_version: '0' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT result FROM taxonomy.inbox WHERE message_id=$1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ result: 'IGNORED' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name IN ('taxonomy.master.deactivated','taxonomy.master.deactivation.rejected')",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+      } finally {
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          messageId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.outbox WHERE operation_id=$1', [
+          operationId,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado='ACTIVO', taxonomy_version=0 WHERE id=$1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('rota fallos de Outbox sin adelantar el resultado de la misma operación', async () => {
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const store = new TaxonomyMessageStore(
+        database,
+        new DeactivationIntentService(database),
+      );
+      const opA = 'eeeeeeee-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const opB = 'eeeeeeee-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const correlation = 'eeeeeeee-cccc-4ccc-8ccc-cccccccccccc';
+      try {
+        await admin.query(
+          `INSERT INTO taxonomy.outbox (id, message_id, event_name, kind, correlation_id, operation_id, occurred_at, payload)
+          VALUES ('11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa', gen_random_uuid(), 'taxonomy.master.deactivation.check.requested', 'command', $1, $2, '2020-01-01 00:00:01+00', '{}'),
+          ('22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa', gen_random_uuid(), 'taxonomy.master.deactivation.check.requested', 'command', $1, $3, '2020-01-01 00:00:02+00', '{}'),
+          ('33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa', gen_random_uuid(), 'taxonomy.master.deactivation.rejected', 'result', $1, $2, '2020-01-01 00:00:03+00', '{}')`,
+          [correlation, opA, opB],
+        );
+        const enviados: string[] = [];
+        const enviar = async (row: Record<string, unknown>) => {
+          enviados.push(String(row.id));
+        };
+        await expect(
+          store.publicarUno(async () => {
+            throw new Error('fallo permanente');
+          }),
+        ).resolves.toBe('PENDIENTE');
+        await expect(store.publicarUno(enviar)).resolves.toBe('PUBLICADO');
+        expect(enviados).toEqual(['22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa']);
+        await expect(store.publicarUno(enviar)).resolves.toBe('VACIO');
+        expect(
+          (
+            await admin.query(
+              "SELECT published_at FROM taxonomy.outbox WHERE id = '33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa'",
+            )
+          ).rows,
+        ).toEqual([{ published_at: null }]);
+        await expect(store.publicarUno(enviar)).resolves.toBe('PUBLICADO');
+        await expect(store.publicarUno(enviar)).resolves.toBe('PUBLICADO');
+        expect(enviados).toEqual([
+          '22222222-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          '11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+          '33333333-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        ]);
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.outbox WHERE correlation_id = $1',
+          [correlation],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it.each([null, undefined])(
+      'procesa IN_USE con causation_id %s bajo el contrato publicado',
+      async (causation) => {
+        const database = new Database();
+        vi.spyOn(database, 'read').mockImplementation(async (query) =>
+          query(dbApp),
+        );
+        const intentos = new DeactivationIntentService(database);
+        const store = new TaxonomyMessageStore(database, intentos);
+        const operationId = 'eeeeeeee-dddd-4ddd-8ddd-dddddddddddd';
+        const messageId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+        const entityId = '44444444-4444-4444-8444-444444444444';
+        const correlationId = 'eeeeeeee-ffff-4fff-8fff-ffffffffffff';
+        try {
+          await expect(
+            intentos.registrar({
+              operationId,
+              correlationId,
+              entityType: 'BRAND',
+              entityId,
+              version: 0,
+            }),
+          ).resolves.toBe('REGISTRADA');
+          const checked = parseChecked({
+            message_id: messageId,
+            operation_id: operationId,
+            correlation_id: correlationId,
+            ...(causation === undefined ? {} : { causation_id: causation }),
+            schema_version: 1,
+            occurred_at: new Date().toISOString(),
+            producer: 'catalog-svc',
+            kind: 'result',
+            name: 'catalog.master.deactivation.checked',
+            data: {
+              entity_type: 'BRAND',
+              entity_id: entityId,
+              version: 0,
+              result: 'IN_USE',
+            },
+          });
+          await store.consumir(checked);
+          await store.consumir(checked);
+          expect(
+            (
+              await admin.query(
+                'SELECT status, reason FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+                [operationId],
+              )
+            ).rows,
+          ).toEqual([{ status: 'REJECTED', reason: 'IN_USE' }]);
+          expect(
+            (
+              await admin.query(
+                'SELECT estado FROM taxonomy.brands WHERE id = $1',
+                [entityId],
+              )
+            ).rows,
+          ).toEqual([{ estado: 'ACTIVO' }]);
+          expect(
+            (
+              await admin.query(
+                "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id = $1 AND event_name = 'taxonomy.master.deactivation.rejected'",
+                [operationId],
+              )
+            ).rows,
+          ).toEqual([{ n: 1 }]);
+        } finally {
+          await admin.query(
+            'DELETE FROM taxonomy.inbox WHERE message_id = $1',
+            [messageId],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.outbox WHERE operation_id = $1',
+            [operationId],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+            [operationId],
+          );
+          await admin.query(
+            "UPDATE taxonomy.brands SET estado = 'ACTIVO', taxonomy_version = 0 WHERE id = $1",
+            [entityId],
+          );
+          vi.restoreAllMocks();
+        }
+      },
+    );
+
+    it('recupera una entrega sin ACK al reiniciar, sin duplicar efectos, con RabbitMQ real aislado', async () => {
+      const rabbit = new RabbitTaxonomyDesechable();
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const procesar = vi.spyOn(store, 'consumir');
+      const correlationId = 'ffffffff-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+      const operationId = 'ffffffff-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+      const messageId = 'ffffffff-cccc-4ccc-8ccc-cccccccccccc';
+      const mensajeAjeno = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
+      const entityId = '44444444-4444-4444-8444-444444444444';
+      const opInUse = 'ffffffff-dddd-4ddd-8ddd-dddddddddddd';
+      const messageInUse = 'ffffffff-eeee-4eee-8eee-eeeeeeeeeeee';
+      const entityInUse = '55555555-5555-4555-8555-555555555555';
+      let broker: ChannelModel | undefined;
+      let catalog: ChannelModel | undefined;
+      let runtime: TaxonomyAmqpRuntime | undefined;
+      const esperar = async (condicion: () => Promise<boolean> | boolean) => {
+        for (let i = 0; i < 150; i++) {
+          if (await condicion()) return;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error(
+          'Tiempo de espera agotado en la prueba RabbitMQ aislada',
+        );
+      };
+      try {
+        const urls = await rabbit.iniciar();
+        broker = await connect(urls.taxonomyUrl);
+        const canal = await broker.createChannel();
+        for (const exchange of [
+          'po.comandos.x',
+          'po.eventos.x',
+          'po.resultados.x',
+        ])
+          await canal.assertExchange(exchange, 'topic', { durable: true });
+        await canal.assertQueue('po.taxonomia.q', { durable: true });
+        await canal.assertQueue('po.catalogo.q', { durable: true });
+        await canal.bindQueue(
+          'po.taxonomia.q',
+          'po.resultados.x',
+          'catalog.master.deactivation.checked',
+        );
+        await canal.bindQueue(
+          'po.catalogo.q',
+          'po.comandos.x',
+          'taxonomy.master.deactivation.check.requested',
+        );
+        catalog = await connect(urls.catalogUrl);
+        const productor = await catalog.createConfirmChannel();
+        await expect(
+          intentos.registrar({
+            operationId,
+            correlationId,
+            entityType: 'BRAND',
+            entityId,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        const requestId = (
+          await admin.query(
+            'SELECT message_id FROM taxonomy.outbox WHERE operation_id = $1',
+            [operationId],
+          )
+        ).rows[0].message_id as string;
+        const crearRuntime = () => {
+          const instancia = new TaxonomyAmqpRuntime(store);
+          instancia.configurar({
+            RABBITMQ_URL: urls.taxonomyUrl,
+            TAXONOMY_CATALOG_AMQP_USER: 'catalog_test',
+          });
+          instancia.iniciar();
+          return instancia;
+        };
+        runtime = crearRuntime();
+        await esperar(() => runtime!.disponible());
+        await esperar(
+          async () =>
+            (await canal.checkQueue('po.catalogo.q')).messageCount === 1,
+        );
+        const solicitud = await canal.get('po.catalogo.q', { noAck: true });
+        expect(
+          solicitud && JSON.parse(solicitud.content.toString()).message_id,
+        ).toBe(requestId);
+        const respuesta = {
+          message_id: messageId,
+          correlation_id: correlationId,
+          operation_id: operationId,
+          causation_id: requestId,
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          producer: 'catalog-svc',
+          kind: 'result',
+          name: 'catalog.master.deactivation.checked',
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityId,
+            version: 0,
+            result: 'CLEAR',
+          },
+        };
+        const publicar = () =>
+          new Promise<void>((resolve, reject) => {
+            productor.publish(
+              'po.resultados.x',
+              respuesta.name,
+              Buffer.from(JSON.stringify(respuesta)),
+              {
+                persistent: true,
+                contentType: 'application/json',
+                userId: 'catalog_test',
+                messageId,
+                correlationId,
+              },
+              (error) => (error ? reject(error) : resolve()),
+            );
+          });
+        // Cabecera y payload concuerdan entre sí, pero no con la intención guardada.
+        const respuestaAjena = {
+          ...respuesta,
+          message_id: mensajeAjeno,
+          correlation_id: operationId,
+        };
+        await new Promise<void>((resolve, reject) => {
+          productor.publish(
+            'po.resultados.x',
+            respuestaAjena.name,
+            Buffer.from(JSON.stringify(respuestaAjena)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              userId: 'catalog_test',
+              messageId: mensajeAjeno,
+              correlationId: operationId,
+            },
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT result FROM taxonomy.inbox WHERE message_id=$1',
+                [mensajeAjeno],
+              )
+            ).rows[0]?.result === 'IGNORED',
+        );
+        expect(
+          (
+            await admin.query(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ status: 'IN_PROGRESS' }]);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado,taxonomy_version FROM taxonomy.brands WHERE id=$1',
+              [entityId],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'PENDING_DEACTIVATION', taxonomy_version: '0' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+        await admin.query(`REVOKE INSERT ON taxonomy.inbox FROM ${ROL_APP}`);
+        await publicar();
+        await esperar(() => !runtime!.disponible());
+        expect(
+          (
+            await admin.query(
+              'SELECT count(*)::int AS n FROM taxonomy.inbox WHERE message_id = $1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ n: 0 }]);
+        await runtime.onModuleDestroy();
+        runtime = undefined;
+        await esperar(
+          async () =>
+            (await canal.checkQueue('po.taxonomia.q')).messageCount === 1,
+        );
+        await admin.query(`GRANT INSERT ON taxonomy.inbox TO ${ROL_APP}`);
+        runtime = crearRuntime();
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+                [operationId],
+              )
+            ).rows[0].status === 'COMPLETED',
+        );
+        const canalConsumidor = Reflect.get(runtime, 'consumer') as Channel;
+        const ack = vi.spyOn(canalConsumidor, 'ack');
+        const recibidasAntes = procesar.mock.calls.length;
+        await publicar();
+        await esperar(() => procesar.mock.calls.length > recibidasAntes);
+        await procesar.mock.results[recibidasAntes].value;
+        await esperar(() => ack.mock.calls.length >= 1);
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado='ACTIVO', taxonomy_version=0 WHERE id=$1",
+          [entityInUse],
+        );
+        await expect(
+          intentos.registrar({
+            operationId: opInUse,
+            correlationId,
+            entityType: 'BRAND',
+            entityId: entityInUse,
+            version: 0,
+          }),
+        ).resolves.toBe('REGISTRADA');
+        await esperar(
+          async () =>
+            (await canal.checkQueue('po.catalogo.q')).messageCount === 1,
+        );
+        const solicitudInUse = await canal.get('po.catalogo.q', {
+          noAck: true,
+        });
+        if (!solicitudInUse) throw new Error('Falta solicitud IN_USE');
+        const payloadInUse = {
+          ...respuesta,
+          message_id: messageInUse,
+          operation_id: opInUse,
+          causation_id: JSON.parse(solicitudInUse.content.toString())
+            .message_id,
+          data: {
+            entity_type: 'BRAND',
+            entity_id: entityInUse,
+            version: 0,
+            result: 'IN_USE',
+          },
+        };
+        await new Promise<void>((resolve, reject) => {
+          productor.publish(
+            'po.resultados.x',
+            payloadInUse.name,
+            Buffer.from(JSON.stringify(payloadInUse)),
+            {
+              persistent: true,
+              contentType: 'application/json',
+              userId: 'catalog_test',
+              messageId: messageInUse,
+              correlationId,
+            },
+            (error) => (error ? reject(error) : resolve()),
+          );
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+                [opInUse],
+              )
+            ).rows[0].status === 'REJECTED',
+        );
+        await esperar(() => ack.mock.calls.length >= 2);
+        expect(
+          (
+            await admin.query(
+              'SELECT estado FROM taxonomy.brands WHERE id=$1',
+              [entityInUse],
+            )
+          ).rows,
+        ).toEqual([{ estado: 'ACTIVO' }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivation.rejected'",
+              [opInUse],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+        await runtime.onModuleDestroy();
+        runtime = undefined;
+        expect((await canal.checkQueue('po.taxonomia.q')).messageCount).toBe(0);
+        expect(
+          (
+            await admin.query(
+              'SELECT count(*)::int AS n FROM taxonomy.inbox WHERE message_id=$1',
+              [messageId],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+              [operationId],
+            )
+          ).rows,
+        ).toEqual([{ n: 1 }]);
+      } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.inbox TO ${ROL_APP}`);
+        await runtime?.onModuleDestroy();
+        await catalog?.close().catch(() => undefined);
+        await broker?.close().catch(() => undefined);
+        rabbit.cerrar();
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          mensajeAjeno,
+        ]);
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          messageInUse,
+        ]);
+        await admin.query('DELETE FROM taxonomy.outbox WHERE operation_id=$1', [
+          opInUse,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [opInUse],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado='INACTIVO', taxonomy_version=0 WHERE id=$1",
+          [entityInUse],
+        );
+        await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
+          messageId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.outbox WHERE operation_id=$1', [
+          operationId,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+          [operationId],
+        );
+        await admin.query(
+          "UPDATE taxonomy.brands SET estado='ACTIVO', taxonomy_version=0 WHERE id=$1",
+          [entityId],
+        );
+        vi.restoreAllMocks();
+      }
+    }, 90_000);
+
     it('notifica una versión discrepante sin cerrar y recupera tras reconciliación', async () => {
       const database = new Database();
       vi.spyOn(database, 'read').mockImplementation(async (query) =>
@@ -1341,9 +2084,8 @@ describeIntegracion(
           VALUES ($1, $2, 'BRAND', $3, 'IN_PROGRESS', 0, statement_timestamp() - interval '61 seconds')`,
           [operationId, correlationId, entityId],
         );
-        await expect(
-          new DeactivationIntentService(database).recuperarVencidas(),
-        ).resolves.toBe(1);
+        const service = new DeactivationIntentService(database);
+        await expect(service.recuperarVencidas()).resolves.toBe(1);
         expect(aviso).toHaveBeenCalledTimes(50);
         expect(aviso).toHaveBeenCalledWith(
           expect.objectContaining({
@@ -1351,6 +2093,17 @@ describeIntegracion(
             reason: 'ENTIDAD_AUSENTE',
             muestra_truncada: true,
           }),
+        );
+        const primeraMuestra = new Set(
+          aviso.mock.calls.map(([entrada]) => entrada.operation_id),
+        );
+        aviso.mockClear();
+        const momento = Date.now();
+        vi.spyOn(Date, 'now').mockReturnValue(momento + 5 * 60 * 1000 + 1);
+        await expect(service.recuperarVencidas()).resolves.toBe(0);
+        expect(aviso).toHaveBeenCalledTimes(1);
+        expect(primeraMuestra.has(aviso.mock.calls[0][0].operation_id)).toBe(
+          false,
         );
         expect(
           (
