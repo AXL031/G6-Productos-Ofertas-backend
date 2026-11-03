@@ -837,6 +837,44 @@ try {
       barrera_final: false,
       estado_final: 'COMPLETED',
       duplicado_inbox: 1,
+      taxonomy_db: {
+        operacion: (
+          await row(
+            'SELECT status, reason, source_version FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0],
+        entidad: (
+          await row(
+            `SELECT estado, taxonomy_version FROM taxonomy.${table} WHERE id=$1`,
+            [entityId],
+          )
+        )[0],
+        inbox: await row(
+          'SELECT message_id, result FROM taxonomy.inbox WHERE message_id = ANY($1::uuid[]) ORDER BY message_id',
+          [[invalidId, originalChecked.properties.messageId]],
+        ),
+        outbox: await row(
+          'SELECT event_name, published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE operation_id=$1 ORDER BY event_name',
+          [operationId],
+        ),
+      },
+      catalog_db: {
+        barrera: (
+          await row(
+            'SELECT master_type, is_blocking, source_version FROM catalog.master_barriers WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0],
+        inbox: await row(
+          'SELECT event_name, result FROM catalog.inbox WHERE operation_id=$1 ORDER BY event_name, result',
+          [operationId],
+        ),
+        outbox: await row(
+          'SELECT event_name, published_at IS NOT NULL AS publicado FROM catalog.outbox WHERE operation_id=$1 ORDER BY event_name',
+          [operationId],
+        ),
+      },
     };
     await catalogConnection.close();
   }
