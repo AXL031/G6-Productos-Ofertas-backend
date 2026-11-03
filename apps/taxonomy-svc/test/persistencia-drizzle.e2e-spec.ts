@@ -15,12 +15,18 @@ import { sql } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { vi } from 'vitest';
 import { Database } from '../src/database.js';
+import {
+  bloquearFuenteBaja,
+  transicionarFuenteBaja,
+} from '../src/persistence/deactivation-source.js';
 import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
 import { DeactivationIntentService } from '../src/domain/deactivation-intent.service.js';
 import { BrandReactivationService } from '../src/domain/brand-reactivation.service.js';
 import { CategoryReactivationService } from '../src/domain/category-reactivation.service.js';
 import { CategoryCreateService } from '../src/domain/category-create.service.js';
 import { CategoryUpdateService } from '../src/domain/category-update.service.js';
+import { CharacteristicValueService } from '../src/domain/characteristic-value.service.js';
+import { ProductTypeCharacteristicService } from '../src/domain/product-type-characteristic.service.js';
 import {
   TaxonomyMessageStore,
   parseChecked,
@@ -119,6 +125,239 @@ describeIntegracion(
       repo = crearRepositorioDrizzle(urlApp);
     });
 
+    it.each([
+      'PRODUCT_TYPE',
+      'CHARACTERISTIC_VALUE',
+      'PRODUCT_TYPE_CHARACTERISTIC',
+    ] as const)(
+      'admite %s, rechaza IN_USE y completa CLEAR en una transacción aislada',
+      async (entityType) => {
+        const nombre = `baja-${randomUUID()}`;
+        try {
+          await expect(
+            drizzle(admin, { schema: esquemaTaxonomia }).transaction(
+              async (tx) => {
+                await tx.execute(
+                  sql.raw(
+                    readFileSync(
+                      resolve(
+                        'apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql',
+                      ),
+                      'utf8',
+                    ),
+                  ),
+                );
+                await tx.execute(
+                  sql.raw(
+                    readFileSync(
+                      resolve(
+                        'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+                      ),
+                      'utf8',
+                    ),
+                  ),
+                );
+                const [tipo] = await tx
+                  .insert(tiposProducto)
+                  .values({ nombre })
+                  .returning();
+                const [caracteristica] = await tx
+                  .insert(caracteristicas)
+                  .values({ nombre, tipo: 'LISTA' })
+                  .returning();
+                if (!tipo || !caracteristica) throw new Error('DATOS_AUSENTES');
+                const [valor] = await tx
+                  .insert(valoresCaracteristica)
+                  .values({ caracteristicaId: caracteristica.id, nombre })
+                  .returning();
+                const [asociacion] = await tx
+                  .insert(asociacionesTipoCaracteristica)
+                  .values({
+                    tipoProductoId: tipo.id,
+                    caracteristicaId: caracteristica.id,
+                  })
+                  .returning();
+                if (!valor || !asociacion) throw new Error('DATOS_AUSENTES');
+                const database = new Database();
+                vi.spyOn(database, 'read').mockImplementation(async (query) =>
+                  query(tx as unknown as NodePgDatabase),
+                );
+                const servicio = new DeactivationIntentService(database);
+                const entidadId =
+                  entityType === 'PRODUCT_TYPE'
+                    ? tipo.id
+                    : entityType === 'CHARACTERISTIC_VALUE'
+                      ? valor.id
+                      : asociacion.id;
+                const identidad = {
+                  operationId: randomUUID(),
+                  correlationId: randomUUID(),
+                  entityType,
+                  entityId: entidadId,
+                  version: entityType === 'PRODUCT_TYPE_CHARACTERISTIC' ? 2 : 0,
+                  ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+                    ? {
+                        tipoProductoId: tipo.id,
+                        caracteristicaId: caracteristica.id,
+                      }
+                    : {}),
+                };
+                await expect(servicio.registrar(identidad)).resolves.toBe(
+                  'REGISTRADA',
+                );
+                await expect(servicio.registrar(identidad)).resolves.toBe(
+                  'REINTENTO',
+                );
+                if (entityType === 'PRODUCT_TYPE_CHARACTERISTIC') {
+                  await expect(
+                    servicio.registrar({
+                      ...identidad,
+                      caracteristicaId: randomUUID(),
+                    }),
+                  ).resolves.toBe('CONFLICTO');
+                }
+                await expect(
+                  servicio.finalizar({
+                    ...identidad,
+                    version: identidad.version + 1,
+                    result: 'CLEAR',
+                  }),
+                ).resolves.toBe('IGNORADA');
+                await expect(
+                  servicio.finalizar({ ...identidad, result: 'IN_USE' }),
+                ).resolves.toBe('RECHAZADA');
+                const segunda = { ...identidad, operationId: randomUUID() };
+                await expect(servicio.registrar(segunda)).resolves.toBe(
+                  'REGISTRADA',
+                );
+                await tx.execute(
+                  sql`UPDATE taxonomy.master_deactivation_operations SET created_at = statement_timestamp() - interval '61 seconds' WHERE operation_id = ${segunda.operationId}::uuid`,
+                );
+                await expect(servicio.recuperarVencidas()).resolves.toBe(1);
+                const vencida = await tx.execute(
+                  sql`SELECT status, reason FROM taxonomy.master_deactivation_operations WHERE operation_id = ${segunda.operationId}::uuid`,
+                );
+                expect(vencida.rows).toEqual([
+                  { status: 'FAILED', reason: 'TECHNICAL_FAILURE' },
+                ]);
+                const tercera = { ...identidad, operationId: randomUUID() };
+                await expect(servicio.registrar(tercera)).resolves.toBe(
+                  'REGISTRADA',
+                );
+                await expect(
+                  servicio.finalizar({ ...tercera, result: 'CLEAR' }),
+                ).resolves.toBe('COMPLETADA');
+                const eventos = await tx.execute(
+                  sql`SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=${tercera.operationId}::uuid AND event_name='taxonomy.master.deactivated'`,
+                );
+                expect(eventos.rows).toEqual([{ n: 1 }]);
+                if (entityType === 'PRODUCT_TYPE_CHARACTERISTIC') {
+                  const cambio = await tx.execute(
+                    sql`SELECT payload->'data' AS data FROM taxonomy.outbox WHERE operation_id=${tercera.operationId}::uuid AND event_name='taxonomy.product-type-schema.changed'`,
+                  );
+                  expect(cambio.rows).toEqual([
+                    {
+                      data: expect.objectContaining({
+                        tipo_producto_id: tipo.id,
+                        caracteristica_id: caracteristica.id,
+                        schema_version: 3,
+                        change_type: 'CHARACTERISTIC_DISASSOCIATED',
+                      }),
+                    },
+                  ]);
+                }
+                throw new Error('ROLLBACK_BAJA');
+              },
+            ),
+          ).rejects.toThrow('ROLLBACK_BAJA');
+        } finally {
+          vi.restoreAllMocks();
+        }
+      },
+    );
+
+    it('crea y consulta valores y asociaciones con la versión del tipo', async () => {
+      const nombre = `maestros-${randomUUID()}`;
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const caracteristica = (
+        await admin.query(
+          "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+          [nombre],
+        )
+      ).rows[0].id as string;
+      const tipo = (
+        await admin.query(
+          'INSERT INTO taxonomy.product_types (nombre) VALUES ($1) RETURNING id',
+          [nombre],
+        )
+      ).rows[0].id as string;
+      try {
+        const valores = new CharacteristicValueService(database);
+        expect(await valores.crear(caracteristica, 'Rojo')).toMatchObject({
+          estado: 'OK',
+          valor: { nombre: 'Rojo', estado: 'ACTIVO', version: 0 },
+        });
+        expect(await valores.listar(caracteristica)).toHaveLength(1);
+        const asociaciones = new ProductTypeCharacteristicService(database);
+        expect(await asociaciones.crear(tipo, caracteristica, true, 0)).toEqual(
+          { estado: 'VERSION_CONFLICT' },
+        );
+        expect(await asociaciones.crear(tipo, caracteristica, true, 1)).toEqual(
+          {
+            estado: 'OK',
+            asociacion: {
+              caracteristicaId: caracteristica,
+              obligatoria: true,
+              estado: 'ACTIVO',
+              schemaVersion: 2,
+            },
+          },
+        );
+        expect(await asociaciones.listar(tipo)).toHaveLength(1);
+        expect(
+          (
+            await admin.query(
+              "SELECT payload->'data' AS data FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1",
+              [tipo],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            data: expect.objectContaining({
+              tipo_producto_id: tipo,
+              caracteristica_id: caracteristica,
+              schema_version: 2,
+              change_type: 'CHARACTERISTIC_ASSOCIATED',
+            }),
+          },
+        ]);
+      } finally {
+        await admin.query(
+          "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1",
+          [tipo],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.product_type_characteristics WHERE tipo_producto_id = $1',
+          [tipo],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id = $1',
+          [caracteristica],
+        );
+        await admin.query('DELETE FROM taxonomy.product_types WHERE id = $1', [
+          tipo,
+        ]);
+        await admin.query(
+          'DELETE FROM taxonomy.characteristics WHERE id = $1',
+          [caracteristica],
+        );
+        vi.restoreAllMocks();
+      }
+    });
+
     it('evidencia el incremento histórico de schema_version al admitir una baja de asociación', async () => {
       const nombre = `trigger-${randomUUID()}`;
       await expect(
@@ -162,26 +401,67 @@ describeIntegracion(
               ),
             ),
           );
-          await tx.execute(
-            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'ACTIVO' WHERE id = ${asociacion.id}::uuid`,
-          );
-          await tx.execute(
-            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'PENDING_DEACTIVATION' WHERE id = ${asociacion.id}::uuid`,
-          );
+          const version = Number(despues.rows[0]?.schema_version);
+          expect(
+            await transicionarFuenteBaja(
+              tx,
+              'PRODUCT_TYPE_CHARACTERISTIC',
+              asociacion.id,
+              version - 1,
+              'PENDING_DEACTIVATION',
+              'ACTIVO',
+            ),
+          ).toBe(false);
+          expect(
+            await transicionarFuenteBaja(
+              tx,
+              'PRODUCT_TYPE_CHARACTERISTIC',
+              asociacion.id,
+              version,
+              'PENDING_DEACTIVATION',
+              'ACTIVO',
+            ),
+          ).toBe(true);
+          expect(
+            await transicionarFuenteBaja(
+              tx,
+              'PRODUCT_TYPE_CHARACTERISTIC',
+              asociacion.id,
+              version,
+              'ACTIVO',
+              'PENDING_DEACTIVATION',
+            ),
+          ).toBe(true);
           const admitida = await tx.execute(
             sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
           );
           expect(Number(admitida.rows[0]?.schema_version)).toBe(
             Number(despues.rows[0]?.schema_version),
           );
-          await tx.execute(
-            sql`UPDATE taxonomy.product_type_characteristics SET estado = 'INACTIVO' WHERE id = ${asociacion.id}::uuid`,
-          );
+          expect(
+            await transicionarFuenteBaja(
+              tx,
+              'PRODUCT_TYPE_CHARACTERISTIC',
+              asociacion.id,
+              version,
+              'PENDING_DEACTIVATION',
+              'INACTIVO',
+            ),
+          ).toBe(true);
           const confirmada = await tx.execute(
             sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
           );
           expect(Number(confirmada.rows[0]?.schema_version)).toBe(
             Number(admitida.rows[0]?.schema_version) + 1,
+          );
+          await tx.execute(
+            sql`UPDATE taxonomy.product_type_characteristics SET obligatoria = true WHERE id = ${asociacion.id}::uuid`,
+          );
+          const editada = await tx.execute(
+            sql`SELECT schema_version FROM taxonomy.product_types WHERE id = ${tipo.id}::uuid`,
+          );
+          expect(Number(editada.rows[0]?.schema_version)).toBe(
+            Number(confirmada.rows[0]?.schema_version) + 1,
           );
           throw new Error('ROLLBACK_TRIGGER');
         }),
@@ -216,6 +496,26 @@ describeIntegracion(
           expect(valor?.taxonomyVersion).toBe(0);
           expect(tipo.schemaVersion).toBe(1);
           expect(asociacion?.estado).toBe('ACTIVO');
+          if (!valor || !asociacion) throw new Error('Entidades ausentes');
+          expect(
+            await bloquearFuenteBaja(tx, 'PRODUCT_TYPE', tipo.id),
+          ).toMatchObject({ id: tipo.id, version: 0, estado: 'ACTIVO' });
+          expect(
+            await bloquearFuenteBaja(tx, 'CHARACTERISTIC_VALUE', valor.id),
+          ).toMatchObject({ id: valor.id, version: 0, estado: 'ACTIVO' });
+          expect(
+            await bloquearFuenteBaja(
+              tx,
+              'PRODUCT_TYPE_CHARACTERISTIC',
+              asociacion.id,
+            ),
+          ).toMatchObject({
+            id: asociacion.id,
+            version: 2,
+            estado: 'ACTIVO',
+            tipoProductoId: tipo.id,
+            caracteristicaId: caracteristica.id,
+          });
           throw new Error('ROLLBACK_AISLADO');
         }),
       ).rejects.toThrow('ROLLBACK_AISLADO');
@@ -1210,6 +1510,8 @@ describeIntegracion(
       let nuevaMarca: string | undefined;
       let marcaConUrl: string | undefined;
       let categoryCreated: string | undefined;
+      let tipoCreado: string | undefined;
+      let caracteristicaCreada: string | undefined;
       try {
         await admin.query(
           "INSERT INTO taxonomy.brands (id, nombre, estado) VALUES ($1, $2, 'INACTIVO')",
@@ -1232,6 +1534,53 @@ describeIntegracion(
           .compile();
         nest = moduleFixture.createNestApplication();
         await nest.init();
+        await request(nest.getHttpServer())
+          .post('/api/v1/tipos-producto')
+          .send({ nombre: 'Sin token' })
+          .expect(401);
+        await request(nest.getHttpServer())
+          .post('/api/v1/tipos-producto')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .send({ nombre: 'Token de servicio' })
+          .expect(403);
+        const tipoHttp = await request(nest.getHttpServer())
+          .post('/api/v1/tipos-producto')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: `Tipo HTTP ${brandId}` })
+          .expect(201);
+        tipoCreado = tipoHttp.body.tipoProductoId as string;
+        await request(nest.getHttpServer())
+          .get(`/api/v1/tipos-producto/${tipoCreado}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        caracteristicaCreada = (
+          await admin.query(
+            "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+            [`Característica HTTP ${brandId}`],
+          )
+        ).rows[0].id as string;
+        await request(nest.getHttpServer())
+          .post(`/api/v1/caracteristicas/${caracteristicaCreada}/valores`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: 'Rojo' })
+          .expect(201);
+        await request(nest.getHttpServer())
+          .post(`/api/v1/tipos-producto/${tipoCreado}/caracteristicas`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({
+            caracteristicaId: caracteristicaCreada,
+            obligatoria: true,
+            schemaVersion: 1,
+          })
+          .expect(201);
+        const esquemaHttp = await request(nest.getHttpServer())
+          .get(`/api/v1/tipos-producto/${tipoCreado}/caracteristicas`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(esquemaHttp.body).toMatchObject({
+          schemaVersion: 2,
+          caracteristicas: [{ caracteristicaId: caracteristicaCreada }],
+        });
         for (const [path, key] of [
           ['categorias', 'categories'],
           ['marcas', 'brands'],
@@ -1393,6 +1742,30 @@ describeIntegracion(
         });
       } finally {
         await nest?.close();
+        if (tipoCreado) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE event_name = 'taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id' = $1",
+            [tipoCreado],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.product_type_characteristics WHERE tipo_producto_id = $1',
+            [tipoCreado],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.product_types WHERE id = $1',
+            [tipoCreado],
+          );
+        }
+        if (caracteristicaCreada) {
+          await admin.query(
+            'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id = $1',
+            [caracteristicaCreada],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.characteristics WHERE id = $1',
+            [caracteristicaCreada],
+          );
+        }
         if (nuevaMarca)
           await admin.query('DELETE FROM taxonomy.brands WHERE id = $1', [
             nuevaMarca,
@@ -1546,7 +1919,7 @@ describeIntegracion(
         ).resolves.toBe('NO_DISPONIBLE');
         await expect(
           service.registrar({ ...solicitud, entityType: 'PRODUCT_TYPE' }),
-        ).resolves.toBe('NO_DISPONIBLE');
+        ).resolves.toBe('CONFLICTO');
         await expect(
           service.registrar({
             ...solicitud,

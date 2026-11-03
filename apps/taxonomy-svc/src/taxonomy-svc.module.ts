@@ -18,6 +18,11 @@ import { CategoryCreateService } from './domain/category-create.service.js';
 import { CategoryUpdateService } from './domain/category-update.service.js';
 import { BrandWriteService } from './domain/brand-write.service.js';
 import { TaxonomyWriteController } from './taxonomy-write.controller.js';
+import { TaxonomyMastersController } from './taxonomy-masters.controller.js';
+import { ProductTypeService } from './domain/product-type.service.js';
+import { CharacteristicValueService } from './domain/characteristic-value.service.js';
+import { ProductTypeCharacteristicService } from './domain/product-type-characteristic.service.js';
+import { MasterDeactivationRequestService } from './domain/master-deactivation-request.service.js';
 import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
 import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
@@ -42,6 +47,7 @@ export interface OpcionesModuloTaxonomy {
     TaxonomySvcController,
     TaxonomyController,
     TaxonomyWriteController,
+    TaxonomyMastersController,
     ReadinessController,
   ],
   providers: [
@@ -59,6 +65,10 @@ export interface OpcionesModuloTaxonomy {
     CategoryCreateService,
     CategoryUpdateService,
     BrandWriteService,
+    ProductTypeService,
+    CharacteristicValueService,
+    ProductTypeCharacteristicService,
+    MasterDeactivationRequestService,
     TaxonomyTokenVerifier,
     {
       provide: TAXONOMY_DEMO_ENABLED,

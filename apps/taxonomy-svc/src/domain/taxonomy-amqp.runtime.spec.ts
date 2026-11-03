@@ -93,6 +93,50 @@ afterEach(() => {
 
 describe('Taxonomy AMQP', () => {
   it.each([
+    'taxonomy.product-type-schema.changed',
+    'taxonomy.characteristic-value.updated',
+  ])('publica %s en el exchange contractual', async (name) => {
+    const f = fixture();
+    f.store.publicarUno
+      .mockImplementationOnce(
+        async (publish: (r: Record<string, unknown>) => Promise<void>) => {
+          await publish({
+            event_name: name,
+            message_id: envelope.message_id,
+            correlation_id: envelope.correlation_id,
+            payload: {
+              name,
+              message_id: envelope.message_id,
+              correlation_id: envelope.correlation_id,
+              producer: 'taxonomy-svc',
+              kind: 'event',
+              schema_version: 1,
+              data: {},
+            },
+          });
+          return 'PUBLICADO';
+        },
+      )
+      .mockResolvedValue('VACIO');
+    f.runtime.iniciar();
+    try {
+      await esperar();
+      expect(f.publisher.publish).toHaveBeenCalledWith(
+        'po.eventos.x',
+        name,
+        expect.any(Buffer),
+        expect.objectContaining({
+          mandatory: true,
+          persistent: true,
+          type: name,
+        }),
+        expect.any(Function),
+      );
+    } finally {
+      await f.runtime.onModuleDestroy();
+    }
+  });
+  it.each([
     'PRODUCT_TYPE',
     'CHARACTERISTIC_VALUE',
     'PRODUCT_TYPE_CHARACTERISTIC',
