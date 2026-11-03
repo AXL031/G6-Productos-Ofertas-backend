@@ -1,8 +1,15 @@
 import { HttpStatus, Logger } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import {
+  TaxonomyAuthGuard,
+  TAXONOMY_SECURITY_CONFIG,
+} from '../src/taxonomy-auth.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { vi } from 'vitest';
@@ -633,7 +640,10 @@ describeIntegracion(
     it('GET /api/v1/categorias sirve datos reales a traves del modulo', async () => {
       const moduleFixture = await Test.createTestingModule({
         imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
-      }).compile();
+      })
+        .overrideGuard(TaxonomyAuthGuard)
+        .useValue({ canActivate: () => true })
+        .compile();
       const appNest: INestApplication<App> =
         moduleFixture.createNestApplication();
       await appNest.init();
@@ -654,6 +664,138 @@ describeIntegracion(
           .expect(200);
       } finally {
         await appNest.close();
+      }
+    });
+
+    it('consulta categorías y marcas con JWT verificado y PostgreSQL aislado', async () => {
+      const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+      const issuer = 'https://security.example.test';
+      let origin = '';
+      const server = createServer((req, res) => {
+        res.setHeader('content-type', 'application/json');
+        if (req.url === '/discovery')
+          res.end(JSON.stringify({ issuer, jwks_uri: origin + '/jwks' }));
+        else if (req.url === '/jwks')
+          res.end(
+            JSON.stringify({
+              keys: [
+                {
+                  ...keys.publicKey.export({ format: 'jwk' }),
+                  kid: 'test',
+                  alg: 'RS256',
+                  use: 'sig',
+                },
+              ],
+            }),
+          );
+        else {
+          res.statusCode = 404;
+          res.end('{}');
+        }
+      });
+      server.listen(0, '127.0.0.1');
+      await once(server, 'listening');
+      const address = server.address();
+      if (!address || typeof address === 'string')
+        throw new Error('Puerto no disponible');
+      origin = `http://127.0.0.1:${address.port}`;
+      const token = (scope: string) => {
+        const now = Math.floor(Date.now() / 1000);
+        const header = Buffer.from(
+          JSON.stringify({ alg: 'RS256', kid: 'test' }),
+        ).toString('base64url');
+        const payload = Buffer.from(
+          JSON.stringify({
+            iss: issuer,
+            sub: 'catalog-svc',
+            tipo: 'servicio',
+            aud: 'api-productos',
+            scope,
+            iat: now,
+            exp: now + 60,
+            jti: randomUUID(),
+          }),
+        ).toString('base64url');
+        const input = `${header}.${payload}`;
+        return `${input}.${sign('RSA-SHA256', Buffer.from(input), keys.privateKey).toString('base64url')}`;
+      };
+      let nest: INestApplication<App> | undefined;
+      try {
+        const moduleFixture = await Test.createTestingModule({
+          imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
+        })
+          .overrideProvider(TAXONOMY_SECURITY_CONFIG)
+          .useValue({
+            issuer,
+            discoveryUrl: origin + '/discovery',
+            jwksUrl: origin + '/jwks',
+          })
+          .compile();
+        nest = moduleFixture.createNestApplication();
+        await nest.init();
+        for (const [path, key] of [
+          ['categorias', 'categories'],
+          ['marcas', 'brands'],
+        ] as const) {
+          await request(nest.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .expect(401);
+          const denied = await request(nest.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .set('Authorization', `Bearer ${token('otro:leer')}`)
+            .expect(403);
+          expect(denied.body.code).toBe('SCOPE_INSUFICIENTE');
+          const result = await request(nest.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .expect(200);
+          expect(result.body[key].length).toBeGreaterThan(0);
+          expect(
+            result.body[key].every(
+              (row: { status: string }) => row.status === 'ACTIVA',
+            ),
+          ).toBe(true);
+        }
+      } finally {
+        await nest?.close();
+        await new Promise<void>((resolveClose, reject) =>
+          server.close((error) => (error ? reject(error) : resolveClose())),
+        );
+      }
+    });
+
+    it('demo en loopback lee registros reales en PostgreSQL sin aceptar credenciales falsas', async () => {
+      const fixture = await Test.createTestingModule({
+        imports: [
+          TaxonomySvcModule.forRoot({
+            databaseUrl: urlApp,
+            env: { NODE_ENV: 'test', ALLOW_DEMO_UNAUTHENTICATED: 'true' },
+          }),
+        ],
+      }).compile();
+      const demo = fixture.createNestApplication();
+      await demo.init();
+      try {
+        for (const [path, key] of [
+          ['categorias', 'categories'],
+          ['marcas', 'brands'],
+        ] as const) {
+          const response = await request(demo.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .expect(200);
+          expect(response.body[key].length).toBeGreaterThan(0);
+          expect(
+            response.body[key].every(
+              (row: { status: string }) => row.status === 'ACTIVA',
+            ),
+          ).toBe(true);
+          await request(demo.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .set('Authorization', 'Bearer invalid')
+            .expect(401);
+        }
+      } finally {
+        await demo.close();
       }
     });
 
