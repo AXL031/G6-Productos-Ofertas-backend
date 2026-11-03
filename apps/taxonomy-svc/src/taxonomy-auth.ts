@@ -89,7 +89,12 @@ export function readTaxonomySecurityConfig(
 }
 
 export type TaxonomyPrincipal =
-  | { kind: 'user'; subject: string; roles: readonly string[] }
+  | {
+      kind: 'user';
+      subject: string;
+      roles: readonly string[];
+      audiences: readonly string[];
+    }
   | {
       kind: 'service';
       subject: string;
@@ -335,10 +340,16 @@ export class TaxonomyTokenVerifier {
       throw new TaxonomyTokenRejected();
 
     if (claims.tipo === 'acceso') {
-      const roles = strings(claims.roles);
-      if (!UUID_PATTERN.test(claims.sub) || !roles)
+      const roles = claims.roles === undefined ? [] : strings(claims.roles);
+      const tokenAudiences = audiences(claims.aud);
+      if (!UUID_PATTERN.test(claims.sub) || !roles || !tokenAudiences)
         throw new TaxonomyTokenRejected();
-      return { kind: 'user', subject: claims.sub, roles };
+      return {
+        kind: 'user',
+        subject: claims.sub,
+        roles,
+        audiences: tokenAudiences,
+      };
     }
     if (claims.tipo === 'servicio') {
       const tokenAudiences = audiences(claims.aud);
@@ -353,6 +364,32 @@ export class TaxonomyTokenVerifier {
       };
     }
     throw new TaxonomyTokenRejected();
+  }
+}
+
+@Injectable()
+export class TaxonomyUserGuard implements CanActivate {
+  constructor(private readonly verifier: TaxonomyTokenVerifier) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest<Request>();
+    const authorization = request.headers.authorization;
+    const match =
+      typeof authorization === 'string' &&
+      /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
+    if (!match) throw new UnauthorizedException();
+    let principal: TaxonomyPrincipal;
+    try {
+      principal = await this.verifier.verify(match[1]!);
+    } catch (error) {
+      if (error instanceof TaxonomyTokenRejected)
+        throw new UnauthorizedException();
+      throw new ServiceUnavailableException();
+    }
+    if (!principal.audiences.includes(SECURITY_AUDIENCE))
+      throw new UnauthorizedException();
+    if (principal.kind !== 'user') throw new ForbiddenException();
+    return true;
   }
 }
 

@@ -8,6 +8,12 @@ Microservicio de taxonomía (categorías y marcas) del backend G6.
 
 El modo demo local es optativo y reversible: `ALLOW_DEMO_UNAUTHENTICATED=true` solo se acepta con `NODE_ENV=test` o `development`, y permite únicamente GET `/api/v1/categorias` y `/api/v1/marcas` sin Authorization desde un par TCP de loopback. Un Authorization presente siempre sigue el guard JWT. No se confía en cabeceras de IP o identidad. Este límite no habilita conexiones entre contenedores ni acredita el aislamiento Gateway/Oracle exigido por la política H4; estas topologías requieren coordinación y evidencia antes de ampliar el acceso.
 
+## Escrituras de categorías y marcas (#38)
+
+Las mutaciones administrativas requieren JWT humano con audiencia `api-productos`; el modo demo no las habilita anónimamente. Las marcas aceptan multipart y conservan la URI explícita si se proporciona; si se envía un archivo sin URI, se guarda `logo_url = NULL`. Taxonomy no conserva el binario ni comprueba la disponibilidad de la URI; almacenar el archivo corresponde a un responsable externo. La validación revisa tamaño y estructura de PNG/JPEG/WebP, e integridad CRC y descompresión de PNG; no decodifica completamente los píxeles JPEG/WebP. En la edición multipart, enviar `descripcion`, `paisOrigenIso` o `logo` como campo vacío borra el valor correspondiente; omitirlo conserva el valor. El registro de una URI no acredita almacenamiento, homologación ni despliegue.
+
+El microservicio valida la estructura de la imagen y persiste la URI/cadena (`logo_url`) o `NULL` en la base de datos. El almacenamiento físico del binario y la infraestructura de CDN permanecen pendientes de definición por la arquitectura/owner externo, sin alterar los contratos OpenAPI vigentes.
+
 ## Variables de entorno
 
 El servicio valida la configuración en el arranque y falla cerrado (`fail-closed`): si falta o es inválida alguna variable requerida, no inicia. Nunca imprimir ni registrar valores reales; las credenciales se enmascaran en los logs.

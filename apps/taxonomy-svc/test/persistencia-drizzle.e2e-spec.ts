@@ -16,6 +16,10 @@ import { vi } from 'vitest';
 import { Database } from '../src/database.js';
 import { DeactivationCheckService } from '../src/domain/deactivation-check.service.js';
 import { DeactivationIntentService } from '../src/domain/deactivation-intent.service.js';
+import { BrandReactivationService } from '../src/domain/brand-reactivation.service.js';
+import { CategoryReactivationService } from '../src/domain/category-reactivation.service.js';
+import { CategoryCreateService } from '../src/domain/category-create.service.js';
+import { CategoryUpdateService } from '../src/domain/category-update.service.js';
 import {
   TaxonomyMessageStore,
   parseChecked,
@@ -32,6 +36,7 @@ import { crearRepositorioDrizzle } from './../src/persistence/persistence.provid
 import {
   esquemaTaxonomia,
   categorias,
+  categorySeo,
   marcas,
   operacionesBaja,
 } from './../src/persistence/taxonomy.schema.js';
@@ -138,6 +143,299 @@ describeIntegracion(
         await admin?.end();
       } catch {
         /* limpieza defensiva */
+      }
+    });
+
+    it('revierte la edición si no puede registrar su evento outbox', async () => {
+      const id = randomUUID();
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (callback) =>
+        callback(dbApp),
+      );
+      try {
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, nivel, estado) VALUES ($1, $2, 1, 'ACTIVO')",
+          [id, `Inicial ${id}`],
+        );
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        await expect(
+          new CategoryUpdateService(database).actualizar(id, {
+            nombre: 'No debe quedar',
+          }),
+        ).rejects.toThrow();
+        const result = await admin.query(
+          'SELECT nombre, taxonomy_version FROM taxonomy.categories WHERE id = $1',
+          [id],
+        );
+        expect(result.rows[0]).toMatchObject({
+          nombre: `Inicial ${id}`,
+          taxonomy_version: '0',
+        });
+      } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+          id,
+        ]);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('revierte creación y reactivación si falla el outbox', async () => {
+      const id = randomUUID();
+      const slug = `rollback-${randomUUID()}`;
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (callback) =>
+        callback(dbApp),
+      );
+      try {
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, nivel, estado) VALUES ($1, $2, 1, 'INACTIVO')",
+          [id, `Pendiente ${id}`],
+        );
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        await expect(
+          new CategoryCreateService(database).crear({
+            nombre: slug,
+            descripcion: null,
+            categoriaPadreId: null,
+            orden: 0,
+            imagenUrl: null,
+            slugConfirmado: slug,
+          }),
+        ).rejects.toThrow();
+        await expect(
+          new CategoryReactivationService(database).reactivar(id),
+        ).rejects.toThrow();
+        const created = await admin.query(
+          'SELECT id FROM taxonomy.categories WHERE nombre = $1',
+          [slug],
+        );
+        expect(created.rows).toHaveLength(0);
+        const seo = await admin.query(
+          'SELECT id FROM taxonomy.category_seo WHERE slug = $1',
+          [slug],
+        );
+        expect(seo.rows).toHaveLength(0);
+        const original = await admin.query(
+          'SELECT estado, taxonomy_version FROM taxonomy.categories WHERE id = $1',
+          [id],
+        );
+        expect(original.rows[0]).toMatchObject({
+          estado: 'INACTIVO',
+          taxonomy_version: '0',
+        });
+      } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+          id,
+        ]);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('crea categoría y slug confirmado o revierte ante colisión', async () => {
+      const slug = `prueba-${randomUUID()}`;
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (callback) =>
+        callback(dbApp),
+      );
+      const service = new CategoryCreateService(database);
+      const entrada = {
+        nombre: `Nombre ${slug}`,
+        descripcion: null,
+        categoriaPadreId: null,
+        orden: 0,
+        imagenUrl: null,
+        slugConfirmado: slug,
+      };
+      let id: string | undefined;
+      try {
+        const first = await service.crear(entrada);
+        expect(first.estado).toBe('CREADA');
+        if (first.estado === 'CREADA') {
+          id = first.categoria.categoriaId;
+          expect(first.categoria.slug).toBe(slug);
+        }
+        expect(await service.crear(entrada)).toEqual({
+          estado: 'SLUG_DUPLICADO',
+        });
+        const result = await admin.query(
+          'SELECT count(*)::int AS total FROM taxonomy.categories WHERE nombre = $1',
+          [entrada.nombre],
+        );
+        expect(result.rows[0].total).toBe(1);
+        const events = await admin.query(
+          "SELECT event_name, payload->'data'->>'version' AS version FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+          [id],
+        );
+        expect(events.rows).toEqual([
+          { event_name: 'taxonomy.category.updated', version: '0' },
+        ]);
+      } finally {
+        if (id) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+            [id],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.category_seo WHERE categoria_id = $1',
+            [id],
+          );
+          await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+            id,
+          ]);
+        }
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('revierte la categoría si el slug confirmado ya existe', async () => {
+      const id = randomUUID();
+      const existing = randomUUID();
+      const slug = `slug-${randomUUID()}`;
+      try {
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, nivel, estado) VALUES ($1, $2, 1, 'ACTIVO')",
+          [existing, `Existente ${existing}`],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.category_seo (categoria_id, slug) VALUES ($1, $2)',
+          [existing, slug],
+        );
+        await expect(
+          dbApp.transaction(async (tx) => {
+            await tx.insert(categorias).values({ id, nombre: `Nueva ${id}` });
+            await tx.insert(categorySeo).values({ categoriaId: id, slug });
+          }),
+        ).rejects.toThrow();
+        const result = await admin.query(
+          'SELECT id FROM taxonomy.categories WHERE id = $1',
+          [id],
+        );
+        expect(result.rows).toHaveLength(0);
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.category_seo WHERE categoria_id = $1',
+          [existing],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.categories WHERE id = ANY($1::uuid[])',
+          [[id, existing]],
+        );
+      }
+    });
+
+    it('reactiva categoría solo con padre activo y conserva la baja en curso', async () => {
+      const parentId = randomUUID();
+      const childId = randomUUID();
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (callback) =>
+        callback(dbApp),
+      );
+      const service = new CategoryReactivationService(database);
+      try {
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, nivel, estado) VALUES ($1, $2, 1, 'INACTIVO')",
+          [parentId, `Padre ${parentId}`],
+        );
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, categoria_padre_id, nivel, estado) VALUES ($1, $2, $3, 2, 'INACTIVO')",
+          [childId, `Hija ${childId}`, parentId],
+        );
+        expect(await service.reactivar(childId)).toEqual({
+          estado: 'PADRE_INACTIVO',
+        });
+        expect((await service.reactivar(parentId)).estado).toBe('ACTIVA');
+        const first = await service.reactivar(childId);
+        expect(first.estado).toBe('ACTIVA');
+        if (first.estado === 'ACTIVA') expect(first.categoria.version).toBe(1);
+        expect(await service.reactivar(childId)).toEqual(first);
+        const events = await admin.query(
+          "SELECT event_name, payload->'data'->>'version' AS version FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+          [childId],
+        );
+        expect(events.rows).toEqual([
+          { event_name: 'taxonomy.category.updated', version: '1' },
+        ]);
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          [childId],
+        );
+        expect(await service.reactivar(childId)).toEqual({
+          estado: 'BAJA_EN_PROCESO',
+        });
+        expect(await service.reactivar(randomUUID())).toEqual({
+          estado: 'NO_ENCONTRADA',
+        });
+      } finally {
+        await admin.query(
+          "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = ANY($1::text[])",
+          [[childId, parentId]],
+        );
+        await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+          childId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+          parentId,
+        ]);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('reactiva marcas en transacción, conserva la barrera y revierte errores', async () => {
+      const ids = [randomUUID(), randomUUID(), randomUUID()];
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (callback) =>
+        callback(dbApp),
+      );
+      const service = new BrandReactivationService(database);
+      try {
+        await admin.query(
+          `INSERT INTO taxonomy.brands (id, nombre, estado, taxonomy_version) VALUES
+          ($1, $4, 'INACTIVO', 2), ($2, $5, 'PENDING_DEACTIVATION', 3), ($3, $6, 'INACTIVO', 9223372036854775807)`,
+          [
+            ids[0],
+            ids[1],
+            ids[2],
+            `Reactiva ${ids[0]}`,
+            `Pendiente ${ids[1]}`,
+            `Overflow ${ids[2]}`,
+          ],
+        );
+        const first = await service.reactivar(ids[0]!);
+        expect(first.estado).toBe('ACTIVA');
+        if (first.estado === 'ACTIVA') expect(first.marca.version).toBe(3);
+        const retry = await service.reactivar(ids[0]!);
+        expect(retry).toEqual(first);
+        expect(await service.reactivar(ids[1]!)).toEqual({
+          estado: 'BAJA_EN_PROCESO',
+        });
+        expect(await service.reactivar(randomUUID())).toEqual({
+          estado: 'NO_ENCONTRADA',
+        });
+        await expect(service.reactivar(ids[2]!)).rejects.toThrow();
+        const rows = await admin.query(
+          'SELECT id, estado, taxonomy_version FROM taxonomy.brands WHERE id = ANY($1::uuid[])',
+          [ids],
+        );
+        expect(
+          rows.rows.find((row: { id: string }) => row.id === ids[1]),
+        ).toMatchObject({
+          estado: 'PENDING_DEACTIVATION',
+          taxonomy_version: '3',
+        });
+        expect(
+          rows.rows.find((row: { id: string }) => row.id === ids[2]),
+        ).toMatchObject({
+          estado: 'INACTIVO',
+          taxonomy_version: '9223372036854775807',
+        });
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.brands WHERE id = ANY($1::uuid[])',
+          [ids],
+        );
+        vi.restoreAllMocks();
       }
     });
 
@@ -706,7 +1004,7 @@ describeIntegracion(
       if (!address || typeof address === 'string')
         throw new Error('Puerto no disponible');
       origin = `http://127.0.0.1:${address.port}`;
-      const token = (scope: string) => {
+      const token = (scope: string, humano = false) => {
         const now = Math.floor(Date.now() / 1000);
         const header = Buffer.from(
           JSON.stringify({ alg: 'RS256', kid: 'test' }),
@@ -714,8 +1012,9 @@ describeIntegracion(
         const payload = Buffer.from(
           JSON.stringify({
             iss: issuer,
-            sub: 'catalog-svc',
-            tipo: 'servicio',
+            sub: humano ? randomUUID() : 'catalog-svc',
+            tipo: humano ? 'acceso' : 'servicio',
+            ...(humano ? { roles: [] } : {}),
             aud: 'api-productos',
             scope,
             iat: now,
@@ -727,7 +1026,15 @@ describeIntegracion(
         return `${input}.${sign('RSA-SHA256', Buffer.from(input), keys.privateKey).toString('base64url')}`;
       };
       let nest: INestApplication<App> | undefined;
+      const brandId = randomUUID();
+      let nuevaMarca: string | undefined;
+      let marcaConUrl: string | undefined;
+      let categoryCreated: string | undefined;
       try {
+        await admin.query(
+          "INSERT INTO taxonomy.brands (id, nombre, estado) VALUES ($1, $2, 'INACTIVO')",
+          [brandId, `Http ${brandId}`],
+        );
         const moduleFixture = await Test.createTestingModule({
           imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
         })
@@ -736,6 +1043,11 @@ describeIntegracion(
             issuer,
             discoveryUrl: origin + '/discovery',
             jwksUrl: origin + '/jwks',
+          })
+          .overrideProvider(Database)
+          .useValue({
+            read: (callback: (db: NodePgDatabase) => Promise<unknown>) =>
+              callback(dbApp),
           })
           .compile();
         nest = moduleFixture.createNestApplication();
@@ -763,8 +1075,168 @@ describeIntegracion(
             ),
           ).toBe(true);
         }
+        const endpoint = `/api/v1/marcas/${brandId}/reactivar`;
+        await request(nest.getHttpServer()).post(endpoint).expect(401);
+        await request(nest.getHttpServer())
+          .post(endpoint)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(403);
+        const reactivada = await request(nest.getHttpServer())
+          .post(endpoint)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(reactivada.body).toMatchObject({
+          marcaId: brandId,
+          estado: 'ACTIVO',
+          version: 1,
+        });
+        const retry = await request(nest.getHttpServer())
+          .post(endpoint)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(retry.body).toEqual(reactivada.body);
+        const categoryBody = {
+          nombre: `Http ${brandId}`,
+          slugConfirmado: `http-${brandId}`,
+        };
+        const createdCategory = await request(nest.getHttpServer())
+          .post('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send(categoryBody)
+          .expect(201);
+        categoryCreated = createdCategory.body.categoriaId;
+        expect(createdCategory.body.slug).toBe(categoryBody.slugConfirmado);
+        const duplicate = await request(nest.getHttpServer())
+          .post('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send(categoryBody)
+          .expect(409);
+        expect(duplicate.body.code).toBe('SLUG_DUPLICADO');
+        const categoryPath = `/api/v1/categorias/${categoryCreated}`;
+        const editedCategory = await request(nest.getHttpServer())
+          .patch(categoryPath)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: 'Categoría editada', version: 0 })
+          .expect(200);
+        expect(editedCategory.body).toMatchObject({
+          nombre: 'Categoría editada',
+          version: 1,
+        });
+        const categoryConflict = await request(nest.getHttpServer())
+          .patch(categoryPath)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: 'Obsoleta', version: 0 })
+          .expect(409);
+        expect(categoryConflict.body.code).toBe('VERSION_CONFLICT');
+        const categoryCycle = await request(nest.getHttpServer())
+          .patch(categoryPath)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ categoriaPadreId: categoryCreated })
+          .expect(409);
+        expect(categoryCycle.body.code).toBe('CICLO_CATEGORIA');
+        const depth = await request(nest.getHttpServer())
+          .patch(categoryPath)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ categoriaPadreId: '22222222-2222-4222-8222-222222222222' })
+          .expect(422);
+        expect(depth.body.code).toBe('PROFUNDIDAD_CATEGORIA_EXCEDIDA');
+        const event = await admin.query(
+          "SELECT event_name FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+          [categoryCreated],
+        );
+        expect(event.rows).toEqual([
+          { event_name: 'taxonomy.category.updated' },
+          { event_name: 'taxonomy.category.updated' },
+        ]);
+        const logo = readFileSync(
+          resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
+        );
+        const nueva = await request(nest.getHttpServer())
+          .post('/api/v1/marcas')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('nombre', `Marca ${brandId}`)
+          .attach('logo', logo, {
+            filename: 'logo.png',
+            contentType: 'image/png',
+          })
+          .expect(201);
+        nuevaMarca = nueva.body.marcaId;
+        expect(nueva.body.logoUrl).toBeNull();
+        const conUrl = await request(nest.getHttpServer())
+          .post('/api/v1/marcas')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('nombre', `Logo explícito ${brandId}`)
+          .field('logoUrl', 'https://example.org/logo.png')
+          .attach('logo', logo, {
+            filename: 'logo.png',
+            contentType: 'image/png',
+          })
+          .expect(201);
+        marcaConUrl = conUrl.body.marcaId;
+        const persisted = await admin.query(
+          'SELECT logo_url FROM taxonomy.brands WHERE id = $1',
+          [marcaConUrl],
+        );
+        expect(persisted.rows[0].logo_url).toBe('https://example.org/logo.png');
+        await admin.query(
+          "UPDATE taxonomy.brands SET descripcion = 'texto', pais_origen_iso = 'PE', logo_url = 'https://example.org/logo.png' WHERE id = $1",
+          [brandId],
+        );
+        const editada = await request(nest.getHttpServer())
+          .patch(`/api/v1/marcas/${brandId}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('nombre', `Modificada ${brandId}`)
+          .field('version', '1')
+          .expect(200);
+        expect(editada.body).toMatchObject({
+          version: 2,
+          nombre: `Modificada ${brandId}`,
+        });
+        await request(nest.getHttpServer())
+          .patch(`/api/v1/marcas/${brandId}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('nombre', 'Obsoleta')
+          .field('version', '0')
+          .expect(409);
+        const clear = await request(nest.getHttpServer())
+          .patch(`/api/v1/marcas/${brandId}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('descripcion', '')
+          .field('paisOrigenIso', '')
+          .field('logo', '')
+          .field('version', '2')
+          .expect(200);
+        expect(clear.body).toMatchObject({
+          descripcion: null,
+          paisOrigenIso: null,
+          logoUrl: null,
+        });
       } finally {
         await nest?.close();
+        if (nuevaMarca)
+          await admin.query('DELETE FROM taxonomy.brands WHERE id = $1', [
+            nuevaMarca,
+          ]);
+        if (marcaConUrl)
+          await admin.query('DELETE FROM taxonomy.brands WHERE id = $1', [
+            marcaConUrl,
+          ]);
+        if (categoryCreated) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+            [categoryCreated],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.category_seo WHERE categoria_id = $1',
+            [categoryCreated],
+          );
+          await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+            categoryCreated,
+          ]);
+        }
+        await admin.query('DELETE FROM taxonomy.brands WHERE id = $1', [
+          brandId,
+        ]);
         await new Promise<void>((resolveClose, reject) =>
           server.close((error) => (error ? reject(error) : resolveClose())),
         );
