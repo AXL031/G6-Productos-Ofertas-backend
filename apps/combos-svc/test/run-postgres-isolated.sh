@@ -170,6 +170,7 @@ trap on_error ERR
 
 docker run --rm --user root --volume "$tmp_dir:/cert" --entrypoint sh rabbitmq:4.2.9-alpine -c \
   "openssl req -x509 -nodes -newkey rsa:2048 -keyout /cert/server.key -out /cert/server.crt -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' && chmod 600 /cert/server.key && chown 70:70 /cert/server.key /cert/server.crt" >/dev/null
+chmod 711 "$tmp_dir"
 
 docker run --detach --name "$pg_container" \
   --label "$harness_label=true" \
