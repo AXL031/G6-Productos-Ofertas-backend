@@ -185,7 +185,8 @@ export class TaxonomyWriteController {
           'logoUrl debe ser una URL HTTP(S) válida.',
         );
       }
-    } else if ((crear && file) || (!crear && (input.logo === '' || file))) logoUrl = null;
+    } else if ((crear && file) || (!crear && (input.logo === '' || file)))
+      logoUrl = null;
     return {
       ...(typeof input.nombre === 'string' ? { nombre: input.nombre } : {}),
       ...(typeof input.descripcion === 'string'
