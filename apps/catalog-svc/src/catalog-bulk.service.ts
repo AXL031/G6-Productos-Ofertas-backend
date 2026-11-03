@@ -44,7 +44,8 @@ export interface BulkRow {
   producto_id: string | null;
   sku_base: string;
   product: Record<string, unknown>;
-  variant_id: string | null;
+  variant_id?: string | null;
+  sku_variante?: string | null;
   variant: Record<string, unknown> | null;
 }
 export interface BulkRequest {
@@ -85,6 +86,7 @@ function keys(value: Record<string, unknown>, expected: string[]) {
 export function parseBulkRequest(message: CatalogEnvelope): BulkRequest {
   const d = message.data;
   if (
+    ![1, 2].includes(message.schema_version) ||
     !keys(d, [
       'batch_id',
       'batch_operation_id',
@@ -116,9 +118,21 @@ export function parseBulkRequest(message: CatalogEnvelope): BulkRequest {
         'producto_id',
         'sku_base',
         'product',
-        'variant_id',
+        ...(message.schema_version === 1 || Object.hasOwn(row, 'variant_id')
+          ? ['variant_id']
+          : []),
+        ...(message.schema_version === 2 && Object.hasOwn(row, 'sku_variante')
+          ? ['sku_variante']
+          : []),
         'variant',
       ]) ||
+      (message.schema_version === 2 &&
+        ['variant_id', 'sku_variante'].some(
+          (key) =>
+            Object.hasOwn(row, key) &&
+            row[key] !== null &&
+            (typeof row[key] !== 'string' || row[key].length === 0),
+        )) ||
       !Number.isSafeInteger(row.row_number) ||
       Number(row.row_number) < 2 ||
       typeof row.row_operation_id !== 'string' ||
@@ -128,12 +142,20 @@ export function parseBulkRequest(message: CatalogEnvelope): BulkRequest {
       !object(row.product) ||
       !(row.variant === null || object(row.variant)) ||
       (d.mode === 'ALTA'
-        ? row.producto_id !== null || row.variant_id !== null
+        ? row.producto_id !== null ||
+          (message.schema_version === 1
+            ? row.variant_id !== null
+            : row.variant_id != null || row.sku_variante != null)
         : typeof row.producto_id !== 'string' ||
           !row.producto_id ||
           (row.variant === null
-            ? row.variant_id !== null
-            : typeof row.variant_id !== 'string' || !row.variant_id))
+            ? message.schema_version === 1
+              ? row.variant_id !== null
+              : row.variant_id != null || row.sku_variante != null
+            : message.schema_version === 1
+              ? typeof row.variant_id !== 'string' || !row.variant_id
+              : typeof row.variant_id !== 'string' &&
+                typeof row.sku_variante !== 'string'))
     )
       catalogError(400, 'VALIDACION');
     const r = row as unknown as BulkRow;
@@ -275,6 +297,7 @@ export class CatalogBulkService {
         );
     }
     const actor = { authorization, correlationId };
+    const targets = new Map<BulkRow, string>();
     let id: string;
     if (request.mode === 'ALTA') {
       if (
@@ -324,17 +347,22 @@ export class CatalogBulkService {
               .from(variants)
               .where(
                 and(
-                  sql`${variants.id}::text = ${row.variant_id}`,
+                  typeof row.sku_variante === 'string'
+                    ? eq(variants.sku, row.sku_variante)
+                    : sql`${variants.id}::text = ${row.variant_id}`,
                   eq(variants.product_id, id),
                 ),
               )
               .for('update')
           )[0];
           if (!child) catalogError(404, 'VARIANTE_NO_ENCONTRADA');
+          if (row.variant_id != null && row.variant_id !== child.id)
+            catalogError(400, 'VALIDACION');
+          // Keep the original row untouched for existing Inbox/operation receipts.
+          targets.set(row, child.id);
         }
       if (
-        new Set(rows.filter((r) => r.variant).map((r) => r.variant_id)).size !==
-        rows.filter((r) => r.variant).length
+        new Set(targets.values()).size !== rows.filter((r) => r.variant).length
       )
         catalogError(400, 'VALIDACION');
       await this.mutations.update(id, undefined, first.product, actor, tx);
@@ -342,7 +370,7 @@ export class CatalogBulkService {
         if (row.variant)
           await this.mutations.update(
             id,
-            row.variant_id!,
+            targets.get(row)!,
             row.variant,
             actor,
             tx,

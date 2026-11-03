@@ -205,7 +205,11 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     !object(value) ||
     !UUID.test(String(value.message_id)) ||
     !UUID.test(String(value.correlation_id)) ||
-    value.schema_version !== 1 ||
+    (value.schema_version !== 1 &&
+      !(
+        value.name === 'catalog.bulk.upsert.requested' &&
+        value.schema_version === 2
+      )) ||
     typeof value.occurred_at !== 'string' ||
     !Number.isFinite(Date.parse(value.occurred_at)) ||
     typeof value.name !== 'string' ||

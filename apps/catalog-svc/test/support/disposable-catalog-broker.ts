@@ -236,6 +236,26 @@ export class DisposableCatalogBroker {
       },
     );
   }
+  /** Producer fixture for consumer-v2 audits; never imports or changes Bulk. */
+  async bulkCommand(body: Record<string, unknown>): Promise<void> {
+    const connection = await this.open('bulk-joint');
+    const channel = await connection.createConfirmChannel();
+    channel.on('error', () => undefined);
+    try {
+      await new ConfirmedCatalogPublisher(channel, 'bulk-joint').raw(
+        'po.comandos.x',
+        'catalog.bulk.upsert.requested',
+        Buffer.from(JSON.stringify(body)),
+        {
+          messageId: String(body.message_id),
+          correlationId: String(body.correlation_id),
+          type: String(body.name),
+        },
+      );
+    } finally {
+      await channel.close();
+    }
+  }
   stop(): void {
     this.command(['stop', '--time', '2', this.name]);
   }

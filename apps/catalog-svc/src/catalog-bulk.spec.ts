@@ -5,6 +5,10 @@ import {
   businessCode,
 } from './catalog-bulk.service.js';
 import type { CatalogEnvelope } from './catalog-messages.js';
+import {
+  parseCatalogMessage,
+  InvalidCatalogMessage,
+} from './catalog-messages.js';
 function command(): CatalogEnvelope {
   const operation = randomUUID();
   return {
@@ -92,6 +96,88 @@ it('requires update identity and distinguishes simple and variant update targets
 it('canonicalizes object key order without conflating array order or opaque SKU values', () => {
   expect(canonicalBulk({ a: 1, b: 2 })).toBe(canonicalBulk({ b: 2, a: 1 }));
   expect(canonicalBulk(['0', '00'])).not.toBe(canonicalBulk(['00', '0']));
+});
+
+describe('Bulk command version compatibility', () => {
+  it.each([1, 2])(
+    'accepts only the requested command at version %s without changing ALTA',
+    (version) => {
+      const input = command();
+      input.schema_version = version;
+      expect(parseCatalogMessage(input).schema_version).toBe(version);
+      expect(parseBulkRequest(input).mode).toBe('ALTA');
+    },
+  );
+  it.each([
+    { sku_variante: ' 000,/ñ ' },
+    { variant_id: 'opaque-child' },
+    { sku_variante: ' 000,/ñ ', variant_id: 'opaque-child' },
+    { sku_variante: ' 000,/ñ ', variant_id: null },
+  ])(
+    'v2 accepts selector %j while preserving the original row',
+    (selectors) => {
+      const input = command();
+      input.schema_version = 2;
+      input.data.mode = 'ACTUALIZACION';
+      const row = (input.data.rows as Array<Record<string, unknown>>)[0];
+      row.producto_id = 'parent';
+      row.variant = { catalogVersion: 1 };
+      delete row.variant_id;
+      Object.assign(row, selectors);
+      const before = canonicalBulk(input);
+      expect(parseBulkRequest(input).rows[0]).toBe(row);
+      expect(canonicalBulk(input)).toBe(before);
+    },
+  );
+  it.each([
+    {},
+    { variant_id: null },
+    { sku_variante: null },
+    { sku_variante: '' },
+    { sku_variante: 12 },
+    { variant_id: '', sku_variante: 'valid' },
+  ])('v2 rejects missing/malformed selectors %j', (selectors) => {
+    const input = command();
+    input.schema_version = 2;
+    input.data.mode = 'ACTUALIZACION';
+    const row = (input.data.rows as Array<Record<string, unknown>>)[0];
+    row.producto_id = 'parent';
+    row.variant = {};
+    delete row.variant_id;
+    Object.assign(row, selectors);
+    expect(() => parseBulkRequest(input)).toThrow();
+  });
+  it('retains v1 strictness, v2 simple updates and all other message versions', () => {
+    const input = command(),
+      row = (input.data.rows as Array<Record<string, unknown>>)[0];
+    row.sku_variante = null;
+    expect(() => parseBulkRequest(input)).toThrow();
+    input.schema_version = 2;
+    input.data.mode = 'ACTUALIZACION';
+    row.producto_id = 'parent';
+    delete row.variant_id;
+    delete row.sku_variante;
+    expect(parseBulkRequest(input).rows[0].variant).toBeNull();
+    row.sku_variante = 'not-simple';
+    expect(() => parseBulkRequest(input)).toThrow();
+    delete row.sku_variante;
+    row.unknown = true;
+    expect(() => parseBulkRequest(input)).toThrow();
+    input.schema_version = 3;
+    expect(() => parseCatalogMessage(input)).toThrow(InvalidCatalogMessage);
+    input.schema_version = 2;
+    expect(() =>
+      parseCatalogMessage({
+        ...input,
+        name: 'taxonomy.category.updated',
+        producer: 'taxonomy-svc',
+        kind: 'event',
+      }),
+    ).toThrow(InvalidCatalogMessage);
+    expect(() =>
+      parseBulkRequest({ ...command(), schema_version: 3 }),
+    ).toThrow();
+  });
 });
 
 import { CatalogMutationService } from './catalog-mutation.service.js';

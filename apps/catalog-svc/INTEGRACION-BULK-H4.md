@@ -1,5 +1,49 @@
 # Catalog ↔ Bulk H4 — implementación del consumidor
 
+## Comando v2 — resolución autoritativa aprobada (2026-11-03)
+
+Master backend `1246727` incorporado mediante merge normal en poma, preservando
+los avances anteriores. Contrato revisable: [Docs PR #109](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/pull/109),
+SHA `58e5337f3cf7653b3eaa702dcaeb8b2c909c0704`; AsyncAPI rc.4 con addendum de
+comando schema_version 2, SPEC-001 y pruebas contractuales. Las decisiones
+proporcionadas por Marco en esta sesión autorizan el cambio interno; no equivalen
+a productor adaptado, homologación externa ni despliegue. Ambos PR siguen draft.
+
+- Solo `catalog.bulk.upsert.requested` admite envelope v1/v2. Los resultados y
+  demás mensajes conservan sus versiones; el archivo mantiene template_version 2.
+- V1 conserva la forma estricta y sus recibos; V2 admite sku_variante y/o
+  variant_id externos al DTO en ACTUALIZACION de variante. Si llegan ambos deben
+  corresponder al mismo objetivo. Simple no requiere selectores; ALTA conserva
+  SKU en VarianteCreateRequest. No se agregan endpoints ni permisos G7 y no se
+  modifica PricingCatalogContext.
+- Dentro de la transacción de familia se bloquea el padre y se busca/bloquea la
+  variante por SKU literal y producto; IDs presentes se contrastan. Objetivos
+  resueltos duplicados rechazan la familia. Versiones de padre e hija siguen
+  independientes y se comprueban mediante los casos de uso existentes.
+- Ausente/ajena → VARIANTE_NO_ENCONTRADA; selectores contradictorios → VALIDACION;
+  versión obsoleta → VERSION_CONFLICT. Negocio revierte familia; técnico revierte
+  chunk. No se inventan errores ni se amplía retry/DLX.
+- Los IDs resueltos se guardan solo en un mapa interno, nunca en la fila recibida.
+  Se consulta Inbox antes de revalidar versiones. No se normalizan o reescriben
+  payloads antiguos: reutilizar row_operation_id con contenido convertido da
+  IDEMPOTENCY_CONFLICT. Los mensajes Outbox v1 pendientes siguen intactos.
+
+Pruebas: parser v1/v2; PostgreSQL real para SKU válido, ausente, ajeno, discrepancia,
+versión de hija obsoleta, versión de padre competidora, objetivos duplicados,
+concurrencia de comandos y entrega duplicada, actualización de dos hijas con
+padre una vez, replay posterior y payload sin mutación. También ALTA v2 y simple v2.
+
+La prueba **BULK-JOINT** existente conserva el productor/importador/Outbox/Inbox
+Bulk real en **v1**, sin modificar su aplicación. **BULK-CONSUMER-v2** prueba
+transporte RabbitMQ 4.2.9 y PostgreSQL 17/TLS reales, pero usa un emisor de fixture
+explícito para el comando v2. No se presenta como integración del productor Bulk
+v2, todavía pendiente de Marco después de validar consumidor y contrato. G7 y
+Taxonomy siguen siendo fixtures. El SHA y CI definitivos se informan en PR #162.
+
+Esta sección sustituye el pendiente histórico de consulta HTTP de variantes:
+el desbloqueo actual es revisión/fusión coordinada del contrato y adaptación
+del productor por Marco. G2 se conserva como revisión independiente.
+
 ## Corrección de auditoría Bulk — 2026-11-03
 
 Master `23eae06` incorporado mediante merge normal `e5a7b10` en poma.
