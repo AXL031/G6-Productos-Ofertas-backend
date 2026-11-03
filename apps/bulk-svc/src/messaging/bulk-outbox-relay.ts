@@ -11,7 +11,7 @@ import amqp, {
   type Message,
 } from 'amqplib';
 import { BulkPersistenceRepository } from '../persistence/bulk.repository.js';
-import { BULK_AMQP_URL } from './bulk-rabbitmq.js';
+import { BULK_AMQP_URL, bulkAmqpUserId } from './bulk-rabbitmq.js';
 
 const EXCHANGE = 'po.comandos.x';
 
@@ -58,6 +58,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
       return;
     this.running = true;
     try {
+      const userId = bulkAmqpUserId(this.amqpUrl);
       const channel = await this.getChannel();
       const pending = await this.repository.findPendingOutbox(50);
       for (const item of pending) {
@@ -69,6 +70,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
           contentType: 'application/json',
           messageId: item.messageId,
           correlationId: item.correlationId,
+          userId,
           type: item.eventName,
           timestamp: Math.floor(item.occurredAt.getTime() / 1000),
         });
