@@ -40,7 +40,7 @@ export class AuditDatabase implements OnApplicationShutdown {
   async check(): Promise<boolean> {
     try {
       await this.pool.query(
-        'SELECT 1 FROM price_audit.price_audit_log, price_audit.inbox, price_audit.export_jobs LIMIT 0',
+        'SELECT target_type FROM price_audit.price_audit_log, price_audit.inbox, price_audit.export_jobs LIMIT 0',
       );
       return true;
     } catch {

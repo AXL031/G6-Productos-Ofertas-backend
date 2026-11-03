@@ -1,5 +1,8 @@
 # Price Audit — implementación y evidencia local
 
+> Actualizacion de esta entrega: [resolucion H4 y dependencias por issue](H4-RESOLUCION.md).
+> El decoder tipado sustituye P-AUD-02; el contenido inferior conserva su corte historico.
+
 Owner Leonardo Vera; rama `vera`; corte 2026-10-23. Implementación interna y
 pruebas locales no acreditan despliegue Oracle, homologación ni grants G7.
 El cierre integral de #63/#65/#66 y la integración #68/#69 siguen parciales.

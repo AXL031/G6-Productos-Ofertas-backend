@@ -274,6 +274,33 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
         ).rows[0].record_count,
       ).toBe(501);
     });
+    it('mantiene la bitacora sin escrituras HTTP de edicion o borrado', async () => {
+      for (const method of ['put', 'patch', 'delete'] as const) {
+        await request(app.getHttpServer())
+          [method](base + '/' + randomUUID())
+          .set('Authorization', 'Bearer ' + identity.token())
+          .send({})
+          .expect(404);
+      }
+      await request(app.getHttpServer())
+        .post(base)
+        .set('Authorization', 'Bearer ' + identity.token())
+        .send({})
+        .expect(404);
+    });
+    it('readiness no acredita un schema que carece de la migracion tipada', async () => {
+      await database.admin!.query(
+        'ALTER TABLE price_audit.price_audit_log RENAME COLUMN target_type TO pending_target_type',
+      );
+      try {
+        await request(app.getHttpServer()).get('/health/ready').expect(503);
+      } finally {
+        await database.admin!.query(
+          'ALTER TABLE price_audit.price_audit_log RENAME COLUMN pending_target_type TO target_type',
+        );
+      }
+      await request(app.getHttpServer()).get('/health/ready').expect(200);
+    });
     it('readiness detecta pérdida de permiso DB mientras liveness permanece disponible', async () => {
       await request(app.getHttpServer()).get('/health/ready').expect(200);
       await database.admin!.query(

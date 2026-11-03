@@ -6,17 +6,13 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { connect } from 'amqplib';
 import { PriceAuditSvcModule } from '../src/price-audit-svc.module.js';
-import {
-  AUDIT_PRICE_CHANGE_DECODER,
-  AuditConsumer,
-} from '../src/messaging/audit-consumer.js';
-import type { AuditChange } from '../src/domain/audit.js';
+import { AuditConsumer } from '../src/messaging/audit-consumer.js';
 import { IsolatedAuditPostgres } from './isolated-postgres.js';
 import { IsolatedRabbitmq } from './isolated-rabbitmq.js';
 import { SignedUser } from './signed-user.js';
 
 describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
-  'AMQP → Inbox/bitácora → HTTP, mapper de prueba explícito',
+  'AMQP tipado - Inbox/log - HTTP con decoder productivo',
   () => {
     const postgres = new IsolatedAuditPostgres();
     const broker = new IsolatedRabbitmq();
@@ -38,7 +34,22 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
       producer: 'pricing-svc',
       kind: 'event',
       name: 'pricing.price.changed',
-      data: { fixture_sku: sku },
+      data: {
+        target_type: 'SKU',
+        product_id: 'fixture-product',
+        sku,
+        channel_id: 'MARKETPLACE',
+        currency: 'PEN',
+        price_type: 'REGULAR',
+        previous_price: null,
+        new_price: '12.30',
+        operation: 'CREACION',
+        reason: 'ALTA_PRODUCTO',
+        price_version: 1,
+        valid_from: new Date().toISOString(),
+        batch_id: null,
+        actor: { user_id: null, email: null, ip: null },
+      },
     });
     async function publish(body: unknown) {
       const connection = await connect(broker.url, { timeout: 2000 });
@@ -73,32 +84,7 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
             PRICE_AUDIT_AMQP_URL: broker.url.split('?')[0],
           }),
         ],
-      })
-        .overrideProvider(AUDIT_PRICE_CHANGE_DECODER)
-        .useValue((data: Record<string, unknown>): AuditChange[] => {
-          // Exclusivo de esta fixture: NO define ni aprueba el payload P-AUD-02 de GenericData.
-          if (typeof data.fixture_sku !== 'string')
-            throw new Error('Fixture incompatible');
-          return [
-            {
-              sku: data.fixture_sku,
-              productId: 'fixture-product',
-              priceType: 'REGULAR',
-              previous: null,
-              next: '12.30',
-              variation: null,
-              operation: 'CREACION',
-              channel: 'GLOBAL',
-              reason: 'ALTA_PRODUCTO',
-              batchId: null,
-              userId: null,
-              email: null,
-              ip: null,
-              at: new Date('2026-10-01T00:00:00Z'),
-            },
-          ];
-        })
-        .compile();
+      }).compile();
       app = module.createNestApplication({ logger: false });
       await app.init();
       consumer = app.get(AuditConsumer);
@@ -136,6 +122,46 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
           )
         ).rows[0].total,
       ).toBe(1);
+    });
+    it('persiste PRODUCTO global y precision decimal sin SKU ficticio', async () => {
+      const event = envelope('unused');
+      const productEvent = {
+        ...event,
+        data: {
+          ...event.data,
+          target_type: 'PRODUCTO',
+          sku: null,
+          channel_id: null,
+          operation: 'MODIFICACION',
+          previous_price: '6.0001',
+          new_price: '7.0001',
+        },
+      };
+      await publish(productEvent);
+      const saved = async () =>
+        (
+          await postgres.admin!.query(
+            'SELECT l.* FROM price_audit.price_audit_log l JOIN price_audit.inbox i ON i.id=l.inbox_id WHERE i.message_id=$1',
+            [event.message_id],
+          )
+        ).rows;
+      await expect
+        .poll(async () => (await saved()).length, { timeout: 10000 })
+        .toBe(1);
+      expect((await saved())[0]).toMatchObject({
+        target_type: 'PRODUCTO',
+        sku: null,
+        canal_origen: null,
+        precio_anterior: '6.0001',
+        precio_nuevo: '7.0001',
+        variacion_porcentual: '16.67',
+      });
+      const row = (await saved())[0];
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/auditoria-precios/' + row.id_auditoria)
+        .set('Authorization', 'Bearer ' + identity.token())
+        .expect(503);
+      expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
     });
     it('NACK/rollback conserva entrega y recupera después de un fallo de persistencia', async () => {
       const event = envelope('db-recovery');
