@@ -83,6 +83,13 @@ export class IsolatedAuditPostgres {
       ${source}
       COMMIT;
     `);
+    const evolution = await readFile(
+      new URL('../migrations/0002_typed_price_change.sql', import.meta.url),
+      'utf8',
+    );
+    await this.admin.query(
+      `BEGIN; SET LOCAL ROLE po_price_audit_owner; ${evolution} COMMIT;`,
+    );
     this.runtimeUrl = `postgresql://price_audit_app:${password}@127.0.0.1:${port}/price_audit_test`;
   }
 
