@@ -1965,6 +1965,7 @@ describeIntegracion(
       let broker: ChannelModel | undefined;
       let catalog: ChannelModel | undefined;
       let runtime: TaxonomyAmqpRuntime | undefined;
+      let categoriaPublicada: string | undefined;
       const esperar = async (condicion: () => Promise<boolean> | boolean) => {
         for (let i = 0; i < 150; i++) {
           if (await condicion()) return;
@@ -1996,6 +1997,23 @@ describeIntegracion(
           'po.comandos.x',
           'taxonomy.master.deactivation.check.requested',
         );
+        await canal.assertQueue('prueba.categorias.q', { durable: true });
+        await canal.bindQueue(
+          'prueba.categorias.q',
+          'po.eventos.x',
+          'taxonomy.category.updated',
+        );
+        const categoria = await new CategoryCreateService(database).crear({
+          nombre: `Categoria evento ${randomUUID()}`,
+          descripcion: null,
+          categoriaPadreId: null,
+          orden: 0,
+          imagenUrl: null,
+          slugConfirmado: `evento-${randomUUID()}`,
+        });
+        if (categoria.estado !== 'CREADA')
+          throw new Error('Categoría no creada');
+        categoriaPublicada = categoria.categoria.categoriaId;
         catalog = await connect(urls.catalogUrl);
         const productor = await catalog.createConfirmChannel();
         await expect(
@@ -2024,6 +2042,32 @@ describeIntegracion(
         };
         runtime = crearRuntime();
         await esperar(() => runtime!.disponible());
+        await esperar(
+          async () =>
+            (await canal.checkQueue('prueba.categorias.q')).messageCount === 1,
+        );
+        const eventoCategoria = await canal.get('prueba.categorias.q', {
+          noAck: true,
+        });
+        if (!eventoCategoria) throw new Error('Falta evento de categoría');
+        expect(eventoCategoria.fields.routingKey).toBe(
+          'taxonomy.category.updated',
+        );
+        expect(JSON.parse(eventoCategoria.content.toString())).toMatchObject({
+          producer: 'taxonomy-svc',
+          kind: 'event',
+          name: 'taxonomy.category.updated',
+          data: { categoria_id: categoriaPublicada, version: 0 },
+        });
+        await esperar(
+          async () =>
+            (
+              await admin.query(
+                "SELECT published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+                [categoriaPublicada],
+              )
+            ).rows[0]?.publicado === true,
+        );
         await esperar(
           async () =>
             (await canal.checkQueue('po.catalogo.q')).messageCount === 1,
@@ -2254,6 +2298,19 @@ describeIntegracion(
         await catalog?.close().catch(() => undefined);
         await broker?.close().catch(() => undefined);
         rabbit.cerrar();
+        if (categoriaPublicada) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
+            [categoriaPublicada],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.category_seo WHERE categoria_id = $1',
+            [categoriaPublicada],
+          );
+          await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
+            categoriaPublicada,
+          ]);
+        }
         await admin.query('DELETE FROM taxonomy.inbox WHERE message_id=$1', [
           mensajeAjeno,
         ]);

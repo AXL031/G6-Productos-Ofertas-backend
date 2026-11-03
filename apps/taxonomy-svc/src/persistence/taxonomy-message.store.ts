@@ -151,7 +151,7 @@ export class TaxonomyMessageStore {
                  o.occurred_at::text AS cursor_fecha
           FROM taxonomy.outbox o
           WHERE o.published_at IS NULL
-            AND o.event_name IN ('taxonomy.master.deactivation.check.requested', 'taxonomy.master.deactivated', 'taxonomy.master.deactivation.rejected')
+            AND o.event_name IN ('taxonomy.category.updated', 'taxonomy.master.deactivation.check.requested', 'taxonomy.master.deactivated', 'taxonomy.master.deactivation.rejected')
             AND (${cursor?.fecha ?? null}::timestamptz IS NULL OR
                  (o.occurred_at, o.id) > (${cursor?.fecha ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
             AND NOT EXISTS (
