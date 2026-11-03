@@ -63,7 +63,7 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
     ['INACTIVA', 'INACTIVO'],
     ['BORRADOR', 'BORRADOR'],
   ])(
-    'maps variant state %s to %s without commercial eligibility',
+    'maps variant state %s to %s under an active parent',
     async (variantStatus, estado) => {
       const sample = {
         ...row(),
@@ -77,6 +77,46 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
       ).resolves.toMatchObject({ productos: [{ estado }], noEncontrados: [] });
     },
   );
+  it.each(['ACTIVO', 'INACTIVO', 'BORRADOR'])(
+    'D-G2-01 projects effective state under parent %s without mutating either entity',
+    async (productStatus) => {
+      for (const [variantStatus, expected] of [
+        ['ACTIVA', productStatus],
+        ['INACTIVA', 'INACTIVO'],
+        ['BORRADOR', 'BORRADOR'],
+      ]) {
+        const sample = {
+          ...row(),
+          variantId: 'variant',
+          productHasVariants: true,
+          productStatus,
+          variantStatus,
+        };
+        const before = { ...sample };
+        const result = await repositoryWith([sample]).physicalData([
+          sample.sku,
+        ]);
+        expect(result.productos[0].estado).toBe(expected);
+        expect(result.noEncontrados).toEqual([]);
+        expect(sample).toEqual(before);
+      }
+    },
+  );
+  it.each([
+    ['base'],
+    ['valid', 'base', 'missing'],
+    ['bad', 'base'],
+    ['base', 'bad'],
+  ])('D-G2-02 rejects a nonphysical base atomically in %j', async (...skus) => {
+    const rows = [
+      { ...row('base'), productHasVariants: true },
+      row('valid'),
+      { ...row('bad'), weight: null },
+    ];
+    await expect(repositoryWith(rows).physicalData(skus)).rejects.toMatchObject(
+      { status: 422, response: { code: 'SKU_INVALIDO' } },
+    );
+  });
   it.each([
     { weight: null },
     { weight: '0' },
@@ -111,7 +151,8 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
     async (state) => {
       const sample = {
         ...row(),
-        productStatus: state,
+        productStatus:
+          state === 'ACTIVA' || state === 'INACTIVA' ? 'ACTIVO' : state,
         variantStatus: state,
         variantId:
           state.endsWith('A') && state !== 'BORRADOR' ? 'variant' : null,

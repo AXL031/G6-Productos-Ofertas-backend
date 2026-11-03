@@ -3873,7 +3873,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         await queries.findVariant(randomUUID(), ready.variant_id),
       ).toBeNull();
       await expect(
-        queries.physicalData([ready.sku, parent.sku_base, draft.sku]),
+        queries.physicalData([ready.sku, draft.sku]),
       ).rejects.toMatchObject({
         status: 422,
         response: {
@@ -4139,6 +4139,260 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       expect((await requested(product.product_id)).length).toBe(2);
     });
 
+    it('OPEN-09-PROVIDER: signed service JWT → real Catalog HTTP → PostgreSQL TLS, effective states, integral batches, 422 and 503', async () => {
+      const service = mutationService(),
+        http = new CatalogGatewayHarness();
+      const expected = new Map<string, string>(),
+        parentIds: string[] = [],
+        childIds: string[] = [],
+        bases: string[] = [];
+      for (const state of ['ACTIVO', 'INACTIVO', 'BORRADOR']) {
+        const simple = await service.createProduct(
+          { ...createRequest(), skuBase: '000,/ñ-' + state + randomUUID() },
+          actor,
+        );
+        parentIds.push(simple.product_id);
+        expected.set(simple.sku_base, state);
+        if (state !== 'BORRADOR') {
+          await complete(simple.product_id);
+          await service.state(
+            simple.product_id,
+            undefined,
+            'activate',
+            {},
+            actor,
+          );
+          if (state === 'INACTIVO')
+            await service.state(
+              simple.product_id,
+              undefined,
+              'deactivate',
+              {},
+              actor,
+            );
+        }
+        const parent = await service.createProduct(createRequest(true), actor);
+        parentIds.push(parent.product_id);
+        bases.push(parent.sku_base);
+        const children = [];
+        for (const [index, ownState] of [
+          'ACTIVA',
+          'INACTIVA',
+          'BORRADOR',
+        ].entries()) {
+          const child = await service.createVariant(
+            parent.product_id,
+            {
+              sku: '000Var,/ñ-' + state + ownState + randomUUID(),
+              atributosIdentificadores: [
+                {
+                  caracteristica_id: 'size',
+                  nombre: 'Size',
+                  valor_id: String(index),
+                  valor: String(index),
+                },
+              ],
+              imagenUrl: 'https://example.test/g2-variant',
+              perfilFisico: fullProfile,
+            },
+            actor,
+          );
+          children.push(child);
+          childIds.push(child.variant_id);
+          expected.set(
+            child.sku,
+            ownState === 'ACTIVA'
+              ? state
+              : ownState === 'INACTIVA'
+                ? 'INACTIVO'
+                : 'BORRADOR',
+          );
+        }
+        await complete(parent.product_id);
+        for (const child of children.slice(0, 2))
+          await service.state(
+            parent.product_id,
+            child.variant_id,
+            'activate',
+            undefined,
+            actor,
+          );
+        await service.state(
+          parent.product_id,
+          children[1].variant_id,
+          'deactivate',
+          undefined,
+          actor,
+        );
+        if (state !== 'BORRADOR') {
+          await service.state(
+            parent.product_id,
+            undefined,
+            'activate',
+            {},
+            actor,
+          );
+          if (state === 'INACTIVO')
+            await service.state(
+              parent.product_id,
+              undefined,
+              'deactivate',
+              {},
+              actor,
+            );
+        }
+      }
+      const incomplete = await service.createProduct(
+        { ...createRequest(), perfilFisico: { pesoKg: 1 } },
+        actor,
+      );
+      const partial = await service.createVariant(
+        parentIds.at(-1)!,
+        {
+          sku: 'incomplete-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'partial',
+              valor: 'partial',
+            },
+          ],
+          imagenUrl: 'https://example.test/g2-partial',
+          perfilFisico: { pesoKg: 1 },
+        },
+        actor,
+      );
+      const snapshot = async () =>
+        database.read(async (db) => ({
+          parents: (await db.select().from(products)).filter((p) =>
+            parentIds.includes(p.id),
+          ),
+          children: (await db.select().from(variants)).filter((v) =>
+            childIds.includes(v.id),
+          ),
+        }));
+      const before = await snapshot();
+      await http.start(persistenceSettings);
+      const claims = {
+        tipo: 'servicio',
+        sub: 'modulo-despacho',
+        aud: 'api-productos',
+        scope: 'productos:fisicos:leer',
+        roles: undefined,
+      };
+      const bearer = http.token(claims),
+        path = '/productos/datos-fisicos/consulta';
+      const call = (skus: string[], token: string | null = bearer) =>
+        http.call('POST', path, { skus }, token, true);
+      const absent = Array.from(
+        { length: 100 - expected.size },
+        (_, i) => 'missing-' + i,
+      );
+      const skus = [...expected.keys(), ...absent];
+      const assertComplete = (result: Awaited<ReturnType<typeof call>>) => {
+        expect(result.status).toBe(200);
+        expect(result.correlation).toBe(http.correlation);
+        expect(result.type).toContain('application/json');
+        expect(result.body.noEncontrados).toEqual(absent);
+        expect(result.body.productos).toHaveLength(expected.size);
+        for (const item of result.body.productos as Array<{
+          sku: string;
+          estado: string;
+        }>)
+          expect(item).toEqual({
+            sku: item.sku,
+            estado: expected.get(item.sku),
+            ...fullProfile,
+            actualizadoEn: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T/),
+          });
+        const classified = [
+          ...result.body.productos.map((p: { sku: string }) => p.sku),
+          ...result.body.noEncontrados,
+        ];
+        expect(classified).toHaveLength(100);
+        expect(new Set(classified)).toEqual(new Set(skus));
+      };
+      try {
+        assertComplete(await call(skus));
+        for (const batch of [
+          [bases[0]],
+          [bases[1], ...skus.slice(0, 3)],
+          [incomplete.sku_base, bases[2], 'missing'],
+        ]) {
+          const result = await call(batch);
+          expect(result.status).toBe(422);
+          expect(result.type).toContain('application/problem+json');
+          expect(result.body.code).toBe('SKU_INVALIDO');
+          expect(result.body).not.toHaveProperty('productos');
+        }
+        const invalidProfile = await call([
+          skus[0],
+          incomplete.sku_base,
+          partial.sku,
+          'missing',
+        ]);
+        expect(invalidProfile.status).toBe(422);
+        expect(invalidProfile.body).toMatchObject({
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: { skusAfectados: [incomplete.sku_base, partial.sku] },
+          correlationId: http.correlation,
+        });
+        for (const batch of [[], [skus[0], skus[0]], [...skus, 'overflow']]) {
+          const result = await call(batch);
+          expect(result.status).toBe(422);
+          expect(result.body.code).toBe('SKU_INVALIDO');
+        }
+        expect((await call([skus[0]], null)).status).toBe(401);
+        for (const [patch, status] of [
+          [{ aud: 'other' }, 401],
+          [{ scope: 'catalogo:leer' }, 403],
+          [{ sub: 'modulo-productos' }, 403],
+        ] as const)
+          expect(
+            (await call([skus[0]], http.token({ ...claims, ...patch }))).status,
+          ).toBe(status);
+        const permissions = (grant: boolean) =>
+          command(
+            'docker',
+            [
+              'exec',
+              '-i',
+              container,
+              'psql',
+              '-U',
+              'postgres',
+              '-v',
+              'ON_ERROR_STOP=1',
+            ],
+            grant
+              ? 'GRANT SELECT ON catalog.sku_identity TO catalog_app;'
+              : 'REVOKE SELECT ON catalog.sku_identity FROM catalog_app;',
+          );
+        try {
+          // Actual PostgreSQL permission failure; no repository/provider replacement.
+          permissions(false);
+          const unavailable = await call(skus);
+          expect(unavailable.status).toBe(503);
+          expect(unavailable.type).toContain('application/problem+json');
+          expect(unavailable.body).toMatchObject({
+            code: 'SERVICIO_NO_DISPONIBLE',
+            status: 503,
+            correlationId: http.correlation,
+          });
+          expect(JSON.stringify(unavailable.body)).not.toMatch(
+            /SELECT|sku_identity|permission|password|catalog_app/,
+          );
+        } finally {
+          permissions(true);
+        }
+        assertComplete(await call(skus));
+        expect(await snapshot()).toEqual(before);
+      } finally {
+        await http.close();
+      }
+    }, 90000);
+
     it('OPEN-09: reads simple and variant physical profiles in all three states without mutation', async () => {
       const service = mutationService(),
         queries = new CatalogQueryRepository(database);
@@ -4292,11 +4546,16 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       });
       const physical = await queries.physicalData([
         simpleBody.skuBase,
-        parentBody.skuBase,
         child.sku,
         'missing',
       ]);
-      expect(physical.noEncontrados).toEqual([parentBody.skuBase, 'missing']);
+      expect(physical.noEncontrados).toEqual(['missing']);
+      await expect(
+        queries.physicalData([parentBody.skuBase, child.sku, 'missing']),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { code: 'SKU_INVALIDO' },
+      });
       expect(physical.productos).toEqual([
         expect.objectContaining({
           sku: simpleBody.skuBase,

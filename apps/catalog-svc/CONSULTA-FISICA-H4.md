@@ -31,48 +31,38 @@ seguridad, activación, elegibilidad comercial, stock, precio ni pedidos.
   Cada SKU vendible consultable o ausente se clasifica exactamente una vez.
   Se conserva una consulta SQL por lote, sin nuevas llamadas por SKU.
 
-Los dos casos siguientes siguen separados del alcance implementable. No se
-afirma conformidad integral para lotes que los incluyan hasta una decisión
-aprobada y su regresión correspondiente.
+Las dos decisiones siguientes fueron aprobadas explícitamente por Gabriel en
+esta sesión el 2026-11-03 y se implementan con sus regresiones. Esa autorización
+de implementación no acredita actualización del repositorio normativo, grant G7,
+despliegue ni prueba E2E con G2 real. No se modifican contratos compartidos aquí.
 
 ## D-G2-01 — variante ACTIVA con padre BORRADOR/INACTIVO
 
-**Propuesta, no decisión aplicada:** mantener estado de la entidad física:
-ACTIVA → ACTIVO, INACTIVA → INACTIVO, BORRADOR → BORRADOR. Es coherente con
-la descripción de DatosFisicosSku.estado y con SPEC-004: activar una variante
-no exige padre activo y desactivar al padre conserva estados individuales.
-Ese valor no prueba elegibilidad comercial. Para F-01, G2 necesitaría una fuente
-autorizada de elegibilidad efectiva o una regla bilateral explícita antes de
-inferir cotización elegible únicamente de ese estado.
+**Decisión aprobada e implementada:** proyección de estado efectivo en esta
+consulta. Variante ACTIVA con padre ACTIVO → ACTIVO; con padre INACTIVO →
+INACTIVO; con padre BORRADOR → BORRADOR. Variante INACTIVA → INACTIVO y variante
+BORRADOR → BORRADOR, cualquiera sea el estado del padre. Producto simple conserva
+su estado. No se modifican estados persistidos, activación ni elegibilidad de
+otras operaciones. La matriz de nueve combinaciones tiene regresiones.
 
-**Alternativa:** informar estado efectivo con precedencia del padre; limita la
-cotización, pero cambia la semántica de estado propio y puede representar una
-variante ACTIVA como BORRADOR/INACTIVO. Requiere aprobación bilateral y evaluar
-F-02, que admite despachos históricos bajo condiciones propias de G2.
-
-Compatibilidad: conservar enum no basta para aprobar un cambio semántico. Marco
-y G2 deben seleccionar regla y actualizar su evidencia normativa. Mientras tanto
-no se modifica la precedencia histórica ni se declara elegibilidad. Pruebas a
-aprobar: matriz padre ACTIVO/INACTIVO/BORRADOR × variante ACTIVA/INACTIVA/BORRADOR,
-perfil completo/incompleto y consumo F-01/F-02 sin mutaciones de activación.
+Así F-01 no interpreta como activa una variante bajo padre no activo. Para F-02,
+INACTIVO/BORRADOR sigue siendo información en un 200 con perfil válido: G6 no
+rechaza automáticamente esos SKU existentes. Las condiciones del pedido y la
+decisión logística siguen siendo de G2. El cambio es semántico aunque conserve
+campos y enum; Marco/G2 deben reflejar el acuerdo en su documentación normativa
+y comprobar compatibilidad del consumidor antes de acreditar integración externa.
 
 ## D-G2-02 — sku_base de producto con variantes
 
-**Propuesta, pendiente de aprobación:** rechazar el lote con 422 SKU_INVALIDO
+**Decisión aprobada e implementada:** rechazar el lote con 422 SKU_INVALIDO
 porque la entrada identifica un agregado existente, pero no una unidad física
 vendible consultable por esta operación. Reutiliza código existente y no inventa
-perfil. Debe aprobarse expresamente su semántica para distinguir invalidez de
-unidad física y ausencia de identidad, y acordar cómo identifica G2 la entrada.
-
-**Alternativa:** respuesta diferenciada para identidad existente no física;
-exige extensión/versionado contractual bilateral y adaptación del consumidor.
-No devolver medidas del hijo arbitrariamente ni sumar perfiles.
-
-El comportamiento histórico lo incluye en noEncontrados; se conserva únicamente
-hasta resolución, como brecha conocida, no como implementación de la semántica
-nueva. Marco/G2 son responsables de aprobar tratamiento y evidencia contractual.
-Entonces se implementarán regresiones de base sola y lote mixto, distinción
-frente a SKU ausente y prohibición de perfil padre según DEC-F-011.
+perfil. noEncontrados se reserva a identidades ausentes. La validación de base
+no física precede a la validación de perfiles del lote, independientemente del
+orden de entrada; no hay 200 parcial ni perfil padre inventado. Se prueban base
+sola, lote mixto, ausencia real y coexistencia con perfil incompleto. No se añaden
+códigos o detalles al contrato. Marco/G2 deben registrar la nueva semántica del
+422 y comprobar compatibilidad antes de acreditar integración externa.
 
 ## Lectura Bulk sku_variante → variant_id — BLOQUEADO_ESPECÍFICO
 
@@ -117,6 +107,15 @@ adaptador después del acuerdo, sin SQL entre schemas.
   para producto simple y variante en los tres estados, lote mixto de 100 SKU y
   422 con ambos perfiles incompletos. Taxonomy/preparaciones son fixtures.
   Docker ausente localmente; ejecución efectiva y CI por SHA se registran en PR.
+- OPEN-09-PROVIDER: JWT RS256/JWKS locales → HTTP real de Catalog → servicio y
+  repositorio reales → PostgreSQL 17/TLS. No se sustituyen guards, casos de uso
+  ni repositorio. Verifica 200 con 100 SKU íntegros, tres estados simples y nueve
+  combinaciones padre/variante; 422 SKU_INVALIDO por base no física, duplicados
+  y límites; 422 DATOS_FISICOS_INCOMPLETOS con ambos SKU afectados; negativos
+  401/403. Provoca un 503 real revocando SELECT únicamente al rol de fixture en
+  la base desechable, restaura permisos en finally y verifica recuperación 200.
+  Comprueba estados/versiones persistidos sin cambios. Los maestros y resultados
+  de preparación del dataset son fixtures explícitas, no servicios externos.
 
 Pruebas conjuntas G2↔G6 y autorización real: G7 debe conceder credenciales/grant
 modulo-despacho, aud api-productos, productos:fisicos:leer; G2 y Poma deben probar
