@@ -172,12 +172,14 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   private stopping = false;
   private paused = false;
   private connecting = false;
+  private enabled = false;
   private processing = Promise.resolve();
 
   constructor(private readonly repository: CombosRepository) {}
 
   async onModuleInit(): Promise<void> {
     if (process.env.COMBOS_AMQP_ENABLED !== 'true') return;
+    this.enabled = true;
     const url = process.env.COMBOS_AMQP_URL;
     if (!url) throw new Error('COMBOS_AMQP_URL_REQUIRED');
     let parsed: URL;
@@ -195,6 +197,17 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
     await this.connect(url);
   }
 
+  readinessStatus(): 'disabled' | 'ready' | 'not_ready' {
+    if (!this.enabled) return 'disabled';
+    return this.connection &&
+      this.channel &&
+      this.consumerTag &&
+      !this.paused &&
+      !this.stopping
+      ? 'ready'
+      : 'not_ready';
+  }
+
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
     await this.channel?.close().catch(() => undefined);
@@ -203,7 +216,15 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   private async connect(url: string): Promise<void> {
-    if (this.connecting || this.stopping || this.paused) return;
+    if (
+      this.connecting ||
+      this.stopping ||
+      this.paused ||
+      this.connection ||
+      this.channel ||
+      this.consumerTag
+    )
+      return;
     this.connecting = true;
     try {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -212,21 +233,42 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
             timeout: 2000,
             rejectUnauthorized: true,
           });
-          this.connection.on('error', () => undefined);
-          this.connection.on('close', () => {
+          const connection = this.connection;
+          connection.on('error', () => {
+            if (this.connection !== connection) return;
             this.channel = null;
             this.connection = null;
             this.consumerTag = null;
+          });
+          connection.on('close', () => {
+            if (this.connection === connection) {
+              this.channel = null;
+              this.connection = null;
+              this.consumerTag = null;
+            }
             if (!this.stopping) void this.connect(url);
           });
-          this.channel = await this.connection.createChannel();
-          this.channel.on('error', () => undefined);
-          this.channel.on('close', () => {
+          this.channel = await connection.createChannel();
+          const channel = this.channel;
+          channel.on('error', () => {
+            if (this.channel !== channel) return;
             this.channel = null;
             this.consumerTag = null;
+            void connection.close().catch(() => undefined);
           });
-          await this.channel.prefetch(20);
-          const result = await this.channel.consume(
+          channel.on('close', () => {
+            if (this.channel === channel) {
+              this.channel = null;
+              this.consumerTag = null;
+            }
+            if (!this.stopping) void connection.close().catch(() => undefined);
+          });
+          channel.on('cancel', (fields: { consumerTag: string }) => {
+            if (fields.consumerTag === this.consumerTag)
+              this.pause('SUBSCRIPTION_CANCELLED');
+          });
+          await channel.prefetch(20);
+          const result = await channel.consume(
             COMBOS_QUEUE,
             (message) => {
               if (!message || this.stopping || this.paused) return;
@@ -409,7 +451,14 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
       });
       if (this.channel) this.channel.ack(message);
       this.logDisposition(messageId, message.properties.correlationId, result);
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          event: 'conflict_disposition_failed',
+          message_id: safeLog(messageId),
+          code: safeErrorCode(error),
+        }),
+      );
       await this.retryOrPause(message, 'INBOX_CONFLICT_NOT_DURABLE');
     }
   }
@@ -456,6 +505,14 @@ function safeLog(value: string): string {
     })
     .join('')
     .slice(0, 128);
+}
+function safeErrorCode(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return 'UNKNOWN';
+  if ('code' in error && typeof error.code === 'string')
+    return error.code.slice(0, 64).replace(/[^A-Za-z0-9_.-]/g, '_');
+  if ('name' in error && typeof error.name === 'string')
+    return error.name.slice(0, 64).replace(/[^A-Za-z0-9_.-]/g, '_');
+  return 'UNKNOWN';
 }
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

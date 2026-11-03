@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
+import { promisify } from 'node:util';
 import amqp, { type ChannelModel } from 'amqplib';
 import { CombosEventConsumer } from '../src/messaging/combos-event-consumer.js';
 import { CombosDatabase } from '../src/persistence/combos.database.js';
@@ -20,6 +22,7 @@ const routes = [
   'catalog.sku.deactivated',
   'inventory.stock.changed',
 ];
+const execFileAsync = promisify(execFile);
 
 describe.skipIf(!enabled)(
   'Combos RabbitMQ + PostgreSQL isolated integration',
@@ -31,6 +34,7 @@ describe.skipIf(!enabled)(
     let consumer: CombosEventConsumer;
     let catalogServer: Server;
     let catalogUnavailable = false;
+    let catalogRequests = 0;
     let comboId: string;
     let itemIds: string[];
 
@@ -89,6 +93,7 @@ describe.skipIf(!enabled)(
 
     beforeAll(async () => {
       catalogServer = createServer((request, response) => {
+        catalogRequests += 1;
         if (catalogUnavailable) {
           response.writeHead(503, {
             'content-type': 'application/problem+json',
@@ -168,6 +173,15 @@ describe.skipIf(!enabled)(
       );
       consumer = new CombosEventConsumer(repository);
       await consumer.onModuleInit();
+      expect(consumer.readinessStatus()).toBe('ready');
+      await expect(
+        new CombosSvcService(database, repository).readiness(
+          consumer.readinessStatus(),
+        ),
+      ).resolves.toMatchObject({
+        status: 'ok',
+        dependencies: { postgres: 'ok', rabbitmq: 'ok' },
+      });
     }, 30000);
 
     afterAll(async () => {
@@ -333,11 +347,20 @@ describe.skipIf(!enabled)(
     }, 10000);
 
     it('maps product_id through Catalog context, including inactive SKUs, before durable ACK', async () => {
-      const eventId = await publish('catalog.product.deactivated', {
+      const changedAt = new Date().toISOString();
+      const occurredAt = new Date().toISOString();
+      const data = {
         product_id: 'product-1',
         product_version: 9,
-        changed_at: new Date().toISOString(),
-      });
+        changed_at: changedAt,
+      };
+      const eventId = await publish(
+        'catalog.product.deactivated',
+        {
+          ...data,
+        },
+        { occurredAt },
+      );
       await waitForInbox(eventId);
       const result = await database.query((client) =>
         client.query('SELECT result FROM combos.inbox WHERE message_id=$1', [
@@ -357,6 +380,42 @@ describe.skipIf(!enabled)(
         false,
         true,
       ]);
+
+      const requestsBeforeReplay = catalogRequests;
+      catalogUnavailable = true;
+      await publish('catalog.product.deactivated', data, {
+        messageId: eventId,
+        occurredAt,
+      });
+      await new Promise((resolve) => setTimeout(resolve, 700));
+      expect(catalogRequests).toBe(requestsBeforeReplay);
+      expect(consumer.readinessStatus()).toBe('ready');
+      const duplicates = await database.query((client) =>
+        client.query(
+          `SELECT count(*)::int AS count FROM combos.inbox
+           WHERE message_id=$1 AND handler='combos.catalog.product.deactivated'`,
+          [eventId],
+        ),
+      );
+      expect(duplicates.rows[0]?.count).toBe(1);
+      await publish(
+        'catalog.product.deactivated',
+        { ...data, product_version: 10 },
+        { messageId: eventId, occurredAt },
+      );
+      await waitForInbox(eventId, 5000, 'combos.invalid-event');
+      const conflict = await database.query((client) =>
+        client.query(
+          `SELECT payload->>'disposition' AS disposition FROM combos.inbox
+           WHERE message_id=$1 AND handler='combos.invalid-event'`,
+          [eventId],
+        ),
+      );
+      expect(conflict.rows[0]?.disposition).toBe(
+        'REJECTED_MESSAGE_ID_CONFLICT',
+      );
+      expect(catalogRequests).toBe(requestsBeforeReplay);
+      catalogUnavailable = false;
     }, 10000);
 
     it('serializes product mapping with component writes to close the discovery-to-commit race', async () => {
@@ -473,9 +532,78 @@ describe.skipIf(!enabled)(
       const started = Date.now();
       await unavailable.onModuleInit();
       expect(Date.now() - started).toBeLessThan(8000);
+      expect(unavailable.readinessStatus()).toBe('not_ready');
       await unavailable.onModuleDestroy();
       process.env.COMBOS_AMQP_URL = original;
     }, 10000);
+
+    it('reports not ready after a later broker disconnection and after bounded pause', async () => {
+      const container = process.env.COMBOS_TEST_RABBITMQ_CONTAINER;
+      if (!container) throw new Error('RABBITMQ_TEST_CONTAINER_REQUIRED');
+      const service = new CombosSvcService(database, repository);
+      await execFileAsync('docker', [
+        'exec',
+        '--user',
+        'rabbitmq',
+        container,
+        'rabbitmqctl',
+        'stop_app',
+      ]);
+      try {
+        const disconnectedDeadline = Date.now() + 8000;
+        while (
+          consumer.readinessStatus() === 'ready' &&
+          Date.now() < disconnectedDeadline
+        )
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        expect(consumer.readinessStatus()).toBe('not_ready');
+        await expect(
+          service.readiness(consumer.readinessStatus()),
+        ).resolves.toMatchObject({
+          status: 'error',
+          dependencies: { postgres: 'ok', rabbitmq: 'error' },
+        });
+      } finally {
+        await execFileAsync('docker', [
+          'exec',
+          '--user',
+          'rabbitmq',
+          container,
+          'rabbitmqctl',
+          'start_app',
+        ]);
+      }
+
+      const brokerDeadline = Date.now() + 15000;
+      let brokerReady = false;
+      while (Date.now() < brokerDeadline) {
+        try {
+          await execFileAsync('docker', [
+            'exec',
+            '--user',
+            'rabbitmq',
+            container,
+            'rabbitmq-diagnostics',
+            '-q',
+            'check_running',
+          ]);
+          brokerReady = true;
+          break;
+        } catch {
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+      }
+      expect(brokerReady).toBe(true);
+      expect(consumer.readinessStatus()).toBe('not_ready');
+
+      await consumer.onModuleDestroy();
+      consumer = new CombosEventConsumer(repository);
+      await consumer.onModuleInit();
+      await connection.close().catch(() => undefined);
+      connection = await amqp.connect(process.env.COMBOS_TEST_RABBITMQ_URL!);
+      publisher = await connection.createChannel();
+      expect(consumer.readinessStatus()).toBe('ready');
+    }, 30000);
 
     it('leaves an uncommitted delivery unacknowledged on PostgreSQL failure for redelivery after restart', async () => {
       await database.query((client) =>
@@ -498,6 +626,7 @@ describe.skipIf(!enabled)(
         updated_at: new Date().toISOString(),
       });
       await new Promise((resolve) => setTimeout(resolve, 900));
+      expect(consumer.readinessStatus()).toBe('not_ready');
       const before = await database.query((client) =>
         client.query(
           'SELECT count(*)::int AS count FROM combos.inbox WHERE message_id=$1',

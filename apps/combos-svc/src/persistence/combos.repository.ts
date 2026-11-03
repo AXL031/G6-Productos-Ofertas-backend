@@ -79,10 +79,24 @@ export class CombosRepository {
     return this.database.query(async (client) => {
       await client.query('BEGIN');
       try {
-        if (input.eventName === 'catalog.product.deactivated') {
+        const productDeactivation =
+          input.eventName === 'catalog.product.deactivated' &&
+          input.handler === 'combos.catalog.product.deactivated';
+        const skuDeactivation =
+          input.eventName === 'catalog.sku.deactivated' &&
+          input.handler === 'combos.catalog.sku.deactivated';
+        const stockChange =
+          input.eventName === 'inventory.stock.changed' &&
+          input.handler === 'combos.inventory.stock.changed';
+        if (productDeactivation) {
           await client.query('SELECT pg_advisory_xact_lock($1)', [
             COMPONENT_CATALOG_LOCK_KEY,
           ]);
+          const prior = await this.existingDisposition(client, input);
+          if (prior) {
+            await client.query('COMMIT');
+            return prior;
+          }
           if (!input.resolveProductSkus)
             throw new Error('PRODUCT_SKU_RESOLVER_REQUIRED');
           const candidates = await client.query(
@@ -91,7 +105,7 @@ export class CombosRepository {
           input.skus = await input.resolveProductSkus(
             candidates.rows.map((row) => String(row.sku)),
           );
-        } else if (input.eventName === 'catalog.sku.deactivated') {
+        } else if (skuDeactivation) {
           await client.query('SELECT pg_advisory_xact_lock($1)', [
             COMPONENT_CATALOG_LOCK_KEY,
           ]);
@@ -113,27 +127,13 @@ export class CombosRepository {
           ],
         );
         if (inserted.rowCount === 0) {
-          const existing = await client.query(
-            `SELECT 1 FROM combos.inbox
-             WHERE message_id = $1 AND handler = $2 AND event_name = $3
-               AND correlation_id = $4 AND operation_id IS NOT DISTINCT FROM $5
-               AND payload = $6::jsonb AND result = $7`,
-            [
-              input.messageId,
-              input.handler,
-              input.eventName,
-              input.correlationId,
-              input.operationId,
-              JSON.stringify(input.payload),
-              input.disposition,
-            ],
-          );
-          if (existing.rowCount === 0) throw new InboxMessageConflictError();
+          const duplicate = await this.existingDisposition(client, input);
+          if (!duplicate) throw new InboxMessageConflictError();
           await client.query('COMMIT');
-          return 'DUPLICATE';
+          return duplicate;
         }
 
-        if (input.eventName === 'catalog.product.deactivated' && input.skus) {
+        if (productDeactivation && input.skus) {
           await client.query(
             `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, catalog_observed_at)
@@ -148,7 +148,7 @@ export class CombosRepository {
           );
         }
 
-        if (input.eventName === 'catalog.sku.deactivated' && input.sku) {
+        if (skuDeactivation && input.sku) {
           await client.query(
             `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, catalog_observed_at)
@@ -163,7 +163,7 @@ export class CombosRepository {
           );
         }
 
-        if (input.eventName === 'inventory.stock.changed' && input.sku) {
+        if (stockChange && input.sku) {
           await client.query(
             `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, projected_available, inventory_observed_at)
@@ -185,6 +185,43 @@ export class CombosRepository {
         throw error;
       }
     });
+  }
+
+  private async existingDisposition(
+    client: import('pg').PoolClient,
+    input: {
+      messageId: string;
+      handler: string;
+      eventName: string;
+      correlationId: string;
+      operationId: string | null;
+      payload: Record<string, unknown>;
+      disposition: 'PROCESSED' | 'REJECTED_INVALID_EVENT';
+    },
+  ): Promise<'DUPLICATE' | null> {
+    const existing = await client.query(
+      `SELECT 1 FROM combos.inbox
+       WHERE message_id = $1 AND handler = $2`,
+      [input.messageId, input.handler],
+    );
+    if (existing.rowCount === 0) return null;
+    const identical = await client.query(
+      `SELECT 1 FROM combos.inbox
+       WHERE message_id = $1 AND handler = $2 AND event_name = $3
+         AND correlation_id = $4 AND operation_id IS NOT DISTINCT FROM $5
+         AND payload = $6::jsonb AND result = $7`,
+      [
+        input.messageId,
+        input.handler,
+        input.eventName,
+        input.correlationId,
+        input.operationId,
+        JSON.stringify(input.payload),
+        input.disposition,
+      ],
+    );
+    if (identical.rowCount === 0) throw new InboxMessageConflictError();
+    return 'DUPLICATE';
   }
 
   private throwIfUnavailable(error: unknown): never {

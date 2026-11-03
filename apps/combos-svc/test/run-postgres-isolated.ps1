@@ -1,4 +1,47 @@
+param([switch]$TestEnvironmentRestoration)
+
 $ErrorActionPreference = 'Stop'
+$environmentNames = @(
+  'COMBOS_TEST_EPHEMERAL', 'COMBOS_TEST_DATABASE_URL', 'COMBOS_TEST_CA',
+  'COMBOS_TEST_RABBITMQ_URL', 'COMBOS_TEST_RABBITMQ_CONTAINER',
+  'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD', 'PGHOST', 'PGSSLMODE', 'PGSSLROOTCERT'
+)
+$originalEnvironment = @{}
+$processEnvironment = [Environment]::GetEnvironmentVariables('Process')
+foreach ($name in $environmentNames) {
+  $originalEnvironment[$name] = @{
+    Defined = $processEnvironment.Contains($name)
+    Value = [Environment]::GetEnvironmentVariable($name, 'Process')
+  }
+}
+
+function Restore-HarnessEnvironment {
+  foreach ($name in $environmentNames) {
+    $original = $originalEnvironment[$name]
+    if ($original.Defined) { [Environment]::SetEnvironmentVariable($name, $original.Value, 'Process') }
+    else { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+  }
+}
+
+if ($TestEnvironmentRestoration) {
+  try {
+    foreach ($name in $environmentNames) { [Environment]::SetEnvironmentVariable($name, 'harness-restoration-test', 'Process') }
+    throw 'Simulated harness failure for environment restoration verification.'
+  }
+  catch { }
+  finally { Restore-HarnessEnvironment }
+  foreach ($name in $environmentNames) {
+    $actualDefined = [Environment]::GetEnvironmentVariables('Process').Contains($name)
+    $actualValue = [Environment]::GetEnvironmentVariable($name, 'Process')
+    $original = $originalEnvironment[$name]
+    if ($actualDefined -ne $original.Defined -or $actualValue -cne $original.Value) {
+      throw "La restauración del entorno falló para $name."
+    }
+  }
+  Write-Output 'ENV_RESTORATION_TEST: PASS'
+  exit 0
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $docsCandidate = if ($env:COMBOS_TEST_DOCS_ROOT) { $env:COMBOS_TEST_DOCS_ROOT } else { Join-Path $repoRoot '..\docs' }
 $docsRoot = (Resolve-Path $docsCandidate).Path
@@ -32,7 +75,7 @@ function Assert-ContainerRunning([string]$Name, [string]$Stage) {
 
 try {
   New-Item -ItemType Directory -Path $folder | Out-Null
-  & docker run --rm --volume "${folder}:/cert" alpine:3.22 sh -c "apk add --no-cache openssl >/dev/null && openssl req -x509 -nodes -newkey rsa:2048 -keyout /cert/server.key -out /cert/server.crt -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' && chmod 600 /cert/server.key && chown 70:70 /cert/server.key /cert/server.crt" | Out-Null
+  & docker run --rm --user root --volume "${folder}:/cert" --entrypoint sh rabbitmq:4.2.9-alpine -c "openssl req -x509 -nodes -newkey rsa:2048 -keyout /cert/server.key -out /cert/server.crt -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' && chmod 600 /cert/server.key && chown 70:70 /cert/server.key /cert/server.crt" | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'No se pudo generar el certificado TLS aislado.' }
   & docker run --detach --name $container --label "$harnessLabel=true" --label "com.taller-sw.g6.combos-harness-id=$id" --publish '127.0.0.1::5432' --volume "${folder}:/cert:ro" --env "POSTGRES_PASSWORD=$password" --env 'POSTGRES_DB=combos_test' postgres:17-alpine postgres -c ssl=on -c ssl_cert_file=/cert/server.crt -c ssl_key_file=/cert/server.key | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar PostgreSQL 17 desechable.' }
@@ -75,6 +118,7 @@ try {
   if ($LASTEXITCODE -ne 0) { throw "Falló la migración oficial en la instancia desechable (psql exit $LASTEXITCODE)." }
   $env:COMBOS_TEST_EPHEMERAL = '1'; $env:COMBOS_TEST_DATABASE_URL = 'harness-owned'; $env:COMBOS_TEST_CA = Join-Path $folder 'server.crt'
   $env:COMBOS_TEST_RABBITMQ_URL = "amqp://combos_test:${rabbitPassword}@127.0.0.1:${rabbitPort}/%2f"
+  $env:COMBOS_TEST_RABBITMQ_CONTAINER = $rabbitContainer
   $env:PGPORT = $port; $env:PGDATABASE = 'combos_test'; $env:PGUSER = 'postgres'; $env:PGPASSWORD = $password
   $env:PGHOST = '127.0.0.1'; $env:PGSSLMODE = 'verify-full'; $env:PGSSLROOTCERT = $env:COMBOS_TEST_CA
   Push-Location $repoRoot
@@ -103,6 +147,6 @@ finally {
     $ownerId = if ($LASTEXITCODE -eq 0) { ($labelsJson | ConvertFrom-Json).'com.taller-sw.g6.combos-harness-id' } else { '' }
     if ($ownerId -eq $id) { & docker rm --force $rabbitContainer | Out-Null }
   }
-  foreach ($name in @('COMBOS_TEST_EPHEMERAL','COMBOS_TEST_DATABASE_URL','COMBOS_TEST_CA','COMBOS_TEST_RABBITMQ_URL','PGPORT','PGDATABASE','PGUSER','PGPASSWORD','PGHOST','PGSSLMODE','PGSSLROOTCERT')) { Remove-Item "Env:$name" -ErrorAction SilentlyContinue }
+  Restore-HarnessEnvironment
   if (Test-Path -LiteralPath $folder) { Remove-Item -LiteralPath $folder -Recurse -Force }
 }
