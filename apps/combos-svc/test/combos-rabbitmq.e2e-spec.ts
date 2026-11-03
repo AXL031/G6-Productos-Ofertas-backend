@@ -2,7 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { promisify } from 'node:util';
+import { Test } from '@nestjs/testing';
 import amqp, { type ChannelModel } from 'amqplib';
+import type { Channel } from 'amqplib';
+import request from 'supertest';
+import { CombosSvcController } from '../src/combos-svc.controller.js';
 import { CombosEventConsumer } from '../src/messaging/combos-event-consumer.js';
 import { CombosDatabase } from '../src/persistence/combos.database.js';
 import {
@@ -686,6 +690,44 @@ describe.skipIf(!enabled)(
       expect(redelivery).toBeTruthy();
       if (redelivery) publisher.ack(redelivery);
       consumer = new CombosEventConsumer(repository);
+    }, 10000);
+
+    it('marks readiness not ready on broker cancellation without cancelling twice', async () => {
+      consumer = new CombosEventConsumer(repository);
+      await consumer.onModuleInit();
+      expect(consumer.readinessStatus()).toBe('ready');
+      const channel = Reflect.get(consumer, 'channel') as Channel | null;
+      if (!channel) throw new Error('CONSUMER_CHANNEL_REQUIRED');
+      const cancelSpy = vi.spyOn(channel, 'cancel');
+      const service = new CombosSvcService(database, repository);
+      const module = await Test.createTestingModule({
+        controllers: [CombosSvcController],
+        providers: [
+          { provide: CombosSvcService, useValue: service },
+          { provide: CombosEventConsumer, useValue: consumer },
+        ],
+      }).compile();
+      const app = module.createNestApplication();
+      await app.init();
+      try {
+        await publisher.deleteQueue(queue);
+        const deadline = Date.now() + 2000;
+        while (consumer.readinessStatus() === 'ready' && Date.now() < deadline)
+          await new Promise((resolve) => setTimeout(resolve, 10));
+        expect(consumer.readinessStatus()).toBe('not_ready');
+        await request(app.getHttpServer())
+          .get('/ready')
+          .expect(503)
+          .expect({
+            status: 'error',
+            service: 'combos-svc',
+            dependencies: { postgres: 'ok', rabbitmq: 'error' },
+          });
+        expect(cancelSpy).not.toHaveBeenCalled();
+      } finally {
+        await app.close();
+        cancelSpy.mockRestore();
+      }
     }, 10000);
   },
 );

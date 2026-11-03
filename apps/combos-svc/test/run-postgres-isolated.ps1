@@ -1,4 +1,9 @@
-param([switch]$TestEnvironmentRestoration)
+param(
+  [switch]$TestEnvironmentRestoration,
+  [ValidateSet('app.e2e-spec.ts', 'combos-postgres.e2e-spec.ts', 'combos-rabbitmq.e2e-spec.ts')]
+  [string]$TestFile,
+  [string]$TestNamePattern
+)
 
 $ErrorActionPreference = 'Stop'
 $environmentNames = @(
@@ -87,7 +92,7 @@ try {
   $portLine = & docker port $container '5432/tcp'
   if ($portLine -notmatch '^127\.0\.0\.1:(\d+)$') { throw 'PostgreSQL no quedó publicado en loopback.' }
   $port = $Matches[1]
-  & docker run --detach --name $rabbitContainer --label "$harnessLabel=true" --label "com.taller-sw.g6.combos-harness-id=$id" --publish '127.0.0.1::5672' --env 'RABBITMQ_DEFAULT_USER=combos_test' --env "RABBITMQ_DEFAULT_PASS=$rabbitPassword" rabbitmq:4.2.9-management-alpine | Out-Null
+  & docker run --detach --name $rabbitContainer --label "$harnessLabel=true" --label "com.taller-sw.g6.combos-harness-id=$id" --publish '127.0.0.1::5672' --env 'RABBITMQ_DEFAULT_USER=combos_test' --env "RABBITMQ_DEFAULT_PASS=$rabbitPassword" rabbitmq:4.2.9-alpine | Out-Null
   if ($LASTEXITCODE -ne 0) { throw 'No se pudo iniciar RabbitMQ 4.2.9 desechable.' }
   $rabbitStarted = $true
   $rabbitReady = $false
@@ -122,7 +127,10 @@ try {
   $env:PGPORT = $port; $env:PGDATABASE = 'combos_test'; $env:PGUSER = 'postgres'; $env:PGPASSWORD = $password
   $env:PGHOST = '127.0.0.1'; $env:PGSSLMODE = 'verify-full'; $env:PGSSLROOTCERT = $env:COMBOS_TEST_CA
   Push-Location $repoRoot
-  try { & npm.cmd run test:e2e -- apps/combos-svc --maxWorkers=1 --no-file-parallelism; if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' } }
+  $testTarget = if ($TestFile) { "apps/combos-svc/test/$TestFile" } else { 'apps/combos-svc' }
+  $testArguments = @($testTarget, '--maxWorkers=1', '--no-file-parallelism')
+  if ($TestNamePattern) { $testArguments += @('--testNamePattern', $TestNamePattern) }
+  try { & npm.cmd run test:e2e -- @testArguments; if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' } }
   finally { Pop-Location }
 } catch {
   Write-Host "HARNESS_FAILURE: $($_.Exception.Message)"

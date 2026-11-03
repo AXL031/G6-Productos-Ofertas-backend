@@ -265,13 +265,17 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
           });
           channel.on('cancel', (fields: { consumerTag: string }) => {
             if (fields.consumerTag === this.consumerTag)
-              this.pause('SUBSCRIPTION_CANCELLED');
+              this.pause('SUBSCRIPTION_CANCELLED', false);
           });
           await channel.prefetch(20);
           const result = await channel.consume(
             COMBOS_QUEUE,
             (message) => {
-              if (!message || this.stopping || this.paused) return;
+              if (!message) {
+                this.pause('SUBSCRIPTION_CANCELLED', false);
+                return;
+              }
+              if (this.stopping || this.paused) return;
               this.processing = this.processing.then(() =>
                 this.handle(message),
               );
@@ -478,14 +482,15 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private pause(code: string): void {
+  private pause(code: string, cancelSubscription = true): void {
     if (this.paused) return;
     this.paused = true;
     this.logger.warn(JSON.stringify({ event: 'consumer_paused', code }));
     const channel = this.channel;
     const tag = this.consumerTag;
     this.consumerTag = null;
-    if (channel && tag) void channel.cancel(tag).catch(() => undefined);
+    if (cancelSubscription && channel && tag)
+      void channel.cancel(tag).catch(() => undefined);
   }
 
   private async closeTransport(): Promise<void> {
