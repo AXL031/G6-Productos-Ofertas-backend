@@ -55,6 +55,7 @@ describe('Bulk HTTP import routes (isolated)', () => {
       },
     ];
     const imports = {
+      assertImportDependencies: vi.fn(),
       receiveImport: vi.fn().mockResolvedValue({ batch }),
       getSnapshot: vi.fn().mockResolvedValue({
         batch: {

@@ -19,10 +19,7 @@ import type { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
-import {
-  assertImportDependencies,
-  BulkImportService,
-} from './bulk-import.service.js';
+import { BulkImportService } from './bulk-import.service.js';
 import { BulkStorageService } from './storage/bulk-storage.service.js';
 import { BulkUserBearerGuard } from './auth/bulk-user-bearer.guard.js';
 import { BulkExportService } from './bulk-export.service.js';
@@ -130,12 +127,12 @@ export class BulkSvcController {
               .digest('hex'),
           );
     const parsed = parseBulkTemplate(file.buffer, format);
-    assertImportDependencies(parsed);
     const batchId = uuidFromDigest(
       createHash('sha256')
         .update(`${correlationId}:${contentHash}`)
         .digest('hex'),
     );
+    await this.imports.assertImportDependencies(parsed, batchId);
     const contentRef = await this.storage.put(
       file.buffer,
       file.mimetype,

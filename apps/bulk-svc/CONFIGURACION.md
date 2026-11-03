@@ -8,6 +8,7 @@
 | `BULK_SVC_PORT` | Puerto HTTP; tiene prioridad sobre `PORT`. |
 | `PORT` | Puerto alternativo y valor compatible con Compose (`3008`). |
 | `BULK_SVC_HOST` | Opcional. Solo admite `127.0.0.1` o `0.0.0.0`. |
+| `BULK_CATALOG_COMMAND_V2_ENABLED` | Opcional; solo admite `true` o `false`. Por defecto `false`. Habilita la emisión de `catalog.bulk.upsert.requested` schema v2 para ACTUALIZACION de variantes mediante `rows[].sku_variante`. Mantener desactivada hasta contar con Catalog compatible y prueba conjunta satisfactoria. |
 | `DATABASE_URL` | Opcional para conservar el smoke de liveness de CI. Si se define, debe ser una URL PostgreSQL válida y segura. |
 | `PGSSLMODE` | Opcional si `DATABASE_URL` ya contiene `sslmode`; ambos valores deben coincidir. PostgreSQL remoto exige `verify-full`. |
 | `PGSSLROOTCERT` | CA PostgreSQL opcional para conexiones no productivas con confianza configurada y requerida para PostgreSQL remoto en production. Debe ser un archivo PEM legible. |

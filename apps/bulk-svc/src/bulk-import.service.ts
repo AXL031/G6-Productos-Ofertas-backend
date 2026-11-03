@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
@@ -17,13 +17,20 @@ import {
 } from './domain/bulk.validation.js';
 import { BulkPersistenceError } from './persistence/bulk.persistence.errors.js';
 import {
+  BULK_ENVIRONMENT,
+  type BulkEnvironment,
+} from './config/bulk-environment.js';
+import {
   BulkPersistenceRepository,
   type DomainResultInput,
 } from './persistence/bulk.repository.js';
 
 @Injectable()
 export class BulkImportService {
-  constructor(private readonly repository: BulkPersistenceRepository) {}
+  constructor(
+    private readonly repository: BulkPersistenceRepository,
+    @Inject(BULK_ENVIRONMENT) private readonly environment: BulkEnvironment,
+  ) {}
 
   async receiveImport(input: {
     bytes: Buffer;
@@ -49,7 +56,11 @@ export class BulkImportService {
         return { ...row, rowId, rowOperationId: rowId };
       }),
     };
-    assertImportDependencies(parsed);
+    await this.assertImportDependencies(parsed, batchId);
+    const commandV2 =
+      this.environment.catalogCommandV2Enabled &&
+      parsed.mode === 'ACTUALIZACION' &&
+      parsed.rows.some((row) => row.variant !== null);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
       rowId: row.rowId,
       productId: row.productId,
@@ -72,6 +83,7 @@ export class BulkImportService {
       templateVersion: parsed.templateVersion,
       rows,
       intentRows: parsed.rows,
+      catalogCommandVersion: commandV2 ? 2 : 1,
     });
     return { ...result, parsed };
   }
@@ -100,6 +112,7 @@ export class BulkImportService {
     templateVersion: number;
     rows: NormalizedBulkRow[];
     intentRows?: unknown[];
+    catalogCommandVersion?: 1 | 2;
   }) {
     const normalized = validateBulkImport(input);
     const uuid =
@@ -134,6 +147,10 @@ export class BulkImportService {
         product: row.product as Record<string, unknown>,
         variant_id: typeof row.variantId === 'string' ? row.variantId : null,
         variant: (row.variant as Record<string, unknown> | null) ?? null,
+        ...(input.catalogCommandVersion === 2 &&
+        typeof row.skuVariant === 'string'
+          ? { sku_variante: row.skuVariant }
+          : {}),
       } satisfies CatalogBulkRow;
     });
     let priorAdmission: Record<string, unknown> | null;
@@ -157,6 +174,7 @@ export class BulkImportService {
             batchId: input.batchId,
             correlationId: input.correlationId,
             rows: catalogRows,
+            schemaVersion: input.catalogCommandVersion ?? 1,
             occurredAt: new Date(),
           })
         : [];
@@ -225,6 +243,27 @@ export class BulkImportService {
     }
   }
 
+  async assertImportDependencies(
+    parsed: ReturnType<typeof parseBulkTemplate>,
+    batchId?: string,
+  ): Promise<void> {
+    if (
+      this.environment.catalogCommandV2Enabled ||
+      parsed.mode !== 'ACTUALIZACION' ||
+      !parsed.rows.some((row) => row.variant !== null)
+    ) {
+      return;
+    }
+    if (batchId) {
+      try {
+        if (await this.repository.findImportAdmissionIntent(batchId)) return;
+      } catch (error) {
+        throw mapBulkPersistenceError(error);
+      }
+    }
+    assertImportDependencies(parsed, false);
+  }
+
   async resumeBatch(batchId: string) {
     try {
       return await this.repository.requeueBatch(batchId);
@@ -252,14 +291,16 @@ export class BulkImportService {
 
 export function assertImportDependencies(
   parsed: ReturnType<typeof parseBulkTemplate>,
+  catalogCommandV2Enabled = false,
 ): void {
   if (
+    !catalogCommandV2Enabled &&
     parsed.mode === 'ACTUALIZACION' &&
     parsed.rows.some((row) => row.variant !== null)
   ) {
     throw new BulkDomainError(
       'DEPENDENCY_PENDING',
-      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere resolver sku_variante a variant_id mediante la lectura autorizada de Catalog.',
+      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere BULK_CATALOG_COMMAND_V2_ENABLED=true para emitir sku_variante al consumidor compatible de Catalog.',
     );
   }
 }

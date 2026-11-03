@@ -14,6 +14,14 @@ const row = (n: number, sku: string, text = '') => ({
   variant: null,
 });
 
+const updateVariant = (n: number, skuBase: string, skuVariant: string) => ({
+  ...row(n, skuBase),
+  producto_id: 'product-1',
+  product: { catalogVersion: 3 },
+  variant: { catalogVersion: 2 },
+  sku_variante: skuVariant,
+});
+
 describe('Catalog bulk upsert command construction', () => {
   it('keeps contiguous sku families in one chunk and identities stable on retry', () => {
     const input = {
@@ -115,6 +123,57 @@ describe('Catalog bulk upsert command construction', () => {
     });
     expect(Date.parse(command!.envelope.occurred_at)).toBeGreaterThan(
       Date.parse('2000-01-01T00:00:00.000Z'),
+    );
+  });
+
+  it('preserves the exact v1 row shape and emits opaque SKU only as a v2 selector', () => {
+    const [legacy] = buildCatalogBulkCommands({
+      batchId: 'batch-v1',
+      correlationId: 'correlation-v1',
+      rows: [updateVariant(0, 'BASE', '000, ñ SKU')],
+      occurredAt: new Date('2026-11-03T00:00:00.000Z'),
+    });
+    expect(legacy!.envelope.schema_version).toBe(1);
+    expect(legacy!.envelope.data.rows[0]).not.toHaveProperty('sku_variante');
+
+    const input = {
+      batchId: 'batch-v2',
+      correlationId: 'correlation-v2',
+      rows: [updateVariant(0, 'BASE', '000, ñ SKU')],
+      schemaVersion: 2 as const,
+      occurredAt: new Date('2026-11-03T00:00:00.000Z'),
+    };
+    const [command] = buildCatalogBulkCommands(input);
+    const [retry] = buildCatalogBulkCommands(input);
+    expect(command).toEqual(retry);
+    expect(command!.envelope.schema_version).toBe(2);
+    expect(command!.envelope.data.template_version).toBe(2);
+    expect(command!.envelope.data.rows[0]).toMatchObject({
+      variant_id: null,
+      sku_variante: '000, ñ SKU',
+      product: { catalogVersion: 3 },
+      variant: { catalogVersion: 2 },
+    });
+    expect(command!.envelope.data.rows[0]!.variant).not.toHaveProperty('sku');
+  });
+
+  it('rejects invalid v2 shapes and keeps v2 serialization inside the envelope limit', () => {
+    expect(() =>
+      buildCatalogBulkCommands({
+        batchId: 'batch-v2-invalid',
+        correlationId: 'correlation-v2-invalid',
+        rows: [row(0, 'BASE')],
+        schemaVersion: 2,
+      }),
+    ).toThrow(/schema_version 2/);
+    const [command] = buildCatalogBulkCommands({
+      batchId: 'batch-v2-size',
+      correlationId: 'correlation-v2-size',
+      rows: [updateVariant(0, 'BASE', 'SKU'.repeat(100))],
+      schemaVersion: 2,
+    });
+    expect(Buffer.byteLength(command!.serialized, 'utf8')).toBeLessThanOrEqual(
+      CATALOG_BULK_UPSERT_MAX_ENVELOPE_BYTES,
     );
   });
 
