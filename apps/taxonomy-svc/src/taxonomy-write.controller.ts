@@ -152,19 +152,21 @@ export class TaxonomyWriteController {
       (crear && (typeof input.nombre !== 'string' || !input.nombre.trim())) ||
       (input.nombre !== undefined &&
         (typeof input.nombre !== 'string' || !input.nombre.trim())) ||
-      (input.descripcion !== undefined &&
-        typeof input.descripcion !== 'string') ||
-      (input.paisOrigenIso !== undefined &&
+      (input.descripcion != null && typeof input.descripcion !== 'string') ||
+      (input.paisOrigenIso != null &&
         (typeof input.paisOrigenIso !== 'string' ||
           (input.paisOrigenIso !== '' && !esPaisIso(input.paisOrigenIso)))) ||
-      (input.version !== undefined &&
+      (input.version != null &&
         (typeof input.version !== 'string' ||
           !/^\d+$/.test(input.version) ||
           !Number.isSafeInteger(Number(input.version))))
     )
       throw ProblemDetailsException.validacion('Datos de marca inválidos.');
     if (crear || file) validarLogo(file);
-    if (input.logo !== undefined && (input.logo !== '' || crear || file))
+    if (
+      input.logo !== undefined &&
+      ((input.logo !== '' && input.logo !== null) || crear || file)
+    )
       throw ProblemDetailsException.validacion('Campo logo inválido.');
     const url = input.logoUrl ?? input.logo_url;
     if (url !== undefined && (typeof url !== 'string' || !url.trim()))
@@ -185,14 +187,18 @@ export class TaxonomyWriteController {
           'logoUrl debe ser una URL HTTP(S) válida.',
         );
       }
-    } else if ((crear && file) || (!crear && (input.logo === '' || file)))
+    } else if (
+      (crear && file) ||
+      (!crear && (input.logo === '' || input.logo === null || file))
+    )
       logoUrl = null;
     return {
       ...(typeof input.nombre === 'string' ? { nombre: input.nombre } : {}),
-      ...(typeof input.descripcion === 'string'
+      ...(typeof input.descripcion === 'string' || input.descripcion === null
         ? { descripcion: input.descripcion === '' ? null : input.descripcion }
         : {}),
-      ...(typeof input.paisOrigenIso === 'string'
+      ...(typeof input.paisOrigenIso === 'string' ||
+      input.paisOrigenIso === null
         ? {
             paisOrigenIso:
               input.paisOrigenIso === '' ? null : input.paisOrigenIso,

@@ -332,6 +332,7 @@ import { CategoryReactivationService } from './domain/category-reactivation.serv
 import { CategoryCreateService } from './domain/category-create.service.js';
 import { CategoryUpdateService } from './domain/category-update.service.js';
 import { BrandWriteService } from './domain/brand-write.service.js';
+import { TaxonomyWriteController } from './taxonomy-write.controller.js';
 
 // Verifies actual Nest guard, JWT signature, JWKS and problem responses.
 describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
@@ -644,6 +645,24 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       })
       .expect(413);
     expect(tooLarge.body.code).toBe('LOGO_EXCEDE_LIMITE');
+  });
+  it('propaga nulos explícitos de campos opcionales al actualizar marca', async () => {
+    const controller = app.get(TaxonomyWriteController);
+    await controller.actualizarMarca(
+      '11111111-1111-4111-8111-111111111111',
+      { descripcion: null, paisOrigenIso: null, logo: null },
+      'multipart/form-data; boundary=test',
+      undefined,
+      undefined,
+    );
+    expect(brandWrite.actualizar).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({
+        descripcion: null,
+        paisOrigenIso: null,
+        logoUrl: null,
+      }),
+    );
   });
   it('crearCategoria exige JWT humano y valida el slug confirmado', async () => {
     const path = '/api/v1/categorias';
