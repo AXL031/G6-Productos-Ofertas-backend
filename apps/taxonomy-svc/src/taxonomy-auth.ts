@@ -12,6 +12,20 @@ import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
 
 export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
+export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
+export function readTaxonomyDemoConfig(
+  env: Readonly<NodeJS.ProcessEnv>,
+): boolean {
+  const flag = env.ALLOW_DEMO_UNAUTHENTICATED;
+  if (flag === undefined || flag === 'false') return false;
+  if (
+    flag !== 'true' ||
+    !['test', 'development'].includes(env.NODE_ENV ?? '')
+  ) {
+    throw new Error('Configuración de demo Taxonomy inválida');
+  }
+  return true;
+}
 const SECURITY_AUDIENCE = 'api-productos';
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -344,11 +358,24 @@ export class TaxonomyTokenVerifier {
 
 @Injectable()
 export class TaxonomyAuthGuard implements CanActivate {
-  constructor(private readonly verifier: TaxonomyTokenVerifier) {}
+  constructor(
+    private readonly verifier: TaxonomyTokenVerifier,
+    @Inject(TAXONOMY_DEMO_ENABLED) private readonly demoEnabled: boolean,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
+    const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
+    if (
+      this.demoEnabled &&
+      authorization === undefined &&
+      request.method === 'GET' &&
+      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
+      (peer === '127.0.0.1' || peer === '::1')
+    ) {
+      return true;
+    }
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);

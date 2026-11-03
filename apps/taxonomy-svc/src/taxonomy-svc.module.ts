@@ -17,6 +17,8 @@ import {
   TaxonomyAuthGuard,
   TaxonomyTokenVerifier,
   readTaxonomySecurityConfig,
+  TAXONOMY_DEMO_ENABLED,
+  readTaxonomyDemoConfig,
 } from './taxonomy-auth.js';
 
 export interface OpcionesModuloTaxonomy {
@@ -35,6 +37,10 @@ export interface OpcionesModuloTaxonomy {
     TaxonomyAuthGuard,
     TaxonomyTokenVerifier,
     {
+      provide: TAXONOMY_DEMO_ENABLED,
+      useFactory: () => readTaxonomyDemoConfig(process.env),
+    },
+    {
       provide: TAXONOMY_SECURITY_CONFIG,
       useFactory: () => readTaxonomySecurityConfig(process.env),
     },
@@ -50,6 +56,10 @@ export class TaxonomySvcModule {
     return {
       module: TaxonomySvcModule,
       providers: [
+        {
+          provide: TAXONOMY_DEMO_ENABLED,
+          useValue: readTaxonomyDemoConfig(env),
+        },
         {
           provide: TAXONOMY_SECURITY_CONFIG,
           useValue: readTaxonomySecurityConfig(env),
@@ -69,6 +79,10 @@ export class TaxonomySvcModule {
         module: TaxonomySvcModule,
         providers: [
           {
+            provide: TAXONOMY_DEMO_ENABLED,
+            useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
+          },
+          {
             provide: TAXONOMY_SECURITY_CONFIG,
             useValue: readTaxonomySecurityConfig(opciones.env ?? process.env),
           },
@@ -83,6 +97,10 @@ export class TaxonomySvcModule {
     return {
       module: TaxonomySvcModule,
       providers: [
+        {
+          provide: TAXONOMY_DEMO_ENABLED,
+          useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
+        },
         proveedorDeRepositorio(opciones.databaseUrl),
         {
           provide: TAXONOMY_SECURITY_CONFIG,

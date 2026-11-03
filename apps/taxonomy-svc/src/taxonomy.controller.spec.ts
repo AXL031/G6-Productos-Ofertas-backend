@@ -10,9 +10,64 @@ import type {
 } from './taxonomy.repository.js';
 import { UnconfiguredTaxonomyRepository } from './unconfigured-taxonomy.repository.js';
 import { RepositorioPrueba } from '../test/repositorio-prueba.js';
-import { TaxonomyTokenVerifier } from './taxonomy-auth.js';
+import {
+  TaxonomyTokenVerifier,
+  readTaxonomySecurityConfig,
+  readTaxonomyDemoConfig,
+  TAXONOMY_DEMO_ENABLED,
+  TaxonomyAuthGuard,
+} from './taxonomy-auth.js';
 
 const CORRELACION_VALIDA = '0c0d092e-6192-47c1-8d18-5ed0e2aa4518';
+
+describe('configuración de Seguridad de Taxonomy', () => {
+  it('sin configuración no habilita autenticación alternativa', () => {
+    expect(readTaxonomySecurityConfig({})).toBeUndefined();
+  });
+
+  it('rechaza configuración incompleta de issuer y JWKS', () => {
+    expect(() =>
+      readTaxonomySecurityConfig({ SECURITY_ISSUER: 'https://issuer.example' }),
+    ).toThrow();
+  });
+  it('activa demo solo explícitamente en test o desarrollo', () => {
+    expect(readTaxonomyDemoConfig({ NODE_ENV: 'test' })).toBe(false);
+    expect(
+      readTaxonomyDemoConfig({
+        NODE_ENV: 'test',
+        ALLOW_DEMO_UNAUTHENTICATED: 'true',
+      }),
+    ).toBe(true);
+    expect(() =>
+      readTaxonomyDemoConfig({
+        NODE_ENV: 'production',
+        ALLOW_DEMO_UNAUTHENTICATED: 'true',
+      }),
+    ).toThrow();
+    expect(() =>
+      readTaxonomyDemoConfig({
+        NODE_ENV: 'test',
+        ALLOW_DEMO_UNAUTHENTICATED: 'yes',
+      }),
+    ).toThrow();
+  });
+  it('rechaza demo desde un par TCP que no es loopback', async () => {
+    const guard = new TaxonomyAuthGuard({} as TaxonomyTokenVerifier, true);
+    const context = {
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: {},
+          method: 'GET',
+          path: '/api/v1/categorias',
+          socket: { remoteAddress: '192.0.2.1' },
+        }),
+      }),
+    } as unknown as import('@nestjs/common').ExecutionContext;
+    await expect(guard.canActivate(context)).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+});
 
 const CATEGORIAS: CategoriaRow[] = [
   {
@@ -62,6 +117,7 @@ async function crearModulo(
     providers: [
       TaxonomySvcService,
       { provide: TaxonomyTokenVerifier, useValue: {} },
+      { provide: TAXONOMY_DEMO_ENABLED, useValue: false },
       { provide: TAXONOMY_REPOSITORY, useValue: repositorio },
     ],
   }).compile();
@@ -73,6 +129,7 @@ async function crearModuloSinFuente(): Promise<TestingModule> {
     providers: [
       TaxonomySvcService,
       { provide: TaxonomyTokenVerifier, useValue: {} },
+      { provide: TAXONOMY_DEMO_ENABLED, useValue: false },
       {
         provide: TAXONOMY_REPOSITORY,
         useClass: UnconfiguredTaxonomyRepository,
@@ -273,6 +330,7 @@ import { ProblemDetailsFilter } from './errors/problem-details.filter.js';
 describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   let server: Server;
   let app: INestApplication;
+  let demoApp: INestApplication;
   let origin: string;
   const issuer = 'https://security.example.test';
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -353,13 +411,56 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     app = module.createNestApplication();
     app.useGlobalFilters(new ProblemDetailsFilter());
     await app.init();
+    const demoModule = await Test.createTestingModule({
+      imports: [TaxonomySvcModule],
+    })
+      .overrideProvider(TAXONOMY_SECURITY_CONFIG)
+      .useValue({
+        issuer,
+        discoveryUrl: origin + '/discovery',
+        jwksUrl: origin + '/jwks',
+      })
+      .overrideProvider(TAXONOMY_DEMO_ENABLED)
+      .useValue(true)
+      .overrideProvider(TAXONOMY_REPOSITORY)
+      .useValue(new RepositorioPrueba())
+      .compile();
+    demoApp = demoModule.createNestApplication();
+    await demoApp.init();
   });
   afterAll(async () => {
     await app?.close();
+    await demoApp?.close();
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
   });
+  it.each(['categorias', 'marcas'])(
+    'demo local restringida valida solicitudes a %s',
+    async (path) => {
+      const url = '/api/v1/' + path;
+      await request(demoApp.getHttpServer()).get(url).expect(200);
+      await request(demoApp.getHttpServer())
+        .get(url)
+        .set('Authorization', 'Bearer ' + token())
+        .expect(200);
+      await request(demoApp.getHttpServer())
+        .get(url)
+        .set('Authorization', 'Bearer invalid')
+        .expect(401);
+      await request(demoApp.getHttpServer())
+        .get(url)
+        .set('Authorization', 'Bearer ' + token({ scope: 'otro' }))
+        .expect(403);
+      await request(demoApp.getHttpServer())
+        .get(url + '?pagina=1')
+        .expect(400);
+      await request(demoApp.getHttpServer()).post(url).expect(404);
+      await request(demoApp.getHttpServer())
+        .get(url + '/desconocido')
+        .expect(404);
+    },
+  );
   it.each([
     ['categorias', 'categories'],
     ['marcas', 'brands'],

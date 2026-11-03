@@ -6,6 +6,8 @@ Microservicio de taxonomía (categorías y marcas) del backend G6.
 
 `listarCategorias` y `listarMarcas` consultan registros activos del esquema propio. OpenAPI 0.6.0-rc.2 exige `serviceBearer`, audiencia `api-productos` y scope `catalogo:leer` para ambas operaciones. El guard valida JWT de servicio con firma RS256 mediante discovery y JWKS, emisor, caducidad, audiencia y scope; responde 401 para credenciales inválidas, 403 ante scope insuficiente y 503 cuando Seguridad no está disponible. Configure `SECURITY_ISSUER`, `SECURITY_DISCOVERY_URL` y `SECURITY_JWKS_URL` juntos; sin configuración el acceso autenticado falla cerrado. El registro y grant del scope en Seguridad siguen pendientes. Las pruebas locales de lectura no acreditan autenticación, homologación externa ni despliegue.
 
+El modo demo local es optativo y reversible: `ALLOW_DEMO_UNAUTHENTICATED=true` solo se acepta con `NODE_ENV=test` o `development`, y permite únicamente GET `/api/v1/categorias` y `/api/v1/marcas` sin Authorization desde un par TCP de loopback. Un Authorization presente siempre sigue el guard JWT. No se confía en cabeceras de IP o identidad. Este límite no habilita conexiones entre contenedores ni acredita el aislamiento Gateway/Oracle exigido por la política H4; estas topologías requieren coordinación y evidencia antes de ampliar el acceso.
+
 ## Variables de entorno
 
 El servicio valida la configuración en el arranque y falla cerrado (`fail-closed`): si falta o es inválida alguna variable requerida, no inicia. Nunca imprimir ni registrar valores reales; las credenciales se enmascaran en los logs.
