@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ConsumeMessage } from 'amqplib';
-import type { TaxonomyMessageStore } from '../persistence/taxonomy-message.store.js';
+import {
+  parseChecked,
+  TaxonomyMessageStore,
+} from '../persistence/taxonomy-message.store.js';
 import { leerAmqp, TaxonomyAmqpRuntime } from './taxonomy-amqp.runtime.js';
 
 const mocks = vi.hoisted(() => ({ connect: vi.fn() }));
@@ -89,6 +92,35 @@ afterEach(() => {
 });
 
 describe('Taxonomy AMQP', () => {
+  it.each([
+    'PRODUCT_TYPE',
+    'CHARACTERISTIC_VALUE',
+    'PRODUCT_TYPE_CHARACTERISTIC',
+  ])(
+    'reconoce %s sin aplicar efectos antes de implementar su dominio',
+    async (entityType) => {
+      const checked = parseChecked({
+        ...envelope,
+        data: {
+          ...envelope.data,
+          entity_type: entityType,
+          ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+            ? {
+                tipo_producto_id: envelope.data.entity_id,
+                caracteristica_id: envelope.data.entity_id,
+              }
+            : {}),
+        },
+      });
+      const store = new TaxonomyMessageStore(
+        {} as ConstructorParameters<typeof TaxonomyMessageStore>[0],
+        {} as ConstructorParameters<typeof TaxonomyMessageStore>[1],
+      );
+      await expect(store.consumir(checked)).rejects.toThrow(
+        'UNSUPPORTED_ENTITY',
+      );
+    },
+  );
   it('valida configuración sin exponer credenciales', () => {
     expect(leerAmqp({})).toBeUndefined();
     expect(() =>
