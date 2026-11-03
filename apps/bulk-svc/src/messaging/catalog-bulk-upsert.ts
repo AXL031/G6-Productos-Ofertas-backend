@@ -148,11 +148,10 @@ function makeEnvelope(
   if (
     input.schemaVersion === 2 &&
     (mode !== 'ACTUALIZACION' ||
-      rows.every((row) => row.variant === null) ||
       rows.some((row) => row.variant !== null && !row.sku_variante))
   ) {
     throw new Error(
-      'schema_version 2 requiere ACTUALIZACION de variantes con sku_variante.',
+      'schema_version 2 requiere ACTUALIZACION y sku_variante para cada variante.',
     );
   }
   const serializedRows = rows.map((row) => {
