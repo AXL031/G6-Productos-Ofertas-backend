@@ -162,23 +162,34 @@ function rejection(row: BulkRow, code: string): BulkRowResult {
     code,
   };
 }
-function businessCode(error: unknown): string | undefined {
+export function businessCode(error: unknown): string | undefined {
   const failure = translatePostgresFailure(error);
   if (
+    failure?.failure === 'unique' ||
+    (failure?.failure === 'deferred_constraint' && failure.sqlState === '23505')
+  ) {
+    switch (failure.constraintName) {
+      case 'uq_sku_identity_sku':
+      case 'uq_products_sku_base':
+      case 'uq_variants_sku':
+        return 'SKU_DUPLICADO';
+      case 'uq_variants_product_combination':
+        return 'COMBINACION_DUPLICADA';
+      case 'uq_products_slug':
+        return 'SLUG_DUPLICADO';
+      default:
+        // An unknown UNIQUE may protect transport/persistence, not user input.
+        // Preserve the technical failure and roll back the chunk before ACK.
+        return;
+    }
+  }
+  if (
     failure &&
-    [
-      'unique',
-      'check',
-      'foreign_key',
-      'not_null',
-      'deferred_constraint',
-    ].includes(failure.failure)
+    ['check', 'foreign_key', 'not_null', 'deferred_constraint'].includes(
+      failure.failure,
+    )
   )
-    return failure.constraintName === 'uq_variants_product_combination'
-      ? 'COMBINACION_DUPLICADA'
-      : failure.failure === 'unique'
-        ? 'SKU_DUPLICADO'
-        : 'VALIDACION';
+    return 'VALIDACION';
   if (!(error instanceof HttpException) || error.getStatus() >= 500) return;
   const response = error.getResponse();
   return object(response) && typeof response.code === 'string'

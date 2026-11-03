@@ -1,5 +1,35 @@
 # Catalog ↔ Bulk H4 — implementación del consumidor
 
+## Corrección de auditoría Bulk — 2026-11-03
+
+Master `23eae06` incorporado mediante merge normal `e5a7b10` en poma.
+Se conservan los cambios anteriores y el PR #162 permanece draft, sin merge.
+
+`businessCode()` clasifica las UNIQUE por nombre exacto y tipo de violación:
+solo `uq_sku_identity_sku`, `uq_products_sku_base` y `uq_variants_sku` producen
+SKU_DUPLICADO; `uq_variants_product_combination` produce COMBINACION_DUPLICADA;
+`uq_products_slug` produce SLUG_DUPLICADO. Son códigos canónicos existentes.
+Una UNIQUE desconocida, sin nombre o técnica no se convierte en rechazo de SKU:
+se propaga y revierte el chunk sin persistir resultado terminal ni admitir ACK.
+Se cubren también errores diferidos SQLSTATE 23505 y errores de driver anidados.
+
+Regresiones: tabla de restricciones positivas/negativas; colisión real de slug
+en PostgreSQL con rechazo de la familia, familia independiente válida y replay
+del resultado; UNIQUE técnica inyectada comprueba rollback completo y redelivery.
+La última es una inyección explícita de fallo, no una caída real de infraestructura.
+Los SHA y resultados nuevos se registran en la descripción del PR.
+
+Se conserva la evidencia aprobada del HEAD `bb39a53`: CI 41573740709, 16/16 PASS,
+incluido BULK-JOINT con PostgreSQL 17 y RabbitMQ 4.2.9 desechables. Se repite la CI
+en el nuevo HEAD; no se transfiere automáticamente el PASS anterior.
+G7/Taxonomy siguen siendo fixtures; no acredita homologación externa ni despliegue.
+
+ACTUALIZACION de variantes desde CSV continúa pendiente: Marco/Poma deben aprobar
+la lectura `sku_variante → variant_id` y su seguridad, y Bulk implementar el
+adaptador. `listarVariantesProducto` es solo propuesta en evaluación separada;
+no se modifican contratos, DTO ni permisos. Tampoco se implementan decisiones o
+pruebas nuevas de G2 en esta corrección: se entregan propuestas para aprobación.
+
 ## Actualización para nueva auditoría — 2026-11-02
 
 PR #162 continúa **draft**, sin merge. Se incorporó master

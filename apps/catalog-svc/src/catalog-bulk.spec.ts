@@ -1,5 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { parseBulkRequest, canonicalBulk } from './catalog-bulk.service.js';
+import {
+  parseBulkRequest,
+  canonicalBulk,
+  businessCode,
+} from './catalog-bulk.service.js';
 import type { CatalogEnvelope } from './catalog-messages.js';
 function command(): CatalogEnvelope {
   const operation = randomUUID();
@@ -96,6 +100,75 @@ import { PostgresCatalogWriteRepository } from './postgres-catalog-write.reposit
 import type { CatalogMasterClient } from './catalog-master.client.js';
 import type { Database, CatalogTransaction } from './database.js';
 import { CatalogPersistenceError } from './database-errors.js';
+
+describe('Bulk business rejection classification', () => {
+  it.each([
+    ['uq_sku_identity_sku', 'SKU_DUPLICADO'],
+    ['uq_products_sku_base', 'SKU_DUPLICADO'],
+    ['uq_variants_sku', 'SKU_DUPLICADO'],
+    ['uq_variants_product_combination', 'COMBINACION_DUPLICADA'],
+    ['uq_products_slug', 'SLUG_DUPLICADO'],
+  ])('classifies only the known UNIQUE %s as %s', (constraint, expected) => {
+    expect(
+      businessCode(new CatalogPersistenceError('unique', '23505', constraint)),
+    ).toBe(expected);
+    expect(
+      businessCode(
+        new CatalogPersistenceError('deferred_constraint', '23505', constraint),
+      ),
+    ).toBe(expected);
+    const driver = Object.assign(new Error('private SQL'), {
+      code: '23505',
+      constraint,
+    });
+    expect(businessCode(new Error('query failed', { cause: driver }))).toBe(
+      expected,
+    );
+  });
+
+  it.each([
+    'uq_outbox_message_id',
+    'uq_inbox_message_handler',
+    'uq_sku_identity_product',
+    'uq_future_sku_rule',
+    undefined,
+  ])(
+    'does not turn unknown or technical UNIQUE %s into SKU_DUPLICADO',
+    (constraint) => {
+      expect(
+        businessCode(
+          new CatalogPersistenceError('unique', '23505', constraint),
+        ),
+      ).toBeUndefined();
+      expect(
+        businessCode(
+          new CatalogPersistenceError(
+            'deferred_constraint',
+            '23505',
+            constraint,
+          ),
+        ),
+      ).toBeUndefined();
+    },
+  );
+
+  it('does not infer a duplicate from a constraint name without a UNIQUE violation', () => {
+    expect(
+      businessCode(
+        new CatalogPersistenceError(
+          'check',
+          '23514',
+          'uq_variants_product_combination',
+        ),
+      ),
+    ).toBe('VALIDACION');
+    expect(
+      businessCode(
+        new CatalogPersistenceError('connection', '08006', 'uq_products_slug'),
+      ),
+    ).toBeUndefined();
+  });
+});
 
 it.each(['deadlock', 'serialization'] as const)(
   'keeps SQL %s retryable for Bulk while preserving the existing HTTP conflict',

@@ -31,7 +31,10 @@ import type { ProductQuery, ProductSummary } from '../src/commercial.types.js';
 import { CatalogAmqpRuntime } from '../src/catalog-amqp.js';
 import { CatalogTelemetry } from '../src/catalog-telemetry.js';
 import { and, eq, sql } from 'drizzle-orm';
-import { CatalogMutationService } from '../src/catalog-mutation.service.js';
+import {
+  CatalogMutationService,
+  type CatalogProductCreationPolicy,
+} from '../src/catalog-mutation.service.js';
 import type { CatalogMasterClient } from '../src/catalog-master.client.js';
 import { CatalogMessageService } from '../src/catalog-message.service.js';
 import { CatalogQueryRepository } from '../src/catalog-query.repository.js';
@@ -1189,7 +1192,14 @@ describe.skipIf(!dockerAvailable)(
     });
 
     // These provider tests use authoritative master fixtures, never shared Taxonomy or Supabase writes.
-    function mutationService() {
+    function mutationService(
+      creationPolicy: CatalogProductCreationPolicy = {
+        resolve: async (_input, id) => ({
+          slug: 'fixture-' + id,
+          moneda: 'PEN',
+        }),
+      },
+    ) {
       return new CatalogMutationService(
         transactions,
         repository,
@@ -1197,12 +1207,7 @@ describe.skipIf(!dockerAvailable)(
           masters: async () => ({ schemaVersion: 1 }),
           attributes: async (_type: string, values: Attribute[]) => values,
         } as unknown as CatalogMasterClient,
-        {
-          resolve: async (_input, id) => ({
-            slug: 'fixture-' + id,
-            moneda: 'PEN',
-          }),
-        },
+        creationPolicy,
       );
     }
     const actor = {
@@ -1344,6 +1349,70 @@ describe.skipIf(!dockerAvailable)(
         'IDEMPOTENCY_CONFLICT',
       );
     });
+    it('BULK: reports a real slug UNIQUE as SLUG_DUPLICADO, never SKU_DUPLICADO, and preserves replay', async () => {
+      const existing = await mutationService().createProduct(
+        createRequest(),
+        actor,
+      );
+      const duplicateSlug = bulkRow(),
+        valid = bulkRow(createRequest(), 3);
+      const mutations = mutationService({
+        resolve: async (input, id) => ({
+          slug:
+            input.skuBase === duplicateSlug.sku_base
+              ? existing.slug
+              : 'fixture-' + id,
+          moneda: 'PEN',
+        }),
+      });
+      const handler = bulkHandler(mutations),
+        message = bulkCommand([duplicateSlug, valid]);
+      await handler.consume(message);
+      const reply = await bulkReply(message);
+      expect(reply.payload.results).toMatchObject([
+        {
+          row_operation_id: duplicateSlug.row_operation_id,
+          status: 'REJECTED',
+          code: 'SLUG_DUPLICADO',
+        },
+        {
+          row_operation_id: valid.row_operation_id,
+          status: 'COMPLETED',
+          code: null,
+        },
+      ]);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(products)
+            .where(eq(products.sku_base, duplicateSlug.sku_base)),
+        ),
+      ).toEqual([]);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(skuIdentity)
+            .where(eq(skuIdentity.sku, duplicateSlug.sku_base)),
+        ),
+      ).toEqual([]);
+      expect(await requested(existing.product_id)).toHaveLength(2);
+      const replay = { ...message, message_id: randomUUID() };
+      await handler.consume(replay);
+      expect((await bulkReply(replay)).payload.results).toEqual(
+        reply.payload.results,
+      );
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(products)
+            .where(eq(products.sku_base, valid.sku_base)),
+        ),
+      ).toHaveLength(1);
+    });
+
     it('BULK: creates one parent per variant family, applies parent version once on update and rolls back rejected families', async () => {
       const parent = createRequest(true),
         sku = 'variant-' + randomUUID();
@@ -1483,39 +1552,46 @@ describe.skipIf(!dockerAvailable)(
         ),
       ).toHaveLength(0);
     });
-    it('BULK: technical failure rolls back aggregate, preparation and receipts; redelivery can then commit', async () => {
-      const mutations = mutationService(),
-        original = mutations.createProduct.bind(mutations);
-      let count = 0;
-      const injected = vi
-        .spyOn(mutations, 'createProduct')
-        .mockImplementation(async (...args) => {
-          if (++count === 2) throw new ServiceUnavailableException();
-          return original(...args);
-        });
-      const rows = [bulkRow(), bulkRow(createRequest(), 3)],
-        message = bulkCommand(rows),
-        service = bulkHandler(mutations);
-      await expect(service.consume(message)).rejects.toBeInstanceOf(
-        ServiceUnavailableException,
-      );
-      expect(await bulkReply(message)).toBeUndefined();
-      for (const row of rows)
-        expect(
-          await database.read((db) =>
-            db
-              .select()
-              .from(products)
-              .where(eq(products.sku_base, row.sku_base)),
-          ),
-        ).toHaveLength(0);
-      injected.mockRestore();
-      await service.consume(message);
-      expect((await bulkReply(message)).payload.results).toMatchObject([
-        { status: 'COMPLETED' },
-        { status: 'COMPLETED' },
-      ]);
-    });
+    it.each([
+      ['unavailability', new ServiceUnavailableException()],
+      [
+        'unmapped UNIQUE',
+        new CatalogPersistenceError('unique', '23505', 'uq_outbox_message_id'),
+      ],
+    ])(
+      'BULK: %s rolls back aggregate, preparation and receipts; redelivery can then commit',
+      async (_label, failure) => {
+        const mutations = mutationService(),
+          original = mutations.createProduct.bind(mutations);
+        let count = 0;
+        const injected = vi
+          .spyOn(mutations, 'createProduct')
+          .mockImplementation(async (...args) => {
+            if (++count === 2) throw failure;
+            return original(...args);
+          });
+        const rows = [bulkRow(), bulkRow(createRequest(), 3)],
+          message = bulkCommand(rows),
+          service = bulkHandler(mutations);
+        await expect(service.consume(message)).rejects.toBe(failure);
+        expect(await bulkReply(message)).toBeUndefined();
+        for (const row of rows)
+          expect(
+            await database.read((db) =>
+              db
+                .select()
+                .from(products)
+                .where(eq(products.sku_base, row.sku_base)),
+            ),
+          ).toHaveLength(0);
+        injected.mockRestore();
+        await service.consume(message);
+        expect((await bulkReply(message)).payload.results).toMatchObject([
+          { status: 'COMPLETED' },
+          { status: 'COMPLETED' },
+        ]);
+      },
+    );
     it('BULK-JOINT: real Bulk importer/Outbox/Inbox and Catalog transactions over disposable RabbitMQ and TLS PostgreSQL', async () => {
       command(
         'docker',
