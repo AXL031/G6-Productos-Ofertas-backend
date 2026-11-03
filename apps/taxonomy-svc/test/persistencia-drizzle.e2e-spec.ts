@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { TaxonomyAuthGuard } from '../src/taxonomy-auth.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import { vi } from 'vitest';
@@ -633,7 +634,10 @@ describeIntegracion(
     it('GET /api/v1/categorias sirve datos reales a traves del modulo', async () => {
       const moduleFixture = await Test.createTestingModule({
         imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
-      }).compile();
+      })
+        .overrideGuard(TaxonomyAuthGuard)
+        .useValue({ canActivate: () => true })
+        .compile();
       const appNest: INestApplication<App> =
         moduleFixture.createNestApplication();
       await appNest.init();

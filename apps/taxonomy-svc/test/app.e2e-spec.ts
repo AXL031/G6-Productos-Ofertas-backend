@@ -7,6 +7,7 @@ import { TAXONOMY_REPOSITORY } from './../src/taxonomy.repository.js';
 import type { TaxonomyRepository } from './../src/taxonomy.repository.js';
 import type { TaxonomyReadinessIndicator } from './../src/health/readiness.port.js';
 import { RepositorioPrueba } from './repositorio-prueba.js';
+import { TaxonomyAuthGuard } from '../src/taxonomy-auth.js';
 
 const CORRELACION = '0c0d092e-6192-47c1-8d18-5ed0e2aa4518';
 
@@ -28,6 +29,10 @@ async function crearApp(
   const builder = Test.createTestingModule({
     imports: [TaxonomySvcModule.forRoot()],
   });
+  // Estas pruebas cubren lectura/errores; la seguridad se prueba con JWT real en taxonomy.controller.spec.ts.
+  builder
+    .overrideGuard(TaxonomyAuthGuard)
+    .useValue({ canActivate: () => true });
   if (repositorio) {
     builder.overrideProvider(TAXONOMY_REPOSITORY).useValue(repositorio);
   }

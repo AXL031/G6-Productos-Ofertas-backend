@@ -10,6 +10,7 @@ import type {
 } from './taxonomy.repository.js';
 import { UnconfiguredTaxonomyRepository } from './unconfigured-taxonomy.repository.js';
 import { RepositorioPrueba } from '../test/repositorio-prueba.js';
+import { TaxonomyTokenVerifier } from './taxonomy-auth.js';
 
 const CORRELACION_VALIDA = '0c0d092e-6192-47c1-8d18-5ed0e2aa4518';
 
@@ -60,6 +61,7 @@ async function crearModulo(
     controllers: [TaxonomyController],
     providers: [
       TaxonomySvcService,
+      { provide: TaxonomyTokenVerifier, useValue: {} },
       { provide: TAXONOMY_REPOSITORY, useValue: repositorio },
     ],
   }).compile();
@@ -70,6 +72,7 @@ async function crearModuloSinFuente(): Promise<TestingModule> {
     controllers: [TaxonomyController],
     providers: [
       TaxonomySvcService,
+      { provide: TaxonomyTokenVerifier, useValue: {} },
       {
         provide: TAXONOMY_REPOSITORY,
         useClass: UnconfiguredTaxonomyRepository,
@@ -101,6 +104,22 @@ describe('TaxonomyController — lectura de categorías y marcas (#22)', () => {
     repositorio = new RepositorioPrueba();
     const modulo = await crearModulo(repositorio);
     controller = modulo.get(TaxonomyController);
+  });
+
+  it('no expone registros inactivos ni pendientes aunque el repositorio los devuelva', async () => {
+    repositorio.categorias = [
+      { ...CATEGORIAS[0]!, estado: 'INACTIVO' },
+      { ...CATEGORIAS[1]!, estado: 'PENDING_DEACTIVATION' },
+    ];
+    repositorio.marcas = [
+      { ...MARCAS[0]!, estado: 'INACTIVO' },
+      { ...MARCAS[1]!, estado: 'PENDING_DEACTIVATION' },
+    ];
+
+    await expect(controller.listarCategorias({})).resolves.toEqual({
+      categories: [],
+    });
+    await expect(controller.listarMarcas({})).resolves.toEqual({ brands: [] });
   });
 
   describe('GET /api/v1/categorias', () => {
@@ -197,14 +216,6 @@ describe('TaxonomyController — lectura de categorías y marcas (#22)', () => {
             country_code: 'PE',
             status: 'ACTIVA',
           },
-          {
-            marca_id: '514d9c18-b418-559b-a692-e304183560ad',
-            name: 'Under Armour',
-            description: null,
-            logo_url: null,
-            country_code: 'US',
-            status: 'INACTIVA',
-          },
         ],
       });
     });
@@ -248,4 +259,166 @@ describe('TaxonomyController — lectura de categorías y marcas (#22)', () => {
       );
     });
   });
+});
+import { createServer, type Server } from 'node:http';
+import { once } from 'node:events';
+import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { TaxonomySvcModule } from './taxonomy-svc.module.js';
+import { TAXONOMY_SECURITY_CONFIG } from './taxonomy-auth.js';
+import { ProblemDetailsFilter } from './errors/problem-details.filter.js';
+
+// Verifies actual Nest guard, JWT signature, JWKS and problem responses.
+describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
+  let server: Server;
+  let app: INestApplication;
+  let origin: string;
+  const issuer = 'https://security.example.test';
+  const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+
+  function token(
+    claims: Record<string, unknown> = {},
+    invalidSignature = false,
+  ): string {
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'RS256', kid: 'test' }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: issuer,
+        sub: 'catalog-svc',
+        tipo: 'servicio',
+        aud: 'api-productos',
+        scope: 'catalogo:leer',
+        iat: now,
+        exp: now + 60,
+        jti: randomUUID(),
+        ...claims,
+      }),
+    ).toString('base64url');
+    const input = header + '.' + payload;
+    const signingKey = invalidSignature
+      ? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey
+      : keys.privateKey;
+    return (
+      input +
+      '.' +
+      sign('RSA-SHA256', Buffer.from(input), signingKey).toString('base64url')
+    );
+  }
+
+  beforeAll(async () => {
+    server = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/discovery')
+        res.end(JSON.stringify({ issuer, jwks_uri: origin + '/jwks' }));
+      else if (req.url === '/jwks')
+        res.end(
+          JSON.stringify({
+            keys: [
+              {
+                ...keys.publicKey.export({ format: 'jwk' }),
+                kid: 'test',
+                alg: 'RS256',
+                use: 'sig',
+              },
+            ],
+          }),
+        );
+      else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Puerto no disponible');
+    origin = 'http://127.0.0.1:' + address.port;
+    const module = await Test.createTestingModule({
+      imports: [TaxonomySvcModule],
+    })
+      .overrideProvider(TAXONOMY_SECURITY_CONFIG)
+      .useValue({
+        issuer,
+        discoveryUrl: origin + '/discovery',
+        jwksUrl: origin + '/jwks',
+      })
+      .overrideProvider(TAXONOMY_REPOSITORY)
+      .useValue(new RepositorioPrueba())
+      .compile();
+    app = module.createNestApplication();
+    app.useGlobalFilters(new ProblemDetailsFilter());
+    await app.init();
+  });
+  afterAll(async () => {
+    await app?.close();
+    await new Promise<void>((resolve, reject) =>
+      server.close((error) => (error ? reject(error) : resolve())),
+    );
+  });
+  it.each([
+    ['categorias', 'categories'],
+    ['marcas', 'brands'],
+  ])('%s acepta JWT de servicio válido', async (path, field) => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/' + path)
+      .set('Authorization', 'Bearer ' + token())
+      .expect(200);
+    expect(res.body).toEqual({ [field]: [] });
+  });
+  it.each(['categorias', 'marcas'])(
+    '%s responde 401 sin token',
+    async (path) => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/' + path)
+        .expect(401);
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect(res.body).toMatchObject({
+        status: 401,
+        code: 'TOKEN_INVALIDO',
+        type: '/errores/token-invalido',
+      });
+    },
+  );
+  it.each([
+    ['firma inválida', {}, true, 401, 'TOKEN_INVALIDO'],
+    ['token vencido', { exp: 1 }, false, 401, 'TOKEN_INVALIDO'],
+    [
+      'emisor incorrecto',
+      { iss: 'https://wrong.example' },
+      false,
+      401,
+      'TOKEN_INVALIDO',
+    ],
+    ['audiencia incorrecta', { aud: 'other' }, false, 401, 'TOKEN_INVALIDO'],
+    [
+      'scope insuficiente',
+      { scope: 'other' },
+      false,
+      403,
+      'SCOPE_INSUFICIENTE',
+    ],
+    ['scope ausente', { scope: undefined }, false, 403, 'SCOPE_INSUFICIENTE'],
+    [
+      'tipo humano',
+      { tipo: 'acceso', sub: randomUUID(), roles: [] },
+      false,
+      403,
+      'SCOPE_INSUFICIENTE',
+    ],
+  ] as const)(
+    '%s rechaza solicitudes',
+    async (_name, claims, badSignature, status, code) => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/categorias')
+        .set('Authorization', 'Bearer ' + token(claims, badSignature))
+        .expect(status);
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect(res.body).toMatchObject({ status, code });
+    },
+  );
 });
