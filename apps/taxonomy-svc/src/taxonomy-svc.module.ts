@@ -18,6 +18,9 @@ import { CategoryCreateService } from './domain/category-create.service.js';
 import { CategoryUpdateService } from './domain/category-update.service.js';
 import { BrandWriteService } from './domain/brand-write.service.js';
 import { TaxonomyWriteController } from './taxonomy-write.controller.js';
+import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
+import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
+import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
 import {
   TAXONOMY_SECURITY_CONFIG,
   TaxonomyAuthGuard,
@@ -46,6 +49,9 @@ export interface OpcionesModuloTaxonomy {
     Database,
     DeactivationCheckService,
     DeactivationIntentService,
+    DeactivationRecoveryRunner,
+    TaxonomyAmqpRuntime,
+    TaxonomyMessageStore,
     TaxonomyAuthGuard,
     TaxonomyUserGuard,
     BrandReactivationService,

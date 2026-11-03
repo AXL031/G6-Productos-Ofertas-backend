@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { parseBulkEnvironment } from '../config/bulk-environment.js';
 import {
   BulkReadinessService,
@@ -20,6 +21,8 @@ function serviceWith(query: () => Promise<unknown>) {
 }
 
 describe('BulkReadinessService', () => {
+  afterEach(() => vi.restoreAllMocks());
+
   it('executes the read-only schema/table probe and returns true on success', async () => {
     const { service, pool } = serviceWith(async () => undefined);
     await expect(service.check()).resolves.toBe(true);
@@ -38,6 +41,32 @@ describe('BulkReadinessService', () => {
       throw new Error(`secret db detail: ${reason}`);
     });
     await expect(service.check()).resolves.toBe(false);
+  });
+
+  it('logs a generic dependency failure without exposing connection details', async () => {
+    const warn = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    const { service } = serviceWith(async () => {
+      throw new Error(
+        'postgresql://private-user:private-password@private-host/private-db',
+      );
+    });
+
+    await expect(service.check()).resolves.toBe(false);
+
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith(
+      'La comprobación de PostgreSQL no está disponible.',
+    );
+    const exposedDetails =
+      /private-user|private-password|private-host|private-db|postgresql:\/\//.test(
+        JSON.stringify(warn.mock.calls),
+      );
+    expect(
+      exposedDetails,
+      'Logger exposed PostgreSQL connection details.',
+    ).toBe(false);
   });
 
   it('returns false when DATABASE_URL is absent', async () => {
