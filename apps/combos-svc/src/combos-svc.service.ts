@@ -72,18 +72,25 @@ export class CombosSvcService {
   getHealth() {
     return { status: 'ok', service: 'combos-svc' };
   }
-  async readiness() {
-    return (await this.database.ready())
-      ? {
-          status: 'ok',
-          service: 'combos-svc',
-          dependencies: { postgres: 'ok' },
-        }
-      : {
-          status: 'error',
-          service: 'combos-svc',
-          dependencies: { postgres: 'error' },
-        };
+  async readiness(
+    amqpStatus: 'disabled' | 'ready' | 'not_ready' = process.env
+      .COMBOS_AMQP_ENABLED === 'true'
+      ? 'not_ready'
+      : 'disabled',
+  ) {
+    const postgresReady = await this.database.ready();
+    const amqpRequired =
+      process.env.COMBOS_AMQP_ENABLED === 'true' || amqpStatus !== 'disabled';
+    const amqpReady = amqpStatus === 'ready';
+    const ready = postgresReady && (!amqpRequired || amqpReady);
+    return {
+      status: ready ? 'ok' : 'error',
+      service: 'combos-svc',
+      dependencies: {
+        postgres: postgresReady ? 'ok' : 'error',
+        ...(amqpRequired ? { rabbitmq: amqpReady ? 'ok' : 'error' } : {}),
+      },
+    };
   }
 
   async get(id: string) {

@@ -9,7 +9,7 @@ import amqp, {
   type ChannelModel,
   type ConsumeMessage,
 } from 'amqplib';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   CombosRepository,
   InboxMessageConflictError,
@@ -172,12 +172,14 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   private stopping = false;
   private paused = false;
   private connecting = false;
+  private enabled = false;
   private processing = Promise.resolve();
 
   constructor(private readonly repository: CombosRepository) {}
 
   async onModuleInit(): Promise<void> {
     if (process.env.COMBOS_AMQP_ENABLED !== 'true') return;
+    this.enabled = true;
     const url = process.env.COMBOS_AMQP_URL;
     if (!url) throw new Error('COMBOS_AMQP_URL_REQUIRED');
     let parsed: URL;
@@ -195,6 +197,17 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
     await this.connect(url);
   }
 
+  readinessStatus(): 'disabled' | 'ready' | 'not_ready' {
+    if (!this.enabled) return 'disabled';
+    return this.connection &&
+      this.channel &&
+      this.consumerTag &&
+      !this.paused &&
+      !this.stopping
+      ? 'ready'
+      : 'not_ready';
+  }
+
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
     await this.channel?.close().catch(() => undefined);
@@ -203,7 +216,15 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   private async connect(url: string): Promise<void> {
-    if (this.connecting || this.stopping || this.paused) return;
+    if (
+      this.connecting ||
+      this.stopping ||
+      this.paused ||
+      this.connection ||
+      this.channel ||
+      this.consumerTag
+    )
+      return;
     this.connecting = true;
     try {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
@@ -212,24 +233,49 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
             timeout: 2000,
             rejectUnauthorized: true,
           });
-          this.connection.on('error', () => undefined);
-          this.connection.on('close', () => {
+          const connection = this.connection;
+          connection.on('error', () => {
+            if (this.connection !== connection) return;
             this.channel = null;
             this.connection = null;
             this.consumerTag = null;
+          });
+          connection.on('close', () => {
+            if (this.connection === connection) {
+              this.channel = null;
+              this.connection = null;
+              this.consumerTag = null;
+            }
             if (!this.stopping) void this.connect(url);
           });
-          this.channel = await this.connection.createChannel();
-          this.channel.on('error', () => undefined);
-          this.channel.on('close', () => {
+          this.channel = await connection.createChannel();
+          const channel = this.channel;
+          channel.on('error', () => {
+            if (this.channel !== channel) return;
             this.channel = null;
             this.consumerTag = null;
+            void connection.close().catch(() => undefined);
           });
-          await this.channel.prefetch(20);
-          const result = await this.channel.consume(
+          channel.on('close', () => {
+            if (this.channel === channel) {
+              this.channel = null;
+              this.consumerTag = null;
+            }
+            if (!this.stopping) void connection.close().catch(() => undefined);
+          });
+          channel.on('cancel', (fields: { consumerTag: string }) => {
+            if (fields.consumerTag === this.consumerTag)
+              this.pause('SUBSCRIPTION_CANCELLED', false);
+          });
+          await channel.prefetch(20);
+          const result = await channel.consume(
             COMBOS_QUEUE,
             (message) => {
-              if (!message || this.stopping || this.paused) return;
+              if (!message) {
+                this.pause('SUBSCRIPTION_CANCELLED', false);
+                return;
+              }
+              if (this.stopping || this.paused) return;
               this.processing = this.processing.then(() =>
                 this.handle(message),
               );
@@ -317,10 +363,25 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
         catalogUrl,
         () => process.env.COMBOS_CATALOG_SERVICE_BEARER,
       );
+      const catalogRequestCorrelationId = UUID.test(envelope.correlation_id)
+        ? envelope.correlation_id
+        : randomUUID();
+      if (catalogRequestCorrelationId !== envelope.correlation_id) {
+        this.logger.log(
+          JSON.stringify({
+            event: 'catalog_request_correlation_mapped',
+            message_id: safeLog(envelope.message_id),
+            event_correlation_id: safeLog(envelope.correlation_id),
+            catalog_request_correlation_id: safeLog(
+              catalogRequestCorrelationId,
+            ),
+          }),
+        );
+      }
       const resolveProductSkus = async (candidates: string[]) => {
         const contexts = await Promise.all(
           candidates.map((sku) =>
-            catalog.getContextForMapping(sku, envelope.correlation_id),
+            catalog.getContextForMapping(sku, catalogRequestCorrelationId),
           ),
         );
         return contexts
@@ -409,7 +470,14 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
       });
       if (this.channel) this.channel.ack(message);
       this.logDisposition(messageId, message.properties.correlationId, result);
-    } catch {
+    } catch (error) {
+      this.logger.error(
+        JSON.stringify({
+          event: 'conflict_disposition_failed',
+          message_id: safeLog(messageId),
+          code: safeErrorCode(error),
+        }),
+      );
       await this.retryOrPause(message, 'INBOX_CONFLICT_NOT_DURABLE');
     }
   }
@@ -429,14 +497,15 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  private pause(code: string): void {
+  private pause(code: string, cancelSubscription = true): void {
     if (this.paused) return;
     this.paused = true;
     this.logger.warn(JSON.stringify({ event: 'consumer_paused', code }));
     const channel = this.channel;
     const tag = this.consumerTag;
     this.consumerTag = null;
-    if (channel && tag) void channel.cancel(tag).catch(() => undefined);
+    if (cancelSubscription && channel && tag)
+      void channel.cancel(tag).catch(() => undefined);
   }
 
   private async closeTransport(): Promise<void> {
@@ -456,6 +525,14 @@ function safeLog(value: string): string {
     })
     .join('')
     .slice(0, 128);
+}
+function safeErrorCode(error: unknown): string {
+  if (typeof error !== 'object' || error === null) return 'UNKNOWN';
+  if ('code' in error && typeof error.code === 'string')
+    return error.code.slice(0, 64).replace(/[^A-Za-z0-9_.-]/g, '_');
+  if ('name' in error && typeof error.name === 'string')
+    return error.name.slice(0, 64).replace(/[^A-Za-z0-9_.-]/g, '_');
+  return 'UNKNOWN';
 }
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
