@@ -42,6 +42,10 @@ Al ejecutar el preparador contra el snapshot real de Supabase (`baseline-supabas
 - **Hashes del baseline (DATA-004):**
   - SHA-256 del archivo exportado: `ad48ba9f14b2ff5e1f59205ac94ce27d00ed3f764adbeb9383eb63277f035854`. Acredita la integridad del archivo exportado.
   - Hash canónico del baseline normalizado: `fd438b524a92ba5a7ac4ebacc858f509e9fc492981588be203d4153cc39fb250`. Identifica el contenido normalizado usado para el análisis.
+- **SHA-256 de los scripts SQL** (sin cambios desde la versión autorizada de PR #149, HEAD `6ef2005`):
+  - `proposal-load.sql`: `32072ddd309a6e90d0565255421bbc478117c3c6e24fee680e93615a9ad8f71c`.
+  - `proposal-rollback.sql`: `f5d810cd26b3a805f769a6143aa08f635060ec83f5ec69f15b577604120c9879`.
+  El SHA del script de carga debe recalcularse y registrarse inmediatamente antes del preflight autorizado; si difiere del aquí documentado, la autorización queda suspendida.
 - **Resumen del Diff:**
   - `insert: 2` — Registros nuevos sin colisión: los 2 umbrales de stock (`stock_threshold_override`: global 5 y específico 3 para `ADI-ENT22-AZU-M`).
   - `unchanged: 5` — Registros idénticos ya presentes: las 2 ubicaciones (`ALM-LURIN` y `TDA-MIRAFLORES`), más los saldos coincidentes (p. ej. `ADI-RF3-GRI-39` con saldo 0 en ambas ubicaciones y `NIK-REV7-NEG-41` en Miraflores con 4 unidades).
