@@ -14,6 +14,7 @@ import { AppModule } from '../../src/app.module.js';
 import { CATALOG_SECURITY_CONFIG } from '../../src/catalog-auth.js';
 import { CATALOG_AMQP_SETTINGS } from '../../src/catalog-amqp.js';
 import { CATALOG_TAXONOMY_CONFIG } from '../../src/taxonomy-config.js';
+import { CATALOG_TAXONOMY_IDENTITY } from '../../src/catalog-master.client.js';
 import { Database, type PostgresSettings } from '../../src/database.js';
 import { CatalogPersistenceError } from '../../src/database-errors.js';
 import {
@@ -159,6 +160,19 @@ export class CatalogGatewayHarness {
         })
         .overrideProvider(CATALOG_TAXONOMY_CONFIG)
         .useValue({ origin: this.origin })
+        // HTTP integration fixture only; Catalog's real client-credential and
+        // JWT verification flow is covered by catalog-security.provider.spec.
+        .overrideProvider(CATALOG_TAXONOMY_IDENTITY)
+        .useValue({
+          authorization: async () =>
+            this.token({
+              tipo: 'servicio',
+              sub: 'modulo-productos',
+              aud: ['api-productos'],
+              scope: 'catalogo:leer',
+              roles: undefined,
+            }),
+        })
         .overrideProvider(Database)
         .useValue(
           database
