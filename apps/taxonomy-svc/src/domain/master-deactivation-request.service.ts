@@ -28,6 +28,7 @@ export class MasterDeactivationRequestService {
   ): Promise<
     | { estado: 'NO_ENCONTRADA' }
     | { estado: 'CONFLICTO' }
+    | { estado: 'CATEGORIA_CON_HIJOS' }
     | {
         estado: 'ACEPTADA';
         operation_id: string;
@@ -76,6 +77,25 @@ export class MasterDeactivationRequestService {
     });
     const row = fuente.rows[0];
     if (!row || typeof row.id !== 'string') return { estado: 'NO_ENCONTRADA' };
+    if (solicitud.tipo === 'CATEGORY') {
+      const hijos = await this.database.read((db) =>
+        db.execute(sql`SELECT 1 FROM taxonomy.categories
+        WHERE categoria_padre_id=${solicitud.id}::uuid AND estado='ACTIVO' LIMIT 1`),
+      );
+      if (hijos.rows.length) return { estado: 'CATEGORIA_CON_HIJOS' };
+    }
+    const existente = await this.database.read((db) =>
+      db.execute(sql`SELECT operation_id FROM taxonomy.master_deactivation_operations
+      WHERE entity_type=${solicitud.tipo}::taxonomy.tipo_entidad_maestra AND entity_id=${row.id}::uuid
+        AND correlation_id=${correlationId}::uuid AND status IN ('REQUESTED','IN_PROGRESS') LIMIT 1`),
+    );
+    if (typeof existente.rows[0]?.operation_id === 'string')
+      return {
+        estado: 'ACEPTADA',
+        operation_id: existente.rows[0].operation_id,
+        correlation_id: correlationId,
+        status: 'ACCEPTED',
+      };
     const version = Number(row.version);
     if (!Number.isSafeInteger(version) || version < 0)
       return { estado: 'CONFLICTO' };
@@ -102,8 +122,21 @@ export class MasterDeactivationRequestService {
           }
         : {}),
     });
-    if (resultado !== 'REGISTRADA' && resultado !== 'REINTENTO')
+    if (resultado !== 'REGISTRADA' && resultado !== 'REINTENTO') {
+      const repetida = await this.database.read((db) =>
+        db.execute(sql`SELECT operation_id FROM taxonomy.master_deactivation_operations
+        WHERE entity_type=${solicitud.tipo}::taxonomy.tipo_entidad_maestra AND entity_id=${row.id}::uuid
+          AND correlation_id=${correlationId}::uuid AND status IN ('REQUESTED','IN_PROGRESS') LIMIT 1`),
+      );
+      if (typeof repetida.rows[0]?.operation_id === 'string')
+        return {
+          estado: 'ACEPTADA',
+          operation_id: repetida.rows[0].operation_id,
+          correlation_id: correlationId,
+          status: 'ACCEPTED',
+        };
       return { estado: 'CONFLICTO' };
+    }
     return {
       estado: 'ACEPTADA',
       operation_id: operationId,

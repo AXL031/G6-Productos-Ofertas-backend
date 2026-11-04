@@ -51,7 +51,7 @@ export class ProductTypeService {
       db.transaction(async (tx) => {
         const condicion = estado
           ? sql`WHERE estado = ${estado}::taxonomy.estado_entidad`
-          : sql``;
+          : sql`WHERE estado IN ('ACTIVO', 'INACTIVO')`;
         const totalResult = await tx.execute(
           sql`SELECT count(*)::int AS total FROM taxonomy.product_types ${condicion}`,
         );

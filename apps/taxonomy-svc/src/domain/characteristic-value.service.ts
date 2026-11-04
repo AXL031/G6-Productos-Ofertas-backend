@@ -34,12 +34,18 @@ export class CharacteristicValueService {
     if (!esUuid(caracteristicaId)) return null;
     return this.database.read(async (db) => {
       const padre = await db.execute(
-        sql`SELECT id FROM taxonomy.characteristics WHERE id = ${caracteristicaId}::uuid`,
+        sql`SELECT id,estado FROM taxonomy.characteristics WHERE id = ${caracteristicaId}::uuid`,
       );
-      if (!padre.rows.length) return null;
+      if (
+        !padre.rows.length ||
+        padre.rows[0]?.estado === 'PENDING_DEACTIVATION'
+      )
+        return null;
       const result =
         await db.execute(sql`SELECT id, nombre, estado, taxonomy_version
-        FROM taxonomy.characteristic_values WHERE caracteristica_id = ${caracteristicaId}::uuid AND (${estado ?? null}::text IS NULL OR estado::text = ${estado ?? null}::text) ORDER BY nombre, id`);
+        FROM taxonomy.characteristic_values WHERE caracteristica_id = ${caracteristicaId}::uuid
+          AND estado::text IN ('ACTIVO', 'INACTIVO')
+          AND (${estado ?? null}::text IS NULL OR estado::text = ${estado ?? null}::text) ORDER BY nombre, id`);
       return result.rows.map(mapear);
     });
   }
@@ -137,6 +143,49 @@ export class CharacteristicValueService {
             'name', 'taxonomy.characteristic-value.updated', 'data', jsonb_build_object('caracteristica_id', ${caracteristicaId}::text,
               'valor_id', ${id}::text, 'nombre', ${nombre}::text, 'change_type', 'RENAMED', 'updated_at', ${fila.updated_at}::timestamptz)) FROM evento`);
         return { estado: 'OK', valor: mapear(fila) } as const;
+      }),
+    );
+  }
+
+  async reactivar(
+    caracteristicaId: string,
+    id: string,
+  ): Promise<ValorCaracteristicaDto | null> {
+    if (!esUuid(caracteristicaId) || !esUuid(id)) return null;
+    return this.database.read((db) =>
+      db.transaction(async (tx) => {
+        const parent =
+          await tx.execute(sql`SELECT tipo,estado FROM taxonomy.characteristics
+        WHERE id=${caracteristicaId}::uuid FOR UPDATE`);
+        const characteristic = parent.rows[0];
+        if (
+          !characteristic ||
+          characteristic.tipo !== 'LISTA' ||
+          characteristic.estado !== 'ACTIVO'
+        )
+          return null;
+        const current =
+          await tx.execute(sql`SELECT id,nombre,estado,taxonomy_version FROM taxonomy.characteristic_values
+        WHERE id=${id}::uuid AND caracteristica_id=${caracteristicaId}::uuid FOR UPDATE`);
+        const row = current.rows[0];
+        if (!row || row.estado === 'PENDING_DEACTIVATION') return null;
+        if (row.estado === 'INACTIVO') {
+          const limit = await tx.execute(
+            sql`SELECT valor_integer FROM taxonomy.runtime_settings WHERE clave='MAX_ACTIVE_LIST_VALUES' FOR UPDATE`,
+          );
+          const max = Number(limit.rows[0]?.valor_integer);
+          if (!Number.isSafeInteger(max) || max < 1)
+            throw new Error('CONFIGURACION_INVALIDA');
+          const count = await tx.execute(
+            sql`SELECT count(*)::int AS total FROM taxonomy.characteristic_values WHERE caracteristica_id=${caracteristicaId}::uuid AND estado='ACTIVO'`,
+          );
+          if (Number(count.rows[0]?.total) >= max) return null;
+          const updated =
+            await tx.execute(sql`UPDATE taxonomy.characteristic_values SET estado='ACTIVO',taxonomy_version=taxonomy_version+1,updated_at=statement_timestamp()
+          WHERE id=${id}::uuid AND estado='INACTIVO' RETURNING id,nombre,estado,taxonomy_version`);
+          return updated.rows[0] ? mapear(updated.rows[0]) : null;
+        }
+        return mapear(row);
       }),
     );
   }

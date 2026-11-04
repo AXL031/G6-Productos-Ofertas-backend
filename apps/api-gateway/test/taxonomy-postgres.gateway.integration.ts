@@ -348,8 +348,8 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     expect(body.meta).toEqual({
       pagina: 1,
       tamanio: 2,
-      total: 3,
-      totalPaginas: 2,
+      total: 2,
+      totalPaginas: 1,
     });
     expect(response.headers.get('x-correlation-id')).toBe(correlationId);
     expect(outgoing).toHaveLength(1);
@@ -569,13 +569,8 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     );
     status(page, 200);
     expect(await json(page)).toEqual({
-      items: [
-        expect.objectContaining({
-          nombre: 'C Pendiente',
-          estado: 'PENDING_DEACTIVATION',
-        }),
-      ],
-      meta: { pagina: 2, tamanio: 2, total: 3, totalPaginas: 2 },
+      items: [],
+      meta: { pagina: 2, tamanio: 2, total: 2, totalPaginas: 1 },
     });
     const overContractLimit = await fetch(
       `${gatewayUrl}/api/v1/tipos-producto?pagina=1&tamanio=101`,
@@ -585,7 +580,7 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     expect((await json(overContractLimit)).meta).toEqual({
       pagina: 1,
       tamanio: 101,
-      total: 3,
+      total: 2,
       totalPaginas: 1,
     });
   });

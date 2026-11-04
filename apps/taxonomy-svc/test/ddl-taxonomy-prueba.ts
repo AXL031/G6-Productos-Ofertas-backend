@@ -113,6 +113,20 @@ export function construirSentenciasDdl(
       CONSTRAINT ck_category_seo_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
       CONSTRAINT ck_category_seo_version CHECK (taxonomy_version >= 0)
     )`,
+    `CREATE TABLE taxonomy.slug_history (
+      id uuid NOT NULL DEFAULT gen_random_uuid(), categoria_id uuid NOT NULL,
+      old_slug text NOT NULL, new_slug text NOT NULL, changed_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      CONSTRAINT pk_slug_history PRIMARY KEY (id),
+      CONSTRAINT fk_slug_history_categoria FOREIGN KEY (categoria_id) REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
+      CONSTRAINT uq_slug_history_old_slug UNIQUE (old_slug)
+    )`,
+    `CREATE OR REPLACE FUNCTION taxonomy.fn_track_slug_history() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.slug <> NEW.slug THEN
+        INSERT INTO taxonomy.slug_history(categoria_id,old_slug,new_slug,changed_at) VALUES (NEW.categoria_id,OLD.slug,NEW.slug,statement_timestamp());
+      END IF; RETURN NEW; END $$`,
+    `CREATE TRIGGER trg_category_seo_track_slug AFTER UPDATE OF slug ON taxonomy.category_seo
+      FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_track_slug_history()`,
     `CREATE TABLE taxonomy.brands (
       id uuid NOT NULL DEFAULT gen_random_uuid(),
       nombre text NOT NULL,

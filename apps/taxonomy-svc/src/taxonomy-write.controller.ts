@@ -453,6 +453,13 @@ export class TaxonomyWriteController {
     codigoNoEncontrado: 'CATEGORIA_NO_ENCONTRADA' | 'MARCA_NO_ENCONTRADA',
   ) {
     const resultado = await this.bajas.solicitar(solicitud, correlationId);
+    if (resultado.estado === 'CATEGORIA_CON_HIJOS')
+      throw new ProblemDetailsException({
+        type: '/errores/categoria-con-subcategorias-activas',
+        title: 'Categoría con subcategorías activas',
+        status: 409,
+        code: 'CATEGORIA_CON_SUBCATEGORIAS_ACTIVAS',
+      });
     if (resultado.estado === 'NO_ENCONTRADA')
       throw new ProblemDetailsException({
         type: `/errores/${codigoNoEncontrado.toLowerCase().replace(/_/g, '-')}`,

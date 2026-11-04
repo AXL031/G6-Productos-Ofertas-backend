@@ -25,6 +25,10 @@ type Marca = {
   createdAt: string;
   updatedAt: string;
 };
+export type CategoriaTreeNode = {
+  categoria: Categoria;
+  hijos: CategoriaTreeNode[];
+};
 
 function paginaValida(pagina: number, tamanio: number): void {
   if (
@@ -41,21 +45,19 @@ function paginaValida(pagina: number, tamanio: number): void {
 export class MasterAdminQueryService {
   constructor(private readonly database: Database) {}
 
-  async arbol(): Promise<{ categoria: Categoria; hijos: unknown[] }[]> {
+  async arbol(): Promise<CategoriaTreeNode[]> {
     return this.database.read(async (db) => {
       const result = await db.execute(sql`SELECT c.id, c.nombre, c.descripcion,
         c.categoria_padre_id, c.orden, c.imagen_url, c.estado,
         c.taxonomy_version AS version, s.slug
         FROM taxonomy.categories c LEFT JOIN taxonomy.category_seo s ON s.categoria_id = c.id
+        WHERE c.estado::text IN ('ACTIVO', 'INACTIVO')
         ORDER BY c.orden, c.nombre, c.id`);
       const rows = result.rows.map((r) => this.categoria(r));
-      const nodes = new Map<
-        string,
-        { categoria: Categoria; hijos: unknown[] }
-      >();
+      const nodes = new Map<string, CategoriaTreeNode>();
       for (const row of rows)
         nodes.set(row.categoriaId, { categoria: row, hijos: [] });
-      const roots: { categoria: Categoria; hijos: unknown[] }[] = [];
+      const roots: CategoriaTreeNode[] = [];
       for (const row of rows) {
         const node = nodes.get(row.categoriaId)!;
         const parent = row.categoriaPadreId
@@ -79,13 +81,15 @@ export class MasterAdminQueryService {
       const args = [filtro.estado ?? null, filtro.categoriaPadreId ?? null];
       const total =
         await db.execute(sql`SELECT count(*)::int AS total FROM taxonomy.categories
-        WHERE (${args[0]}::text IS NULL OR estado::text = ${args[0]}::text)
+        WHERE estado::text IN ('ACTIVO', 'INACTIVO')
+        AND (${args[0]}::text IS NULL OR estado::text = ${args[0]}::text)
         AND (${args[1]}::uuid IS NULL OR categoria_padre_id = ${args[1]}::uuid)`);
       const result =
         await db.execute(sql`SELECT c.id, c.nombre, c.descripcion, c.categoria_padre_id,
         c.orden, c.imagen_url, c.estado, c.taxonomy_version AS version, s.slug
         FROM taxonomy.categories c LEFT JOIN taxonomy.category_seo s ON s.categoria_id = c.id
-        WHERE (${args[0]}::text IS NULL OR c.estado::text = ${args[0]}::text)
+        WHERE c.estado::text IN ('ACTIVO', 'INACTIVO')
+        AND (${args[0]}::text IS NULL OR c.estado::text = ${args[0]}::text)
         AND (${args[1]}::uuid IS NULL OR c.categoria_padre_id = ${args[1]}::uuid)
         ORDER BY c.orden, c.nombre, c.id LIMIT ${filtro.tamanio} OFFSET ${(filtro.pagina - 1) * filtro.tamanio}`);
       const n = Number(total.rows[0]?.total ?? 0);
@@ -121,12 +125,14 @@ export class MasterAdminQueryService {
     return this.database.read(async (db) => {
       const total =
         await db.execute(sql`SELECT count(*)::int AS total FROM taxonomy.brands
-        WHERE (${filtro.estado ?? null}::text IS NULL OR estado::text = ${filtro.estado ?? null}::text)
+        WHERE estado::text IN ('ACTIVO', 'INACTIVO')
+        AND (${filtro.estado ?? null}::text IS NULL OR estado::text = ${filtro.estado ?? null}::text)
         AND (${q}::text IS NULL OR nombre ILIKE '%' || ${q} || '%')`);
       const result =
         await db.execute(sql`SELECT id, nombre, descripcion, logo_url, pais_origen_iso,
         estado, taxonomy_version AS version, created_at, updated_at FROM taxonomy.brands
-        WHERE (${filtro.estado ?? null}::text IS NULL OR estado::text = ${filtro.estado ?? null}::text)
+        WHERE estado::text IN ('ACTIVO', 'INACTIVO')
+        AND (${filtro.estado ?? null}::text IS NULL OR estado::text = ${filtro.estado ?? null}::text)
         AND (${q}::text IS NULL OR nombre ILIKE '%' || ${q} || '%')
         ORDER BY nombre, id LIMIT ${filtro.tamanio} OFFSET ${(filtro.pagina - 1) * filtro.tamanio}`);
       const n = Number(total.rows[0]?.total ?? 0);
