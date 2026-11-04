@@ -51,12 +51,20 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           { name: 'foreign', skuVariant: foreignSku, productVersion: Number(initialParent.catalog_version) + 1, variantVersion: Number(initialForeign.catalog_version) },
           { name: 'stale', skuVariant, productVersion: Number(initialParent.catalog_version) + 1, variantVersion: Number(initialVariant.catalog_version) },
         ].map((item) => ({ ...item, productId: created.product_id, skuBase: productInputValue.skuBase, batch: randomUUID(), correlation: randomUUID() }));
+        const httpCase = {
+          productId: created.product_id,
+          productVersion: Number(initialParent.catalog_version) + 1,
+          variantVersion: Number(initialVariant.catalog_version) + 1,
+          skuBase: productInputValue.skuBase,
+          skuVariant,
+          correlation: randomUUID(),
+        };
         const child = spawn(process.execPath, [resolve('apps/bulk-svc/test/support/bulk-joint-v2-peer.mjs')], {
           env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: 'test' },
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
-        child.stdin.end(JSON.stringify({ build, port: Number(port), ca: caFile, broker: jointBroker.bulkUrl, cases }));
+        child.stdin.end(JSON.stringify({ build, port: Number(port), ca: caFile, broker: jointBroker.bulkUrl, cases, httpCase }));
         const output = [];
         const diagnostics = [];
         child.stdout.setEncoding('utf8');
@@ -74,7 +82,9 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
         expect(exit, 'Real Bulk v2 peer failed: ' + diagnostics.join(' ')).toBe(0);
         const line = output.join('').split('\\n').find((value) => value.startsWith('BULK_JOINT_V2_RESULT:'));
         expect(line).toBeDefined();
-        const results = JSON.parse(line.slice('BULK_JOINT_V2_RESULT:'.length));
+        const peerResults = JSON.parse(line.slice('BULK_JOINT_V2_RESULT:'.length));
+        const results = peerResults.cases;
+        const httpResult = peerResults.http;
         expect(results.map((item) => item.name)).toEqual(['success', 'missing', 'foreign', 'stale']);
         expect(results.map((item) => item.command.schema_version)).toEqual([2, 2, 2, 2]);
         expect(results.map((item) => item.result.data.results[0].code)).toEqual([null, 'VARIANTE_NO_ENCONTRADA', 'VARIANTE_NO_ENCONTRADA', 'VERSION_CONFLICT']);
@@ -86,12 +96,34 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           { domain: 'CATALOGO', status: 'COMPLETED' },
           { domain: 'INVENTARIO', status: 'PENDING' },
         ]));
+        expect(httpResult).toMatchObject({
+          admission: {
+            status: 'QUEUED',
+            template_version: 2,
+            correlation_id: httpCase.correlation,
+          },
+          snapshot: {
+            status: 'PROCESSING',
+            completed_rows: 0,
+            failed_rows: 0,
+            rows: [
+              {
+                status: 'PROCESSING',
+                applied_domains: ['CATALOGO'],
+                failed_domain: null,
+                needs_reconciliation: false,
+              },
+            ],
+          },
+          catalogResultReceipts: 1,
+        });
+        expect(httpResult.storedContentRef).toContain('supabase://bulk-joint-v2-http/imports/');
         const afterParent = (await database.read((db) => db.select().from(products).where(eq(products.id, created.product_id))))[0];
         const afterTarget = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, skuVariant))))[0];
         const afterForeign = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, foreignSku))))[0];
-        expect(afterParent.catalog_version).toBe(initialParent.catalog_version + 1n);
-        expect(afterParent.nombre).toBe('Bulk joint v2 actualizado');
-        expect(afterTarget.catalog_version).toBe(initialVariant.catalog_version + 1n);
+        expect(afterParent.catalog_version).toBe(initialParent.catalog_version + 2n);
+        expect(afterParent.nombre).toBe('Bulk joint v2 HTTP actualizado');
+        expect(afterTarget.catalog_version).toBe(initialVariant.catalog_version + 2n);
         expect(afterForeign.catalog_version).toBe(initialForeign.catalog_version);
         const acceptedCommandId = results[0].command.message_id;
         const catalogReceipts = await database.read((db) => db.select().from(inbox).where(eq(inbox.message_id, acceptedCommandId)));

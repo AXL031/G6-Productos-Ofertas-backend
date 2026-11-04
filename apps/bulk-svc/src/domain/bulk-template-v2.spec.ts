@@ -1,11 +1,61 @@
 import { describe, expect, it } from 'vitest';
+import { deflateRawSync } from 'node:zlib';
 import { BulkDomainError } from './bulk.domain-error.js';
 import {
+  BULK_MAX_FILE_BYTES,
+  BULK_MAX_ROWS,
+  BULK_MAX_XLSX_EXPANDED_BYTES,
   BULK_TEMPLATE_HEADERS,
   createBulkTemplateCsv,
   createBulkTemplateXlsx,
   parseBulkTemplate,
 } from './bulk-template-v2.js';
+import { createValidBulkXlsx } from '../../test/support/bulk-template-fixtures.js';
+
+function crc32(bytes: Buffer): number {
+  let crc = 0xffffffff;
+  for (const byte of bytes) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit++)
+      crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+}
+
+function compressedZipEntry(name: string, content: Buffer): Buffer {
+  const entryName = Buffer.from(name, 'utf8');
+  const compressed = deflateRawSync(content);
+  const checksum = crc32(content);
+  const local = Buffer.alloc(30 + entryName.length);
+  local.writeUInt32LE(0x04034b50, 0);
+  local.writeUInt16LE(20, 4);
+  local.writeUInt16LE(0x0800, 6);
+  local.writeUInt16LE(8, 8);
+  local.writeUInt32LE(checksum, 14);
+  local.writeUInt32LE(compressed.length, 18);
+  local.writeUInt32LE(content.length, 22);
+  local.writeUInt16LE(entryName.length, 26);
+  entryName.copy(local, 30);
+  const directory = Buffer.alloc(46 + entryName.length);
+  directory.writeUInt32LE(0x02014b50, 0);
+  directory.writeUInt16LE(20, 4);
+  directory.writeUInt16LE(20, 6);
+  directory.writeUInt16LE(0x0800, 8);
+  directory.writeUInt16LE(8, 10);
+  directory.writeUInt32LE(checksum, 16);
+  directory.writeUInt32LE(compressed.length, 20);
+  directory.writeUInt32LE(content.length, 24);
+  directory.writeUInt16LE(entryName.length, 28);
+  directory.writeUInt32LE(local.length + compressed.length, 42);
+  entryName.copy(directory, 46);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(1, 8);
+  end.writeUInt16LE(1, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(local.length + compressed.length, 16);
+  return Buffer.concat([local, compressed, directory, end]);
+}
 
 function csvRow(overrides: Record<number, string> = {}): Buffer {
   const values = [
@@ -32,126 +82,6 @@ function csvRow(overrides: Record<number, string> = {}): Buffer {
     `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
     'utf8',
   );
-}
-
-function validXlsxRow(): Buffer {
-  const values = [
-    'operacion',
-    'producto_id',
-    'catalog_version',
-    'sku_base',
-    'sku_variante',
-    'nombre',
-    'descripcion',
-    'categoria_id',
-    'marca_id',
-    'tipo_producto_id',
-    'tiene_variantes',
-    'precio_regular',
-    'atributos_producto',
-    'atributos_variante',
-    'imagen_url',
-    'stock_inicial',
-  ];
-  const data = [
-    'ALTA',
-    '',
-    '',
-    'SKU-XLSX',
-    '',
-    'Producto',
-    'Descripción',
-    'cat-1',
-    'marca-1',
-    'tipo-1',
-    'false',
-    '15.25',
-    '[]',
-    '',
-    '',
-    '0',
-  ];
-  const cell = (value: string, index: number, row: number) => {
-    let n = index + 1;
-    let col = '';
-    while (n) {
-      n--;
-      col = String.fromCharCode(65 + (n % 26)) + col;
-      n = Math.floor(n / 26);
-    }
-    return `<c r="${col}${row}" t="inlineStr"><is><t>${value}</t></is></c>`;
-  };
-  const crc32 = (bytes: Buffer) => {
-    let crc = 0xffffffff;
-    for (const byte of bytes) {
-      crc ^= byte;
-      for (let bit = 0; bit < 8; bit++)
-        crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
-    }
-    return (crc ^ 0xffffffff) >>> 0;
-  };
-  const entries = [
-    [
-      '[Content_Types].xml',
-      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>',
-    ],
-    [
-      '_rels/.rels',
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>',
-    ],
-    [
-      'xl/workbook.xml',
-      '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>',
-    ],
-    [
-      'xl/_rels/workbook.xml.rels',
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>',
-    ],
-    [
-      'xl/worksheets/sheet1.xml',
-      `<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData><row r="1">${values.map((value, i) => cell(value, i, 1)).join('')}</row><row r="2">${data.map((value, i) => cell(value, i, 2)).join('')}</row></sheetData></worksheet>`,
-    ],
-  ].map(([name, xml]) => ({
-    name: Buffer.from(name!),
-    bytes: Buffer.from(xml!),
-  }));
-  const local: Buffer[] = [];
-  const central: Buffer[] = [];
-  let offset = 0;
-  for (const entry of entries) {
-    const sum = crc32(entry.bytes);
-    const head = Buffer.alloc(30 + entry.name.length);
-    head.writeUInt32LE(0x04034b50, 0);
-    head.writeUInt16LE(20, 4);
-    head.writeUInt16LE(0x0800, 6);
-    head.writeUInt32LE(sum, 14);
-    head.writeUInt32LE(entry.bytes.length, 18);
-    head.writeUInt32LE(entry.bytes.length, 22);
-    head.writeUInt16LE(entry.name.length, 26);
-    entry.name.copy(head, 30);
-    local.push(head, entry.bytes);
-    const dir = Buffer.alloc(46 + entry.name.length);
-    dir.writeUInt32LE(0x02014b50, 0);
-    dir.writeUInt16LE(20, 4);
-    dir.writeUInt16LE(20, 6);
-    dir.writeUInt16LE(0x0800, 8);
-    dir.writeUInt32LE(sum, 16);
-    dir.writeUInt32LE(entry.bytes.length, 20);
-    dir.writeUInt32LE(entry.bytes.length, 24);
-    dir.writeUInt16LE(entry.name.length, 28);
-    dir.writeUInt32LE(offset, 42);
-    entry.name.copy(dir, 46);
-    central.push(dir);
-    offset += head.length + entry.bytes.length;
-  }
-  const directory = Buffer.concat(central);
-  const end = Buffer.alloc(22);
-  end.writeUInt32LE(0x06054b50, 0);
-  end.writeUInt16LE(entries.length, 8);
-  end.writeUInt16LE(entries.length, 10);
-  end.writeUInt32LE(directory.length, 12);
-  end.writeUInt32LE(offset, 16);
-  return Buffer.concat([...local, directory, end]);
 }
 
 describe('Bulk template v2 parser', () => {
@@ -244,6 +174,54 @@ describe('Bulk template v2 parser', () => {
     ).toThrow(/SKU vendible duplicado/);
   });
 
+  it('accepts 5,000 CSV data rows and rejects the next row', () => {
+    const row = (index: number) =>
+      [
+        'ALTA',
+        '',
+        '',
+        `SKU-LIMIT-${index}`,
+        '',
+        'Producto',
+        'Descripción',
+        'cat-1',
+        'marca-1',
+        'tipo-1',
+        'false',
+        '10.50',
+        '[]',
+        '',
+        '',
+        '0',
+      ].join(',');
+    const csv = (count: number) =>
+      Buffer.from(
+        `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${Array.from(
+          { length: count },
+          (_, index) => row(index),
+        ).join('\r\n')}\r\n`,
+        'utf8',
+      );
+
+    expect(parseBulkTemplate(csv(BULK_MAX_ROWS), 'CSV').rows).toHaveLength(
+      BULK_MAX_ROWS,
+    );
+    expect(() => parseBulkTemplate(csv(BULK_MAX_ROWS + 1), 'CSV')).toThrow(
+      /5 000|5,000|5000|límite/i,
+    );
+  });
+
+  it('rejects XLSX content expanded beyond 50 MiB before inflation', () => {
+    const bytes = compressedZipEntry(
+      'xl/worksheets/sheet1.xml',
+      Buffer.alloc(BULK_MAX_XLSX_EXPANDED_BYTES + 1, 0x41),
+    );
+    expect(bytes.length).toBeLessThan(BULK_MAX_FILE_BYTES);
+    expect(() => parseBulkTemplate(bytes, 'XLSX')).toThrow(
+      /50 MiB descomprimidos/i,
+    );
+  }, 15_000);
+
   it('serves an XLSX OOXML template with exactly the contractual headers', () => {
     const bytes = createBulkTemplateXlsx();
     expect(bytes.subarray(0, 2).toString('hex')).toBe('504b');
@@ -254,7 +232,7 @@ describe('Bulk template v2 parser', () => {
   });
 
   it('parses valid XLSX rows into normalized Catalog and workflow inputs', () => {
-    const result = parseBulkTemplate(validXlsxRow(), 'XLSX');
+    const result = parseBulkTemplate(createValidBulkXlsx(), 'XLSX');
     expect(result.rows).toHaveLength(1);
     expect(result.rows[0]?.product).toMatchObject({
       nombre: 'Producto',
