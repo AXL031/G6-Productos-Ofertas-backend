@@ -1,0 +1,1785 @@
+{
+  "master": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+  "promotions": {
+    "checkoutHead": "92c16609e82e14a32caf5bac7d5c644206cf80b3",
+    "changedSourcePaths": [
+      "apps/promotions-svc/src/domain/commercial-context.ts",
+      "apps/promotions-svc/src/http/promotions-identity.spec.ts",
+      "apps/promotions-svc/src/http/query-service.ts",
+      "apps/promotions-svc/src/infrastructure/http/commercial-http.spec.ts",
+      "apps/promotions-svc/src/infrastructure/http/commercial-http.ts",
+      "apps/promotions-svc/src/infrastructure/http/internal-http.spec.ts",
+      "apps/promotions-svc/src/infrastructure/http/internal-http.ts",
+      "apps/promotions-svc/src/infrastructure/resilience/commercial-deadline.spec.ts",
+      "apps/promotions-svc/src/infrastructure/resilience/commercial-deadline.ts"
+    ],
+    "sourceSha256": {
+      "apps/promotions-svc/src/coupons/assigned-event-dispatcher.spec.ts": "341082304287f25c5e66101b808402683fcfb8f6f80665a19ab0309da4a6cd93",
+      "apps/promotions-svc/src/coupons/assigned-event-dispatcher.ts": "5b8b210ddb5409923b0766df0282638d3a80e2dd05e42b3f6a0345a323c1961d",
+      "apps/promotions-svc/src/coupons/assigned-h4-contract.generated.ts": "1571e3931b9ec6d99da8a0abb083151e61a31da82cf318d0065b36d3c1c988a6",
+      "apps/promotions-svc/src/coupons/assigned-projections.spec.ts": "730262674c6b0b844aef6f861e4417f1c5acc26ff57e6b55b8ac98e065fb6aba",
+      "apps/promotions-svc/src/coupons/assigned-projections.ts": "7bd8928318d35a5a7cc4392b1428161d9c2c5b326bcba1000092732960d846f7",
+      "apps/promotions-svc/src/coupons/authoritative-coupon-evidence.ts": "460986059195498e0dacbbe99ada7e1b93c8b145b3939d6b80ec93016fc836da",
+      "apps/promotions-svc/src/coupons/catalog-h4-adapters.spec.ts": "470d3dc8e2ebdab502083b3ce5afe5391d1ae1c499b36e0f889e694d578ef50b",
+      "apps/promotions-svc/src/coupons/catalog-h4-adapters.ts": "8f43097b846711c6d67ed2610a215c186471f62fc68446b8501e862cd1578e76",
+      "apps/promotions-svc/src/coupons/coupon-amqp.spec.ts": "03cd3fb3641b60625a2a8eb092839c2c5cce0b7d6bc70c04932d56777b53a59d",
+      "apps/promotions-svc/src/coupons/coupon-amqp.ts": "f88e5476f7e999f2d114ba3fe1509a0425d8aacb5263fa8a3909509ebd7e41ee",
+      "apps/promotions-svc/src/coupons/coupon-command.spec.ts": "910835360b13ecf0a4a13610a3770e7d0fdeec0ddc807c2a06f4d909de045424",
+      "apps/promotions-svc/src/coupons/coupon-command.ts": "c6db8ea90501f60c6912efedba7a211830f054c7af51d3dbddbd9c1f4455d9d0",
+      "apps/promotions-svc/src/coupons/coupon-consumer.spec.ts": "1e9929e66c12f586c1d1abdac5e1a7960e263fe3687dbf35438f2ef626e42027",
+      "apps/promotions-svc/src/coupons/coupon-consumer.ts": "7f57aafb375c7b6b6fedf362b10569ddbd09a8a5c2dd0df8698bad44f2c4e69e",
+      "apps/promotions-svc/src/coupons/coupon-contract.generated.ts": "f5c8d228ce61978288512c9992528fab3ec26193b60be52424b8c309d2a616af",
+      "apps/promotions-svc/src/coupons/coupon-evidence-lifecycle.spec.ts": "d9e3ac0b700c07d6cc73ce00e31413206b31ba7e4f2de954a329db1a801bcb50",
+      "apps/promotions-svc/src/coupons/coupon-outbox-pump.spec.ts": "94cea7b5bd2471b055417ebffc2b0fcb447492669ac61956a4b3deac68b82aa2",
+      "apps/promotions-svc/src/coupons/coupon-outbox-pump.ts": "7246800a34e7a1c77ffbb048547cfad1a13da751d14af1afa1a4f3e95e75a394",
+      "apps/promotions-svc/src/coupons/coupon-outbox.ts": "dfbef7c435b107faf062da2cf47ab3d5d4b8190357e7e3f592027432f39ccb9e",
+      "apps/promotions-svc/src/coupons/coupon-providers.ts": "3257c90cba8252f921d441cfd9577e98394fd557df0a2ea2f2e6e571c4aacb11",
+      "apps/promotions-svc/src/coupons/coupon-recovery.spec.ts": "bc4ea5ff7948dfd094d61de5e677ca7814bd1ac29c059ecf7a5e76c3d93a812e",
+      "apps/promotions-svc/src/coupons/coupon-runtime.spec.ts": "f2ea915dbed463ddd1522614a368aba8997c60ae26ea329146d08acce88355a1",
+      "apps/promotions-svc/src/coupons/coupon-runtime.ts": "70a76e2ef31db2a1528e225c1ecb6ff098e09ef7d32980dfe8b0837f0043e9ae",
+      "apps/promotions-svc/src/coupons/coupon-transactions.ts": "35d46fd24b41fa283ed050d0901df8b1e6da1f329bfd581735d77dd556f76387",
+      "apps/promotions-svc/src/coupons/event-contract.generated.ts": "24b3aa54be3287432e3b7ba08a05132f6d4e75febf7cab6e4e70d350dcf0ad06",
+      "apps/promotions-svc/src/coupons/h4-event-adapters.spec.ts": "a5238c9245d56c97b25fbee7576b097c029feccda38420790f01f71ecdf6ad5d",
+      "apps/promotions-svc/src/coupons/h4-event-adapters.ts": "c4a7376fac81b22ac9b2bdd0751fe89124d2ac23e60eedc5e442aab789990a51",
+      "apps/promotions-svc/src/coupons/schema-validator.ts": "9c6db7ef1585f9e6dc3fae7b0fad0865f7ebdcdde43fa785d0f9a0d85562acbb",
+      "apps/promotions-svc/src/domain/admin-references.ts": "b3d7929405bbc8da00f71b189d94011940934257273d4ab540260482d0a8581e",
+      "apps/promotions-svc/src/domain/basket-evaluation.ts": "aed2d0f1cde15c45df97c2fa4de13ae85c9927413d5dbf10828add5ef4ab27c5",
+      "apps/promotions-svc/src/domain/benefit-composition.ts": "693ced6525740c680e586761ccdbc03cd904f18d96a59c93bb185e22bf539d56",
+      "apps/promotions-svc/src/domain/benefit-money.spec.ts": "23d67ffa0b7e0633a85771c3d969d678c2ad95c129d105f05d3f1b53d822f05c",
+      "apps/promotions-svc/src/domain/benefit-money.ts": "f657056b110e02d47cf5a592b1da6bfd0179e34e65a84ff17dfaeeabd21d58b3",
+      "apps/promotions-svc/src/domain/clock.ts": "12ab2011e70d9adcf5b578801ec3a5016835a6dd920393805f221780908fae13",
+      "apps/promotions-svc/src/domain/commercial-context.ts": "1f70e9a267eaa6c45b8824ff0ded77b3e1e615d9852beb9f3dd179c2091dfb0e",
+      "apps/promotions-svc/src/domain/date-time.ts": "063f59483406834b7582ef701b7a6e942bfb3bfcfaf54afbab15a0c7bac81126",
+      "apps/promotions-svc/src/domain/decimal.ts": "1d39b7379b1fb91bddb6f45aee5bc8aafffc017b0a2678d0bfcf290aaa641485",
+      "apps/promotions-svc/src/domain/promotion-rules.spec.ts": "0a738a2ac2e75157a946897e4f09480e3a40b2670f7a031f45676afc283bc6ee",
+      "apps/promotions-svc/src/domain/promotion-rules.ts": "31fc29f8429e2c2d647114a6f88248754f2e7911829abf32bf903c6c2f117447",
+      "apps/promotions-svc/src/health/promotions-dependency-probes.ts": "f0d85644215f0e6e54d7c2b82d22d5171acbffbc0136c06a4b89fd947b38582d",
+      "apps/promotions-svc/src/health/promotions-readiness-monitor.spec.ts": "d103a34abca68c25a26a3b5aff6f2c51427a8b57aeb79f85f978f046dae1de61",
+      "apps/promotions-svc/src/health/promotions-readiness-monitor.ts": "8942bf6ce0cee0d6dbaae2bb0c600bfc0601e992ed95809d20f1b258192bcbe3",
+      "apps/promotions-svc/src/health/promotions-readiness.service.spec.ts": "e7df423c6f78beab6090d7d56aa1e77c895ba7be4fdbbfb31ffcf5a2b8548feb",
+      "apps/promotions-svc/src/health/promotions-readiness.service.ts": "66ea0fd57d47b8137fde5e63b0d18457aa72578e9eb0d80b24a8557c9ab92d78",
+      "apps/promotions-svc/src/http/http-contract.generated.ts": "5a220d4e513a45d6da2d0b9aec976184bb878a820f92f97bce840f54fef980a3",
+      "apps/promotions-svc/src/http/http-validation.spec.ts": "86278655369e2ebcb2ae63a6379cd02cca235eb9a8c42b376eb76443290bb5b5",
+      "apps/promotions-svc/src/http/http-validation.ts": "c2f039d8f2669a9b3236546c5fde68f8868093c5923047a20d1a6451fc9774ac",
+      "apps/promotions-svc/src/http/local-demo.spec.ts": "778540bffd27bc3dd42c7afd451587fa2fe23fe2ccfbc109c6a8421049044a97",
+      "apps/promotions-svc/src/http/observation-interceptor.ts": "881a9b2df62d2e602c4662b35dff1585f731b09c24947b69340fb9e2235815d6",
+      "apps/promotions-svc/src/http/promotions-identity.spec.ts": "3f69671dc2d96c71dd139d881d2ce224faa32eabab3a709d6d35f92e5dd9d07c",
+      "apps/promotions-svc/src/http/promotions-identity.ts": "291ef7c9b5f788d435039163ac13ce1d22b0a1aabd9d7b0ceb43e22763fc87d1",
+      "apps/promotions-svc/src/http/query-controller.ts": "ce1b6e2884faddf8a3b516b4d6425e6a304d08b4d9c01c35305a77b4d61bd6ec",
+      "apps/promotions-svc/src/http/query-service.ts": "3fd638217239bf545b0bd672dd6fba3c67316a22d27d5463914411fe599d7066",
+      "apps/promotions-svc/src/http/restricted-demo-peer.ts": "2a422753d7673a0f6c64556ff2c393c483b15cf44beff1837127692de6d6868e",
+      "apps/promotions-svc/src/http/write-controller.ts": "57c7de5851958ffa32968db5c0d5270f5b6553fbd9eb89c68b01c4f710fc89c4",
+      "apps/promotions-svc/src/http/write-service.ts": "9f0906fee7236e38b50dd1fa2b4c58ef69cccb015c31730b0278f3b92fbc637c",
+      "apps/promotions-svc/src/infrastructure/config/promotions-config.spec.ts": "2f14a0f5901392753cc2f20deb3155ea992dd64ceecf85662fbb36485977e4be",
+      "apps/promotions-svc/src/infrastructure/config/promotions-config.ts": "358aeafe788e7a7caafa85290272255529ccfe018edf6caa53921c14359a00e4",
+      "apps/promotions-svc/src/infrastructure/http/admin-references-http.spec.ts": "907238cf2683553566d4722fae4ac46010d2cef5ce02a53bbd4c4fbadb3b1c4b",
+      "apps/promotions-svc/src/infrastructure/http/admin-references-http.ts": "3a8fcafeb926aef7c3d0468d87056916f0cd5e1be5a353d6c1a39283da6a5713",
+      "apps/promotions-svc/src/infrastructure/http/commercial-http.spec.ts": "426778a414573e4fc5fd4237e870a48fe8fae9c81d893b14cf58959cf0090709",
+      "apps/promotions-svc/src/infrastructure/http/commercial-http.ts": "e85d334aed8950add29d6afcbcef4258f27cdb907dc2aa42b15724a9ff9fc138",
+      "apps/promotions-svc/src/infrastructure/http/integration-providers.spec.ts": "f0eac7a76324666f31ead2c01b48aca05a558c4a97072e9e199665eda807118e",
+      "apps/promotions-svc/src/infrastructure/http/integration-providers.ts": "f539d9d39dd1c45b4163b1fd17bbf0145ff32d5d7f959284b006f823e296cd94",
+      "apps/promotions-svc/src/infrastructure/http/internal-http.spec.ts": "d65c2b2ccb6597a205d4e0e93fb6c95b82ca17c9b51ee411b1ebd42c0bb66421",
+      "apps/promotions-svc/src/infrastructure/http/internal-http.ts": "e6fc97654e4e615e1a6d2822f91c0403e9fbcfa093952c5cd3c885071bc60fb6",
+      "apps/promotions-svc/src/infrastructure/http/recommendations.performance.spec.ts": "79ab6b963cd2000addbf07fddfae07b161aa6d57309cec6726e230e471ff743f",
+      "apps/promotions-svc/src/infrastructure/http/service-tokens.spec.ts": "29059c6e4ded37966772674eec9146f6ece3f3aa1c0b3c7b4b026d571be36d5d",
+      "apps/promotions-svc/src/infrastructure/http/service-tokens.ts": "c8765e7961e5340565d79a12480c83f65004433e9c95f3a9b58477310cd62b99",
+      "apps/promotions-svc/src/infrastructure/http/upstream-contract.generated.ts": "00346f2b1d210328a32530e4a07b658de9e062a3c0a0a784ecb1703ae7613436",
+      "apps/promotions-svc/src/infrastructure/logging/operation-logger.spec.ts": "25f07905d2d65c38d1233b006eb5cf321ba5ceb546f23bc0d525ae63bcf565ab",
+      "apps/promotions-svc/src/infrastructure/logging/operation-logger.ts": "1fabb6b372b5464347d624578a91784434dc8b0546b526c10bc2f8ff808c4a99",
+      "apps/promotions-svc/src/infrastructure/logging/startup-logger.spec.ts": "f496040ac1e98ce60c177dab3e8e4eb2d63f76b70f57c905c3169339aa934bfa",
+      "apps/promotions-svc/src/infrastructure/logging/startup-logger.ts": "3763850c7fe881b5b05ec4e7918433cd4dcdb870d2cc8af7b37c3566ff62942e",
+      "apps/promotions-svc/src/infrastructure/persistence/promotions-persistence.ts": "a9bceaac647b1f873fd583d7b487e78731f4359a854729cdfb91973a74b192f6",
+      "apps/promotions-svc/src/infrastructure/persistence/query-repository.ts": "97cef4ae2cc9ddab8ece8a7e967adf507edbd5144cb42d168ded5841efca9d55",
+      "apps/promotions-svc/src/infrastructure/persistence/repositories.ts": "dd574aea7f74e8658edfab0062d30b954b0f0508a0e55d90287f249386e32acb",
+      "apps/promotions-svc/src/infrastructure/persistence/schema.ts": "2899592b3de5b7901a5f7efb7f7f02888b2780ee38cd3f12f28861bf2be201d9",
+      "apps/promotions-svc/src/infrastructure/persistence/sql-transaction.spec.ts": "a6e11571d2f423770bd3dff80f67880a13aab6355a6f5e989be559fd4718a0e8",
+      "apps/promotions-svc/src/infrastructure/persistence/sql-transaction.ts": "912e87ba77b9f5b4dc92faac03e4045304d90faa28d0c8d1643e252ff2101cb7",
+      "apps/promotions-svc/src/infrastructure/resilience/commercial-deadline.spec.ts": "4780b11fb09fe3f967667762217a7fcd96d850e8c8f093542eaa2c8bef8e23e3",
+      "apps/promotions-svc/src/infrastructure/resilience/commercial-deadline.ts": "87d3f3915ff55152b1a774fd49f3bd53a3cda752f47bf322418cea159a953b82",
+      "apps/promotions-svc/src/infrastructure/resilience/deadline.spec.ts": "98d23f8f994e29f9bfc6c8e60c1fc2296915f1ac5395d178c12b594738f1a337",
+      "apps/promotions-svc/src/infrastructure/resilience/deadline.ts": "23269c67bcaf09b0924d8943b8a8ff3b46fd2a63bb78dc7146dd4e73dca1fa0b",
+      "apps/promotions-svc/src/main.ts": "d267881b5eef7570ded3df045db6a2cebc2ac1c6a70738554e719278e3565485",
+      "apps/promotions-svc/src/promotions-svc.controller.spec.ts": "3967d2246f7399997702305ffeec3376739b41bbe62369f883c1a647a2edefa1",
+      "apps/promotions-svc/src/promotions-svc.controller.ts": "6f18e29e2e1e4b222926443d516e19e4dc93aa70f76a6042ad11dee11956da36",
+      "apps/promotions-svc/src/promotions-svc.module.ts": "52a31adad99421de3bc456c75aa1d7dfc1391499f1f40160a706b2b99d181aa7",
+      "apps/promotions-svc/src/promotions-svc.service.ts": "d8b8fe38904f846fe2d67c1f9bd711f35ee471aa638f2ff45508ba006e31748a"
+    },
+    "execution": "current checkout compiled and mounted over pinned provider dist; source hashes verified before/after"
+  },
+  "docs": "80f208978c2c703e2b2d62064112365e7b9e1677",
+  "promotionsSqlRevision": "51a5ce6e76bb0c61d93ef47416e46797bf5b9846",
+  "runtime": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+  "startedAt": "2026-11-04T17:55:16.461Z",
+  "isolation": "Docker internal network; only random loopback ports; PostgreSQL TLS verify-full; unique restricted logins; no shared configuration",
+  "migrations": [
+    {
+      "schema": "catalog",
+      "repository": "docs",
+      "revision": "80f208978c2c703e2b2d62064112365e7b9e1677",
+      "path": "datos/catalog-svc/migrations/0001_create_catalog.sql",
+      "blob": "5861536e31b2eb0ccb94d8ad2a4e10f4e792d6d2"
+    },
+    {
+      "schema": "taxonomy",
+      "repository": "docs",
+      "revision": "80f208978c2c703e2b2d62064112365e7b9e1677",
+      "path": "datos/taxonomy/migrations/0001_create_taxonomy.sql",
+      "blob": "3db51993e6c06ecfcbc2e93f6757f848a78987f4"
+    },
+    {
+      "schema": "pricing",
+      "repository": "docs",
+      "revision": "80f208978c2c703e2b2d62064112365e7b9e1677",
+      "path": "datos/pricing/migrations/0001_create_pricing.sql",
+      "blob": "1f34f1fc0b4122bc33c6ebe524523bbe1e17d7fe"
+    },
+    {
+      "schema": "inventory",
+      "repository": "docs",
+      "revision": "80f208978c2c703e2b2d62064112365e7b9e1677",
+      "path": "datos/inventory-svc/migrations/0001_inventory_initial.sql",
+      "blob": "a2ff60c69112bbd6f2db5a3346475e9c9aed5be2"
+    },
+    {
+      "schema": "inventory",
+      "repository": "docs",
+      "revision": "80f208978c2c703e2b2d62064112365e7b9e1677",
+      "path": "datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql",
+      "blob": "78a3c025ad1ae6f7a13072f2f24092e4a60e3f43"
+    },
+    {
+      "schema": "catalog",
+      "repository": "backend",
+      "revision": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "path": "apps/catalog-svc/migrations/0002_create_sku_barcodes.sql",
+      "blob": "07e4d7757ad0b35f0b3015f6f02edd8c22a4d3ff"
+    },
+    {
+      "schema": "catalog",
+      "repository": "backend",
+      "revision": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "path": "apps/catalog-svc/migrations/0003_product_publication_history.sql",
+      "blob": "81288a65d2483f8ecabcbf358a616c17bcf35da2"
+    },
+    {
+      "schema": "taxonomy",
+      "repository": "backend",
+      "revision": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "path": "apps/taxonomy-svc/migrations/0002_deactivation_source_version.sql",
+      "blob": "3652b185799cd65c8c3784f69c32598479a4e10d"
+    },
+    {
+      "schema": "taxonomy",
+      "repository": "backend",
+      "revision": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "path": "apps/taxonomy-svc/migrations/0003_deactivation_timeout_setting.sql",
+      "blob": "bdeb5bb63610e05424a85bdf52ae85f636064955"
+    }
+  ],
+  "checks": [
+    {
+      "id": "liveness-catalog-svc",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/health",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "3fa57720-986d-474e-baea-566ce5863584",
+      "responseCorrelationId": "3fa57720-986d-474e-baea-566ce5863584",
+      "body": {
+        "status": "ok",
+        "service": "catalog-svc"
+      },
+      "elapsedMs": 171
+    },
+    {
+      "id": "liveness-pricing-svc",
+      "result": "PASS",
+      "service": "pricing-svc",
+      "path": "/health",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "9e2ae62d-904e-412f-b76e-ddced65a26e3",
+      "responseCorrelationId": null,
+      "body": {
+        "status": "ok",
+        "service": "pricing-svc"
+      },
+      "elapsedMs": 32
+    },
+    {
+      "id": "liveness-taxonomy-svc",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/health",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "502254ef-286c-44df-bd0d-2fbd57aff518",
+      "responseCorrelationId": null,
+      "body": {
+        "status": "ok",
+        "service": "taxonomy-svc"
+      },
+      "elapsedMs": 23
+    },
+    {
+      "id": "liveness-inventory-svc",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "path": "/health",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "b9c12049-d952-4e32-9a12-511e8b3d1686",
+      "responseCorrelationId": null,
+      "body": {
+        "status": "ok",
+        "service": "inventory-svc"
+      },
+      "elapsedMs": 16
+    },
+    {
+      "id": "liveness-promotions-svc",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/health",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "0eceb884-53db-4ad2-bcd7-171d4fc8aa89",
+      "responseCorrelationId": null,
+      "body": {
+        "status": "ok",
+        "service": "promotions-svc"
+      },
+      "elapsedMs": 22
+    },
+    {
+      "id": "promotions-real-list-active-campaign",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/api/v1/promociones?canal=MARKETPLACE",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "00ca017b-9534-44e1-aa60-9b50e1a525d7",
+      "responseCorrelationId": "00ca017b-9534-44e1-aa60-9b50e1a525d7",
+      "body": {
+        "items": [
+          {
+            "promotion_id": "140accd5-2a3a-4bc0-aa1d-bb072a960c52",
+            "name": "REAL-PARTIAL-CONSUMER",
+            "status": "ACTIVA",
+            "valid_from": "2026-01-01T00:00:00.000Z",
+            "valid_until": "2027-01-01T00:00:00.000Z",
+            "channels": ["MARKETPLACE"]
+          }
+        ]
+      },
+      "elapsedMs": 141
+    },
+    {
+      "id": "catalog-context-simple-real-pg",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "06d7ff66-6e41-45d1-9c1b-b1b8396551a0",
+      "responseCorrelationId": "06d7ff66-6e41-45d1-9c1b-b1b8396551a0",
+      "body": {
+        "sku": "SYNTHETIC-REAL",
+        "productId": "b4fd783c-fc3a-4b74-b9f1-74311cb061bb",
+        "isVariant": false,
+        "active": false,
+        "eligible": false
+      },
+      "elapsedMs": 103
+    },
+    {
+      "id": "promotions-native-token-reader-to-real-catalog",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": {
+        "sku": "SYNTHETIC-REAL",
+        "productId": "b4fd783c-fc3a-4b74-b9f1-74311cb061bb",
+        "isVariant": false,
+        "active": false,
+        "eligible": false
+      },
+      "elapsedMs": 147
+    },
+    {
+      "id": "catalog-opaque-sku-not-double-decoded",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SKU%20%252F%20%2B%20%C3%91/contexto",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "3b5e561d-d3f4-4154-8a55-31e67fec5b0b",
+      "responseCorrelationId": "3b5e561d-d3f4-4154-8a55-31e67fec5b0b",
+      "body": {
+        "sku": "SKU %2F + Ñ",
+        "productId": "a2a7ad42-e8c5-4af0-99c2-9c95d04565c2",
+        "isVariant": false,
+        "active": false,
+        "eligible": false
+      },
+      "elapsedMs": 10
+    },
+    {
+      "id": "catalog-inactive-context",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-INACTIVE/contexto",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "45cdc140-f745-4eda-ac79-6dbb957eac3a",
+      "responseCorrelationId": "45cdc140-f745-4eda-ac79-6dbb957eac3a",
+      "body": {
+        "sku": "SYNTHETIC-INACTIVE",
+        "productId": "6a19a950-3fee-4db5-a279-114b462e6eb2",
+        "isVariant": false,
+        "active": false,
+        "eligible": false
+      },
+      "elapsedMs": 11
+    },
+    {
+      "id": "catalog-missing-context-contract-error",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-MISSING/contexto",
+      "status": 404,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "d2363e6b-0322-4eb2-9738-83bf8f02590a",
+      "responseCorrelationId": "d2363e6b-0322-4eb2-9738-83bf8f02590a",
+      "body": {
+        "type": "/errores/sku-no-encontrado",
+        "title": "SKU_NO_ENCONTRADO",
+        "status": 404,
+        "code": "SKU_NO_ENCONTRADO",
+        "correlationId": "d2363e6b-0322-4eb2-9738-83bf8f02590a"
+      },
+      "elapsedMs": 10
+    },
+    {
+      "id": "catalog-auth-anonymous",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "33d631cc-39f1-4f54-a0c5-851db49f4c32",
+      "responseCorrelationId": "33d631cc-39f1-4f54-a0c5-851db49f4c32",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "TOKEN_INVALIDO",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "33d631cc-39f1-4f54-a0c5-851db49f4c32"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "catalog-auth-wrong-client",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "a4aba8c0-65ac-4886-bd52-090647542b0d",
+      "responseCorrelationId": "a4aba8c0-65ac-4886-bd52-090647542b0d",
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "SCOPE_INSUFICIENTE",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "a4aba8c0-65ac-4886-bd52-090647542b0d"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "catalog-auth-wrong-scope",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "086ddca0-6cdf-497c-ba57-2887857d2ca7",
+      "responseCorrelationId": "086ddca0-6cdf-497c-ba57-2887857d2ca7",
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "SCOPE_INSUFICIENTE",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "086ddca0-6cdf-497c-ba57-2887857d2ca7"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "catalog-auth-expired",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "932c89af-8d37-4f0c-9310-20f0e76033ed",
+      "responseCorrelationId": "932c89af-8d37-4f0c-9310-20f0e76033ed",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "TOKEN_INVALIDO",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "932c89af-8d37-4f0c-9310-20f0e76033ed"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "catalog-auth-wrong-audience",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "06408346-9f9d-4cae-afd3-bcaae0907ebf",
+      "responseCorrelationId": "06408346-9f9d-4cae-afd3-bcaae0907ebf",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "TOKEN_INVALIDO",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "06408346-9f9d-4cae-afd3-bcaae0907ebf"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "catalog-auth-wrong-issuer",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "08262bd7-38ec-4e01-aa8e-1f29509efad8",
+      "responseCorrelationId": "08262bd7-38ec-4e01-aa8e-1f29509efad8",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "TOKEN_INVALIDO",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "08262bd7-38ec-4e01-aa8e-1f29509efad8"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "catalog-auth-bad-signature",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "6274998a-28ab-4fea-a2ef-90ff52b361b4",
+      "responseCorrelationId": "6274998a-28ab-4fea-a2ef-90ff52b361b4",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "TOKEN_INVALIDO",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "6274998a-28ab-4fea-a2ef-90ff52b361b4"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "catalog-auth-human",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "410d71bb-cc00-4c64-b449-18e928db24e4",
+      "responseCorrelationId": "410d71bb-cc00-4c64-b449-18e928db24e4",
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "SCOPE_INSUFICIENTE",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "410d71bb-cc00-4c64-b449-18e928db24e4"
+      },
+      "elapsedMs": 7
+    },
+    {
+      "id": "catalog-invalid-correlation",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 400,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "fd4d45c5-e8c5-4ac3-8afe-71d92446d7ac",
+      "responseCorrelationId": "5f4339c5-97ba-4721-aeb4-1763956b9fcd",
+      "body": {
+        "type": "/errores/validacion",
+        "title": "VALIDACION",
+        "status": 400,
+        "code": "VALIDACION",
+        "correlationId": "5f4339c5-97ba-4721-aeb4-1763956b9fcd"
+      },
+      "elapsedMs": 7
+    },
+    {
+      "id": "catalog-context-persists-across-real-process-restart",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/skus/SYNTHETIC-REAL/contexto",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "548bbb90-5a8f-4d37-96ad-ea036604110c",
+      "responseCorrelationId": "548bbb90-5a8f-4d37-96ad-ea036604110c",
+      "body": {
+        "sku": "SYNTHETIC-REAL",
+        "productId": "b4fd783c-fc3a-4b74-b9f1-74311cb061bb",
+        "isVariant": false,
+        "active": false,
+        "eligible": false
+      },
+      "elapsedMs": 12,
+      "persistedState": "INACTIVO"
+    },
+    {
+      "id": "real-pg-lock-timeout-cancellation-and-recovery",
+      "result": "PASS",
+      "deadlineMs": 2000,
+      "before": [
+        {
+          "pid": 77,
+          "usename": "catalog_app",
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "blockers": [],
+          "sku_query": true
+        }
+      ],
+      "lockPid": 72,
+      "blocked": [
+        {
+          "pid": 77,
+          "usename": "catalog_app",
+          "state": "active",
+          "wait_event_type": "Lock",
+          "wait_event": "relation",
+          "blockers": [72],
+          "sku_query": true
+        }
+      ],
+      "timed": {
+        "outcome": "REJECTED",
+        "name": "TimeoutError",
+        "error": "The operation was aborted due to timeout",
+        "cancellation": {
+          "aborted": true,
+          "reasonName": "TimeoutError",
+          "matchesReason": true
+        },
+        "elapsedMs": 2005
+      },
+      "pendingAtClientTimeout": [
+        {
+          "pid": 77,
+          "usename": "catalog_app",
+          "state": "active",
+          "wait_event_type": "Lock",
+          "wait_event": "relation",
+          "blockers": [72],
+          "sku_query": true
+        }
+      ],
+      "drained": [
+        {
+          "pid": 77,
+          "usename": "catalog_app",
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "blockers": [],
+          "sku_query": true
+        }
+      ],
+      "afterRecovery": [
+        {
+          "pid": 77,
+          "usename": "catalog_app",
+          "state": "idle",
+          "wait_event_type": "Client",
+          "wait_event": "ClientRead",
+          "blockers": [],
+          "sku_query": true
+        }
+      ],
+      "drainElapsedMs": 8,
+      "recovered": {
+        "outcome": "RETURNED",
+        "body": {
+          "sku": "SYNTHETIC-REAL",
+          "productId": "b4fd783c-fc3a-4b74-b9f1-74311cb061bb",
+          "isVariant": false,
+          "active": false,
+          "eligible": false
+        },
+        "elapsedMs": 171
+      },
+      "limitation": "HTTP deadline cancels the client transport; PostgreSQL cancellation is not inferred. Release the test lock and verify server queries drain and recovery succeeds."
+    },
+    {
+      "id": "blocker-catalog-product",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "path": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4",
+      "responseCorrelationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4",
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "SCOPE_INSUFICIENTE",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4"
+      },
+      "elapsedMs": 10
+    },
+    {
+      "id": "blocker-inventory-commercial",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "path": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL&canal=MARKETPLACE",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "24d2ef79-6967-42ce-b590-467a98cf594c",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "Scope o client_id no autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "El cliente 'modulo-productos' no está autorizado para esta operación",
+        "correlationId": "24d2ef79-6967-42ce-b590-467a98cf594c"
+      },
+      "elapsedMs": 13
+    },
+    {
+      "id": "pricing-real-catalog-inactive-sku-contract-error",
+      "result": "PASS",
+      "service": "pricing-svc",
+      "path": "/api/v1/precios/skus/SYNTHETIC-REAL?canal=MARKETPLACE",
+      "status": 404,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "9585414e-bcf5-4b18-8bb1-c40a29a9bafc",
+      "responseCorrelationId": "9585414e-bcf5-4b18-8bb1-c40a29a9bafc",
+      "body": {
+        "title": "PRECIO_NO_ENCONTRADO",
+        "status": 404,
+        "code": "PRECIO_NO_ENCONTRADO",
+        "correlationId": "9585414e-bcf5-4b18-8bb1-c40a29a9bafc"
+      },
+      "elapsedMs": 91,
+      "transport": "verified TLS terminator forwards to real Catalog; real own client_credentials token"
+    },
+    {
+      "id": "pricing-real-catalog-batch-omits-ineligible-sku",
+      "result": "PASS",
+      "service": "pricing-svc",
+      "path": "/api/v1/precios?skus=SYNTHETIC-REAL&canal=MARKETPLACE",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "b98bca65-fb2a-4ba2-97de-968b749cf3c8",
+      "responseCorrelationId": "b98bca65-fb2a-4ba2-97de-968b749cf3c8",
+      "body": {
+        "items": []
+      },
+      "elapsedMs": 20
+    },
+    {
+      "id": "inventory-real-pg-four-commercial-states",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "path": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL,SYNTHETIC-LOW,SYNTHETIC-ZERO,SYNTHETIC-MISSING&canal=MARKETPLACE",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "5f238ab7-9b4e-455b-8507-d8d72183c3ab",
+      "responseCorrelationId": null,
+      "body": {
+        "items": [
+          {
+            "sku": "SYNTHETIC-REAL",
+            "status": "DISPONIBLE"
+          },
+          {
+            "sku": "SYNTHETIC-LOW",
+            "status": "STOCK_BAJO"
+          },
+          {
+            "sku": "SYNTHETIC-ZERO",
+            "status": "AGOTADO"
+          },
+          {
+            "sku": "SYNTHETIC-MISSING",
+            "status": "INDETERMINADO"
+          }
+        ]
+      },
+      "elapsedMs": 29
+    },
+    {
+      "id": "inventory-client-channel-mismatch",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "path": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL&canal=RETAIL",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "f16a3705-5c3b-46b1-bc41-37558535d34c",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "Scope o client_id no autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "El canal 'RETAIL' no corresponde al cliente autenticado 'modulo-marketplace'",
+        "correlationId": "f16a3705-5c3b-46b1-bc41-37558535d34c"
+      },
+      "elapsedMs": 9
+    },
+    {
+      "id": "inventory-invalid-channel",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "path": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL&canal=INVALID",
+      "status": 400,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "7739fa87-bee3-4a90-bce3-a7cdb6b5a51b",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/validacion",
+        "title": "Datos de entrada inválidos",
+        "status": 400,
+        "code": "VALIDACION",
+        "detail": "El canal 'INVALID' debe ser MARKETPLACE, CHATBOT o RETAIL",
+        "correlationId": "7739fa87-bee3-4a90-bce3-a7cdb6b5a51b"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "taxonomy-real-pg-list-control",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "3a206f65-9d76-4d62-8647-7a1ca27544d0",
+      "responseCorrelationId": null,
+      "body": {
+        "categories": [
+          {
+            "categoria_id": "73cb323f-ac10-4844-889c-098200cbcdd9",
+            "parent_id": null,
+            "name": "SYNTHETIC REAL",
+            "status": "ACTIVA"
+          }
+        ]
+      },
+      "elapsedMs": 67
+    },
+    {
+      "id": "taxonomy-read-token-cannot-list-categorias",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "4a429960-219a-45a9-981f-2444a7b1de9f",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "4a429960-219a-45a9-981f-2444a7b1de9f"
+      },
+      "elapsedMs": 8
+    },
+    {
+      "id": "taxonomy-read-token-cannot-list-marcas",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/marcas",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "98104ddd-a1c7-47e6-9dbe-53e790787f0b",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "98104ddd-a1c7-47e6-9dbe-53e790787f0b"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-existing-real-pg",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "fcaf661d-de57-44a1-9eea-a14d2ac32d1e",
+      "responseCorrelationId": null,
+      "body": {
+        "categoriaId": "73cb323f-ac10-4844-889c-098200cbcdd9",
+        "nombre": "SYNTHETIC REAL",
+        "descripcion": null,
+        "categoriaPadreId": null,
+        "orden": 0,
+        "imagenUrl": null,
+        "estado": "ACTIVO",
+        "version": 0,
+        "slug": null
+      },
+      "elapsedMs": 11
+    },
+    {
+      "id": "taxonomy-category-missing-contract-error",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/9ead615f-0fd9-4a8d-a3f9-6cfdcfee8641",
+      "status": 404,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "447bcd5e-7e6a-4abf-8d15-9054b43feb1c",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/categoria-no-encontrada",
+        "title": "Categoría no encontrada",
+        "status": 404,
+        "code": "CATEGORIA_NO_ENCONTRADA",
+        "correlationId": "447bcd5e-7e6a-4abf-8d15-9054b43feb1c"
+      },
+      "elapsedMs": 9
+    },
+    {
+      "id": "taxonomy-category-inactive-real-pg",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/59d4739c-8972-402e-bf61-53de8f29c011",
+      "status": 200,
+      "contentType": "application/json; charset=utf-8",
+      "correlationId": "b86df6c8-0e77-469f-a8f6-64e73a795014",
+      "responseCorrelationId": null,
+      "body": {
+        "categoriaId": "59d4739c-8972-402e-bf61-53de8f29c011",
+        "nombre": "SYNTHETIC INACTIVE",
+        "descripcion": null,
+        "categoriaPadreId": null,
+        "orden": 0,
+        "imagenUrl": null,
+        "estado": "INACTIVO",
+        "version": 0,
+        "slug": null
+      },
+      "elapsedMs": 8
+    },
+    {
+      "id": "taxonomy-category-auth-anonymous",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "64f6c9ad-8f78-4b95-8333-e67ba63ec75b",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "detail": "Unauthorized",
+        "correlationId": "64f6c9ad-8f78-4b95-8333-e67ba63ec75b"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-auth-wrong-client",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "ff4fa23f-a47b-43e3-84af-1c0dfe2240c8",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "ff4fa23f-a47b-43e3-84af-1c0dfe2240c8"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-auth-wrong-scope",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "6ea04e06-9426-4612-8f27-79a31394b2d5",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "6ea04e06-9426-4612-8f27-79a31394b2d5"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-auth-wrong-audience",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "1d98462f-ff40-48d0-a6f2-bbaca09c6ea0",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "detail": "Unauthorized",
+        "correlationId": "1d98462f-ff40-48d0-a6f2-bbaca09c6ea0"
+      },
+      "elapsedMs": 4
+    },
+    {
+      "id": "taxonomy-category-auth-wrong-issuer",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "e562f6a1-2de4-4192-8752-ce28ae121cf7",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "detail": "Unauthorized",
+        "correlationId": "e562f6a1-2de4-4192-8752-ce28ae121cf7"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-auth-expired",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "328f5a52-c045-4a08-8bbb-686fe85776b3",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "detail": "Unauthorized",
+        "correlationId": "328f5a52-c045-4a08-8bbb-686fe85776b3"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-category-auth-bad-signature",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "6f9b299c-b94c-4ce7-baa4-4fe2962bb82e",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "detail": "Unauthorized",
+        "correlationId": "6f9b299c-b94c-4ce7-baa4-4fe2962bb82e"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "taxonomy-category-auth-human-without-role",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/73cb323f-ac10-4844-889c-098200cbcdd9",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "adb53450-3507-4352-af7c-29e41df2ccea",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "adb53450-3507-4352-af7c-29e41df2ccea"
+      },
+      "elapsedMs": 6
+    },
+    {
+      "id": "taxonomy-category-invalid-id",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias/not-a-uuid",
+      "status": 400,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "07c7672c-4566-477a-b51a-6b606b13ad08",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/validacion",
+        "title": "Datos de entrada inválidos",
+        "status": 400,
+        "code": "VALIDACION",
+        "detail": "Identificador inválido.",
+        "correlationId": "07c7672c-4566-477a-b51a-6b606b13ad08"
+      },
+      "elapsedMs": 5
+    },
+    {
+      "id": "taxonomy-read-token-cannot-write",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "path": "/api/v1/categorias",
+      "status": 403,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "45c52ea8-6d97-4475-9ad3-4e277efa9b9f",
+      "responseCorrelationId": null,
+      "body": {
+        "type": "/errores/scope-insuficiente",
+        "title": "No autorizado",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "detail": "Forbidden",
+        "correlationId": "45c52ea8-6d97-4475-9ad3-4e277efa9b9f"
+      },
+      "elapsedMs": 30
+    },
+    {
+      "id": "promotions-nest-taxonomy-reference-active",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": {
+        "products": [],
+        "skus": [],
+        "categories": ["73cb323f-ac10-4844-889c-098200cbcdd9"]
+      },
+      "scope": "native PromotionsSvcModule ADMIN_REFERENCES; no provider overrides"
+    },
+    {
+      "id": "promotions-nest-taxonomy-reference-missing",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": {
+        "products": [],
+        "skus": [],
+        "categories": []
+      },
+      "scope": "native PromotionsSvcModule ADMIN_REFERENCES; no provider overrides"
+    },
+    {
+      "id": "promotions-nest-taxonomy-reference-inactive",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": {
+        "products": [],
+        "skus": [],
+        "categories": []
+      },
+      "scope": "native PromotionsSvcModule ADMIN_REFERENCES; no provider overrides"
+    },
+    {
+      "id": "promotions-nest-taxonomy-denied-grant-fails-closed",
+      "result": "PASS",
+      "outcome": "REJECTED",
+      "name": "Error",
+      "kind": "CommercialDependencyError",
+      "error": "COMMERCIAL_CONTEXT_UNAVAILABLE",
+      "elapsedMs": 1767,
+      "limitation": "denied local issuer grant must not become an absent/active category"
+    },
+    {
+      "id": "promotions-independent-passive-readiness-real-pg-and-broker",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": {
+        "status": "ready",
+        "service": "promotions-svc",
+        "dependencies": {
+          "database": "up",
+          "broker": "up"
+        }
+      },
+      "scope": {
+        "instance": "independent test PromotionsReadinessService; not the running Nest monitor",
+        "passiveBrokerProbe": true,
+        "runningServiceBrokerProbeEnabled": false,
+        "couponRuntimeEnabled": false,
+        "operationalAmqpConsumptionVerified": false
+      },
+      "runningNestMonitor": [
+        {
+          "timestamp": "2026-11-04T17:57:05.114Z",
+          "level": "info",
+          "service": "promotions-svc",
+          "code": "DEPENDENCIES_READY",
+          "database": "up",
+          "broker": "disabled"
+        }
+      ],
+      "transport": "independent test instance with check(true); running Nest monitor has broker disabled; no operational AMQP consumer verified"
+    },
+    {
+      "id": "promotions-real-http-catalog-403-fails-closed",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/api/v1/promociones/evaluar",
+      "status": 503,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "bcae3342-d9cd-4ca2-9175-265be3c7c031",
+      "responseCorrelationId": "bcae3342-d9cd-4ca2-9175-265be3c7c031",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "bcae3342-d9cd-4ca2-9175-265be3c7c031"
+      },
+      "elapsedMs": 75,
+      "verifiedUpstreamFailure": {
+        "method": "GET",
+        "path": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+        "status": 403,
+        "correlationId": "bcae3342-d9cd-4ca2-9175-265be3c7c031",
+        "responseCorrelationId": "bcae3342-d9cd-4ca2-9175-265be3c7c031"
+      },
+      "limitation": "product_id intentionally reaches the real Catalog product guard: traced 403 maps to 503. This does not prove behavior caused by an inactive SKU or a successful commercial evaluation."
+    },
+    {
+      "id": "promotions-real-coupon-catalog-403-fails-closed",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/api/v1/cupones/validar",
+      "status": 503,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "8bf2eaa5-12a0-461b-90ac-9e72ad0cf216",
+      "responseCorrelationId": "8bf2eaa5-12a0-461b-90ac-9e72ad0cf216",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "8bf2eaa5-12a0-461b-90ac-9e72ad0cf216"
+      },
+      "elapsedMs": 27,
+      "verifiedUpstreamFailure": {
+        "method": "GET",
+        "path": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+        "status": 403,
+        "correlationId": "8bf2eaa5-12a0-461b-90ac-9e72ad0cf216",
+        "responseCorrelationId": "8bf2eaa5-12a0-461b-90ac-9e72ad0cf216"
+      },
+      "limitation": "real Catalog authorization blocks positive business flow; local signed JWT does not demonstrate a real G7 grant"
+    },
+    {
+      "id": "promotions-real-recommendations-catalog-403-fails-closed",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/api/v1/recomendaciones?productoId=b4fd783c-fc3a-4b74-b9f1-74311cb061bb&canal=MARKETPLACE",
+      "status": 503,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "bdc607b9-bf5e-49e7-a35e-a0fd0675093a",
+      "responseCorrelationId": "bdc607b9-bf5e-49e7-a35e-a0fd0675093a",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "bdc607b9-bf5e-49e7-a35e-a0fd0675093a"
+      },
+      "elapsedMs": 89,
+      "verifiedUpstreamFailure": {
+        "method": "GET",
+        "path": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+        "status": 403,
+        "correlationId": "bdc607b9-bf5e-49e7-a35e-a0fd0675093a",
+        "responseCorrelationId": "bdc607b9-bf5e-49e7-a35e-a0fd0675093a"
+      },
+      "limitation": "real Catalog authorization blocks positive business flow; local signed JWT does not demonstrate a real G7 grant"
+    },
+    {
+      "id": "promotions-invalid-inbound-token",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "path": "/api/v1/promociones/evaluar",
+      "status": 401,
+      "contentType": "application/problem+json; charset=utf-8",
+      "correlationId": "76cd5523-8246-47e1-8a07-964c86ec68ec",
+      "responseCorrelationId": "76cd5523-8246-47e1-8a07-964c86ec68ec",
+      "body": {
+        "type": "/errores/token-invalido",
+        "title": "Token ausente o inválido",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "76cd5523-8246-47e1-8a07-964c86ec68ec"
+      },
+      "elapsedMs": 12
+    },
+    {
+      "id": "postgres-identity-catalog-svc",
+      "result": "PASS",
+      "service": "catalog-svc",
+      "schema": "catalog",
+      "current_user": "catalog_app",
+      "session_user": "catalog_app",
+      "database": "postgres",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolbypassrls": false,
+      "own_schema_usage": true,
+      "owner_member": false,
+      "ownTable": "products",
+      "count": 3,
+      "scope": "individual real SQL login probe; not an assertion that the application holds a persistent pool connection"
+    },
+    {
+      "id": "postgres-identity-pricing-svc",
+      "result": "PASS",
+      "service": "pricing-svc",
+      "schema": "pricing",
+      "current_user": "pricing_app",
+      "session_user": "pricing_app",
+      "database": "postgres",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolbypassrls": false,
+      "own_schema_usage": true,
+      "owner_member": false,
+      "ownTable": "prices",
+      "count": 0,
+      "scope": "individual real SQL login probe; not an assertion that the application holds a persistent pool connection"
+    },
+    {
+      "id": "postgres-identity-taxonomy-svc",
+      "result": "PASS",
+      "service": "taxonomy-svc",
+      "schema": "taxonomy",
+      "current_user": "taxonomy_app",
+      "session_user": "taxonomy_app",
+      "database": "postgres",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolbypassrls": false,
+      "own_schema_usage": true,
+      "owner_member": false,
+      "ownTable": "categories",
+      "count": 2,
+      "scope": "individual real SQL login probe; not an assertion that the application holds a persistent pool connection"
+    },
+    {
+      "id": "postgres-identity-inventory-svc",
+      "result": "PASS",
+      "service": "inventory-svc",
+      "schema": "inventory",
+      "current_user": "inventory_app",
+      "session_user": "inventory_app",
+      "database": "postgres",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolbypassrls": false,
+      "own_schema_usage": true,
+      "owner_member": false,
+      "ownTable": "stock_balance",
+      "count": 3,
+      "scope": "individual real SQL login probe; not an assertion that the application holds a persistent pool connection"
+    },
+    {
+      "id": "postgres-identity-promotions-svc",
+      "result": "PASS",
+      "service": "promotions-svc",
+      "schema": "promotions",
+      "current_user": "promotions_test_login",
+      "session_user": "promotions_test_login",
+      "database": "postgres",
+      "ssl": true,
+      "version": "TLSv1.3",
+      "rolsuper": false,
+      "rolcreatedb": false,
+      "rolcreaterole": false,
+      "rolbypassrls": false,
+      "own_schema_usage": true,
+      "owner_member": false,
+      "ownTable": "promotions",
+      "count": 1,
+      "scope": "individual real SQL login probe; not an assertion that the application holds a persistent pool connection"
+    },
+    {
+      "id": "real-token-issuance-claims-evidence",
+      "result": "PASS",
+      "outcome": "RETURNED",
+      "body": [
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "9026fb59-a85e-4db8-82af-4dca4de446fc"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "002d2a49-0955-44f7-8329-186cb11c5c5e"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "b23f11b6-5e77-4686-929c-ae0271082eb5"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "6b6a1300-7936-4154-bca7-14d90311a38a"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "7a9bf4dc-d1a7-40d3-a40e-1cb74f4576f2"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "72ddfbf7-217e-493f-9276-e23e05b9b607"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "e8d624a6-7bdb-4a50-a7a1-533f29f3bbb5"
+        },
+        {
+          "sub": "modulo-productos",
+          "tipo": "servicio",
+          "aud": ["api-productos"],
+          "scope": "catalogo:leer",
+          "jti": "6eecb19e-e9b4-4db2-8343-ac5fa5dd8491"
+        }
+      ]
+    },
+    {
+      "id": "read-only-http-does-not-create-business-rows",
+      "result": "PASS",
+      "before": {
+        "catalog.activation_checks": 0,
+        "catalog.inbox": 0,
+        "catalog.master_barriers": 0,
+        "catalog.outbox": 0,
+        "catalog.product_attribute_values": 0,
+        "catalog.product_identifying_characteristics": 0,
+        "catalog.product_images": 0,
+        "catalog.products": 3,
+        "catalog.sku_barcodes": 0,
+        "catalog.sku_identity": 3,
+        "catalog.sku_physical_profiles": 0,
+        "catalog.variant_attribute_values": 0,
+        "catalog.variant_images": 0,
+        "catalog.variants": 0,
+        "inventory.commercial_fulfillment_routes": 1,
+        "inventory.dashboard_projection": 0,
+        "inventory.inbox": 0,
+        "inventory.incidencias": 0,
+        "inventory.inventory_config": 0,
+        "inventory.inventory_operations": 0,
+        "inventory.kardex": 0,
+        "inventory.locations": 1,
+        "inventory.outbox": 0,
+        "inventory.reservation_lines": 0,
+        "inventory.reservations": 0,
+        "inventory.stock_balance": 3,
+        "inventory.stock_threshold_override": 0,
+        "inventory.traslado_recepciones": 0,
+        "inventory.traslados": 0,
+        "pricing.bulk_price_jobs": 0,
+        "pricing.bulk_price_rows": 0,
+        "pricing.inbox": 0,
+        "pricing.outbox": 0,
+        "pricing.price_validities": 0,
+        "pricing.prices": 0,
+        "pricing.scheduled_prices": 0,
+        "promotions.catalog_projection": 0,
+        "promotions.combination_policy": 1,
+        "promotions.coupon_command_receipts": 0,
+        "promotions.coupon_uses": 0,
+        "promotions.coupons": 1,
+        "promotions.inbox": 0,
+        "promotions.outbox": 0,
+        "promotions.price_projection": 0,
+        "promotions.promotion_scopes": 1,
+        "promotions.promotions": 1,
+        "promotions.recommendation_items": 1,
+        "promotions.recommendation_rules": 1,
+        "promotions.stock_projection": 0,
+        "taxonomy.brands": 0,
+        "taxonomy.categories": 2,
+        "taxonomy.category_seo": 0,
+        "taxonomy.characteristic_values": 0,
+        "taxonomy.characteristics": 0,
+        "taxonomy.inbox": 0,
+        "taxonomy.master_deactivation_operations": 0,
+        "taxonomy.outbox": 0,
+        "taxonomy.product_type_characteristics": 0,
+        "taxonomy.product_types": 0,
+        "taxonomy.runtime_settings": 2,
+        "taxonomy.slug_history": 0
+      },
+      "after": {
+        "catalog.activation_checks": 0,
+        "catalog.inbox": 0,
+        "catalog.master_barriers": 0,
+        "catalog.outbox": 0,
+        "catalog.product_attribute_values": 0,
+        "catalog.product_identifying_characteristics": 0,
+        "catalog.product_images": 0,
+        "catalog.products": 3,
+        "catalog.sku_barcodes": 0,
+        "catalog.sku_identity": 3,
+        "catalog.sku_physical_profiles": 0,
+        "catalog.variant_attribute_values": 0,
+        "catalog.variant_images": 0,
+        "catalog.variants": 0,
+        "inventory.commercial_fulfillment_routes": 1,
+        "inventory.dashboard_projection": 0,
+        "inventory.inbox": 0,
+        "inventory.incidencias": 0,
+        "inventory.inventory_config": 0,
+        "inventory.inventory_operations": 0,
+        "inventory.kardex": 0,
+        "inventory.locations": 1,
+        "inventory.outbox": 0,
+        "inventory.reservation_lines": 0,
+        "inventory.reservations": 0,
+        "inventory.stock_balance": 3,
+        "inventory.stock_threshold_override": 0,
+        "inventory.traslado_recepciones": 0,
+        "inventory.traslados": 0,
+        "pricing.bulk_price_jobs": 0,
+        "pricing.bulk_price_rows": 0,
+        "pricing.inbox": 0,
+        "pricing.outbox": 0,
+        "pricing.price_validities": 0,
+        "pricing.prices": 0,
+        "pricing.scheduled_prices": 0,
+        "promotions.catalog_projection": 0,
+        "promotions.combination_policy": 1,
+        "promotions.coupon_command_receipts": 0,
+        "promotions.coupon_uses": 0,
+        "promotions.coupons": 1,
+        "promotions.inbox": 0,
+        "promotions.outbox": 0,
+        "promotions.price_projection": 0,
+        "promotions.promotion_scopes": 1,
+        "promotions.promotions": 1,
+        "promotions.recommendation_items": 1,
+        "promotions.recommendation_rules": 1,
+        "promotions.stock_projection": 0,
+        "taxonomy.brands": 0,
+        "taxonomy.categories": 2,
+        "taxonomy.category_seo": 0,
+        "taxonomy.characteristic_values": 0,
+        "taxonomy.characteristics": 0,
+        "taxonomy.inbox": 0,
+        "taxonomy.master_deactivation_operations": 0,
+        "taxonomy.outbox": 0,
+        "taxonomy.product_type_characteristics": 0,
+        "taxonomy.product_types": 0,
+        "taxonomy.runtime_settings": 2,
+        "taxonomy.slug_history": 0
+      },
+      "promotionsAllRowsUnchanged": true,
+      "promotionsRowsSha256": "6996ce4f33e7e4538e18aad2849a243ddae499c1121213cbe7eb85738b565cfc",
+      "intentionalFixtureMutation": "only catalog.products.estado changed BORRADOR -> INACTIVO; no activation confirmations or commercial mutations"
+    }
+  ],
+  "blockers": [
+    {
+      "id": "catalog-product",
+      "service": "catalog-svc",
+      "endpoint": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+      "sha": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "result": "BLOCKED",
+      "owner": "Poma",
+      "unblock": "Habilitar modulo-productos/catalogo:leer en obtenerProducto conservando seguridad.",
+      "evidence": "blocker-catalog-product",
+      "observed": {
+        "service": "catalog-svc",
+        "path": "/api/v1/productos/b4fd783c-fc3a-4b74-b9f1-74311cb061bb?canal=MARKETPLACE",
+        "status": 403,
+        "contentType": "application/problem+json; charset=utf-8",
+        "correlationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4",
+        "responseCorrelationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4",
+        "body": {
+          "type": "/errores/scope-insuficiente",
+          "title": "SCOPE_INSUFICIENTE",
+          "status": 403,
+          "code": "SCOPE_INSUFICIENTE",
+          "correlationId": "c027128a-a3fc-4975-a780-3b6087e9e4e4"
+        },
+        "elapsedMs": 10
+      }
+    },
+    {
+      "id": "inventory-commercial",
+      "service": "inventory-svc",
+      "endpoint": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL&canal=MARKETPLACE",
+      "sha": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+      "result": "BLOCKED",
+      "owner": "Taco",
+      "unblock": "Autorizar modulo-productos y validar canal solicitado por Promotions; allowlist sola no resuelve CANAL_CLIENT_MAP.",
+      "evidence": "blocker-inventory-commercial",
+      "observed": {
+        "service": "inventory-svc",
+        "path": "/api/v1/inventario/disponibilidad/comercial?skus=SYNTHETIC-REAL&canal=MARKETPLACE",
+        "status": 403,
+        "contentType": "application/problem+json; charset=utf-8",
+        "correlationId": "24d2ef79-6967-42ce-b590-467a98cf594c",
+        "responseCorrelationId": null,
+        "body": {
+          "type": "/errores/scope-insuficiente",
+          "title": "Scope o client_id no autorizado",
+          "status": 403,
+          "code": "SCOPE_INSUFICIENTE",
+          "detail": "El cliente 'modulo-productos' no está autorizado para esta operación",
+          "correlationId": "24d2ef79-6967-42ce-b590-467a98cf594c"
+        },
+        "elapsedMs": 13
+      }
+    }
+  ],
+  "sourceVerified": true,
+  "harnessSha256": {
+    "real-services.isolated.e2e.mjs": "1b38b44833cdef62ad6ae2b93147008dd56b9b4d51825b255dd3f203a960d27c",
+    "support/local-real-reader.mjs": "b493bbd0c8efa50a5f68d5d4d480fa5b6345cbd07f7580887e9f4e81e2c7f3a6",
+    "support/local-real-issuer.mjs": "325e06b04c65571f2f39997952cd748dc6fda7e2f9cb72674661c34398259850",
+    "support/local-real-catalog-tls.mjs": "6c9d7393646647c2b5d409ac95a6f68d1ec16ced6bc1bfea49be2e49d1efafe8",
+    "support/local-real-test-access.mjs": "e8cd57fbba07751d2bb42b7fd935f34cef9f005e9c5dd0a70b5306067645d4ed",
+    "support/real-services-assertions.mjs": "19da4d1529621c16ee7eef6942aea5f00ca197d67bd3d101463a186b2cf17802",
+    "support/real-services-assertions.test.mjs": "0caa4647b73743e9164d4f1019b26e3aecde4cceabd55b89ba4e12d87dd321c1"
+  },
+  "lockSha256": "2d27b837c4529a4e91d64b4276fc48494fc6ad371dd920a3902bc7396c5be0b8",
+  "build": "PASS: npm run build:all in immutable snapshot",
+  "consumerBuild": "PASS: npm run build:promotions-svc in current checkout",
+  "testAccess": {
+    "bindings": {
+      "3001/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58299"
+        }
+      ],
+      "3002/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58295"
+        }
+      ],
+      "3003/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58292"
+        }
+      ],
+      "3004/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58300"
+        }
+      ],
+      "3005/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58297"
+        }
+      ],
+      "5432/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58296"
+        }
+      ],
+      "5672/tcp": [
+        {
+          "HostIp": "127.0.0.1",
+          "HostPort": "58298"
+        }
+      ]
+    },
+    "transport": "fixed byte-transparent TCP bridge; only test driver dual-homed; application/DB/broker/issuer remain on internal network"
+  },
+  "runtimeDependencyVersions": {
+    "@nestjs/common": "12.1.3",
+    "@nestjs/core": "12.1.3",
+    "@nestjs/platform-express": "12.1.3",
+    "amqplib": "2.2.0",
+    "drizzle-orm": "0.45.4",
+    "pdfkit": "0.20.2",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "fixture": {
+    "productId": "b4fd783c-fc3a-4b74-b9f1-74311cb061bb",
+    "opaqueId": "a2a7ad42-e8c5-4af0-99c2-9c95d04565c2",
+    "inactiveId": "6a19a950-3fee-4db5-a279-114b462e6eb2",
+    "categoryId": "73cb323f-ac10-4844-889c-098200cbcdd9",
+    "inactiveCategoryId": "59d4739c-8972-402e-bf61-53de8f29c011",
+    "missingCategoryId": "9ead615f-0fd9-4a8d-a3f9-6cfdcfee8641",
+    "sku": "SYNTHETIC-REAL",
+    "opaqueSku": "SKU %2F + Ñ",
+    "state": "BORRADOR/INACTIVO; no fabricated Pricing/Inventory activation confirmations",
+    "origin": "test-only SQL; no commercial fact mocks or replacement providers"
+  },
+  "broker": {
+    "version": "4.2.9",
+    "queue": "po.promociones.q",
+    "purpose": "real native passive readiness; no claim of external command/event E2E",
+    "image": "sha256:aab85daef4295ab28df229600109434ed6ed7b966dd915baeb0fc396279f0e8e"
+  },
+  "network": true,
+  "processes": [
+    {
+      "service": "catalog-svc",
+      "image": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+      "bindings": {}
+    },
+    {
+      "service": "pricing-svc",
+      "image": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+      "bindings": {}
+    },
+    {
+      "service": "taxonomy-svc",
+      "image": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+      "bindings": {}
+    },
+    {
+      "service": "inventory-svc",
+      "image": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+      "bindings": {}
+    },
+    {
+      "service": "promotions-svc",
+      "image": "sha256:058b9a5889203f160effd7175435455a4dc0c16e464270846fd5d9aa429d3717",
+      "bindings": {}
+    }
+  ],
+  "sourceUnchangedAfterTests": true,
+  "applicationLogs": [
+    {
+      "service": "catalog-svc",
+      "log": "{\"timestamp\":\"2026-11-04T17:56:58.208Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Starting Nest application...\",\"context\":[\"NestFactory\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.271Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"AppModule dependencies initialized\",\"context\":[\"InstanceLoader\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.401Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"AppController {/}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.412Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.413Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health/live, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.413Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CommercialController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.416Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.419Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/por-slug/:slug, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.419Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogSkuContextController {/api/v1/productos/skus}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.421Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/skus/:sku/contexto, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.421Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogQueryController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.423Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.424Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/datos-fisicos/consulta, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.424Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/preparacion, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.426Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.428Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.430Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/codigos-barras/resolver, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.430Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogMutationController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.431Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.432Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId, PATCH} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.433Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/activar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.434Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/desactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.436Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/reactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.437Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/preparacion/reintentar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.440Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.441Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId, PATCH} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.443Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/activar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.445Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/desactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.446Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/reactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.447Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/preparacion/reintentar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.447Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"ReadinessController {/health}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.447Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health/ready, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.454Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Nest application successfully started\",\"context\":[\"NestApplication\"]}\n{\"timestamp\":\"2026-11-04T17:56:58.467Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"APPLICATION_STARTED\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:02.081Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":16,\"correlationId\":\"3fa57720-986d-474e-baea-566ce5863584\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:13.542Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":96,\"correlationId\":\"06d7ff66-6e41-45d1-9c1b-b1b8396551a0\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.054Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":4,\"correlationId\":\"a6a712d7-77e7-42a6-8fd0-a7f7c1b7c033\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.615Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":4,\"correlationId\":\"3b5e561d-d3f4-4154-8a55-31e67fec5b0b\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.630Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":4,\"correlationId\":\"45cdc140-f745-4eda-ac79-6dbb957eac3a\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.643Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":404,\"durationMs\":6,\"correlationId\":\"d2363e6b-0322-4eb2-9738-83bf8f02590a\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.664Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":401,\"durationMs\":1,\"correlationId\":\"33d631cc-39f1-4f54-a0c5-851db49f4c32\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.669Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":2,\"correlationId\":\"a4aba8c0-65ac-4886-bd52-090647542b0d\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.675Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":1,\"correlationId\":\"086ddca0-6cdf-497c-ba57-2887857d2ca7\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.682Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":401,\"durationMs\":2,\"correlationId\":\"932c89af-8d37-4f0c-9310-20f0e76033ed\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.687Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":401,\"durationMs\":2,\"correlationId\":\"06408346-9f9d-4cae-afd3-bcaae0907ebf\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.693Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":401,\"durationMs\":1,\"correlationId\":\"08262bd7-38ec-4e01-aa8e-1f29509efad8\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.699Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":401,\"durationMs\":2,\"correlationId\":\"6274998a-28ab-4fea-a2ef-90ff52b361b4\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.706Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":2,\"correlationId\":\"410d71bb-cc00-4c64-b449-18e928db24e4\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:15.715Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":400,\"durationMs\":3,\"correlationId\":\"5f4339c5-97ba-4721-aeb4-1763956b9fcd\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:18.447Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Starting Nest application...\",\"context\":[\"NestFactory\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.480Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"AppModule dependencies initialized\",\"context\":[\"InstanceLoader\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.586Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"AppController {/}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.594Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.595Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health/live, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.595Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CommercialController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.597Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.601Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/por-slug/:slug, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.601Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogSkuContextController {/api/v1/productos/skus}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.603Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/skus/:sku/contexto, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.603Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogQueryController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.605Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.606Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/datos-fisicos/consulta, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.607Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/preparacion, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.610Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.612Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.614Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/codigos-barras/resolver, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.614Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"CatalogMutationController {/api/v1/productos}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.615Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.617Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId, PATCH} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.618Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/activar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.620Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/desactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.621Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/reactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.622Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/preparacion/reintentar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.624Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.625Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId, PATCH} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.626Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/activar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.627Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/desactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.629Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/reactivar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.630Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/api/v1/productos/:productoId/variantes/:variantId/preparacion/reintentar, POST} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.630Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"ReadinessController {/health}:\",\"context\":[\"RoutesResolver\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.631Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Mapped {/health/ready, GET} route\",\"context\":[\"RouterExplorer\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.638Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":\"Nest application successfully started\",\"context\":[\"NestApplication\"]}\n{\"timestamp\":\"2026-11-04T17:57:18.646Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"APPLICATION_STARTED\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:19.029Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":73,\"correlationId\":\"c7302e98-409c-48cf-8383-517232d86d3f\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:19.042Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":5,\"correlationId\":\"548bbb90-5a8f-4d37-96ad-ea036604110c\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:22.820Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":2305,\"correlationId\":\"6cb3e742-74d2-4c5e-bc2c-b4f16f2c34dc\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:24.430Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":7,\"correlationId\":\"093908d9-d7ba-4af2-8684-ac64f989907d\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:24.904Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":3,\"correlationId\":\"c027128a-a3fc-4975-a780-3b6087e9e4e4\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:25.002Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":4,\"correlationId\":\"9585414e-bcf5-4b18-8bb1-c40a29a9bafc\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:25.029Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":200,\"durationMs\":4,\"correlationId\":\"b98bca65-fb2a-4ba2-97de-968b749cf3c8\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:45.376Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":1,\"correlationId\":\"bcae3342-d9cd-4ca2-9175-265be3c7c031\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:49.504Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":2,\"correlationId\":\"8bf2eaa5-12a0-461b-90ac-9e72ad0cf216\"},\"context\":[]}\n{\"timestamp\":\"2026-11-04T17:57:54.247Z\",\"level\":\"info\",\"service\":\"catalog-svc\",\"environment\":\"test\",\"message\":{\"code\":\"HTTP_REQUEST_COMPLETED\",\"method\":\"GET\",\"status\":403,\"durationMs\":3,\"correlationId\":\"bdc607b9-bf5e-49e7-a35e-a0fd0675093a\"},\"context\":[]}"
+    },
+    {
+      "service": "pricing-svc",
+      "log": "{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021601,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"NestFactory\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021665,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021689,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021696,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021696,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021698,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021699,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021700,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021704,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021710,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021712,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021714,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021716,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021718,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021718,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021720,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021721,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021726,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021728,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"[REDACTED]\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021740,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"[REDACTED]\",\"context\":[\"NestApplication\"]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815021750,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"pricing-svc iniciado.\",\"context\":[]}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815045011,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"Consulta HTTP de Pricing finalizada.\",\"correlation_id\":\"9585414e-bcf5-4b18-8bb1-c40a29a9bafc\",\"status\":404,\"duration_ms\":84}}\n{\"level\":\"log\",\"pid\":1,\"timestamp\":1793815045033,\"message\":{\"service\":\"pricing-svc\",\"environment\":\"test\",\"message\":\"Consulta HTTP de Pricing finalizada.\",\"correlation_id\":\"b98bca65-fb2a-4ba2-97de-968b749cf3c8\",\"status\":200,\"duration_ms\":13}}"
+    },
+    {
+      "service": "taxonomy-svc",
+      "log": "\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[NestFactory] \u001b[39m\u001b[32mStarting Nest application...\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[InstanceLoader] \u001b[39m\u001b[32mTaxonomySvcModule dependencies initialized\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mTaxonomySvcController {/}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/health, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mTaxonomyController {/api/v1}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/categorias, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/marcas, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mTaxonomyWriteController {/api/v1}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/categorias/:categoriaId, PATCH} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/marcas, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/marcas/:marcaId, PATCH} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/categorias, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/marcas/:marcaId/reactivar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/categorias/:categoriaId/reactivar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mTaxonomyMastersController {/api/v1}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/caracteristicas/:caracteristicaId/valores, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/caracteristicas/:caracteristicaId/valores, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/caracteristicas/:caracteristicaId/valores/:valorId, PATCH} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId, PATCH} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId/desactivar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/caracteristicas/:caracteristicaId/valores/:valorId/desactivar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId/desasociar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mTaxonomyAdminQueryController {/api/v1}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/categorias/:categoriaId, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mReadinessController {/health}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/health/readiness, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/health/ready, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[NestApplication] \u001b[39m\u001b[32mNest application successfully started\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:03 PM \u001b[32m    LOG\u001b[39m Object(2) {\n  service: \u001b[32m'taxonomy-svc'\u001b[39m,\n  code: \u001b[32m'APPLICATION_STARTED'\u001b[39m\n}"
+    },
+    {
+      "service": "inventory-svc",
+      "log": "\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[NestFactory] \u001b[39m\u001b[32mStarting Nest application...\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[InstanceLoader] \u001b[39m\u001b[32mInventorySvcModule dependencies initialized\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mInventorySvcController {/}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/health, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/health/readiness, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mInventoryController {/api/v1/inventario}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/reservas, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/reservas/:reservaId/confirmar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/reservas/:reservaId/liberar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/reintegros, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/operaciones/:operationId, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/disponibilidad, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/disponibilidad/comercial, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/disponibilidad/comercial/verificar, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/incidencias, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/incidencias/:incidenciaId/resolver, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RoutesResolver] \u001b[39m\u001b[32mInventoryAdminController {/api/v1/inventario}:\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/umbrales, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/umbrales/global, PUT} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/umbrales/skus/:sku, PUT} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/umbrales/skus/:sku, DELETE} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/dashboard, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/traslados, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/traslados/:trasladoId, GET} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[RouterExplorer] \u001b[39m\u001b[32mMapped {/api/v1/inventario/traslados/:trasladoId/recepciones, POST} route\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[DatabaseService] \u001b[39m\u001b[32mConexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[NestApplication] \u001b[39m\u001b[32mNest application successfully started\u001b[39m\n\u001b[32m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[32m    LOG\u001b[39m \u001b[38;5;3m[Bootstrap] \u001b[39m\u001b[32minventory-svc escuchando en el puerto 3005\u001b[39m\n\u001b[95m[Nest] 1  - \u001b[39m11/04/2026, 5:57:04 PM \u001b[95m  DEBUG\u001b[39m \u001b[38;5;3m[OutboxPublisherService] \u001b[39m\u001b[95mRABBITMQ_URL no configurado; los eventos outbox permanecen durables en estado PENDING.\u001b[39m"
+    },
+    {
+      "service": "promotions-svc",
+      "log": "{\"timestamp\":\"2026-11-04T17:57:05.114Z\",\"level\":\"info\",\"service\":\"promotions-svc\",\"code\":\"DEPENDENCIES_READY\",\"database\":\"up\",\"broker\":\"disabled\"}\n{\"timestamp\":\"2026-11-04T17:57:05.119Z\",\"level\":\"info\",\"service\":\"promotions-svc\",\"code\":\"APPLICATION_STARTED\"}\n{\"timestamp\":\"2026-11-04T17:57:13.435Z\",\"level\":\"info\",\"service\":\"promotions-svc\",\"operation\":\"listarPromociones\",\"status\":200,\"correlation_id\":\"00ca017b-9534-44e1-aa60-9b50e1a525d7\",\"duration_ms\":68}\n{\"timestamp\":\"2026-11-04T17:57:45.382Z\",\"level\":\"error\",\"service\":\"promotions-svc\",\"operation\":\"evaluarPromociones\",\"status\":503,\"correlation_id\":\"bcae3342-d9cd-4ca2-9175-265be3c7c031\",\"duration_ms\":41,\"code\":\"SERVICIO_NO_DISPONIBLE\"}\n{\"timestamp\":\"2026-11-04T17:57:49.506Z\",\"level\":\"error\",\"service\":\"promotions-svc\",\"operation\":\"validarCupon\",\"status\":503,\"correlation_id\":\"8bf2eaa5-12a0-461b-90ac-9e72ad0cf216\",\"duration_ms\":18,\"code\":\"SERVICIO_NO_DISPONIBLE\"}\n{\"timestamp\":\"2026-11-04T17:57:54.252Z\",\"level\":\"error\",\"service\":\"promotions-svc\",\"operation\":\"obtenerRecomendaciones\",\"status\":503,\"correlation_id\":\"bdc607b9-bf5e-49e7-a35e-a0fd0675093a\",\"duration_ms\":75,\"code\":\"SERVICIO_NO_DISPONIBLE\"}\n{\"timestamp\":\"2026-11-04T17:57:56.255Z\",\"level\":\"warn\",\"service\":\"promotions-svc\",\"operation\":\"evaluarPromociones\",\"status\":401,\"correlation_id\":\"76cd5523-8246-47e1-8a07-964c86ec68ec\",\"duration_ms\":0,\"code\":\"TOKEN_INVALIDO\"}"
+    }
+  ],
+  "status": "PARTIAL",
+  "cleanup": [
+    {
+      "id": "07ccd1bbc0cde3c3c4ddebf6881479ed14cc7ece87308a1d6a093fc26cf23a7f",
+      "removed": true
+    },
+    {
+      "id": "f2d81e68defee260a8c93e0e06d6e427cf3f492d81d0a51867f7c0b58e7a95b5",
+      "removed": true
+    },
+    {
+      "id": "5fd1401d4443f4f140955f1afc00c3443dd75d7754ff68942f31368f3110b2a6",
+      "removed": true
+    },
+    {
+      "id": "679aa761b2e09f47a604215ee669de8014c640a8cb06598abfcb3660ae677874",
+      "removed": true
+    },
+    {
+      "id": "ff363710c7e1230e4bffc440a9821d923c4d569492fb5faefd463682b0643fbe",
+      "removed": true
+    },
+    {
+      "id": "0dc770e148c99db3e5312f3081fa6b06adf4064997e792067e74378940d36e7b",
+      "removed": true
+    },
+    {
+      "id": "87920adfb0308c10a2d2e9a16b419d25cf73f5487f69c5b4dce4c0ffd41bf5c3",
+      "removed": true
+    },
+    {
+      "id": "de97225629122b821f5edc306d48387076df060cf14b747dcc2193addb341a13",
+      "removed": true
+    },
+    {
+      "id": "78e40f14179cc3c1dc776fb676ec7b8528d7e6fb6b4d0051db2c03bba878b87e",
+      "removed": true
+    },
+    {
+      "id": "fe6125bf4b0a208570c58cc1da6704d13794428284c1c5dde2670f35773affc9",
+      "removed": true
+    }
+  ],
+  "networkRemoved": true,
+  "finishedAt": "2026-11-04T17:58:08.887Z"
+}

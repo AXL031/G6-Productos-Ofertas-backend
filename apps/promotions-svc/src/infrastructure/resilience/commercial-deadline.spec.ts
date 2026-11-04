@@ -51,17 +51,51 @@ describe('Bounded commercial integration boundary', () => {
       basket,
       'at',
       expect.any(AbortSignal),
+      undefined,
     );
     expect(source.recommendationOrigin).toHaveBeenCalledExactlyOnceWith(
       'P',
       'MARKETPLACE',
       expect.any(AbortSignal),
+      undefined,
     );
     expect(source.recommendationProducts).toHaveBeenCalledExactlyOnceWith(
       ['P'],
       'MARKETPLACE',
       expect.any(AbortSignal),
+      undefined,
     );
+  });
+  it('preserves the request instant, correlation and caller cancellation', async () => {
+    const controller = new AbortController();
+    const requestContext = {
+      at: '2026-11-04T12:00:00Z',
+      correlationId: '11111111-1111-4111-8111-111111111111',
+    };
+    let received: AbortSignal | undefined;
+    const source = {
+      ...blockedCommercialContext,
+      recommendationProducts: vi.fn(
+        async (_ids, _channel, signal?: AbortSignal) => {
+          received = signal;
+          return new Map();
+        },
+      ),
+    };
+    await new BoundedCommercialContext(source).recommendationProducts(
+      ['P'],
+      'MARKETPLACE',
+      controller.signal,
+      requestContext,
+    );
+    expect(source.recommendationProducts).toHaveBeenCalledWith(
+      ['P'],
+      'MARKETPLACE',
+      expect.any(AbortSignal),
+      requestContext,
+    );
+    controller.abort();
+    expect(received?.aborted).toBe(true);
   });
   it('bounds a hanging adapter, aborts transport and ignores its late answer without retry', async () => {
     vi.useFakeTimers();

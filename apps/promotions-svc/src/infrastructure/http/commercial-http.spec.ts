@@ -38,7 +38,11 @@ const basket = {
   lines: [{ sku: 'S-P', product_id: 'P', quantity: 2 }],
 };
 async function fixture(
-  work: (client: HttpCommercialContext, calls: URL[]) => Promise<void>,
+  work: (
+    client: HttpCommercialContext,
+    calls: URL[],
+    correlations: string[],
+  ) => Promise<void>,
   change: (
     url: URL,
     value: unknown,
@@ -47,9 +51,11 @@ async function fixture(
   }),
 ) {
   const calls: URL[] = [];
+  const correlations: string[] = [];
   const server = createServer((request, response) => {
     const url = new URL(request.url!, 'http://fixture.invalid');
     calls.push(url);
+    correlations.push(String(request.headers['x-correlation-id']));
     expect(request.method).toBe('GET');
     expect(request.headers.authorization).toBe(
       'Bearer synthetic-service-token',
@@ -111,7 +117,7 @@ async function fixture(
     },
   });
   try {
-    await work(client, calls);
+    await work(client, calls, correlations);
   } finally {
     server.closeAllConnections();
     await new Promise<void>((done) => server.close(() => done()));
@@ -119,6 +125,51 @@ async function fixture(
 }
 
 describe('Candidate commercial HTTP client #72/#73', () => {
+  it('uses one caller instant and correlation across origin, inventory and prices', async () => {
+    await fixture(async (client, calls, traces) => {
+      const context = {
+        correlationId: '11111111-1111-4111-8111-111111111111',
+        at,
+      };
+      await client.recommendationOrigin(
+        'ORIGIN',
+        'MARKETPLACE',
+        undefined,
+        context,
+      );
+      await client.recommendationProducts(
+        ['P', 'Q'],
+        'MARKETPLACE',
+        undefined,
+        context,
+      );
+      expect(traces.length).toBeGreaterThan(3);
+      expect(new Set(traces)).toEqual(new Set([context.correlationId]));
+      expect(
+        calls
+          .filter((u) => u.pathname.includes('/precios/'))
+          .map((u) => u.searchParams.get('at')),
+      ).toEqual([at, at]);
+    });
+  });
+  it('keeps concurrent basket correlations isolated without shared request state', async () => {
+    await fixture(async (client, _calls, traces) => {
+      const first = '11111111-1111-4111-8111-111111111111',
+        second = '22222222-2222-4222-8222-222222222222';
+      await Promise.all(
+        [first, second].map((correlationId) =>
+          client.basket(
+            { ...basket, lines: [{ sku: 'S-P', quantity: 1 }] },
+            at,
+            undefined,
+            { at, correlationId },
+          ),
+        ),
+      );
+      expect(traces.filter((t) => t === first)).toHaveLength(3);
+      expect(traces.filter((t) => t === second)).toHaveLength(3);
+    });
+  });
   it('resolves canonical product/SKU, channel and historical instant with exact decimal strings and per-call dedupe', async () => {
     await fixture(async (client, calls) => {
       const result = await client.basket(

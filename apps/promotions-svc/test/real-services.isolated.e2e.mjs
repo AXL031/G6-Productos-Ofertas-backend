@@ -28,7 +28,6 @@ import {
 } from './support/official-migrations.mjs';
 
 const master = '7f1ffc1f1f490861ef55ed3d84757d05954a2d33';
-const promotions = '33054c365e6497c14f8bf43a1d259846447d6cb8';
 const docs = '80f208978c2c703e2b2d62064112365e7b9e1677';
 let runtime =
   process.env.G6_TEST_RUNTIME_IMAGE ??
@@ -54,7 +53,7 @@ const containers = [],
   ports = new Map();
 const evidence = {
   master,
-  promotions,
+  promotions: {},
   docs,
   promotionsSqlRevision,
   runtime,
@@ -66,7 +65,7 @@ const evidence = {
   blockers: [],
 };
 const output = resolve(
-  'apps/promotions-svc/test/evidence/real-services-2026-11-04.json',
+  'apps/promotions-svc/test/evidence/marketplace-real-2026-11-04.json',
 );
 let admin,
   broker,
@@ -99,6 +98,19 @@ function blob(bytes) {
     .update(bytes)
     .digest('hex');
 }
+function consumerSources() {
+  return Object.fromEntries(
+    git(['ls-files', '--', 'apps/promotions-svc/src'])
+      .split('\n')
+      .filter(Boolean)
+      .map((path) => [
+        path,
+        createHash('sha256')
+          .update(readFileSync(resolve(path)))
+          .digest('hex'),
+      ]),
+  );
+}
 function verifySource() {
   const entries = git([
     'ls-tree',
@@ -124,9 +136,10 @@ function verifySource() {
         'SOURCE_CHANGED: ' + match[2],
       );
   }
-  assert.equal(
-    git(['diff', promotions, master, '--', 'apps/promotions-svc/src']),
-    '',
+  assert.deepEqual(
+    consumerSources(),
+    evidence.promotions.sourceSha256,
+    'current consumer source changed during test',
   );
   assert.ok(!existsSync(join(source, '.env')));
   for (const name of [
@@ -178,6 +191,7 @@ function run(name, image, args, env = {}, mounts = [], port) {
 }
 const mounts = () => [
   `type=bind,source=${join(source, 'dist')},target=/app/dist,readonly`,
+  `type=bind,source=${resolve('dist/apps/promotions-svc')},target=/app/dist/apps/promotions-svc,readonly`,
   `type=bind,source=${support},target=/app/real-test,readonly`,
   `type=bind,source=${directory},target=/test,readonly`,
 ];
@@ -298,7 +312,7 @@ async function check(id, operation) {
 async function probe(operation, path, deadline = 5000, overrides = {}) {
   const env = {
     ...promotionEnv(),
-    ...(operation === 'admin-category'
+    ...(['admin-category', 'marketplace-seed'].includes(operation)
       ? { PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false' }
       : {}),
     ...overrides,
@@ -345,6 +359,23 @@ async function rowCounts() {
   }
   return counts;
 }
+async function promotionsRows() {
+  const tables = (
+    await admin.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='promotions' ORDER BY tablename",
+    )
+  ).rows;
+  const rows = {};
+  for (const { tablename } of tables) {
+    assert.match(tablename, /^[a-z_]+$/);
+    rows[tablename] = (
+      await admin.query(
+        `SELECT to_jsonb(t) AS row FROM promotions."${tablename}" t ORDER BY to_jsonb(t)::text`,
+      )
+    ).rows;
+  }
+  return rows;
+}
 const sqlFiles = [
   [
     'catalog',
@@ -387,6 +418,21 @@ async function migrate(schema, content) {
 }
 try {
   mkdirSync(cache, { recursive: true });
+  evidence.promotions = {
+    checkoutHead: git(['rev-parse', 'HEAD']),
+    changedSourcePaths: git([
+      'diff',
+      '--name-only',
+      'HEAD',
+      '--',
+      'apps/promotions-svc/src',
+    ])
+      .split('\n')
+      .filter(Boolean),
+    sourceSha256: consumerSources(),
+    execution:
+      'current checkout compiled and mounted over pinned provider dist; source hashes verified before/after',
+  };
   if (!existsSync(source)) {
     mkdirSync(source);
     const archive = join(directory, 'pinned-source.tar');
@@ -449,6 +495,20 @@ try {
     { cwd: source, timeout: 180000 },
   );
   evidence.build = 'PASS: npm run build:all in immutable snapshot';
+  execute(
+    process.platform === 'win32' ? 'cmd.exe' : 'npm',
+    process.platform === 'win32'
+      ? ['/d', '/s', '/c', 'npm run build:promotions-svc']
+      : ['run', 'build:promotions-svc'],
+    { cwd: root, timeout: 180000 },
+  );
+  assert.equal(
+    blob(readFileSync(resolve('package-lock.json'))),
+    blob(readFileSync(join(source, 'package-lock.json'))),
+    'consumer/provider dependency lock mismatch',
+  );
+  evidence.consumerBuild =
+    'PASS: npm run build:promotions-svc in current checkout';
   console.log(evidence.build);
   stage = 'disposable TLS';
   execute(openssl, [
@@ -820,7 +880,28 @@ try {
     for (const bindings of Object.values(app.bindings))
       for (const binding of bindings ?? [])
         assert.equal(binding.HostIp, '127.0.0.1');
+  const marketplaceSeed = (await probe('marketplace-seed', productId)).body;
+  assert.equal(marketplaceSeed.kind, 'fixture-own-promotions-only');
   const beforeCounts = await rowCounts();
+  const beforePromotions = await promotionsRows();
+  const marketplace = (scope) =>
+    token({
+      sub: 'modulo-marketplace',
+      client_id: 'modulo-marketplace',
+      scope,
+    });
+  await check('promotions-real-list-active-campaign', async () => {
+    const r = await request(
+      'promotions-svc',
+      '/api/v1/promociones?canal=MARKETPLACE',
+      marketplace('promociones:leer'),
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.ok(
+      r.body.items.some((p) => p.promotion_id === marketplaceSeed.promotionId),
+    );
+    return r;
+  });
   const contextPath = '/api/v1/productos/skus/SYNTHETIC-REAL/contexto';
   await check('catalog-context-simple-real-pg', async () => {
     const r = await request('catalog-svc', contextPath, token());
@@ -1063,12 +1144,6 @@ try {
         observed: r,
       });
       return r;
-    });
-  const marketplace = (scope) =>
-    token({
-      sub: 'modulo-marketplace',
-      client_id: 'modulo-marketplace',
-      scope,
     });
   await check('pricing-real-catalog-inactive-sku-contract-error', async () => {
     const r = await request(
@@ -1345,6 +1420,7 @@ try {
     assert.equal(upstream.status, 403);
     assert.match(upstream.correlationId, /^[a-f0-9-]{36}$/i);
     assert.equal(upstream.correlationId, upstream.responseCorrelationId);
+    assert.equal(upstream.correlationId, r.correlationId);
     return {
       ...r,
       verifiedUpstreamFailure: upstream,
@@ -1352,6 +1428,56 @@ try {
         'product_id intentionally reaches the real Catalog product guard: traced 403 maps to 503. This does not prove behavior caused by an inactive SKU or a successful commercial evaluation.',
     };
   });
+  for (const [id, path, scope, extra] of [
+    [
+      'coupon',
+      '/api/v1/cupones/validar',
+      'cupones:validar',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel_id: 'MARKETPLACE',
+          coupon_code: marketplaceSeed.code,
+          lines: [
+            { product_id: productId, sku: 'SYNTHETIC-REAL', quantity: 1 },
+          ],
+        }),
+      },
+    ],
+    [
+      'recommendations',
+      '/api/v1/recomendaciones?productoId=' + productId + '&canal=MARKETPLACE',
+      'recomendaciones:leer',
+      {},
+    ],
+  ])
+    await check(
+      'promotions-real-' + id + '-catalog-403-fails-closed',
+      async () => {
+        const beforeTrace = await probe('catalog-transport-evidence', '/');
+        const r = await request(
+          'promotions-svc',
+          path,
+          marketplace(scope),
+          extra,
+        );
+        assert.equal(r.status, 503, JSON.stringify(r.body));
+        assert.equal(r.body.code, 'SERVICIO_NO_DISPONIBLE');
+        const trace = (
+          await probe('catalog-transport-evidence', '/')
+        ).body.slice(beforeTrace.body.length);
+        assert.equal(trace.length, 1);
+        assert.equal(trace[0].status, 403);
+        assert.equal(trace[0].correlationId, r.correlationId);
+        return {
+          ...r,
+          verifiedUpstreamFailure: trace[0],
+          limitation:
+            'real Catalog authorization blocks positive business flow; local signed JWT does not demonstrate a real G7 grant',
+        };
+      },
+    );
   await check('promotions-invalid-inbound-token', async () => {
     const r = await request(
       'promotions-svc',
@@ -1450,10 +1576,15 @@ try {
   });
   await check('read-only-http-does-not-create-business-rows', async () => {
     const afterCounts = await rowCounts();
+    assert.deepEqual(await promotionsRows(), beforePromotions);
     assert.deepEqual(afterCounts, beforeCounts);
     return {
       before: beforeCounts,
       after: afterCounts,
+      promotionsAllRowsUnchanged: true,
+      promotionsRowsSha256: createHash('sha256')
+        .update(JSON.stringify(beforePromotions))
+        .digest('hex'),
       intentionalFixtureMutation:
         'only catalog.products.estado changed BORRADOR -> INACTIVO; no activation confirmations or commercial mutations',
     };

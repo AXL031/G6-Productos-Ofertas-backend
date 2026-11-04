@@ -27,6 +27,7 @@ import {
   PromotionsHttpError,
   queryInput,
   valid,
+  correlationId,
 } from './http-validation.js';
 const iso = (s: string) => new Date(s).toISOString();
 export function promotionDto(p: PromotionQueryRow) {
@@ -127,6 +128,7 @@ export class PromotionsQueryService {
     if (contract.body && !valid(request.body, contract.body))
       throw new PromotionsHttpError(400, 'VALIDACION');
     const now = this.clock.now().toISOString();
+    const context = { correlationId: correlationId(request), at: now };
     let result: unknown;
     const filter: PageFilter = {
       pagina: Number(q.pagina ?? 1),
@@ -221,7 +223,10 @@ export class PromotionsQueryService {
         };
         const at = id === 'evaluarPromociones' ? (body.at ?? now) : now;
         // External calls precede the short, read-only database transaction.
-        const context = await this.facts.basket(body, at);
+        const basketContext = await this.facts.basket(body, at, undefined, {
+          ...context,
+          at,
+        });
         const snapshot = await this.persistence.read(async (r) => {
           const active = await r.queries.summaries(
             body.channel_id,
@@ -247,7 +252,7 @@ export class PromotionsQueryService {
         });
         const evaluation = evaluateBasket(
           body,
-          context,
+          basketContext,
           snapshot.promotions,
           snapshot.coupon,
           at,
@@ -291,7 +296,12 @@ export class PromotionsQueryService {
         }
         const product = String(q.productoId),
           channel = String(q.canal);
-        const origin = await this.facts.recommendationOrigin(product, channel);
+        const origin = await this.facts.recommendationOrigin(
+          product,
+          channel,
+          undefined,
+          context,
+        );
         if (!origin.active || !origin.channelEligible) {
           result = { recommendations: [] };
           break;
@@ -302,6 +312,8 @@ export class PromotionsQueryService {
         const facts = await this.facts.recommendationProducts(
           [...new Set(rules.flatMap((r) => r.items.map((i) => i.productId)))],
           channel,
+          undefined,
+          context,
         );
         if (rules.some((r) => r.items.some((i) => !facts.has(i.productId))))
           throw new CommercialDependencyError(
