@@ -1932,6 +1932,26 @@ describeIntegracion(
           version: 9,
           slug: `categoria-http-${categoriaAdminId}`,
         });
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          [categoriaAdminId],
+        );
+        const pendiente = await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(503);
+        expect(pendiente.headers['content-type']).toContain(
+          'application/problem+json',
+        );
+        expect(pendiente.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+        expect(JSON.stringify(pendiente.body)).not.toContain(
+          'PENDING_DEACTIVATION',
+        );
+        expect(JSON.stringify(pendiente.body)).not.toContain('taxonomy.');
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'ACTIVO' WHERE id = $1",
+          [categoriaAdminId],
+        );
         const categoriaAusente = await request(nest.getHttpServer())
           .get(`/api/v1/categorias/${randomUUID()}`)
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
@@ -1964,6 +1984,15 @@ describeIntegracion(
             'Authorization',
             `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
           )
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .post('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .send({ nombre: 'No autorizada' })
           .expect(403);
         await request(nest.getHttpServer())
           .get(`/api/v1/categorias/${categoriaAdminId}`)

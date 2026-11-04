@@ -456,6 +456,30 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
       );
       expect([401, 403]).toContain(response.status);
     }
+
+    const authorized = createToken(issuerPrivateKey, {
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      client_id: 'modulo-productos',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+      roles: [],
+    });
+    outgoing = [];
+    const otherRead = await fetch(`${gatewayUrl}/api/v1/categorias`, {
+      headers: { authorization: `Bearer ${authorized}` },
+    });
+    status(otherRead, 403);
+    const write = await fetch(`${gatewayUrl}/api/v1/categorias`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${authorized}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ nombre: 'No autorizada' }),
+    });
+    status(write, 403);
+    expect(outgoing).toHaveLength(0);
   });
 
   it('rechaza una firma inválida en Gateway y en el guard real de Taxonomy', async () => {
