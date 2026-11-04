@@ -1,5 +1,11 @@
 # Integración local con servicios reales — H4, 03/11/2026
 
+> Histórico de PR #172, corte `20146a50`. El JSON de esta ejecución se conserva
+> sin cambios. Para reproducirla deben usarse el harness y auxiliares del SHA
+> `4f96d456a56ea1502c262e4257cb15d4e47d0c02`; el script actual ya prueba el corte
+> `7f1ffc1`. La validación posterior de Taxonomy está en
+> [Integración Taxonomy 04/11](INTEGRACION-TAXONOMY-REAL-H4-2026-11-04.md).
+
 Estado: **PARTIAL**. El recorrido de contexto SKU funciona con el cliente real de
 Promotions, Catálogo real, JWT RS256 del emisor local explícito y PostgreSQL real.
 Los rechazos esperados son pruebas negativas PASS; no convierten en PASS una

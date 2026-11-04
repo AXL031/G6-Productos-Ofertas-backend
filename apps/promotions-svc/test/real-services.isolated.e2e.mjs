@@ -27,12 +27,12 @@ import {
   docsRevision as promotionsSqlRevision,
 } from './support/official-migrations.mjs';
 
-const master = '20146a50d5e627c4749f225543a096edef51adbb';
+const master = '7f1ffc1f1f490861ef55ed3d84757d05954a2d33';
 const promotions = '33054c365e6497c14f8bf43a1d259846447d6cb8';
-const docs = '40b566976fb94d924116dcd01d41b3276c2bc9e3';
+const docs = '80f208978c2c703e2b2d62064112365e7b9e1677';
 let runtime =
   process.env.G6_TEST_RUNTIME_IMAGE ??
-  'g6-promotions-real-test-runtime:20146a5';
+  'g6-promotions-real-test-runtime:7f1ffc1';
 const openssl =
   process.env.G6_TEST_OPENSSL ??
   (process.platform === 'win32' &&
@@ -43,7 +43,7 @@ const openssl =
 const execFileAsync = promisify(execFile);
 const root = process.cwd(),
   cache = resolve('node_modules/.cache/promotions-work');
-const source = join(cache, 'real-svc-20146a5');
+const source = join(cache, 'real-svc-7f1ffc1');
 const support = resolve('apps/promotions-svc/test/support');
 const directory = mkdtempSync(join(tmpdir(), 'g6-cueva-real-'));
 const password = randomUUID(),
@@ -66,7 +66,7 @@ const evidence = {
   blockers: [],
 };
 const output = resolve(
-  'apps/promotions-svc/test/evidence/real-services-2026-11-03.json',
+  'apps/promotions-svc/test/evidence/real-services-2026-11-04.json',
 );
 let admin,
   broker,
@@ -111,6 +111,9 @@ function verifySource() {
     'tsconfig.json',
     'tsconfig.build.json',
     'nest-cli.json',
+    'Dockerfile.service',
+    '.dockerignore',
+    'ops/oracle',
   ]).split('\n');
   for (const entry of entries) {
     const match = /^\d+ blob ([a-f0-9]+)\t(.+)$/.exec(entry);
@@ -122,7 +125,7 @@ function verifySource() {
       );
   }
   assert.equal(
-    git(['diff', promotions, master, '--', 'apps/promotions-svc']),
+    git(['diff', promotions, master, '--', 'apps/promotions-svc/src']),
     '',
   );
   assert.ok(!existsSync(join(source, '.env')));
@@ -292,8 +295,14 @@ async function check(id, operation) {
     console.log('FAIL ' + id + ': ' + safe(error.message));
   }
 }
-async function probe(operation, path, deadline = 5000) {
-  const env = promotionEnv();
+async function probe(operation, path, deadline = 5000, overrides = {}) {
+  const env = {
+    ...promotionEnv(),
+    ...(operation === 'admin-category'
+      ? { PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false' }
+      : {}),
+    ...overrides,
+  };
   const args = ['run', '--rm', '--network', network];
   for (const mount of mounts()) args.push('--mount', mount);
   for (const key of Object.keys(env)) args.push('--env', key);
@@ -637,11 +646,15 @@ try {
     opaqueId = randomUUID(),
     inactiveId = randomUUID(),
     categoryId = randomUUID();
+  const inactiveCategoryId = randomUUID(),
+    missingCategoryId = randomUUID();
   evidence.fixture = {
     productId,
     opaqueId,
     inactiveId,
     categoryId,
+    inactiveCategoryId,
+    missingCategoryId,
     sku: 'SYNTHETIC-REAL',
     opaqueSku: 'SKU %2F + Ñ',
     state:
@@ -660,6 +673,10 @@ try {
   await admin.query(
     "INSERT INTO taxonomy.categories(id,nombre,nivel,orden) VALUES($1,'SYNTHETIC REAL',1,0)",
     [categoryId],
+  );
+  await admin.query(
+    "INSERT INTO taxonomy.categories(id,nombre,nivel,orden,estado) VALUES($1,'SYNTHETIC INACTIVE',1,0,'INACTIVO')",
+    [inactiveCategoryId],
   );
   const locationId = randomUUID();
   await admin.query(
@@ -1030,15 +1047,6 @@ try {
       'Taco',
       'Autorizar modulo-productos y validar canal solicitado por Promotions; allowlist sola no resuelve CANAL_CLIENT_MAP.',
     ],
-    [
-      'taxonomy-category-id',
-      'taxonomy-svc',
-      '/api/v1/categorias/' + categoryId,
-      token(),
-      404,
-      'Lopez',
-      'Implementar obtenerCategoriaAdmin normativo por ID con autorizacion contractual.',
-    ],
   ])
     await check('blocker-' + id, async () => {
       const r = await request(service, path, bearer);
@@ -1123,13 +1131,157 @@ try {
     return r;
   });
   await check('taxonomy-real-pg-list-control', async () => {
-    const r = await request('taxonomy-svc', '/api/v1/categorias', token());
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias',
+      token({ sub: 'modulo-marketplace', client_id: 'modulo-marketplace' }),
+    );
     assert.equal(r.status, 200);
     assert.ok(
       r.body.categories.some((c) => (c.categoria_id ?? c.id) === categoryId),
     );
+    assert.ok(
+      !r.body.categories.some(
+        (c) => (c.categoria_id ?? c.id) === inactiveCategoryId,
+      ),
+    );
     return r;
   });
+  for (const resource of ['categorias', 'marcas'])
+    await check('taxonomy-read-token-cannot-list-' + resource, async () => {
+      const r = await request('taxonomy-svc', '/api/v1/' + resource, token());
+      assert.equal(r.status, 403);
+      assert.equal(r.body.code, 'SCOPE_INSUFICIENTE');
+      return r;
+    });
+  await check('taxonomy-category-existing-real-pg', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + categoryId,
+      token(),
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body, {
+      categoriaId: categoryId,
+      nombre: 'SYNTHETIC REAL',
+      descripcion: null,
+      categoriaPadreId: null,
+      orden: 0,
+      imagenUrl: null,
+      estado: 'ACTIVO',
+      version: 0,
+      slug: null,
+    });
+    assert.match(r.contentType, /^application\/json/);
+    return r;
+  });
+  await check('taxonomy-category-missing-contract-error', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + missingCategoryId,
+      token(),
+    );
+    assert.equal(r.status, 404);
+    assert.equal(r.body.code, 'CATEGORIA_NO_ENCONTRADA');
+    assert.match(r.contentType, /^application\/problem\+json/);
+    return r;
+  });
+  await check('taxonomy-category-inactive-real-pg', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + inactiveCategoryId,
+      token(),
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.body.estado, 'INACTIVO');
+    assert.equal(r.body.categoriaId, inactiveCategoryId);
+    return r;
+  });
+  for (const [name, bearer, status] of [
+    ['anonymous', undefined, 401],
+    [
+      'wrong-client',
+      token({ sub: 'modulo-marketplace', client_id: 'modulo-marketplace' }),
+      403,
+    ],
+    ['wrong-scope', token({ scope: 'precios:leer' }), 403],
+    ['wrong-audience', token({ aud: ['other'] }), 401],
+    ['wrong-issuer', token({ iss: 'https://wrong.invalid' }), 401],
+    ['expired', token({ exp: Math.floor(Date.now() / 1000) - 60 }), 401],
+    ['bad-signature', token({}, true), 401],
+    [
+      'human-without-role',
+      token({ tipo: 'acceso', sub: randomUUID(), roles: [] }),
+      403,
+    ],
+  ])
+    await check('taxonomy-category-auth-' + name, async () => {
+      const r = await request(
+        'taxonomy-svc',
+        '/api/v1/categorias/' + categoryId,
+        bearer,
+      );
+      assert.equal(r.status, status, JSON.stringify(r.body));
+      assert.equal(
+        r.body.code,
+        status === 401 ? 'TOKEN_INVALIDO' : 'SCOPE_INSUFICIENTE',
+      );
+      return r;
+    });
+  await check('taxonomy-category-invalid-id', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/not-a-uuid',
+      token(),
+    );
+    assert.equal(r.status, 400);
+    assert.equal(r.body.code, 'VALIDACION');
+    return r;
+  });
+  await check('taxonomy-read-token-cannot-write', async () => {
+    const r = await request('taxonomy-svc', '/api/v1/categorias', token(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: 'FORBIDDEN-SYNTHETIC' }),
+    });
+    assert.equal(r.status, 403);
+    return r;
+  });
+  for (const [name, id, expected] of [
+    ['active', categoryId, [categoryId]],
+    ['missing', missingCategoryId, []],
+    ['inactive', inactiveCategoryId, []],
+  ])
+    await check('promotions-nest-taxonomy-reference-' + name, async () => {
+      const r = await probe('admin-category', id);
+      assert.equal(r.outcome, 'RETURNED', JSON.stringify(r));
+      assert.deepEqual(r.body, {
+        products: [],
+        skus: [],
+        categories: expected,
+      });
+      assert.equal(
+        r.scope,
+        'native PromotionsSvcModule ADMIN_REFERENCES; no provider overrides',
+      );
+      return r;
+    });
+  await check(
+    'promotions-nest-taxonomy-denied-grant-fails-closed',
+    async () => {
+      const r = await probe('admin-category', categoryId, 5000, {
+        PROMOTIONS_SERVICE_CLIENT_SECRET: secret + '-invalid',
+      });
+      assert.equal(r.outcome, 'REJECTED');
+      assert.equal(r.kind, 'CommercialDependencyError');
+      assert.equal(r.error, 'COMMERCIAL_CONTEXT_UNAVAILABLE');
+      return {
+        ...r,
+        limitation:
+          'denied local issuer grant must not become an absent/active category',
+      };
+    },
+  );
   await check(
     'promotions-independent-passive-readiness-real-pg-and-broker',
     async () => {
