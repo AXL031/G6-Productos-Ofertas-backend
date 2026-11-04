@@ -30,13 +30,13 @@ describe('DeactivationIntentService', () => {
     ).resolves.toBe('NO_DISPONIBLE');
     expect(read).not.toHaveBeenCalled();
   });
-  it('no admite tipos sin lectura autoritativa implementada', async () => {
+  it('no admite una asociación sin ambas identidades', async () => {
     const database = new Database();
     const read = vi.spyOn(database, 'read');
     await expect(
       new DeactivationIntentService(database).registrar({
         ...solicitud,
-        entityType: 'PRODUCT_TYPE',
+        entityType: 'PRODUCT_TYPE_CHARACTERISTIC',
       }),
     ).resolves.toBe('NO_DISPONIBLE');
     expect(read).not.toHaveBeenCalled();

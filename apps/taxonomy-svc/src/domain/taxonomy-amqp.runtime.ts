@@ -211,6 +211,8 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
   ): Promise<void> {
     const routes: Record<string, string> = {
       'taxonomy.category.updated': 'po.eventos.x',
+      'taxonomy.product-type-schema.changed': 'po.eventos.x',
+      'taxonomy.characteristic-value.updated': 'po.eventos.x',
       'taxonomy.master.deactivation.check.requested': 'po.comandos.x',
       'taxonomy.master.deactivated': 'po.eventos.x',
       'taxonomy.master.deactivation.rejected': 'po.resultados.x',

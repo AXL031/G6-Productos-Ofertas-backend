@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   bigint,
+  boolean,
   char,
   check,
   foreignKey,
@@ -39,6 +40,12 @@ export const estadoOperacionBaja = taxonomia.enum('estado_operacion_baja', [
   'COMPLETED',
   'REJECTED',
   'FAILED',
+]);
+
+export const tipoCaracteristica = taxonomia.enum('tipo_caracteristica', [
+  'TEXTO',
+  'NUMERO',
+  'LISTA',
 ]);
 
 export const categorias = taxonomia.table(
@@ -160,6 +167,136 @@ export const marcas = taxonomia.table(
   ],
 );
 
+export const caracteristicas = taxonomia.table(
+  'characteristics',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    nombre: text('nombre').notNull(),
+    tipo: tipoCaracteristica('tipo').notNull(),
+    unidadMedida: text('unidad_medida'),
+    estado: estadoEntidad('estado').notNull().default('ACTIVO'),
+    taxonomyVersion: bigint('taxonomy_version', { mode: 'number' })
+      .notNull()
+      .default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique('uq_characteristics_nombre').on(t.nombre),
+    check(
+      'ck_characteristics_nombre_not_empty',
+      sql`length(trim(${t.nombre})) > 0`,
+    ),
+    check(
+      'ck_characteristics_unidad_medida',
+      sql`(${t.tipo} = 'NUMERO' AND ${t.unidadMedida} IS NOT NULL AND length(trim(${t.unidadMedida})) > 0) OR (${t.tipo} <> 'NUMERO' AND ${t.unidadMedida} IS NULL)`,
+    ),
+    check('ck_characteristics_version', sql`${t.taxonomyVersion} >= 0`),
+  ],
+);
+
+export const valoresCaracteristica = taxonomia.table(
+  'characteristic_values',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    caracteristicaId: uuid('caracteristica_id').notNull(),
+    nombre: text('nombre').notNull(),
+    estado: estadoEntidad('estado').notNull().default('ACTIVO'),
+    taxonomyVersion: bigint('taxonomy_version', { mode: 'number' })
+      .notNull()
+      .default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.caracteristicaId],
+      foreignColumns: [caracteristicas.id],
+      name: 'fk_characteristic_values_caracteristica',
+    }).onDelete('restrict'),
+    unique('uq_characteristic_values_nombre').on(t.caracteristicaId, t.nombre),
+    check(
+      'ck_characteristic_values_nombre_not_empty',
+      sql`length(trim(${t.nombre})) > 0`,
+    ),
+    check('ck_characteristic_values_version', sql`${t.taxonomyVersion} >= 0`),
+    index('ix_characteristic_values_caracteristica_id').on(t.caracteristicaId),
+  ],
+);
+
+export const tiposProducto = taxonomia.table(
+  'product_types',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    nombre: text('nombre').notNull(),
+    estado: estadoEntidad('estado').notNull().default('ACTIVO'),
+    schemaVersion: bigint('schema_version', { mode: 'number' })
+      .notNull()
+      .default(1),
+    taxonomyVersion: bigint('taxonomy_version', { mode: 'number' })
+      .notNull()
+      .default(0),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    unique('uq_product_types_nombre').on(t.nombre),
+    check(
+      'ck_product_types_nombre_not_empty',
+      sql`length(trim(${t.nombre})) > 0`,
+    ),
+    check('ck_product_types_schema_version', sql`${t.schemaVersion} >= 1`),
+    check('ck_product_types_version', sql`${t.taxonomyVersion} >= 0`),
+  ],
+);
+
+export const asociacionesTipoCaracteristica = taxonomia.table(
+  'product_type_characteristics',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    tipoProductoId: uuid('tipo_producto_id').notNull(),
+    caracteristicaId: uuid('caracteristica_id').notNull(),
+    obligatoria: boolean('obligatoria').notNull().default(false),
+    estado: estadoEntidad('estado').notNull().default('ACTIVO'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    foreignKey({
+      columns: [t.tipoProductoId],
+      foreignColumns: [tiposProducto.id],
+      name: 'fk_ptc_tipo_producto',
+    }).onDelete('restrict'),
+    foreignKey({
+      columns: [t.caracteristicaId],
+      foreignColumns: [caracteristicas.id],
+      name: 'fk_ptc_caracteristica',
+    }).onDelete('restrict'),
+    unique('uq_ptc_tipo_caracteristica').on(
+      t.tipoProductoId,
+      t.caracteristicaId,
+    ),
+    index('ix_ptc_tipo_producto_id').on(t.tipoProductoId),
+    index('ix_ptc_caracteristica_id').on(t.caracteristicaId),
+  ],
+);
+
 // Mapea únicamente columnas presentes en la migración histórica oficial.
 export const operacionesBaja = taxonomia.table(
   'master_deactivation_operations',
@@ -200,4 +337,9 @@ export const esquemaTaxonomia = {
   tipoEntidadMaestra,
   estadoOperacionBaja,
   operacionesBaja,
+  tipoCaracteristica,
+  caracteristicas,
+  valoresCaracteristica,
+  tiposProducto,
+  asociacionesTipoCaracteristica,
 };
