@@ -22,6 +22,7 @@ import { Decimal } from '../domain/decimal.js';
 import { PROMOTIONS_CLOCK, type PromotionsClock } from '../domain/clock.js';
 import { BoundedCommercialContext } from '../infrastructure/resilience/commercial-deadline.js';
 import { httpContracts } from './http-contract.generated.js';
+import { withHttpClientSignal } from './client-cancellation.js';
 import {
   isUuid,
   PromotionsHttpError,
@@ -122,7 +123,16 @@ export class PromotionsQueryService {
   ) {
     this.facts = new BoundedCommercialContext(facts);
   }
-  async execute(id: string, request: Request): Promise<unknown> {
+  execute(id: string, request: Request): Promise<unknown> {
+    return withHttpClientSignal(request, (signal) =>
+      this.executeQuery(id, request, signal),
+    );
+  }
+  private async executeQuery(
+    id: string,
+    request: Request,
+    signal: AbortSignal,
+  ): Promise<unknown> {
     const contract = httpContracts[id];
     const q = queryInput(request.query, contract);
     if (contract.body && !valid(request.body, contract.body))
@@ -223,10 +233,11 @@ export class PromotionsQueryService {
         };
         const at = id === 'evaluarPromociones' ? (body.at ?? now) : now;
         // External calls precede the short, read-only database transaction.
-        const basketContext = await this.facts.basket(body, at, undefined, {
+        const basketContext = await this.facts.basket(body, at, signal, {
           ...context,
           at,
         });
+        signal.throwIfAborted();
         const snapshot = await this.persistence.read(async (r) => {
           const active = await r.queries.summaries(
             body.channel_id,
@@ -299,9 +310,10 @@ export class PromotionsQueryService {
         const origin = await this.facts.recommendationOrigin(
           product,
           channel,
-          undefined,
+          signal,
           context,
         );
+        signal.throwIfAborted();
         if (!origin.active || !origin.channelEligible) {
           result = { recommendations: [] };
           break;
@@ -312,7 +324,7 @@ export class PromotionsQueryService {
         const facts = await this.facts.recommendationProducts(
           [...new Set(rules.flatMap((r) => r.items.map((i) => i.productId)))],
           channel,
-          undefined,
+          signal,
           context,
         );
         if (rules.some((r) => r.items.some((i) => !facts.has(i.productId))))
