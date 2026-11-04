@@ -10,7 +10,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { TaxonomyUserGuard } from './taxonomy-auth.js';
+import { TaxonomyUserGuard, TaxonomyCommercialGuard } from './taxonomy-auth.js';
 import { esUuid, ProblemDetailsException } from './errors/taxonomy.errors.js';
 import { ProductTypeService } from './domain/product-type.service.js';
 import { CharacteristicValueService } from './domain/characteristic-value.service.js';
@@ -21,6 +21,7 @@ import {
 } from './domain/master-deactivation-request.service.js';
 import {
   validarAsociacionCreate,
+  validarAsociacionUpdate,
   validarTipoProductoCreate,
   validarValorCaracteristicaWrite,
 } from './domain/entidades-maestras.dto.js';
@@ -89,6 +90,7 @@ export class TaxonomyMastersController {
   }
 
   @Post('tipos-producto')
+  @UseGuards(TaxonomyCommercialGuard)
   async crearTipoProducto(@Body() body: unknown) {
     const resultado = await this.tipos.crear(
       validarTipoProductoCreate(body).nombre,
@@ -110,6 +112,7 @@ export class TaxonomyMastersController {
   }
 
   @Post('caracteristicas/:caracteristicaId/valores')
+  @UseGuards(TaxonomyCommercialGuard)
   async crearValorCaracteristica(
     @Param('caracteristicaId') id: string,
     @Body() body: unknown,
@@ -129,6 +132,7 @@ export class TaxonomyMastersController {
   }
 
   @Patch('caracteristicas/:caracteristicaId/valores/:valorId')
+  @UseGuards(TaxonomyCommercialGuard)
   async actualizarValorCaracteristica(
     @Param('caracteristicaId') caracteristicaId: string,
     @Param('valorId') id: string,
@@ -161,16 +165,13 @@ export class TaxonomyMastersController {
   @Get('tipos-producto/:tipoProductoId/caracteristicas')
   async obtenerEsquemaTipoProducto(@Param('tipoProductoId') id: string) {
     validarId(id);
-    const tipoProducto = await this.tipos.obtener(id);
-    if (!tipoProducto) throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
-    return {
-      tipoProducto,
-      caracteristicas: await this.asociaciones.listar(id),
-      schemaVersion: tipoProducto.schemaVersion,
-    };
+    const esquema = await this.tipos.obtenerEsquema(id);
+    if (!esquema) throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    return esquema;
   }
 
   @Post('tipos-producto/:tipoProductoId/caracteristicas')
+  @UseGuards(TaxonomyCommercialGuard)
   async asociarCaracteristicaTipoProducto(
     @Param('tipoProductoId') id: string,
     @Body() body: unknown,
@@ -198,6 +199,34 @@ export class TaxonomyMastersController {
     return resultado.asociacion;
   }
 
+  @Patch('tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId')
+  @UseGuards(TaxonomyCommercialGuard)
+  async actualizarAsociacionTipoCaracteristica(
+    @Param('tipoProductoId') tipoId: string,
+    @Param('caracteristicaId') caracteristicaId: string,
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(tipoId);
+    validarId(caracteristicaId);
+    if (correlationId !== undefined && !esUuid(correlationId))
+      throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
+    const dto = validarAsociacionUpdate(body);
+    const resultado = await this.asociaciones.actualizar(
+      tipoId,
+      caracteristicaId,
+      dto.obligatoria,
+      dto.schemaVersion,
+      correlationId,
+    );
+    if (resultado.estado === 'TIPO_AUSENTE')
+      throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    if (resultado.estado === 'ASOCIACION_AUSENTE')
+      throw problema(404, 'ASOCIACION_NO_ENCONTRADA');
+    if (resultado.estado !== 'OK') throw problema(409, resultado.estado);
+    return resultado.asociacion;
+  }
+
   private async solicitar(solicitud: SolicitudMaestra, correlationId?: string) {
     if (correlationId !== undefined && !esUuid(correlationId))
       throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
@@ -221,6 +250,7 @@ export class TaxonomyMastersController {
   }
 
   @Post('tipos-producto/:tipoProductoId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(202)
   solicitarDesactivacionTipoProducto(
     @Param('tipoProductoId') id: string,
@@ -230,6 +260,7 @@ export class TaxonomyMastersController {
     return this.solicitar({ tipo: 'PRODUCT_TYPE', id }, correlationId);
   }
   @Post('caracteristicas/:caracteristicaId/valores/:valorId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(202)
   solicitarDesactivacionValorCaracteristica(
     @Param('caracteristicaId') caracteristicaId: string,
@@ -246,6 +277,7 @@ export class TaxonomyMastersController {
   @Post(
     'tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId/desasociar',
   )
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(202)
   solicitarDesasociacionTipoCaracteristica(
     @Param('tipoProductoId') tipoProductoId: string,

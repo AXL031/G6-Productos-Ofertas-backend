@@ -347,6 +347,7 @@ try {
     resolve(
       'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
     ),
+    resolve('apps/taxonomy-svc/migrations/0005_configurable_list_values.sql'),
   ]);
   await migrate('po_catalog_owner', [
     join(docs, 'catalog-svc/migrations/0001_create_catalog.sql'),

@@ -169,6 +169,7 @@ export function construirSentenciasDdl(
     'CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id)',
     'REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC',
     "INSERT INTO taxonomy.runtime_settings (clave, valor_integer) VALUES ('MAX_PRODUCT_TYPE_ATTRIBUTES', 20)",
+    "INSERT INTO taxonomy.runtime_settings (clave, valor_integer) VALUES ('MAX_ACTIVE_LIST_VALUES', 50)",
     `CREATE OR REPLACE FUNCTION taxonomy.fn_set_updated_at()
 RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
@@ -191,6 +192,7 @@ RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
     v_tipo taxonomy.tipo_caracteristica;
     v_activos integer;
+    v_limite integer;
 BEGIN
     SELECT tipo INTO v_tipo
     FROM taxonomy.characteristics
@@ -201,13 +203,18 @@ BEGIN
     END IF;
 
     IF NEW.estado = 'ACTIVO' THEN
+        SELECT valor_integer INTO v_limite FROM taxonomy.runtime_settings
+        WHERE clave = 'MAX_ACTIVE_LIST_VALUES' FOR UPDATE;
+        IF v_limite IS NULL OR v_limite < 1 THEN
+            RAISE EXCEPTION 'Configuración MAX_ACTIVE_LIST_VALUES inválida';
+        END IF;
         SELECT count(*) INTO v_activos
         FROM taxonomy.characteristic_values
         WHERE caracteristica_id = NEW.caracteristica_id
           AND estado = 'ACTIVO'
           AND id <> coalesce(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid);
-        IF v_activos >= 50 THEN
-            RAISE EXCEPTION 'Límite alcanzado: una característica no puede tener más de 50 valores activos';
+        IF v_activos >= v_limite THEN
+            RAISE EXCEPTION 'Límite alcanzado: máximo % valores activos', v_limite;
         END IF;
     END IF;
     RETURN NEW;

@@ -26,6 +26,7 @@ import { CategoryReactivationService } from '../src/domain/category-reactivation
 import { CategoryCreateService } from '../src/domain/category-create.service.js';
 import { CategoryUpdateService } from '../src/domain/category-update.service.js';
 import { CharacteristicValueService } from '../src/domain/characteristic-value.service.js';
+import { ProductTypeService } from '../src/domain/product-type.service.js';
 import { ProductTypeCharacteristicService } from '../src/domain/product-type-characteristic.service.js';
 import {
   TaxonomyMessageStore,
@@ -117,6 +118,14 @@ describeIntegracion(
       for (const sentencia of construirSentenciasDdl(acreditacion)) {
         await admin.query(sentencia);
       }
+      await admin.query(
+        readFileSync(
+          resolve(
+            'apps/taxonomy-svc/migrations/0005_configurable_list_values.sql',
+          ),
+          'utf8',
+        ),
+      );
       for (const sentencia of construirSentenciasSemilla()) {
         await admin.query(sentencia);
       }
@@ -442,6 +451,23 @@ describeIntegracion(
         );
         expect(await asociaciones.listar(tipo)).toHaveLength(1);
         expect(
+          await new ProductTypeService(database).obtenerEsquema(tipo),
+        ).toMatchObject({
+          schemaVersion: 2,
+          caracteristicas: [
+            {
+              caracteristicaId: caracteristica,
+              schemaVersion: 2,
+              caracteristica: {
+                caracteristicaId: caracteristica,
+                tipo: 'LISTA',
+                estado: 'ACTIVO',
+                valores: [{ valorId: creado.valor.valorId, nombre: 'Azul' }],
+              },
+            },
+          ],
+        });
+        expect(
           (
             await admin.query(
               "SELECT payload->'data' AS data FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1",
@@ -457,6 +483,55 @@ describeIntegracion(
               change_type: 'CHARACTERISTIC_ASSOCIATED',
             }),
           },
+        ]);
+        expect(
+          await asociaciones.actualizar(tipo, caracteristica, false, 1),
+        ).toEqual({ estado: 'VERSION_CONFLICT' });
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        try {
+          await expect(
+            asociaciones.actualizar(tipo, caracteristica, false, 2),
+          ).rejects.toThrow();
+          expect(
+            (
+              await admin.query(
+                'SELECT a.obligatoria,t.schema_version FROM taxonomy.product_type_characteristics a JOIN taxonomy.product_types t ON t.id=a.tipo_producto_id WHERE a.tipo_producto_id=$1 AND a.caracteristica_id=$2',
+                [tipo, caracteristica],
+              )
+            ).rows,
+          ).toEqual([{ obligatoria: true, schema_version: '2' }]);
+        } finally {
+          await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        }
+        expect(
+          await asociaciones.actualizar(tipo, caracteristica, false, 2),
+        ).toMatchObject({
+          estado: 'OK',
+          asociacion: { obligatoria: false, schemaVersion: 3 },
+        });
+        expect(
+          (
+            await admin.query(
+              "SELECT payload->'data' AS data FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1 AND payload->'data'->>'change_type'='REQUIRED_CHANGED'",
+              [tipo],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            data: expect.objectContaining({
+              tipo_producto_id: tipo,
+              caracteristica_id: caracteristica,
+              schema_version: 3,
+            }),
+          },
+        ]);
+        const simultaneas = await Promise.all([
+          asociaciones.actualizar(tipo, caracteristica, true, 3),
+          asociaciones.actualizar(tipo, caracteristica, true, 3),
+        ]);
+        expect(simultaneas.map((r) => r.estado).sort()).toEqual([
+          'OK',
+          'VERSION_CONFLICT',
         ]);
       } finally {
         await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
@@ -483,6 +558,50 @@ describeIntegracion(
           'DELETE FROM taxonomy.characteristics WHERE id = $1',
           [caracteristica],
         );
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('aplica el límite configurable en servicio y trigger físico', async () => {
+      const nombre = `limite-config-${randomUUID()}`;
+      const caracteristica = (
+        await admin.query(
+          "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+          [nombre],
+        )
+      ).rows[0].id;
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      try {
+        await admin.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer=1 WHERE clave='MAX_ACTIVE_LIST_VALUES'",
+        );
+        const service = new CharacteristicValueService(database);
+        expect(await service.crear(caracteristica, 'Primero')).toMatchObject({
+          estado: 'OK',
+        });
+        expect(await service.crear(caracteristica, 'Segundo')).toEqual({
+          estado: 'LIMITE',
+        });
+        await expect(
+          admin.query(
+            "INSERT INTO taxonomy.characteristic_values (caracteristica_id,nombre) VALUES ($1,'Directo')",
+            [caracteristica],
+          ),
+        ).rejects.toThrow(/límite/i);
+      } finally {
+        await admin.query(
+          "UPDATE taxonomy.runtime_settings SET valor_integer=50 WHERE clave='MAX_ACTIVE_LIST_VALUES'",
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id=$1',
+          [caracteristica],
+        );
+        await admin.query('DELETE FROM taxonomy.characteristics WHERE id=$1', [
+          caracteristica,
+        ]);
         vi.restoreAllMocks();
       }
     });
@@ -1699,7 +1818,11 @@ describeIntegracion(
       if (!address || typeof address === 'string')
         throw new Error('Puerto no disponible');
       origin = `http://127.0.0.1:${address.port}`;
-      const token = (scope: string, humano = false) => {
+      const token = (
+        scope: string,
+        humano = false,
+        roles = ['GESTOR_COMERCIAL'],
+      ) => {
         const now = Math.floor(Date.now() / 1000);
         const header = Buffer.from(
           JSON.stringify({ alg: 'RS256', kid: 'test' }),
@@ -1709,7 +1832,7 @@ describeIntegracion(
             iss: issuer,
             sub: humano ? randomUUID() : 'catalog-svc',
             tipo: humano ? 'acceso' : 'servicio',
-            ...(humano ? { roles: [] } : {}),
+            ...(humano ? { roles } : {}),
             aud: 'api-productos',
             scope,
             iat: now,
@@ -1749,6 +1872,19 @@ describeIntegracion(
           .compile();
         nest = moduleFixture.createNestApplication();
         await nest.init();
+        await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(200);
+        await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set('Authorization', `Bearer ${token('otro')}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .post('/api/v1/tipos-producto')
+          .set('Authorization', `Bearer ${token('', true, [])}`)
+          .send({ nombre: 'Sin rol' })
+          .expect(403);
         await request(nest.getHttpServer())
           .post('/api/v1/tipos-producto')
           .send({ nombre: 'Sin token' })

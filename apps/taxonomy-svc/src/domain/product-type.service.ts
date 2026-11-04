@@ -82,6 +82,42 @@ export class ProductTypeService {
     });
   }
 
+  async obtenerEsquema(
+    id: string,
+  ): Promise<{
+    tipoProducto: TipoProductoAdmin;
+    caracteristicas: unknown[];
+    schemaVersion: number;
+  } | null> {
+    if (!esUuid(id)) return null;
+    return this.database.read(async (db) => {
+      const result =
+        await db.execute(sql`SELECT t.id, t.nombre, t.estado, t.schema_version,
+        COALESCE((SELECT jsonb_agg(jsonb_build_object(
+          'caracteristicaId', c.id, 'obligatoria', a.obligatoria, 'estado', a.estado,
+          'schemaVersion', t.schema_version, 'caracteristica', jsonb_build_object(
+            'caracteristicaId', c.id, 'nombre', c.nombre, 'tipo', c.tipo,
+            'unidadMedida', c.unidad_medida, 'estado', c.estado, 'version', c.taxonomy_version,
+            'valores', COALESCE((SELECT jsonb_agg(jsonb_build_object('valorId', v.id, 'nombre', v.nombre,
+              'estado', v.estado, 'version', v.taxonomy_version) ORDER BY v.nombre, v.id)
+              FROM taxonomy.characteristic_values v WHERE v.caracteristica_id = c.id AND v.estado = 'ACTIVO'), '[]'::jsonb)
+          )) ORDER BY c.nombre, c.id)
+          FROM taxonomy.product_type_characteristics a JOIN taxonomy.characteristics c ON c.id = a.caracteristica_id
+          WHERE a.tipo_producto_id = t.id AND a.estado = 'ACTIVO' AND c.estado = 'ACTIVO'), '[]'::jsonb) AS caracteristicas
+        FROM taxonomy.product_types t WHERE t.id = ${id}::uuid`);
+      const row = result.rows[0];
+      if (!row) return null;
+      if (!Array.isArray(row.caracteristicas))
+        throw new Error('ESQUEMA_INVALIDO');
+      const tipoProducto = mapear(row);
+      return {
+        tipoProducto,
+        caracteristicas: row.caracteristicas,
+        schemaVersion: tipoProducto.schemaVersion,
+      };
+    });
+  }
+
   async crear(nombre: string): Promise<TipoProductoAdmin | null> {
     if (!nombre.trim()) return null;
     return this.database.read((db) =>

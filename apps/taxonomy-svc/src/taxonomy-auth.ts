@@ -388,7 +388,35 @@ export class TaxonomyUserGuard implements CanActivate {
     }
     if (!principal.audiences.includes(SECURITY_AUDIENCE))
       throw new UnauthorizedException();
-    if (principal.kind !== 'user') throw new ForbiddenException();
+    if (principal.kind === 'service') {
+      if (
+        request.method !== 'GET' ||
+        principal.subject !== 'catalog-svc' ||
+        !principal.scopes.includes('catalogo:leer')
+      )
+        throw new ForbiddenException();
+      return true;
+    }
+    (request as Request & { taxonomyUser?: TaxonomyPrincipal }).taxonomyUser =
+      principal;
+    return true;
+  }
+}
+
+@Injectable()
+export class TaxonomyCommercialGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const principal = context
+      .switchToHttp()
+      .getRequest<
+        Request & { taxonomyUser?: TaxonomyPrincipal }
+      >().taxonomyUser;
+    if (
+      !principal ||
+      principal.kind !== 'user' ||
+      !principal.roles.includes('GESTOR_COMERCIAL')
+    )
+      throw new ForbiddenException();
     return true;
   }
 }

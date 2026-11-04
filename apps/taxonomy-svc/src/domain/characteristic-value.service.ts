@@ -63,10 +63,16 @@ export class CharacteristicValueService {
         if (!padre.rows[0]) return { estado: 'NO_ENCONTRADA' } as const;
         if (padre.rows[0].tipo !== 'LISTA' || padre.rows[0].estado !== 'ACTIVO')
           return { estado: 'INVALIDO' } as const;
+        const ajuste = await tx.execute(
+          sql`SELECT valor_integer FROM taxonomy.runtime_settings WHERE clave = 'MAX_ACTIVE_LIST_VALUES' FOR UPDATE`,
+        );
+        const limite = Number(ajuste.rows[0]?.valor_integer);
+        if (!Number.isSafeInteger(limite) || limite < 1)
+          throw new Error('CONFIGURACION_INVALIDA');
         const activos = await tx.execute(
           sql`SELECT count(*)::int AS total FROM taxonomy.characteristic_values WHERE caracteristica_id = ${caracteristicaId}::uuid AND estado = 'ACTIVO'`,
         );
-        if (Number(activos.rows[0]?.total) >= 50)
+        if (Number(activos.rows[0]?.total) >= limite)
           return { estado: 'LIMITE' } as const;
         const insertado =
           await tx.execute(sql`INSERT INTO taxonomy.characteristic_values (caracteristica_id, nombre)

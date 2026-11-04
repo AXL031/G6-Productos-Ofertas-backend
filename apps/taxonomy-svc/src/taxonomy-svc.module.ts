@@ -34,6 +34,7 @@ import {
   TAXONOMY_DEMO_ENABLED,
   readTaxonomyDemoConfig,
   TaxonomyUserGuard,
+  TaxonomyCommercialGuard,
 } from './taxonomy-auth.js';
 
 export interface OpcionesModuloTaxonomy {
@@ -60,6 +61,7 @@ export interface OpcionesModuloTaxonomy {
     TaxonomyMessageStore,
     TaxonomyAuthGuard,
     TaxonomyUserGuard,
+    TaxonomyCommercialGuard,
     BrandReactivationService,
     CategoryReactivationService,
     CategoryCreateService,

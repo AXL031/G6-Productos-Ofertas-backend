@@ -41,6 +41,10 @@ El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y u
 
 **Alcance parcial del issue #35:** los mapeos Drizzle cubren categorías y marcas de las 12 tablas del modelo físico. Queda pendiente mapear las otras diez tablas y validar la persistencia contra las migraciones oficiales; el fixture aislado de estas pruebas no ejecuta dichas migraciones. Este avance no cierra el issue #35.
 
+**Alcance parcial de SPEC-009/010 (issue #36):** siguen pendientes la gestión HTTP completa de características (`listarCaracteristicas`, `crearCaracteristica`, `obtenerCaracteristica`, `actualizarCaracteristica`, `desactivarCaracteristica` y `reactivarCaracteristica`), `reactivarValorCaracteristica` y `reactivarTipoProducto`. Las lecturas de maestros aceptan usuarios o el cliente de servicio `catalog-svc` con audiencia `api-productos` y scope `catalogo:leer`; las mutaciones de estos maestros exigen usuario con rol `GESTOR_COMERCIAL`. El OpenAPI actual aún declara `userBearer` para estas lecturas; la coordinación contractual y los grants efectivos siguen pendientes. La ejecución local de pruebas no acredita homologación con Catálogo ni despliegue.
+
+El límite de valores LISTA se configura mediante `MAX_ACTIVE_LIST_VALUES`; la migración aditiva `0005_configurable_list_values.sql` instala el valor inicial y actualiza el trigger para aplicar el mismo límite. Su aplicación a cualquier base compartida requiere el procedimiento autorizado.
+
 - Driver `drizzle-orm` sobre `pg` (`node-postgres`).
 - Esquema en `src/persistence/taxonomy.schema.ts`: `taxonomy.categories` y `taxonomy.brands` mapeadas al modelo físico, incluido el enum `taxonomy.estado_entidad` y la columna generada `nombre_normalizado`.
 - `DrizzleTaxonomyRepository` implementa `TaxonomyRepository` y `TaxonomyReadinessIndicator`; las lecturas filtran por `estado = 'ACTIVO'`.
