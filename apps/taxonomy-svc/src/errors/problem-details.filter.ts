@@ -4,6 +4,8 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
+  type LoggerService,
 } from '@nestjs/common';
 import { ProblemDetailsException, esUuid } from './taxonomy.errors.js';
 import type { ProblemDetailsBody } from './taxonomy.errors.js';
@@ -27,8 +29,7 @@ const TITULOS_POR_ESTADO: Record<number, string | undefined> = {
   [HttpStatus.SERVICE_UNAVAILABLE]: 'Servicio temporalmente no disponible',
 };
 
-const DETALLE_SENSIBLE =
-  /select|insert|update|delete|from|table|relation|column|constraint|duplicate key|syntax error|pg_|schema|connection|password|secret|token/i;
+const DETALLE_ERROR_INTERNO = 'Ha ocurrido un error interno en el servicio';
 
 function codigoPorEstado(estado: number): string {
   switch (estado) {
@@ -65,6 +66,13 @@ function solicitarCorrelacion(request: SolicitudHttp): string | undefined {
 
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
+  private logger: LoggerService = new Logger(ProblemDetailsFilter.name);
+
+  /** Reemplazable en pruebas; en runtime usa el logger central de Nest. */
+  usarLogger(logger: LoggerService): void {
+    this.logger = logger;
+  }
+
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const response = context.getResponse<RespuestaHttp>();
@@ -99,17 +107,20 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         .json(problem);
     }
 
-    const message = exception instanceof Error ? exception.message : '';
-    const detail =
-      !message || DETALLE_SENSIBLE.test(message)
-        ? 'Ha ocurrido un error interno en el servicio'
-        : message;
+    this.logger.error({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code: 'ERROR_INTERNO',
+      ...(correlationId ? { correlation_id: correlationId } : {}),
+      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
     const problem: ProblemDetailsBody = {
       type: tipoPorCodigo('ERROR_INTERNO'),
       title: 'Error interno',
       status: HttpStatus.INTERNAL_SERVER_ERROR,
       code: 'ERROR_INTERNO',
-      detail,
+      detail: DETALLE_ERROR_INTERNO,
       correlationId,
     };
     return response
