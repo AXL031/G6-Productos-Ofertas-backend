@@ -344,6 +344,10 @@ try {
     resolve(
       'apps/taxonomy-svc/migrations/0003_deactivation_timeout_setting.sql',
     ),
+    resolve(
+      'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+    ),
+    resolve('apps/taxonomy-svc/migrations/0005_configurable_list_values.sql'),
   ]);
   await migrate('po_catalog_owner', [
     join(docs, 'catalog-svc/migrations/0001_create_catalog.sql'),
@@ -959,6 +963,147 @@ try {
       resultado: response.result,
       estado,
     };
+  }
+  for (const entityType of [
+    'PRODUCT_TYPE',
+    'CHARACTERISTIC_VALUE',
+    'PRODUCT_TYPE_CHARACTERISTIC',
+  ]) {
+    for (const outcome of ['CLEAR', 'IN_USE']) {
+      stage = `${entityType} ${outcome} real`;
+      const typeId = randomUUID(),
+        characteristicId = randomUUID(),
+        valueId = randomUUID(),
+        associationId = randomUUID(),
+        operationId = randomUUID(),
+        correlationId = randomUUID();
+      await admin.query(
+        'INSERT INTO taxonomy.product_types(id,nombre) VALUES($1,$2)',
+        [typeId, `type-${typeId}`],
+      );
+      await admin.query(
+        "INSERT INTO taxonomy.characteristics(id,nombre,tipo) VALUES($1,$2,'LISTA')",
+        [characteristicId, `characteristic-${characteristicId}`],
+      );
+      await admin.query(
+        "INSERT INTO taxonomy.characteristic_values(id,caracteristica_id,nombre) VALUES($1,$2,'valor')",
+        [valueId, characteristicId],
+      );
+      await admin.query(
+        'INSERT INTO taxonomy.product_type_characteristics(id,tipo_producto_id,caracteristica_id) VALUES($1,$2,$3)',
+        [associationId, typeId, characteristicId],
+      );
+      const product = (
+        await row('SELECT id FROM catalog.products WHERE marca_id=$1', [
+          ids.inUse,
+        ])
+      )[0];
+      if (outcome === 'IN_USE') {
+        await admin.query(
+          'UPDATE catalog.products SET tipo_producto_id=$1 WHERE id=$2',
+          [typeId, product.id],
+        );
+        await admin.query(
+          "INSERT INTO catalog.product_attribute_values(product_id,caracteristica_id,nombre_snapshot,valor_id,valor) VALUES($1,$2,'valor',$3,'{}'::jsonb)",
+          [product.id, characteristicId, valueId],
+        );
+      }
+      const entityId =
+        entityType === 'PRODUCT_TYPE'
+          ? typeId
+          : entityType === 'CHARACTERISTIC_VALUE'
+            ? valueId
+            : associationId;
+      const version =
+        entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+          ? Number(
+              (
+                await row(
+                  'SELECT schema_version FROM taxonomy.product_types WHERE id=$1',
+                  [typeId],
+                )
+              )[0].schema_version,
+            )
+          : 0;
+      assert.equal(
+        await intents().registrar({
+          operationId,
+          correlationId,
+          entityType,
+          entityId,
+          version,
+          ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+            ? { tipoProductoId: typeId, caracteristicaId: characteristicId }
+            : {}),
+        }),
+        'REGISTRADA',
+      );
+      const expected = outcome === 'CLEAR' ? 'COMPLETED' : 'REJECTED';
+      await wait(
+        stage,
+        async () =>
+          (
+            await row(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          )[0]?.status === expected,
+      );
+      const checked = (
+        await row(
+          "SELECT payload->>'result' AS result FROM catalog.outbox WHERE operation_id=$1 AND event_name='catalog.master.deactivation.checked'",
+          [operationId],
+        )
+      )[0];
+      assert.equal(checked?.result, outcome);
+      const table =
+        entityType === 'PRODUCT_TYPE'
+          ? 'product_types'
+          : entityType === 'CHARACTERISTIC_VALUE'
+            ? 'characteristic_values'
+            : 'product_type_characteristics';
+      const state = (
+        await row(`SELECT estado FROM taxonomy.${table} WHERE id=$1`, [
+          entityId,
+        ])
+      )[0].estado;
+      assert.equal(state, outcome === 'CLEAR' ? 'INACTIVO' : 'ACTIVO');
+      await wait(
+        `liberación de barrera ${entityType} ${outcome}`,
+        async () =>
+          (
+            await row(
+              'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+              [operationId],
+            )
+          )[0]?.is_blocking === false,
+      );
+      report.scenarios[`${entityType}_${outcome}`] = {
+        operationId,
+        entityId,
+        status: expected,
+        resultado: checked.result,
+        estado: state,
+        taxonomyInbox: await row(
+          "SELECT event_name, result FROM taxonomy.inbox WHERE payload->>'operation_id'=$1",
+          [operationId],
+        ),
+        taxonomyOutbox: await row(
+          'SELECT event_name, published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE operation_id=$1 ORDER BY occurred_at',
+          [operationId],
+        ),
+        catalogInbox: await row(
+          'SELECT event_name, result FROM catalog.inbox WHERE operation_id=$1',
+          [operationId],
+        ),
+        catalogBarrier: (
+          await row(
+            'SELECT is_blocking, source_version FROM catalog.master_barriers WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0],
+      };
+    }
   }
   stage = 'Duplicado real';
   let original;

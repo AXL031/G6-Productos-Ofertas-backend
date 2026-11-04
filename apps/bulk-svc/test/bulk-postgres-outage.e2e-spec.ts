@@ -1,26 +1,62 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import {
+  createSign,
+  generateKeyPairSync,
+  randomBytes,
+  randomUUID,
+} from 'node:crypto';
 import { spawnSync } from 'node:child_process';
+import { createServer as createHttpServer, type Server } from 'node:http';
 import { createServer } from 'node:net';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { Client, Pool, type PoolClient } from 'pg';
 import { Test } from '@nestjs/testing';
 import type { INestApplication, LoggerService } from '@nestjs/common';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { BulkSvcModule } from '../src/bulk-svc.module.js';
-import { BulkUserBearerGuard } from '../src/auth/bulk-user-bearer.guard.js';
 import { BulkProblemFilter } from '../src/http/bulk-problem.filter.js';
+import { BulkImportService } from '../src/bulk-import.service.js';
+import {
+  createValidBulkCsv,
+  createValidBulkXlsx,
+} from './support/bulk-template-fixtures.js';
 
 const labelKey = 'com.g6.bulk94.audit-id';
 const auditId = randomUUID();
 const containerName = `g6-bulk94-pg-${process.pid}-${auditId.slice(0, 8)}`;
 const databaseName = 'bulk_h4_audit';
 const password = randomBytes(24).toString('base64url');
+const applicationPassword = randomBytes(24).toString('base64url');
+const storageTestKey = 'bulk-storage-test-only-key';
+const storageTestBucket = 'bulk-h4-e2e-private';
+const testIssuer = 'bulk-postgres-http-test-issuer';
+const testJwtKeys = generateKeyPairSync('rsa', { modulusLength: 2048 });
+const testJwtPublicKey = testJwtKeys.publicKey
+  .export({ type: 'spki', format: 'pem' })
+  .toString();
+const encodeJwtPart = (value: object) =>
+  Buffer.from(JSON.stringify(value)).toString('base64url');
+const testJwtHeader = encodeJwtPart({ alg: 'RS256', typ: 'JWT' });
+const testJwtClaims = encodeJwtPart({
+  iss: testIssuer,
+  sub: 'bulk-postgres-http-test-user',
+  aud: 'api-productos',
+  exp: Math.floor(Date.now() / 1000) + 3600,
+  roles: ['GESTOR_COMERCIAL'],
+});
+const testJwtSigner = createSign('RSA-SHA256');
+testJwtSigner.update(`${testJwtHeader}.${testJwtClaims}`);
+const testUserBearer = `${testJwtHeader}.${testJwtClaims}.${testJwtSigner.sign(testJwtKeys.privateKey, 'base64url')}`;
 const originalEnvironment = new Map<string, string | undefined>();
 const capturedLogs: string[] = [];
 const sensitiveData = new RegExp(
-  `${password}|postgres(?:ql)?:\\/\\/|127\\.0\\.0\\.1:\\d+|${databaseName}`,
+  `${password}|${applicationPassword}|${storageTestKey}|postgres(?:ql)?:\\/\\/|127\\.0\\.0\\.1:\\d+|${databaseName}`,
   'i',
 );
+const storedObjects = new Map<string, Buffer>();
+let storageUploads = 0;
+let storageServer: Server | undefined;
 
 const logMessage = (...parts: unknown[]) =>
   capturedLogs.push(parts.map((part) => String(part)).join(' '));
@@ -33,6 +69,24 @@ const logger: LoggerService = {
   verbose: (...parts: unknown[]) => logMessage(...parts),
   fatal: (...parts: unknown[]) => logMessage(...parts),
 };
+
+function authorizedGet(
+  server: ReturnType<INestApplication['getHttpServer']>,
+  path: string,
+) {
+  return request(server)
+    .get(path)
+    .set('Authorization', `Bearer ${testUserBearer}`);
+}
+
+function authorizedPost(
+  server: ReturnType<INestApplication['getHttpServer']>,
+  path: string,
+) {
+  return request(server)
+    .post(path)
+    .set('Authorization', `Bearer ${testUserBearer}`);
+}
 
 function docker(args: string[], input?: string): string {
   const result = spawnSync('docker', args, {
@@ -53,6 +107,68 @@ function rememberEnvironment(key: string, value: string): void {
   if (!originalEnvironment.has(key))
     originalEnvironment.set(key, process.env[key]);
   process.env[key] = value;
+}
+
+async function startStorageTestServer(): Promise<string> {
+  storageServer = createHttpServer(async (request, response) => {
+    const url = new URL(request.url ?? '/', 'http://127.0.0.1');
+    const segments = url.pathname.split('/').map(decodeURIComponent);
+    if (
+      request.headers.apikey !== storageTestKey ||
+      request.headers.authorization !== `Bearer ${storageTestKey}`
+    ) {
+      response.writeHead(401).end();
+      return;
+    }
+    if (
+      request.method === 'GET' &&
+      segments[1] === 'storage' &&
+      segments[2] === 'v1' &&
+      segments[3] === 'bucket' &&
+      segments[4] === storageTestBucket
+    ) {
+      response.writeHead(200, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ id: storageTestBucket, public: false }));
+      return;
+    }
+    if (
+      segments[1] !== 'storage' ||
+      segments[2] !== 'v1' ||
+      segments[3] !== 'object' ||
+      segments[4] !== storageTestBucket
+    ) {
+      response.writeHead(404).end();
+      return;
+    }
+    const objectName = segments.slice(5).join('/');
+    if (request.method === 'GET') {
+      const bytes = storedObjects.get(objectName);
+      if (!bytes) {
+        response.writeHead(404).end();
+        return;
+      }
+      response.writeHead(200, { 'content-type': 'application/octet-stream' });
+      response.end(bytes);
+      return;
+    }
+    if (request.method === 'POST') {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      storedObjects.set(objectName, Buffer.concat(chunks));
+      storageUploads++;
+      response.writeHead(200).end();
+      return;
+    }
+    response.writeHead(405).end();
+  });
+  await new Promise<void>((resolve, reject) => {
+    storageServer!.once('error', reject);
+    storageServer!.listen(0, '127.0.0.1', resolve);
+  });
+  const address = storageServer.address();
+  if (!address || typeof address === 'string')
+    throw new Error('No se pudo iniciar el sustituto HTTP local de Storage.');
+  return `http://127.0.0.1:${address.port}`;
 }
 
 async function findAvailableLoopbackPort(): Promise<number> {
@@ -139,6 +255,7 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
   let app: INestApplication | undefined;
   let pool: Pool | undefined;
   let databaseUrl: string;
+  let applicationDatabaseUrl: string;
   let containerMayExist = false;
 
   beforeAll(async () => {
@@ -165,36 +282,13 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
       'max_connections=20',
     ]);
     databaseUrl = `postgresql://postgres:${password}@127.0.0.1:${hostPort}/${databaseName}?sslmode=disable`;
+    applicationDatabaseUrl = `postgresql://bulk_fixture_app:${applicationPassword}@127.0.0.1:${hostPort}/${databaseName}?sslmode=disable`;
 
     await waitForDatabaseReady(databaseUrl);
-    const migration = `
-      CREATE SCHEMA bulk;
-      CREATE TYPE bulk.job_status AS ENUM ('QUEUED', 'PROCESSING', 'COMPLETED', 'FAILED_GENERAL');
-      CREATE TABLE bulk.batch_jobs (id integer);
-      CREATE TABLE bulk.file_manifests (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        role text NOT NULL,
-        format text NOT NULL,
-        content_ref text NOT NULL,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        updated_at timestamptz NOT NULL DEFAULT now()
-      );
-      CREATE TABLE bulk.export_jobs (
-        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        export_id uuid NOT NULL UNIQUE,
-        status bulk.job_status NOT NULL DEFAULT 'QUEUED',
-        format text NOT NULL CHECK (format IN ('CSV', 'XLSX')),
-        output_file_id uuid REFERENCES bulk.file_manifests(id) ON DELETE RESTRICT,
-        created_at timestamptz NOT NULL DEFAULT now(),
-        completed_at timestamptz,
-        updated_at timestamptz NOT NULL DEFAULT now(),
-        CONSTRAINT ck_export_jobs_completed_file CHECK (
-          status <> 'COMPLETED' OR (output_file_id IS NOT NULL AND completed_at IS NOT NULL)
-        )
-      );
-      CREATE INDEX ix_export_jobs_status_created_at
-        ON bulk.export_jobs(status, created_at);
-    `;
+    const migration = readFileSync(
+      resolve('apps/bulk-svc/test/fixtures/0001_create_bulk_persistence.sql'),
+      'utf8',
+    );
     docker(
       [
         'exec',
@@ -208,20 +302,30 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
         '-d',
         databaseName,
       ],
-      migration,
+      `CREATE ROLE po_bulk_owner NOLOGIN;
+CREATE ROLE bulk_fixture_app LOGIN PASSWORD '${applicationPassword}';
+CREATE SCHEMA bulk AUTHORIZATION po_bulk_owner;
+SET ROLE po_bulk_owner;
+${migration}
+GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA bulk TO bulk_fixture_app;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
     );
 
     rememberEnvironment('NODE_ENV', 'test');
-    rememberEnvironment('DATABASE_URL', databaseUrl);
+    rememberEnvironment('DATABASE_URL', applicationDatabaseUrl);
     rememberEnvironment('BULK_AMQP_ENABLED', 'false');
     rememberEnvironment('GATEWAY_DEMO_NO_AUTH_ENABLED', 'false');
+    rememberEnvironment('G7_JWT_PUBLIC_KEY', testJwtPublicKey);
+    rememberEnvironment('G7_JWT_ISSUER', testIssuer);
+    rememberEnvironment('BULK_CATALOG_COMMAND_V2_ENABLED', 'false');
+    rememberEnvironment('BULK_STORAGE_BUCKET', storageTestBucket);
+    rememberEnvironment('SUPABASE_SERVICE_ROLE_KEY', storageTestKey);
+    rememberEnvironment('SUPABASE_URL', await startStorageTestServer());
 
     const moduleRef = await Test.createTestingModule({
       imports: [BulkSvcModule],
-    })
-      .overrideGuard(BulkUserBearerGuard)
-      .useValue({ canActivate: () => true })
-      .compile();
+    }).compile();
     app = moduleRef.createNestApplication({ logger });
     app.useGlobalFilters(new BulkProblemFilter());
     await app.init();
@@ -233,6 +337,10 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
   afterAll(async () => {
     await app?.close();
     await pool?.end();
+    if (storageServer)
+      await new Promise<void>((resolve) =>
+        storageServer!.close(() => resolve()),
+      );
     for (const [key, value] of originalEnvironment) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -253,6 +361,293 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
       }
     }
   });
+
+  it('imports CSV and XLSX over HTTP with private Storage and durable PostgreSQL results', async () => {
+    const server = app!.getHttpServer();
+    const unauthenticated = await request(server)
+      .get('/api/v1/carga-masiva/productos/plantilla?formato=CSV')
+      .expect(401);
+    expect(unauthenticated.body.code).toBe('TOKEN_INVALIDO');
+    const csvTemplate = await authorizedGet(
+      server,
+      '/api/v1/carga-masiva/productos/plantilla?formato=CSV',
+    ).expect(200);
+    expect(csvTemplate.text).toContain('operacion,producto_id');
+    const xlsxTemplate = await authorizedGet(
+      server,
+      '/api/v1/carga-masiva/productos/plantilla?formato=XLSX',
+    ).expect(200);
+    expect(xlsxTemplate.headers['content-type']).toContain(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    const invalidTemplate = await authorizedGet(
+      server,
+      '/api/v1/carga-masiva/productos/plantilla?formato=TXT',
+    ).expect(400);
+    expect(invalidTemplate.body).toMatchObject({
+      code: 'VALIDACION',
+      status: 400,
+    });
+
+    const correlationId = randomUUID();
+    const csvSku = `SKU-HTTP-${randomUUID()}`;
+    const csv = createValidBulkCsv(csvSku);
+    const csvAdmission = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/importaciones',
+    )
+      .set('x-correlation-id', correlationId)
+      .field('template_version', '2')
+      .attach('archivo', csv, 'productos.csv')
+      .expect(202);
+    expect(csvAdmission.body).toMatchObject({
+      status: 'QUEUED',
+      template_version: 2,
+      correlation_id: correlationId,
+    });
+    const csvBatchId = csvAdmission.body.batch_id as string;
+
+    const storedInput = await pool!.query<{ content_ref: string }>(
+      `SELECT content_ref FROM bulk.file_manifests
+       WHERE role = 'ENTRADA_IMPORTACION' AND content_ref LIKE $1`,
+      [`supabase://${storageTestBucket}/imports/${csvBatchId}/%`],
+    );
+    expect(storedInput.rows).toHaveLength(1);
+    const contentRef = storedInput.rows[0]!.content_ref;
+    const objectName = contentRef.slice(
+      `supabase://${storageTestBucket}/`.length,
+    );
+    expect(storedObjects.get(objectName)?.equals(csv)).toBe(true);
+    expect(storageUploads).toBe(1);
+
+    const outboxBeforeReplay = await pool!.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM bulk.outbox
+       WHERE event_name = 'catalog.bulk.upsert.requested'
+         AND payload->'data'->>'batch_id' = $1`,
+      [csvBatchId],
+    );
+    expect(outboxBeforeReplay.rows[0]?.count).toBe(1);
+    const replay = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/importaciones',
+    )
+      .set('x-correlation-id', correlationId)
+      .field('template_version', '2')
+      .attach('archivo', csv, 'productos.csv')
+      .expect(202);
+    expect(replay.body.batch_id).toBe(csvBatchId);
+    expect(storageUploads).toBe(1);
+    const outboxAfterReplay = await pool!.query<{ count: number }>(
+      `SELECT count(*)::int AS count FROM bulk.outbox
+       WHERE event_name = 'catalog.bulk.upsert.requested'
+         AND payload->'data'->>'batch_id' = $1`,
+      [csvBatchId],
+    );
+    expect(outboxAfterReplay.rows[0]?.count).toBe(1);
+
+    const xlsx = createValidBulkXlsx(`SKU-HTTP-${randomUUID()}`);
+    const xlsxCorrelationId = randomUUID();
+    const xlsxAdmission = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/importaciones',
+    )
+      .set('x-correlation-id', xlsxCorrelationId)
+      .field('template_version', '2')
+      .attach('archivo', xlsx, 'productos.xlsx')
+      .expect(202);
+    expect(xlsxAdmission.body).toMatchObject({
+      status: 'QUEUED',
+      template_version: 2,
+      correlation_id: xlsxCorrelationId,
+    });
+    expect(storageUploads).toBe(2);
+    const xlsxBatch = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${xlsxAdmission.body.batch_id}`,
+    ).expect(200);
+    expect(xlsxBatch.body).toMatchObject({
+      status: 'QUEUED',
+      total_rows: 1,
+      rows: [
+        {
+          status: 'PENDING',
+          steps: expect.arrayContaining([
+            expect.objectContaining({ dominio: 'CATALOGO', status: 'PENDING' }),
+            expect.objectContaining({ dominio: 'PRICING', status: 'PENDING' }),
+            expect.objectContaining({
+              dominio: 'INVENTARIO',
+              status: 'PENDING',
+            }),
+          ]),
+        },
+      ],
+    });
+
+    const malformedCsv = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/importaciones',
+    )
+      .attach('archivo', Buffer.from('not a template'), 'malformed.csv')
+      .expect(422);
+    expect(malformedCsv.body.code).toBe('PLANTILLA_INCOMPATIBLE');
+    const wrongHeaders = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/importaciones',
+    )
+      .attach(
+        'archivo',
+        Buffer.from(csv.toString('utf8').replace('operacion,', 'operation,')),
+        'headers.csv',
+      )
+      .expect(422);
+    expect(wrongHeaders.body.code).toBe('PLANTILLA_INCOMPATIBLE');
+
+    const imports = app!.get(BulkImportService);
+    const snapshotBeforeResults = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}`,
+    ).expect(200);
+    expect(snapshotBeforeResults.body).toMatchObject({
+      batch_id: csvBatchId,
+      status: 'QUEUED',
+      total_rows: 1,
+      rows: [
+        {
+          status: 'PENDING',
+          applied_domains: [],
+          steps: expect.arrayContaining([
+            expect.objectContaining({ dominio: 'CATALOGO', status: 'PENDING' }),
+            expect.objectContaining({ dominio: 'PRICING', status: 'PENDING' }),
+            expect.objectContaining({
+              dominio: 'INVENTARIO',
+              status: 'PENDING',
+            }),
+          ]),
+        },
+      ],
+    });
+    const rowId = snapshotBeforeResults.body.rows[0].row_id as string;
+    const resultCorrelationId = correlationId;
+    const catalogResult = {
+      batchId: csvBatchId,
+      rowId,
+      domain: 'CATALOGO' as const,
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId: resultCorrelationId,
+      eventName: 'catalog.bulk.upsert.completed',
+      action: 'UPSERT' as const,
+      status: 'COMPLETED' as const,
+    };
+    await expect(
+      imports.applyDomainResult(catalogResult),
+    ).resolves.toMatchObject({
+      processed: true,
+    });
+    await expect(
+      imports.applyDomainResult(catalogResult),
+    ).resolves.toMatchObject({
+      processed: false,
+    });
+    await imports.applyDomainResult({
+      batchId: csvBatchId,
+      rowId,
+      domain: 'PRICING',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId: resultCorrelationId,
+      eventName: 'pricing.product.initialization.rejected',
+      action: 'PRICE_INITIALIZATION',
+      causationId: randomUUID(),
+      status: 'FAILED',
+      errorCode: 'PRICE_REJECTED',
+      errorDetail: 'Precio rechazado para la prueba E2E.',
+    });
+
+    const partialSnapshot = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}`,
+    ).expect(200);
+    expect(partialSnapshot.body.rows[0]).toMatchObject({
+      status: 'PROCESSING',
+      applied_domains: ['CATALOGO'],
+      failed_domain: null,
+      steps: expect.arrayContaining([
+        expect.objectContaining({ dominio: 'CATALOGO', status: 'COMPLETED' }),
+        expect.objectContaining({
+          dominio: 'PRICING',
+          status: 'FAILED',
+          code: 'PRICE_REJECTED',
+        }),
+        expect.objectContaining({ dominio: 'INVENTARIO', status: 'PENDING' }),
+      ]),
+    });
+    await imports.applyDomainResult({
+      batchId: csvBatchId,
+      rowId,
+      domain: 'INVENTARIO',
+      operationId: randomUUID(),
+      messageId: randomUUID(),
+      correlationId: resultCorrelationId,
+      eventName: 'inventory.sku.initialization.completed',
+      action: 'SKU_INITIALIZATION',
+      skuId: csvSku,
+      status: 'COMPLETED',
+    });
+
+    const finalSnapshot = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}`,
+    ).expect(200);
+    expect(finalSnapshot.body).toMatchObject({
+      status: 'COMPLETED',
+      total_rows: 1,
+      completed_rows: 0,
+      failed_rows: 1,
+      needs_reconciliation: true,
+      rows: [
+        {
+          status: 'FAILED',
+          applied_domains: ['CATALOGO', 'INVENTARIO'],
+          failed_domain: 'PRICING',
+          needs_reconciliation: true,
+          code: 'PRICE_REJECTED',
+          detail: 'Precio rechazado para la prueba E2E.',
+        },
+      ],
+    });
+    const report = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}/reporte`,
+    ).expect(200);
+    expect(report.headers['content-type']).toContain('text/csv');
+    expect(report.text).toContain('PRICE_REJECTED');
+    expect(report.text).toContain('PRICING');
+    const resumed = await authorizedPost(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}/reanudar`,
+    ).expect(202);
+    expect(resumed.body).toMatchObject({
+      batch_id: csvBatchId,
+      status: 'QUEUED',
+      template_version: 2,
+      correlation_id: correlationId,
+    });
+    const invalidTransition = await authorizedPost(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}/reanudar`,
+    ).expect(409);
+    expect(invalidTransition.body.code).toBe('IDEMPOTENCY_CONFLICT');
+    const missingBatch = await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${randomUUID()}`,
+    ).expect(404);
+    expect(missingBatch.body.code).toBe('LOTE_NO_ENCONTRADO');
+    expect(
+      JSON.stringify([csvAdmission.body, finalSnapshot.body]),
+    ).not.toContain(storageTestKey);
+    expect(sensitiveData.test(capturedLogs.join('\n'))).toBe(false);
+  }, 30_000);
 
   it('keeps liveness up, readiness down, masks errors, then recovers durable writes', async () => {
     const server = app!.getHttpServer();
@@ -275,8 +670,10 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
         'LOCK TABLE bulk.export_jobs IN ACCESS EXCLUSIVE MODE',
       );
 
-      const failedWrite = request(server)
-        .post('/api/v1/carga-masiva/productos/exportaciones')
+      const failedWrite = authorizedPost(
+        server,
+        '/api/v1/carga-masiva/productos/exportaciones',
+      )
         .send({ formato: 'CSV' })
         .then((response) => response);
       expect(await waitForLockWait(pool!)).toBe(true);
@@ -344,8 +741,10 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
     );
     expect(afterFailure.rows[0]?.count).toBe(initialCount.rows[0]?.count);
 
-    const accepted = await request(server)
-      .post('/api/v1/carga-masiva/productos/exportaciones')
+    const accepted = await authorizedPost(
+      server,
+      '/api/v1/carga-masiva/productos/exportaciones',
+    )
       .send({ formato: 'CSV' })
       .expect(202);
     const exportId = accepted.body.export_id as string;
