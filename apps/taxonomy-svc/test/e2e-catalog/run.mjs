@@ -199,9 +199,14 @@ try {
     await import('../../../../dist/apps/catalog-svc/database.js'));
   report.build = 'PASS';
   const openssl =
-    process.platform === 'win32'
-      ? 'C:/Program Files/Git/ucrt64/bin/openssl.exe'
-      : 'openssl';
+    process.env.TAXONOMY_TEST_OPENSSL_BIN ??
+    (process.platform === 'win32'
+      ? [
+          'C:/Program Files/Git/ucrt64/bin/openssl.exe',
+          'C:/Program Files/Git/mingw64/bin/openssl.exe',
+          'C:/Program Files/Git/usr/bin/openssl.exe',
+        ].find((candidate) => existsSync(candidate)) ?? 'openssl'
+      : 'openssl');
   const certRun = spawnSync(
     openssl,
     [
