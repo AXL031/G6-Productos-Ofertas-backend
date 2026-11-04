@@ -68,7 +68,7 @@ La última ejecución local completó **10/10 pruebas PASS, 0 FAIL y 0 SKIP** co
 
 El JSON completo de Vitest se crea dentro del directorio temporal y se elimina al terminar; la salida conservada muestra únicamente conteos y diagnósticos saneados.
 
-**SHA:** base actual auditada `5abfffc9b86306df87d19695817aa678588e0341`; el SHA exacto del commit con el harness y el SHA probado después del commit se completarán tras la validación final. La prueba local no acredita CI, despliegue ni homologación.
+**SHA probado:** `d0ae90296a4454a49105e65e3f8552284cbbaced` (`castilla`). Después de crear ese commit se repitió el harness: 10/10 PASS, 0 FAIL, 0 SKIP con PostgreSQL `17.11`, y limpieza confirmada. Este registro se añade en un commit documental posterior. La prueba local no acredita CI, despliegue ni homologación.
 
 ## Contratos y discrepancias
 
