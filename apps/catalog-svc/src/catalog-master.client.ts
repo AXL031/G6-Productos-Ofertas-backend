@@ -29,7 +29,12 @@ export class CatalogMasterClient {
     @Inject(CATALOG_TAXONOMY_IDENTITY)
     private readonly identity?: CatalogTaxonomyIdentity,
   ) {}
-  private async serviceAuthorization(): Promise<string> {
+  private async serviceAuthorization(
+    requestAuthorization: string,
+  ): Promise<string> {
+    // Restricted demo is an explicitly anonymous integration context. The
+    // Catalog guard represents it with an empty authorization string.
+    if (!requestAuthorization) return '';
     if (!this.identity) throw new ServiceUnavailableException();
     const authorization = await this.identity.authorization(
       AbortSignal.timeout(5000),
@@ -101,10 +106,10 @@ export class CatalogMasterClient {
       marca_id: string;
       tipo_producto_id: string;
     },
-    _authorization: string,
+    requestAuthorization: string,
     correlationId: string,
   ): Promise<{ schemaVersion: number }> {
-    const authorization = await this.serviceAuthorization();
+    const authorization = await this.serviceAuthorization(requestAuthorization);
     for (const master of [
       {
         id: product.categoria_id,
@@ -160,11 +165,11 @@ export class CatalogMasterClient {
     typeId: string,
     values: readonly Attribute[],
     required: boolean,
-    _authorization: string,
+    requestAuthorization: string,
     correlationId: string,
     expectedSchemaVersion?: number,
   ): Promise<Attribute[]> {
-    const authorization = await this.serviceAuthorization();
+    const authorization = await this.serviceAuthorization(requestAuthorization);
     const schema = await this.get(
       '/api/v1/tipos-producto/' +
         encodeURIComponent(typeId) +

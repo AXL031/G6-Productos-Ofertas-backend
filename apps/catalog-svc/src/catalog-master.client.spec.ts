@@ -82,6 +82,44 @@ describe('Authoritative catalog master validation', () => {
       { ...value, valor: null, nombre: 'Authoritative Size' },
     ]);
   });
+  it('keeps the restricted-demo Taxonomy calls anonymous', async () => {
+    identity.authorization.mockClear();
+    vi.stubGlobal('fetch', async (_url: URL, init: RequestInit) => {
+      expect(new Headers(init.headers).has('authorization')).toBe(false);
+      const path = String(_url);
+      const value = path.includes('/categorias/')
+        ? {
+            categoriaId: 'cat',
+            nombre: 'Category',
+            estado: 'ACTIVO',
+            version: 1,
+          }
+        : path.includes('/marcas/')
+          ? {
+              marcaId: 'brand',
+              nombre: 'Brand',
+              estado: 'ACTIVO',
+              version: 1,
+            }
+          : {
+              tipoProductoId: 'type',
+              nombre: 'Type',
+              estado: 'ACTIVO',
+              schemaVersion: 1,
+            };
+      return new Response(JSON.stringify(value), {
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+    await expect(
+      client.masters(
+        { categoria_id: 'cat', marca_id: 'brand', tipo_producto_id: 'type' },
+        '',
+        correlation,
+      ),
+    ).resolves.toEqual({ schemaVersion: 1 });
+    expect(identity.authorization).not.toHaveBeenCalled();
+  });
   it('does not infer validity or use fallback data after a dependency failure', async () => {
     vi.stubGlobal(
       'fetch',
