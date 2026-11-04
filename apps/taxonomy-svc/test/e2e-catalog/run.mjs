@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
