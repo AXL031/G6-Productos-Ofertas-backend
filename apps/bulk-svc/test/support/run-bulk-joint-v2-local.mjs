@@ -14,6 +14,7 @@ const tempDir = mkdtempSync(
   join(root, 'apps/bulk-svc/test/.bulk-joint-v2-local-'),
 );
 const generatedSpec = join(tempDir, 'bulk-joint-v2.e2e-spec.ts');
+const testFilter = process.argv[2] ?? 'BULK-JOINT';
 
 const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consumer, TLS PostgreSQL, result v1 and replay', async () => {
       const productInputValue = createRequest(true);
@@ -128,6 +129,70 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
         const acceptedCommandId = results[0].command.message_id;
         const catalogReceipts = await database.read((db) => db.select().from(inbox).where(eq(inbox.message_id, acceptedCommandId)));
         expect(catalogReceipts).toHaveLength(1);
+        const gatewayCorrelation = randomUUID();
+        const missingCorrelation = randomUUID();
+        const invalidCorrelation = randomUUID();
+        const gatewayChild = spawn(process.execPath, [resolve('apps/bulk-svc/test/support/bulk-gateway-catalog-peer.mjs')], {
+          env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: 'test' },
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        gatewayChild.stdin.end(JSON.stringify({
+          bulkMain: join(build, 'main.js'),
+          directory: buildDirectory,
+          pgPort: Number(port),
+          ca: caFile,
+          broker: jointBroker.bulkUrl,
+          successCase: {
+            productId: created.product_id,
+            productVersion: Number(afterParent.catalog_version),
+            variantVersion: Number(afterTarget.catalog_version),
+            skuBase: productInputValue.skuBase,
+            skuVariant,
+          },
+          successCorrelation: gatewayCorrelation,
+          missingCorrelation,
+          invalidCorrelation,
+        }));
+        const gatewayOutput = [];
+        const gatewayDiagnostics = [];
+        gatewayChild.stdout.setEncoding('utf8');
+        gatewayChild.stderr.setEncoding('utf8');
+        gatewayChild.stdout.on('data', (data) => gatewayOutput.push(String(data)));
+        gatewayChild.stderr.on('data', (data) => { gatewayDiagnostics.push(String(data)); process.stderr.write(String(data)); });
+        const gatewayExit = await new Promise((done, reject) => {
+          const timer = setTimeout(() => { gatewayChild.kill(); reject(new Error('Disposable Gateway→Bulk→Catalog peer timeout')); }, 90000);
+          gatewayChild.once('error', (error) => { clearTimeout(timer); reject(error); });
+          gatewayChild.once('exit', (code) => { clearTimeout(timer); done(code); });
+        });
+        expect(gatewayExit, 'Real Gateway→Bulk→Catalog peer failed: ' + gatewayDiagnostics.join(' ').slice(-2000)).toBe(0);
+        const gatewayLine = gatewayOutput.join('').split('\\n').find((value) => value.startsWith('BULK_GATEWAY_CATALOG_RESULT:'));
+        expect(gatewayLine).toBeDefined();
+        const gatewayResults = JSON.parse(gatewayLine.slice('BULK_GATEWAY_CATALOG_RESULT:'.length));
+        expect(gatewayResults).toMatchObject({
+          templateCsv: 200,
+          templateXlsx: 200,
+          accepted: 'QUEUED',
+          correlationPreserved: true,
+          outboxCommands: 1,
+          catalogApplied: ['CATALOGO'],
+          inventoryStatus: 'PENDING',
+          reportStatus: 200,
+          reportContainsCatalogFailure: true,
+          invalidTransition: 409,
+          bulkInboxReceipts: 1,
+          authDisabledWithoutToken: 401,
+          invalidFormat: 400,
+          invalidVersion: 422,
+          unknownMethod: 404,
+          upstreamUnavailable: 503,
+          storage: 'local-http-compatible',
+          auth: 'RESTRICTED_DEMO_LOOPBACK_ONLY',
+        });
+        const gatewayCatalogReceipts = await database.read((db) => db.select().from(inbox).where(eq(inbox.message_id, gatewayResults.replayedCommand)));
+        expect(gatewayCatalogReceipts).toHaveLength(1);
+        const afterGatewayReplay = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, skuVariant))))[0];
+        expect(afterGatewayReplay.catalog_version).toBe(afterTarget.catalog_version + 1n);
         console.log('BULK_JOINT_V2_PERSISTED:' + JSON.stringify({
           skuVariant,
           parentVersion: [Number(initialParent.catalog_version), Number(afterParent.catalog_version)],
@@ -135,6 +200,8 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           foreignVariantVersion: [Number(initialForeign.catalog_version), Number(afterForeign.catalog_version)],
           resultCodes: results.map((item) => item.result.data.results[0].code),
           catalogInboxReceiptsAfterReplay: catalogReceipts.length,
+          gatewayE2E: gatewayResults,
+          catalogInboxReceiptsAfterGatewayReplay: gatewayCatalogReceipts.length,
         }));
         await expect.poll(() => jointBroker.bulkQueueStats(), { timeout: 15000, interval: 500 }).toMatch(/po\\.catalogo\\.q\\s+0\\s+0/);
       } finally {
@@ -180,7 +247,7 @@ try {
       resolve(root, 'vitest.config.e2e.ts'),
       generatedSpec,
       '-t',
-      'BULK-JOINT',
+      testFilter,
     ],
     {
       cwd: root,
