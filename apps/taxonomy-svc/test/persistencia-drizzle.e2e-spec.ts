@@ -1822,6 +1822,7 @@ describeIntegracion(
         scope: string,
         humano = false,
         roles = ['GESTOR_COMERCIAL'],
+        cliente = 'modulo-productos',
       ) => {
         const now = Math.floor(Date.now() / 1000);
         const header = Buffer.from(
@@ -1830,7 +1831,7 @@ describeIntegracion(
         const payload = Buffer.from(
           JSON.stringify({
             iss: issuer,
-            sub: humano ? randomUUID() : 'catalog-svc',
+            sub: humano ? randomUUID() : cliente,
             tipo: humano ? 'acceso' : 'servicio',
             ...(humano ? { roles } : {}),
             aud: 'api-productos',
@@ -1902,6 +1903,10 @@ describeIntegracion(
         tipoCreado = tipoHttp.body.tipoProductoId as string;
         await request(nest.getHttpServer())
           .get(`/api/v1/tipos-producto/${tipoCreado}`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/tipos-producto/${tipoCreado}`)
           .set('Authorization', `Bearer ${token('', true)}`)
           .expect(200);
         caracteristicaCreada = (
@@ -1932,6 +1937,10 @@ describeIntegracion(
           schemaVersion: 2,
           caracteristicas: [{ caracteristicaId: caracteristicaCreada }],
         });
+        await request(nest.getHttpServer())
+          .get(`/api/v1/tipos-producto/${tipoCreado}/caracteristicas`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(200);
         for (const [path, key] of [
           ['categorias', 'categories'],
           ['marcas', 'brands'],
@@ -1946,8 +1955,15 @@ describeIntegracion(
           expect(denied.body.code).toBe('SCOPE_INSUFICIENTE');
           const result = await request(nest.getHttpServer())
             .get(`/api/v1/${path}`)
-            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .set(
+              'Authorization',
+              `Bearer ${token('catalogo:leer', false, [], 'catalog-svc')}`,
+            )
             .expect(200);
+          await request(nest.getHttpServer())
+            .get(`/api/v1/${path}`)
+            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .expect(403);
           expect(result.body[key].length).toBeGreaterThan(0);
           expect(
             result.body[key].every(

@@ -10,7 +10,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { TaxonomyUserGuard, TaxonomyCommercialGuard } from './taxonomy-auth.js';
+import {
+  TaxonomyUserGuard,
+  TaxonomyCommercialGuard,
+  AllowTaxonomyServiceRead,
+} from './taxonomy-auth.js';
 import { esUuid, ProblemDetailsException } from './errors/taxonomy.errors.js';
 import { ProductTypeService } from './domain/product-type.service.js';
 import { CharacteristicValueService } from './domain/characteristic-value.service.js';
@@ -63,6 +67,7 @@ export class TaxonomyMastersController {
   ) {}
 
   @Get('tipos-producto')
+  @AllowTaxonomyServiceRead()
   async listarTiposProducto(
     @Query('pagina') paginaTexto?: string,
     @Query('tamanio') tamanioTexto?: string,
@@ -163,6 +168,7 @@ export class TaxonomyMastersController {
   }
 
   @Get('tipos-producto/:tipoProductoId/caracteristicas')
+  @AllowTaxonomyServiceRead()
   async obtenerEsquemaTipoProducto(@Param('tipoProductoId') id: string) {
     validarId(id);
     const esquema = await this.tipos.obtenerEsquema(id);

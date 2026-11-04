@@ -151,6 +151,7 @@ describe('autorización HTTP de escritura de maestros', () => {
           useValue: {
             crear: vi.fn().mockResolvedValue({ nombre: 'Calzado' }),
             listar: vi.fn().mockResolvedValue({ items: [] }),
+            obtenerEsquema: vi.fn().mockResolvedValue({ caracteristicas: [] }),
           },
         },
         { provide: CharacteristicValueService, useValue: {} },
@@ -162,13 +163,15 @@ describe('autorización HTTP de escritura de maestros', () => {
     await app.init();
   });
   afterAll(async () => app.close());
-  it('solo admite Catalog con audiencia y scope existentes para lecturas de servicio', async () => {
+  it('limita modulo-productos a las dos lecturas autorizadas', async () => {
     const get = () =>
       request(app.getHttpServer()).get('/api/v1/tipos-producto');
     await get().expect(401);
+    verificar.mockRejectedValueOnce(new TaxonomyTokenRejected());
+    await get().set('Authorization', 'Bearer invalido').expect(401);
     const service = {
       kind: 'service',
-      subject: 'catalog-svc',
+      subject: 'modulo-productos',
       audiences: ['api-productos'],
       scopes: ['catalogo:leer'],
     };
@@ -180,6 +183,24 @@ describe('autorización HTTP de escritura de maestros', () => {
     await get().set('Authorization', 'Bearer servicio').expect(403);
     verificar.mockResolvedValueOnce(service);
     await get().set('Authorization', 'Bearer servicio').expect(200);
+    const id = '11111111-1111-4111-8111-111111111111';
+    verificar.mockResolvedValueOnce(service);
+    await request(app.getHttpServer())
+      .get(`/api/v1/tipos-producto/${id}/caracteristicas`)
+      .set('Authorization', 'Bearer servicio')
+      .expect(200);
+    for (const path of [
+      `/api/v1/tipos-producto/${id}`,
+      `/api/v1/caracteristicas/${id}/valores`,
+    ]) {
+      verificar.mockResolvedValueOnce(service);
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer servicio')
+        .expect(403);
+    }
+    verificar.mockResolvedValueOnce({ ...service, subject: 'catalog-svc' });
+    await get().set('Authorization', 'Bearer servicio').expect(403);
     verificar.mockResolvedValueOnce({
       kind: 'user',
       audiences: ['api-productos'],
