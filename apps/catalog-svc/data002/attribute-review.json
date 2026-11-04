@@ -1,0 +1,265 @@
+{
+  "normative": "OpenAPI Atributo.valor: {} acepta JSON null; modelo físico distingue JSON null de SQL NULL. Para LISTA, Taxonomy y CatalogMasterClient validan valor_id; identifying_key usa valor_id.",
+  "list_values_with_json_null": [
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "valor": null,
+      "valor_id": "7325e3a3-aa9a-db8e-9339-9f2b414b0d42",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "41",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "attribute_id": "1cca8c82-80a5-4f4f-bc4b-75033be06686",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "Negro",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "attribute_id": "31ea3ccf-1c5b-4665-aa73-253b1dfb39ed",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "valor": null,
+      "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "42",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "attribute_id": "ff82df7c-502b-480b-b25e-68e8a5c36d21",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "Negro",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "attribute_id": "cab1667c-0867-487f-a981-3a4bb203cd3d",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "valor": null,
+      "valor_id": "ae3eba02-52e6-4a8a-d71f-231960bdd9a4",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "38",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "attribute_id": "1f65f614-e84e-48c9-a384-e03027c8ee15",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "valor": null,
+      "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "Gris",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "attribute_id": "c43d8eac-7d82-4ae9-83a2-4a6b302c00f5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "valor": null,
+      "valor_id": "ea281936-1025-b09c-755e-545db73051b6",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "39",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "attribute_id": "424a578b-cb18-4cf2-9210-87b2600d2a53",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "valor": null,
+      "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "Gris",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "attribute_id": "8afe5171-f861-4d19-9af9-8cdae8db3a93",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "valor": null,
+      "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "value_name": "42",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "attribute_id": "0cd853d4-d0bf-4f42-b1fa-708dce5936a5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "value_name": "Negro",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "attribute_id": "e5c1881c-19fe-492a-98b8-2542ab137d0e",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "valor": null,
+      "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "value_name": "M",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "attribute_id": "e62095a4-cc72-460b-9e66-906a59df49c6",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    },
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "valor": null,
+      "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "value_name": "Azul",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "attribute_id": "611c0963-64cc-4a67-9956-a222c8d3e0d5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO",
+      "status": "VALID_LIST_VALUE_ID_WITH_JSON_NULL",
+      "normalization_required": false
+    }
+  ],
+  "conclusion": "No hay obligación contractual de convertir los 12 JSON null con valor_id válido a objetos redundantes. No son valores desconocidos y no se propone UPDATE. Si cambian las reglas o una referencia deja de ser válida, reevaluar individualmente.",
+  "missing_product_identifying_associations": [
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    }
+  ],
+  "missing_pitch_attributes": [
+    {
+      "sku": "NIK-PITCH-05",
+      "reason": "MISSING_REQUIRED_ATTRIBUTE",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "sku": "NIK-PITCH-05",
+      "reason": "MISSING_REQUIRED_ATTRIBUTE",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    }
+  ],
+  "pitch_proposal": "Tratar Talla 5 y color de la foto FZ2636-101 en propuesta separada: Talla 5 tiene referencia activa; color debe seleccionarse explícitamente de Taxonomy (no inventar ID ni deducirlo del SKU)."
+}

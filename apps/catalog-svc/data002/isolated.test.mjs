@@ -64,7 +64,11 @@ function sql(source, db = database) {
     : command('docker', ['exec', '-i', container, 'psql', ...args], source);
 }
 function owner(source) {
-  return sql('SET ROLE po_catalog_owner;\n' + source);
+  // Aprobación semántica simulada solo en el PostgreSQL desechable.
+  return sql(
+    "SET catalog.data002_physical_semantics='ACADEMIC_LOGISTIC_EXCEPTION_APPROVED'; SET ROLE po_catalog_owner;\n" +
+      source,
+  );
 }
 const scalar = (query) => sql(query).split(/\r?\n/).at(-1);
 const canonical = `SELECT jsonb_build_object('p',(SELECT jsonb_agg(to_jsonb(p) ORDER BY id) FROM catalog.products p),
@@ -109,17 +113,30 @@ before(async () => {
       'POSTGRES_HOST_AUTH_METHOD=trust',
       'postgres:17',
     ]);
+    started = true;
+    let ready = false;
     for (let i = 0; i < 100; i++) {
       if (
         spawnSync(
           'docker',
-          ['exec', container, 'pg_isready', '-U', 'postgres'],
+          [
+            'exec',
+            container,
+            'pg_isready',
+            '-h',
+            '127.0.0.1',
+            '-U',
+            'postgres',
+          ],
           { windowsHide: true },
         ).status === 0
-      )
+      ) {
+        ready = true;
         break;
+      }
       await new Promise((r) => setTimeout(r, 200));
     }
+    if (!ready) throw Error('DATA002_POSTGRES_FINAL_TCP_NOT_READY');
   }
   started = true;
   sql('CREATE DATABASE data002_template;');
@@ -247,13 +264,16 @@ for (const [label, mutation] of [
     assert.throws(() => owner(read('images-apply-proposed.sql')), /DATA002_/);
     assert.equal(sql(fullImages), before);
   });
-test('portadas: 12 faltantes, conservación de existentes, reintento y cuatro fuera de propuesta', () => {
+test('portadas revisadas, conservación de existentes, reintento y cuatro fuera de propuesta', () => {
   const before = sql(canonical);
   const originalImages = scalar(
     'SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i',
   );
   owner(read('covers-apply-proposed.sql'));
-  assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '15');
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.product_images'),
+    String(3 + covers.length),
+  );
   assert.equal(sql(canonical), before);
   const postcheck = owner(read('covers-postcheck.sql')).split(/\r?\n/);
   for (const c of covers) assert.ok(postcheck.includes(c.sku + '|t'));
@@ -415,10 +435,18 @@ test('ambos paquetes conservan 20/51/71, cero perfiles/preparaciones y schemas a
   assert.equal(scalar('SELECT count(*) FROM catalog.products'), '20');
   assert.equal(scalar('SELECT count(*) FROM catalog.variants'), '51');
   assert.equal(scalar('SELECT count(*) FROM catalog.sku_identity'), '71');
-  assert.equal(scalar('SELECT count(*) FROM catalog.product_images'), '16');
+  assert.equal(
+    scalar('SELECT count(*) FROM catalog.product_images'),
+    String(4 + covers.length),
+  );
 });
 
 test('perfiles académicos: 55 READY y asignación exacta de 51 variantes + 4 simples', () => {
+  assert.throws(
+    () =>
+      sql('SET ROLE po_catalog_owner;\n' + read('profiles-apply-proposed.sql')),
+    /DATA002_PHYSICAL_SEMANTICS_NOT_APPROVED/,
+  );
   const result = owner(read('profiles-preflight.sql')).split(/\r?\n/);
   assert.equal(result.filter((r) => r.endsWith('|READY')).length, 55);
   assert.equal(
@@ -549,6 +577,36 @@ for (const [label, change] of [
     assert.equal(sql(canonical), before);
   });
 test('fuente: rechaza duplicados, filas incompletas, SKU ajenos y tipo erróneo antes de generar SQL', () => {
+  const review = JSON.parse(read('evidence/physical-quality-review.json'));
+  assert.deepEqual(
+    [
+      review.distinct_templates,
+      review.skus_sharing_template,
+      review.estimates,
+      review.published_not_homologated,
+      review.packaged_presentations,
+      review.unpackaged_balls,
+    ],
+    [27, 39, 213, 7, 51, 4],
+  );
+  const attributes = JSON.parse(read('attribute-review.json'));
+  assert.equal(attributes.list_values_with_json_null.length, 12);
+  assert.ok(
+    attributes.list_values_with_json_null.every(
+      (a) => a.value_active && a.value_belongs && !a.normalization_required,
+    ),
+  );
+  assert.equal(attributes.missing_product_identifying_associations.length, 8);
+  assert.equal(attributes.missing_pitch_attributes.length, 2);
+  assert.equal(
+    profileManifest.profiles.find((p) => p.sku === 'ADI-ENT26-BLA-S')
+      .modelo_ref,
+    'JZ2508',
+  );
+  assert.equal(
+    profileManifest.profiles.find((p) => p.sku === 'NIK-PITCH-05').modelo_ref,
+    'FZ2636-101',
+  );
   for (const mutation of [
     (s) => s.profiles.pop(),
     (s) => {

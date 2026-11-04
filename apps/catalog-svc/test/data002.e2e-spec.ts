@@ -22,5 +22,6 @@ describe.skipIf(!available)('DATA-002 en PostgreSQL desechable', () => {
     );
     expect(result.stderr + result.stdout).not.toContain('not ok');
     expect(result.status, result.stderr + result.stdout).toBe(0);
+    process.stdout.write(result.stdout);
   }, 190000);
 });

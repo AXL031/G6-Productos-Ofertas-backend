@@ -45,36 +45,6 @@
   "missing_master_references": [],
   "attribute_findings": [
     {
-      "sku": "ADI-ENT22-AZU-M",
-      "attribute_id": "e62095a4-cc72-460b-9e66-906a59df49c6",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "ADI-ENT22-AZU-M",
-      "attribute_id": "611c0963-64cc-4a67-9956-a222c8d3e0d5",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "ADI-RF3-GRI-38",
-      "attribute_id": "1f65f614-e84e-48c9-a384-e03027c8ee15",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "ADI-RF3-GRI-38",
-      "attribute_id": "c43d8eac-7d82-4ae9-83a2-4a6b302c00f5",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "ADI-RF3-GRI-39",
-      "attribute_id": "424a578b-cb18-4cf2-9210-87b2600d2a53",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "ADI-RF3-GRI-39",
-      "attribute_id": "8afe5171-f861-4d19-9af9-8cdae8db3a93",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
       "sku": "NIK-PITCH-05",
       "reason": "MISSING_REQUIRED_ATTRIBUTE",
       "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
@@ -83,36 +53,6 @@
       "sku": "NIK-PITCH-05",
       "reason": "MISSING_REQUIRED_ATTRIBUTE",
       "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff"
-    },
-    {
-      "sku": "NIK-REV7-NEG-41",
-      "attribute_id": "1cca8c82-80a5-4f4f-bc4b-75033be06686",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "NIK-REV7-NEG-41",
-      "attribute_id": "31ea3ccf-1c5b-4665-aa73-253b1dfb39ed",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "NIK-REV7-NEG-42",
-      "attribute_id": "ff82df7c-502b-480b-b25e-68e8a5c36d21",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "NIK-REV7-NEG-42",
-      "attribute_id": "cab1667c-0867-487f-a981-3a4bb203cd3d",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "PUM-ULP-NEG-42",
-      "attribute_id": "0cd853d4-d0bf-4f42-b1fa-708dce5936a5",
-      "reason": "JSON_NULL_VALUE"
-    },
-    {
-      "sku": "PUM-ULP-NEG-42",
-      "attribute_id": "e5c1881c-19fe-492a-98b8-2542ab137d0e",
-      "reason": "JSON_NULL_VALUE"
     }
   ],
   "identifying_findings": [

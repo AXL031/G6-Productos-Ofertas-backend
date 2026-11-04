@@ -1,5 +1,10 @@
 # DATA-002 #12 — paquete para revisión de Marco
 
+Revisión posterior: [respuesta a los seis puntos de auditoría](RESPUESTA-AUDITORIA.md)
+y [metodología de estimación y plantillas](METODOLOGIA-PERFILES.md). Esta revisión
+preserva el Excel y las 220 medidas, distingue artículo de embalaje, corrige
+referencias por color y conserva un bloqueo semántico explícito antes de cargar.
+
 **PENDIENTE_APROBACION_MARCO**. Preparación offline; ningún SQL de escritura de
 este paquete fue ejecutado en Supabase compartido. No cierra #12, habilita ventas
 ni acredita integración autenticada, homologación, despliegue Oracle o readiness.
@@ -59,11 +64,12 @@ atributos no presenta diferencias; referencias maestras activas y valores de
 lista corresponden a sus características. La conciliación separa los 15 UUID
 originales y los cinco productos adicionales, sin regenerar identidades.
 
-Hallazgos pendientes de estos adicionales: 12 `valor` JSONB `null`, ocho filas
-faltantes de `product_identifying_characteristics` (Color/Talla en cuatro padres),
-dos atributos obligatorios ausentes en Nike Pitch. Los maestros y las relaciones
-tipo-característica de Taxonomy están activos: no confundir esas ocho filas
-locales faltantes con asociaciones ausentes de Taxonomy. No se normalizan aquí.
+Los doce `valor` JSONB null de atributos LISTA conservan valor_id activos y
+correctos de Taxonomy; no son valores desconocidos ni requieren normalización
+contractual. `attribute-review.json` los documenta por ID. Se tratan aparte las
+ocho filas faltantes de `product_identifying_characteristics` y los dos atributos
+obligatorios ausentes en Nike Pitch. Las asociaciones tipo/característica de
+Taxonomy están activas; no confundirlas con las ocho relaciones locales faltantes.
 
 `fn_assert_product()` real exige imagen de padre aun con imágenes de variantes;
 los 16 padres carecen de ella. Identidad, correspondencia padre/variante y claves
@@ -74,24 +80,25 @@ identificadoras derivadas no presentan inconsistencias en la auditoría.
 | Paquete | Escrituras máximas en primera ejecución | Aprobación |
 |---|---|---|
 | A — siete vinculaciones | 6 UPDATE exclusivamente `variant_images.url`; 1 INSERT `product_images` Nike Pitch | Pendiente |
-| B — portadas | 12 INSERT `product_images`, solo padres originales del mapeo | Pendiente de ejecución; sin confirmación comercial exigida para uso académico |
+| B — portadas | 11 INSERT `product_images`, RUNx excluido por discordancia de color | Pendiente de ejecución; cuatro portadas adicionales separadas |
 | C — barras 0002 | DDL ya existente; cero códigos inventados | Pendiente, proceso de migración oficial |
 | D — publicación 0003 | DDL ya existente; históricos NULL, nuevos false | Pendiente, después de 0002 |
-| E — perfiles académicos | 55 INSERT `sku_physical_profiles`, solo filas ausentes; reintento idéntico sin UPDATE | Valores autorizados; ejecución compartida pendiente |
+| E — perfiles académicos | 55 INSERT `sku_physical_profiles`, solo filas ausentes; reintento idéntico sin UPDATE | Estimaciones admitidas; decisión artículo/embalaje y ejecución pendientes |
 
 `image-map.json` fija SKU, producto, variante, image_id, URL anterior/nueva,
 archivo, object_id y eTag exactos de A. Incluye Nike Pitch
 `abab3400-46eb-58f7-78d5-8204418b60d9`, SKU `NIK-PITCH-05`.
 El INSERT omite `id`: usa `gen_random_uuid()` de la tabla. Los cinco objetos
-nuevos existen; metadatos positivos y MIME de imagen comprobados. Por instrucción
-expresa del usuario en esta conversación, no se exige confirmación comercial de
-fotografías para este proyecto académico. Se conservan las comprobaciones técnicas.
+nuevos existen; metadatos positivos y MIME de imagen comprobados. La auditoría
+posterior exige correspondencia entre SKU, color y fotografía: se realizó revisión
+visual, lectura HTTP y contraste comercial, registrados en reference-image-review.
 
-`cover-map.json` fija los doce padres, imagen/variante fuente del mismo modelo,
+`cover-map.json` fija once padres, imagen/variante fuente del mismo modelo,
 fuente comercial histórica, archivo, object_id y eTag. Reutiliza URL sin copiar
 objetos. La matriz histórica `005` conserva su clasificación original. Los cuatro
-padres adicionales quedan fuera del SQL B existente como `PENDING_SEPARATE_PROPOSAL`:
-no hay bloqueo por confirmación comercial, y este cambio se concentra en perfiles.
+padres adicionales quedan fuera del SQL B como `PENDING_SEPARATE_PROPOSAL`.
+RUNx está en `image_conflicts`: Negro en catálogo frente a gris visible. No se
+crea una portada con esa foto hasta resolver la discrepancia de forma autorizada.
 
 Cada paquete tiene preflight, aplicación propuesta y postcheck independientes.
 Los UPDATE aceptan solo el placeholder exacto o el resultado idéntico ya aplicado;
@@ -103,10 +110,10 @@ portadas requieren conciliación técnica. No sobrescribe imágenes ni amplía e
 mapeo de modelos. Bloqueos de tabla impiden duplicados por concurrencia de escritores.
 
 Después de A: cuatro imágenes de producto globales; el lote original sigue con
-tres y el `004` histórico continúa válido. Después de B: 15 imágenes producto
-globales (16 si A también se aprobó); el lote original tiene 15, por lo que la
+tres y el `004` histórico continúa válido. Después de B: 14 imágenes producto
+globales (15 si A también se aprobó); el lote original tiene 14, por lo que la
 expectativa histórica exacta de tres deja de aplicar. **No se modifica `004`**:
-`covers-postcheck.sql` verifica los doce padres y sus fuentes; las pruebas
+`covers-postcheck.sql` verifica los once padres y sus fuentes; las pruebas
 comparan los registros originales completos, las identidades y estados.
 
 ## Perfiles y activación
@@ -130,22 +137,26 @@ simples con sus `sku_identity_id`, `product_id` y `variant_id` existentes. La
 lectura adicional `evidence/profiles-readonly.json` del 2026-11-03 23:31:36 UTC
 confirma 71 identidades, cero perfiles y cero preparaciones. `profiles-proposed.csv`
 mantiene trazabilidad por fila. `physical-profiles.csv` muestra las medidas
-propuestas y `READY_FOR_APPROVAL_ACADEMIC`, con `perfil_existe=false`; no afirma
+propuestas y `STRUCTURAL_READY_SEMANTICS_PENDING`, con `perfil_existe=false`; no afirma
 persistencia ni activación. La plantilla vacía queda solo para futuras revisiones.
 
 Los valores se trasladan sin redondeo ni sustitución a **peso_kg, largo_cm,
 ancho_cm y alto_cm**, kg/cm. La fuente mezcla `ESTIMACION_ACADEMICA` y
 `PUBLICADO_NO_HOMOLOGADO` (213 y siete valores respectivamente, entre las 220
 medidas). Algunas presentaciones incluyen bolsa o caja; se
-conserva exactamente el criterio académico del Excel, sin presentarlo como
-medición certificada o cambio del contrato físico intrínseco G2. No se incorpora
+conserva exactamente el criterio académico del Excel. Este criterio no coincide
+con el perfil intrínseco normativo: 51 presentaciones incluyen embalaje y cuatro
+balones no. La propuesta preferida conserva este archivo como simulación logística
+y requiere una fuente intrínseca separada; la alternativa exige excepción académica
+delimitada por Marco/Arquitectura y homologación G2 si le afecta. No se incorpora
 una columna de volumen: se deriva cuando corresponda. Padre con variantes no
 tiene perfil ni stock propio.
 
 Paquete E: `profiles-preflight.sql`, `profiles-apply-proposed.sql` y
 `profiles-postcheck.sql`. El preflight clasifica las 55 filas como READY,
 ALREADY_APPLIED, PROFILE_CONFLICT, OWNER_CONFLICT o INVALID_MEASURE. Aplicación
-transaccional con owner, locks y timeouts: máximo 55 INSERT únicamente en
+transaccional con owner, locks, timeouts y barrera de decisión semántica: máximo
+55 INSERT únicamente en
 `catalog.sku_physical_profiles(sku_identity_id,peso_kg,largo_cm,ancho_cm,alto_cm)`.
 El ID del perfil usa el default de la tabla. Un perfil idéntico conserva UUID y
 timestamps; uno divergente o parcial aborta el lote completo, sin sobrescritura.
@@ -153,9 +164,13 @@ Revalida cada identidad, propietario, unidad vendible y las cuatro medidas.
 Productos, variantes, SKU, imágenes, preparaciones y mensajería se preservan.
 E puede aprobarse de manera independiente de las migraciones C/D: usa la tabla
 de perfiles existente del esquema base, también probado sin 0002/0003.
+El SQL no configura `catalog.data002_physical_semantics`: sin decisión aprobada
+falla con DATA002_PHYSICAL_SEMANTICS_NOT_APPROVED. La simulación que lo habilita
+vive únicamente en las pruebas desechables; no concede autorización compartida.
 
 `activation-blockers.csv` separa por SKU los perfiles ausentes, imagen,
-atributos y relaciones identificadoras. Para perfiles indica PENDING_APPROVED_LOAD.
+atributos y relaciones identificadoras. Para perfiles indica
+PENDING_SEMANTIC_DECISION_AND_LOAD.
 Todos necesitan Pricing real por producto
 e Inventory real por SKU vendible. Un padre requiere además variante ACTIVA;
 ninguna lo está. No se fabrica `COMPLETED`, stock, mensajes ni operaciones.
@@ -186,15 +201,16 @@ historial oficial antes de ejecución. `migrations-preflight.sql` y
    PR, archivos y SHA-256 de `SHA256SUMS`, responsable, ventana y recuperación.
    Merge, acceso a Supabase o este issue no son autorización.
 2. Repetir auditoría y preflight en destino. Para A: seis READY o
-   ALREADY_APPLIED y Pitch true. Para B: 12 fuentes técnicamente válidas; los
+   ALREADY_APPLIED y Pitch true. Para B: once fuentes revisadas, excluyendo RUNx; los
    cuatro modelos fuera de propuesta siguen excluidos. Para E: 55 READY o
-   ALREADY_APPLIED, sin conflictos y con mapeo 51 variantes + 4 simples.
+   ALREADY_APPLIED, sin conflictos, mapeo 51 variantes + 4 simples y decisión
+   documentada sobre artículo/embalaje. READY estructural no cierra esta decisión.
    Abortar ante conflicto; no acomodar datos para forzar coincidencia.
 3. Confirmar `po_catalog_owner` y propietario real del schema. Los SQL A/B
    requieren SELECT autorizado en metadata `storage.objects/buckets`; comprobar
    permisos efectivos antes. No se incluye ni se solicita GRANT automático.
-   Si el rol carece del acceso, owner BD/Marco debe aprobar un procedimiento de
-   atestación/lectura limitado antes de ejecutar; no cambiar de rol a escondidas.
+   El administrador se encarga de autorizar y gestionar Storage. Este paquete
+   no cambia privilegios, RLS ni propietarios; no se cambia de rol a escondidas.
 4. C/D mediante el `datos/deploy/migrate.py` oficial, conexión directa o session,
    TLS verify-full y login miembro solo del owner. Orden 0001 existente → 0002 →
    0003. El ejecutor verifica SHA-256 UTF-8 sin BOM/LF, secuencia, advisory lock,
@@ -280,7 +296,9 @@ SKU/resultado exactas, y la prueba enfocada y repetición global aplicable pasar
 | BLOQUEADO_ESPECÍFICO | Marco + owner BD | Escritura compartida: aprobar destino/SHA/hashes/proceso/permisos |
 | IMPLEMENTAR_AHORA | Poma | 55 perfiles académicos completos; preparar y probar carga E según Excel aportado |
 | BLOQUEADO_ESPECÍFICO | Marco + owner BD | Carga E: aprobar destino, 55 identidades, valores/hashes exactos y procedimiento de ejecución |
-| BLOQUEADO_ESPECÍFICO | Poma + Marco | Ocho identificadores locales, 12 JSON null y atributos Pitch: aprobar corrección delimitada con evidencia |
+| BLOQUEADO_ESPECÍFICO | Marco/Arquitectura + G2 si aplica | Artículo/embalaje: fuente intrínseca separada o excepción académica delimitada antes de solicitar carga |
+| BLOQUEADO_ESPECÍFICO | Poma + Marco | Ocho identificadores locales y atributos Pitch: propuesta separada; los doce JSON null con IDs válidos no requieren normalización |
+| BLOQUEADO_ESPECÍFICO | Administrador + Poma | Foto RUNx: resolver color sin sobrescribir datos originales; cuatro portadas adicionales separadas |
 | BLOQUEADO_ESPECÍFICO | Vera/Pricing + Taco/Inventory + Poma | Preparación: ejecutar flujo autorizado y confirmar mensajes reales por producto/SKU/operation_id |
 | BLOQUEADO_ESPECÍFICO | Marco/Docs | Consolidar 0002/0003 y modelo físico en historial normativo antes de aplicar |
 | BLOQUEADO_ESPECÍFICO | Castilla/entorno CI | E2E integral Bulk: disponer de Docker y ejecutar bulk-postgres-outage sin exclusión |

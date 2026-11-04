@@ -1,5 +1,6 @@
 -- Solo SELECT. READY significa insertable, no autorización ni activación.
-SELECT m.*, CASE WHEN NOT (m.peso_kg IS NOT NULL AND m.peso_kg>0 AND m.peso_kg NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.largo_cm IS NOT NULL AND m.largo_cm>0 AND m.largo_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.ancho_cm IS NOT NULL AND m.ancho_cm>0 AND m.ancho_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.alto_cm IS NOT NULL AND m.alto_cm>0 AND m.alto_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric)) THEN 'INVALID_MEASURE'
+SELECT m.*, 'PENDING_INTRINSIC_OR_ACADEMIC_EXCEPTION' AS semantic_status,
+  CASE WHEN NOT (m.peso_kg IS NOT NULL AND m.peso_kg>0 AND m.peso_kg NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.largo_cm IS NOT NULL AND m.largo_cm>0 AND m.largo_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.ancho_cm IS NOT NULL AND m.ancho_cm>0 AND m.ancho_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric) AND m.alto_cm IS NOT NULL AND m.alto_cm>0 AND m.alto_cm NOT IN ('NaN'::numeric,'Infinity'::numeric,'-Infinity'::numeric)) THEN 'INVALID_MEASURE'
   WHEN NOT (EXISTS (SELECT 1 FROM catalog.sku_identity s
     JOIN catalog.products p ON p.id=m.product_id::uuid
     LEFT JOIN catalog.variants v ON v.id=m.variant_id::uuid

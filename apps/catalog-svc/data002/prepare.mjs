@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { prepareProfiles } from './prepare-profiles.mjs';
+import { reviewData } from './review-data.mjs';
 
 // Generación offline: nunca abre conexiones ni ejecuta SQL.
 const root = dirname(fileURLToPath(import.meta.url));
@@ -91,7 +92,7 @@ const pitch = {
   ...objectFor('nike-pitch-talla.jpg'),
 };
 const covers = manifest.productos
-  .filter((p) => p.tiene_variantes)
+  .filter((p) => p.tiene_variantes && p.sku_base !== 'ADI-RUNX-JD9558-BASE')
   .map((p) => {
     const candidate = audit.variant_images
       .filter((i) =>
@@ -112,25 +113,43 @@ const covers = manifest.productos
       source_image_id: candidate.id,
       evidence: p.evidencia_comercial,
       verification:
-        'REFERENCIA_HISTORICA; CONFIRMACION_COMERCIAL_DISPENSADA_POR_USUARIO_PARA_USO_ACADEMICO',
+        'CORRESPONDENCIA_MODELO_COLOR_REVISADA; VER reference-image-review.csv',
       ...objectFor(presentation.archivo_storage),
     };
   });
 const blockedCovers = audit.products
   .filter(
-    (p) => p.tiene_variantes && !covers.some((c) => c.product_id === p.id),
+    (p) =>
+      p.tiene_variantes &&
+      p.sku_base !== 'ADI-RUNX-JD9558-BASE' &&
+      !covers.some((c) => c.product_id === p.id),
   )
   .map((p) => ({
     product_id: p.id,
     sku: p.sku_base,
     status: 'PENDING_SEPARATE_PROPOSAL',
     reason:
-      'Sin exigencia de confirmación comercial por instrucción del usuario; ampliación de portadas fuera de este cambio de perfiles.',
+      'Mantener como propuesta separada de las portadas originales según auditoría; referencia e imagen revisadas en reference-image-review.csv.',
   }));
 emit('image-map.json', JSON.stringify({ images, pitch }, null, 2));
 emit(
   'cover-map.json',
-  JSON.stringify({ covers, pending_proposal: blockedCovers }, null, 2),
+  JSON.stringify(
+    {
+      covers,
+      pending_proposal: blockedCovers,
+      image_conflicts: [
+        {
+          sku: 'ADI-RUNX-JD9558-BASE',
+          status: 'BLOCKED_IMAGE_COLOR_CONFLICT',
+          reason:
+            'Negro en Taxonomy frente a gris visible; no proponer portada con esta fotografía.',
+        },
+      ],
+    },
+    null,
+    2,
+  ),
 );
 
 function mapping(rows, cols) {
@@ -247,7 +266,7 @@ SELECT id,product_id,url,principal,posicion,created_at FROM catalog.product_imag
 );
 emit(
   'covers-preflight.sql',
-  `-- Mapeo exclusivo de 12 padres del lote original con evidencia en 005.
+  `-- Mapeo revisado de 11 padres; RUNx excluido por conflicto de color.
 SELECT m.*, ${storageOk} AND ${coverOk} AS source_ok,
   CASE WHEN EXISTS (SELECT 1 FROM catalog.product_images i JOIN storage.objects o
     ON i.url=${literal(publicBase)}||o.name AND o.bucket_id='catalog-products'
@@ -269,7 +288,7 @@ emit(
 );
 emit(
   'covers-postcheck.sql',
-  `-- 12 padres mapeados; los otros cuatro quedan fuera de esta propuesta.
+  `-- 11 padres mapeados; RUNx bloqueado por color y cuatro adicionales separados.
 SELECT m.sku, ${coverOk} AND ${storageOk} AND EXISTS (SELECT 1 FROM catalog.product_images i JOIN storage.objects o
   ON i.url=${literal(publicBase)}||o.name AND o.bucket_id='catalog-products'
   WHERE i.product_id=m.product_id::uuid AND i.url=m.url AND (o.metadata->>'size')::bigint>0
@@ -339,7 +358,7 @@ emit(
           proposed.source_row +
           ':I' +
           proposed.source_row,
-        'READY_FOR_APPROVAL_ACADEMIC',
+        'STRUCTURAL_READY_SEMANTICS_PENDING',
         'Pendiente ejecutar carga autorizada; Pricing producto; Inventory SKU; imagen/atributos según auditoría',
       ];
     }),
@@ -413,7 +432,12 @@ for (const s of sellable) {
         v.caracteristica_id === a.caracteristica_id &&
         v.estado === 'ACTIVO',
     );
-    if (!rel || !characteristic || (a.valor_id && !value) || a.valor === null)
+    if (
+      !rel ||
+      !characteristic ||
+      (a.valor_id && !value) ||
+      (a.valor === null && !(characteristic?.tipo === 'LISTA' && value))
+    )
       attributeFindings.push({
         sku: s.sku,
         attribute_id: a.id,
@@ -608,7 +632,7 @@ emit(
         s.sku,
         v ? 'VARIANTE' : 'SIMPLE',
         v?.estado ?? p.estado,
-        'PENDING_APPROVED_LOAD',
+        'PENDING_SEMANTIC_DECISION_AND_LOAD',
         'NO_REGISTRADA',
         'NO_REGISTRADA',
         audit.product_images.some((i) => i.product_id === p.id)
@@ -657,7 +681,21 @@ emit(
     2,
   ),
 );
+reviewData();
 const files = [
+  'METODOLOGIA-PERFILES.md',
+  'RESPUESTA-AUDITORIA.md',
+  'evidence/normative-followup.json',
+  'evidence/audit-followup-preflight.json',
+  'review-data.mjs',
+  'sources/model-color-review.json',
+  'reference-image-review.json',
+  'reference-image-review.csv',
+  'template-reuse.csv',
+  'attribute-review.json',
+  'evidence/physical-quality-review.json',
+  'evidence/storage-image-http.json',
+  'evidence/audit-followup-readonly.json',
   'prepare-profiles.mjs',
   'extract-profiles.py',
   'sources/physical-profiles-academic.xlsx',
@@ -684,6 +722,7 @@ const files = [
   'prepare.mjs',
   'isolated.test.mjs',
   '../test/data002.e2e-spec.ts',
+  '../src/catalog-master.client.spec.ts',
   'README.md',
   'migrations-preflight.sql',
   'migrations-postcheck.sql',

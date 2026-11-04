@@ -9,6 +9,7 @@ const literal = (value) =>
   value === null ? 'NULL' : "'" + String(value).replaceAll("'", "''") + "'";
 const json = (file) => JSON.parse(readFileSync(resolve(root, file), 'utf8'));
 const emit = (file, value) => writeFileSync(resolve(root, file), value + '\n');
+const referenceReviews = json('sources/model-color-review.json');
 
 export function resolveProfiles(source, audit) {
   const rows = source.profiles;
@@ -56,6 +57,10 @@ export function resolveProfiles(source, audit) {
       throw Error('DATA002_PRESENTATION_CONFLICT:' + row.sku);
     return {
       ...row,
+      modelo_ref_original: row.modelo_ref,
+      modelo_ref:
+        referenceReviews.find((r) => row.sku.startsWith(r.prefix))?.code ??
+        row.modelo_ref,
       sku_identity_id: identity.id,
       product_id: product.id,
       variant_id: variant?.id ?? null,
@@ -140,7 +145,8 @@ export function profileSql(profiles) {
     '))';
   return {
     preflight: `-- Solo SELECT. READY significa insertable, no autorización ni activación.
-SELECT m.*, CASE WHEN NOT (${positive}) THEN 'INVALID_MEASURE'
+SELECT m.*, 'PENDING_INTRINSIC_OR_ACADEMIC_EXCEPTION' AS semantic_status,
+  CASE WHEN NOT (${positive}) THEN 'INVALID_MEASURE'
   WHEN NOT (${identityOk}) THEN 'OWNER_CONFLICT'
   WHEN ${existsEqual} THEN 'ALREADY_APPLIED'
   WHEN ${exists} THEN 'PROFILE_CONFLICT' ELSE 'READY' END AS status FROM ${map} ORDER BY m.sku;`,
@@ -152,6 +158,8 @@ SET LOCAL statement_timeout='30s';
 DO $profiles$
 DECLARE m record; before_state jsonb;
 BEGIN
+  IF current_setting('catalog.data002_physical_semantics',true) IS DISTINCT FROM 'ACADEMIC_LOGISTIC_EXCEPTION_APPROVED'
+    THEN RAISE EXCEPTION 'DATA002_PHYSICAL_SEMANTICS_NOT_APPROVED'; END IF;
   IF current_user <> 'po_catalog_owner' OR NOT EXISTS (SELECT 1 FROM pg_namespace
     WHERE nspname='catalog' AND pg_get_userbyid(nspowner)=current_user)
     THEN RAISE EXCEPTION 'DATA002_REQUIRE_CATALOG_OWNER'; END IF;
@@ -204,7 +212,8 @@ export function prepareProfiles() {
       academic_estimates:
         'AUTORIZADAS_POR_INSTRUCCION_EXPLICITA_DEL_USUARIO_2026_11_03',
       shared_execution: 'PENDIENTE_APROBACION_MARCO',
-      photos: 'SIN_CONFIRMACION_COMERCIAL_REQUERIDA_EN_PROYECTO_ACADEMICO',
+      semantic_compatibility: 'PENDING_INTRINSIC_OR_ACADEMIC_EXCEPTION',
+      photos: 'REQUIERE_CORRESPONDENCIA_SKU_COLOR_FOTO_SEGUN_AUDITORIA',
     },
     audited_at: audit.audited_at,
     baseline_profiles: audit.profiles?.length ?? 0,
@@ -221,6 +230,8 @@ export function prepareProfiles() {
     'product_id',
     'variant_id',
     'tipo_unidad',
+    'modelo_ref_original',
+    'modelo_ref',
     ...fields,
     'source_row',
     'origen_peso',

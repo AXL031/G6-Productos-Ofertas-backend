@@ -6,6 +6,8 @@ SET LOCAL statement_timeout='30s';
 DO $profiles$
 DECLARE m record; before_state jsonb;
 BEGIN
+  IF current_setting('catalog.data002_physical_semantics',true) IS DISTINCT FROM 'ACADEMIC_LOGISTIC_EXCEPTION_APPROVED'
+    THEN RAISE EXCEPTION 'DATA002_PHYSICAL_SEMANTICS_NOT_APPROVED'; END IF;
   IF current_user <> 'po_catalog_owner' OR NOT EXISTS (SELECT 1 FROM pg_namespace
     WHERE nspname='catalog' AND pg_get_userbyid(nspowner)=current_user)
     THEN RAISE EXCEPTION 'DATA002_REQUIRE_CATALOG_OWNER'; END IF;
