@@ -1,0 +1,30 @@
+{
+  "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
+  "ref": "f903f0bb0485bc0c6a6a7c6545446e972286daf6",
+  "files": [
+    {
+      "path": "datos/catalog-svc/physical-model.md",
+      "blob_sha": "097ca340c970149eb525abd2942dda2e5fc9a8c7"
+    },
+    {
+      "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+      "blob_sha": "8372b2f4ee72e5e073865778519cb332c1902f5d"
+    },
+    {
+      "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+      "blob_sha": "3a79886b1be589b081af8d8ce4ba3811a73eb1d1"
+    },
+    {
+      "path": "contratos/http/openapi.yaml",
+      "blob_sha": "b1f80fa204520ee6de47183e634af7c7f09486c8"
+    },
+    {
+      "path": "integraciones/ACUERDO_G2_G6_H4_2026-11-02.md",
+      "blob_sha": "acb29735c4fd7ec3d963002950e16ce4eaa32fe9"
+    },
+    {
+      "path": "arquitectura/decisiones/REGISTRO_DEC_F.md",
+      "blob_sha": "4a7bd8dc2fb26aa48f8cb2ce34a3a58772db6a22"
+    }
+  ]
+}

@@ -1,0 +1,876 @@
+{
+  "checks": 0,
+  "objects": [
+    {
+      "id": "ba7f9a96-b79e-4148-8e86-0717f5a1b5b9",
+      "name": "adidas-entrada-h57505-gris.jpg",
+      "metadata": {
+        "eTag": "\"593318657bdfe1efe3877ea08fc92e01-1\"",
+        "size": 28278,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 28278,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "bf691787-7ad2-42e2-9af4-e75f9e0b34d6",
+      "name": "adidas-entrada22-azul.jpg",
+      "metadata": {
+        "eTag": "\"1b1058af89e537cdc25b7e5392daf886\"",
+        "size": 22913,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-11-03T22:00:34.000Z",
+        "contentLength": 22913,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "8e97f6d0-6a94-4f58-84d1-e2210bdfcb37",
+      "name": "adidas-entrada26-jz2506-azul.avif",
+      "metadata": {
+        "eTag": "\"0f9273d8ee865730a7c1485e9574be82-1\"",
+        "size": 58451,
+        "mimetype": "image/avif",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 58451,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "c1b7c344-de8e-4d86-baf7-4d0dacd2e64c",
+      "name": "adidas-entrada26-jz2508-blanco.avif",
+      "metadata": {
+        "eTag": "\"a8eaaf6e4ca5e976c291b231a0745ca9-1\"",
+        "size": 13459,
+        "mimetype": "image/avif",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 13459,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "214493fb-c15d-4035-9d0f-97f65ae0d215",
+      "name": "adidas-messi-ji8291.jpg",
+      "metadata": {
+        "eTag": "\"848f4e5166bd5e3a46169a19b878a07f-1\"",
+        "size": 215822,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 215822,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "26e7b080-d59d-4c41-9906-bc410aa294eb",
+      "name": "adidas-predator-ig7760-multicolor.jpg",
+      "metadata": {
+        "eTag": "\"fe25ad4b598779540edbe06481da1d7c-1\"",
+        "size": 17693,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 17693,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "3830bc41-91ed-4b55-ba3c-ce3a2f638440",
+      "name": "adidas-runfalcon3-gris.jpg",
+      "metadata": {
+        "eTag": "\"b069348a3f481a1c15aa3db22b58c9c9-1\"",
+        "size": 162486,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-11-03T22:19:13.000Z",
+        "contentLength": 162486,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "001918b4-947b-49c0-b917-eeb4b9ff1658",
+      "name": "adidas-runxcushioned-jd9558-negro.jpg",
+      "metadata": {
+        "eTag": "\"6777cd321eb05862c2da8cb5eae805e6-1\"",
+        "size": 30170,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 30170,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "25e2ccde-9a9a-44ca-8960-ef5977b38ee8",
+      "name": "adidas-squadra-jg5832-negro.jpg",
+      "metadata": {
+        "eTag": "\"5be5f1867bbb1aab4913812ad3943e3b-1\"",
+        "size": 131640,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 131640,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "87e87e00-3fbe-44ef-8bd3-ea41c056b278",
+      "name": "adidas-squadra-jh3407-celeste.jpg",
+      "metadata": {
+        "eTag": "\"6152955a070483515ab79a9d6f0e8d56-1\"",
+        "size": 174019,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 174019,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "f7049e92-69e3-4017-8e18-1c2c22d620dc",
+      "name": "nike-academy-hv4386-100.jpg",
+      "metadata": {
+        "eTag": "\"6671f5c45661c720f5bfe2dc66226291-1\"",
+        "size": 199603,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 199603,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "2a998150-ed2d-4bae-8a0c-e57a6b67d0da",
+      "name": "nike-everyday-plus-fq0327-010-negro.jpg",
+      "metadata": {
+        "eTag": "\"cdb296fe23489d933d5539436011ab36-1\"",
+        "size": 439630,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 439630,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "29a15587-f5c7-47ec-b632-0232c199a63f",
+      "name": "nike-everyday-plus-fq0327-100-blanco.jpg",
+      "metadata": {
+        "eTag": "\"ac03cd940f73e94fb44ec4eb227892cd-1\"",
+        "size": 309745,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 309745,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "3c82e5fe-5b69-4f44-a7df-3f2d90ff00ff",
+      "name": "nike-park3-bv6855-010-negro.jpg",
+      "metadata": {
+        "eTag": "\"2bdd2a08e3b8d4d53c17af147a29eb1c-1\"",
+        "size": 294926,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 294926,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "bf13a99d-c679-4c78-a80d-6b74b6a63759",
+      "name": "nike-park3-bv6860-010-mujer.jpg",
+      "metadata": {
+        "eTag": "\"57dac07eeabd43b742c9f0396cb780f6-1\"",
+        "size": 50020,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 50020,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "52aeba17-acf0-4e59-b261-ed8a7ed42140",
+      "name": "nike-park7-bv6708-010-negro.webp",
+      "metadata": {
+        "eTag": "\"263e13d5971e7de27eec5902a3a98f15-1\"",
+        "size": 19786,
+        "mimetype": "image/webp",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 19786,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "650391e4-4e23-44bd-9dfd-e8ea48f5bdef",
+      "name": "nike-pitch-talla.jpg",
+      "metadata": {
+        "eTag": "\"7c04b3ebc27c18ef756f097718f0d675-1\"",
+        "size": 50440,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-11-03T22:11:12.000Z",
+        "contentLength": 50440,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "adb98816-5445-49c7-8a60-093ff4b6dff2",
+      "name": "nike-revolution7-negro.jpg",
+      "metadata": {
+        "eTag": "\"632ef3c08b347454ee8361ad8178c153-1\"",
+        "size": 186120,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-11-03T22:11:12.000Z",
+        "contentLength": 186120,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "ff4c13d5-93ea-4a19-80d5-afe93a3ef286",
+      "name": "puma-cristal-782244-02-blanco.avif",
+      "metadata": {
+        "eTag": "\"1f09dc0ae383968a786116d2f7757ad3-1\"",
+        "size": 7969,
+        "mimetype": "image/avif",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 7969,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "13eb91a4-0e16-4030-a435-9a284567c97b",
+      "name": "puma-mancity-780338-01-celeste.avif",
+      "metadata": {
+        "eTag": "\"55c154549eb1b99df4c6f8e8c6b4b1a8-1\"",
+        "size": 11208,
+        "mimetype": "image/avif",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 11208,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "96f05008-be7a-48c8-842d-6d80132de83b",
+      "name": "puma-orbita-084641-02-naranja.jpg",
+      "metadata": {
+        "eTag": "\"58d8eb77f2002e10c136f94429261a16-1\"",
+        "size": 220267,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 220267,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "3150f807-c196-4fc3-be05-f6bd4c6677de",
+      "name": "puma-ultra-play-negro.jpg",
+      "metadata": {
+        "eTag": "\"3a9ba6ba7f775f7061d6cb703a3fc34f-1\"",
+        "size": 121619,
+        "mimetype": "image/jpeg",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-11-03T22:11:12.000Z",
+        "contentLength": 121619,
+        "httpStatusCode": 200
+      }
+    },
+    {
+      "id": "bb5fe84c-876b-4302-a0a2-f2172b58c0ea",
+      "name": "ua-tech2-1326413-001-negro.avif",
+      "metadata": {
+        "eTag": "\"1daf7f17941905cd5e7673068833ec64-1\"",
+        "size": 93788,
+        "mimetype": "image/avif",
+        "cacheControl": "max-age=3600",
+        "lastModified": "2026-10-17T05:35:19.000Z",
+        "contentLength": 93788,
+        "httpStatusCode": 200
+      }
+    }
+  ],
+  "profiles": 0,
+  "audited_at": "2026-11-04T00:28:53.881172+00:00",
+  "product_images": [
+    {
+      "id": "eee7de29-60d6-564e-80e3-94083e039b68",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-messi-ji8291.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00"
+    },
+    {
+      "id": "41546910-ce10-5f65-847f-e9f1cc6c9234",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-academy-hv4386-100.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00"
+    },
+    {
+      "id": "c4cfffc0-7921-5b8c-ae21-15cddf1b7b9c",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-orbita-084641-02-naranja.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00"
+    }
+  ],
+  "variant_images": [
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "e807b012-00ba-4d17-a4e5-f47546cd8980",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae"
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "aba3e97a-6575-4c13-81e7-fe35a2e14d0a",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b"
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "bdf64a75-0ee8-4fd2-aeae-e85e27c67cae",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17"
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "739bdf11-ce20-4f19-a49e-8fa09bda60f3",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f"
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "e26d7736-b820-4e43-b92b-4f95cc773186",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338"
+    },
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+      "image_id": "c9b5f3d3-542e-4c1b-bd87-e50a53aa0703",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701"
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada-h57505-gris.jpg",
+      "image_id": "e7c5ced1-8d22-5396-98df-bea755fa7ae4",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "347eebb8-f145-5e3f-8cad-31ffa45ccabc"
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada-h57505-gris.jpg",
+      "image_id": "086393dc-39a2-5822-afb5-2d978e51af90",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "3cde5b53-8282-5491-a423-80a912ee8b71"
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada-h57505-gris.jpg",
+      "image_id": "b05dba36-483c-5770-b602-50deb1de9dd6",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "f60c691e-74fe-5507-a111-a1fd4e1c1f5a"
+    },
+    {
+      "sku": "ADI-ENT26-AZU-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2506-azul.avif",
+      "image_id": "62f00564-5572-525c-b974-b60e8d57a551",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "83709a1d-e38f-5c11-b389-4b72321eda59"
+    },
+    {
+      "sku": "ADI-ENT26-AZU-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2506-azul.avif",
+      "image_id": "b109d088-166a-51fa-891b-f14c194f1a61",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "7f943d67-1e76-5594-b3be-f0670c1072bc"
+    },
+    {
+      "sku": "ADI-ENT26-AZU-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2506-azul.avif",
+      "image_id": "b96c126f-fbb9-5a89-bc01-e276642cf283",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "d756023d-9a33-5fab-af73-9d386b498f21"
+    },
+    {
+      "sku": "ADI-ENT26-BLA-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2508-blanco.avif",
+      "image_id": "21606197-768e-5fa9-93f9-eef7722a1f21",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "eecf0794-1eea-5cf3-83a6-42795902726e"
+    },
+    {
+      "sku": "ADI-ENT26-BLA-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2508-blanco.avif",
+      "image_id": "f0c29790-e273-591e-9bf8-8bd16277d0c8",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "0cd5c7bf-363b-5501-b237-d6ff14814f67"
+    },
+    {
+      "sku": "ADI-ENT26-BLA-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2508-blanco.avif",
+      "image_id": "6129a2bd-8595-5a41-9bad-648752e2b02e",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "9a4bb6a1-1e68-5d32-b861-51a1f20ba8f3"
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-38",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+      "image_id": "05b34bf5-930c-5286-898d-52dfe1dde67e",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "840b28a1-46fc-5e3a-a176-cb150e25e8a7"
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-40",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+      "image_id": "cfb4b358-864a-5aff-b54f-fe583c0090f1",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "864ea99c-a2d8-5906-b93f-ac5300fdfa3e"
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-42",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+      "image_id": "2c25e18b-4079-5c83-bb7e-c055b3e4574b",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "2cc6f948-5d34-5ed1-9bfc-c5ff9f39d63f"
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-43",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+      "image_id": "b9ca8d56-ca96-5d84-afa9-4e2e1acdcfc6",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "284276f3-e0ab-5ffb-a394-3664374aa09b"
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+      "image_id": "96a51418-ad4e-534f-94e3-0ec8c3658b00",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "629792a7-60fb-57f5-9747-f3b54cf8b553"
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+      "image_id": "a4ab37c8-9214-5cb7-b77b-6fe18c10baa6",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "b1d488a5-fba8-5fd4-90b7-b7440cd59a40"
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+      "image_id": "662b9aa0-4dd8-58b3-bf85-b9137f20d6cd",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "677f8fcc-caaf-5cc9-a060-c7756d5ab1c2"
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jg5832-negro.jpg",
+      "image_id": "1a261f12-9a3f-5a14-aa3c-7b8cba7deb24",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "91f677b4-3ee9-539d-9ed9-6804f8922a26"
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jg5832-negro.jpg",
+      "image_id": "24eeabd2-32d2-5fe4-8ce4-d78ca0550072",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "ab8ae29e-84d5-58fb-b237-c07bc618386c"
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jg5832-negro.jpg",
+      "image_id": "6cd480d1-8d68-500a-82db-e4d3b852baa5",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "30723507-bc26-53e2-b3e1-e2a03124445d"
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jh3407-celeste.jpg",
+      "image_id": "9422cfe9-eb50-5db7-af0c-6632d6af00c8",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "0d6a3d1f-50fc-5e74-b50b-3844d2f3bcfa"
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jh3407-celeste.jpg",
+      "image_id": "ff838808-99a7-5464-bed8-badae3e18004",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "62ca791d-dd40-5846-8105-3650730c08cf"
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jh3407-celeste.jpg",
+      "image_id": "8ed81f5d-d113-5755-97e2-9c9022688f2b",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "161d02f4-1913-51c7-aa37-140c6fef4bca"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-010-negro.jpg",
+      "image_id": "03e23bf5-03b1-5507-b22a-95d19e5f78a7",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "968ec637-15e1-549c-b8ba-da77ed375edc"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-010-negro.jpg",
+      "image_id": "b309e132-91c5-5016-8de7-a04fb9d02d48",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "7f8c7bf8-3086-5849-a21f-722bb13bff1c"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-010-negro.jpg",
+      "image_id": "8bc73870-fa30-5573-b61b-496d9b4a20c4",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "73829aef-a02c-5555-82f1-03a495d44ced"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-100-blanco.jpg",
+      "image_id": "f3ce8b06-ef09-532f-a456-ebbe78403da2",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "1c995251-cf8c-55e2-878a-ea83f9f4b351"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-100-blanco.jpg",
+      "image_id": "88f0bf4d-0ddb-589d-b043-19e2b0bd1a3e",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "e8a0b20b-a6fd-5a78-9e6b-8199f32742c2"
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-100-blanco.jpg",
+      "image_id": "c3bf9b97-9bb2-5f34-b4c4-76c651155003",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "bc260f04-d0c1-57d6-862a-6d7ae44c74ff"
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6855-010-negro.jpg",
+      "image_id": "67164748-ee3c-56ef-a5a7-bdb4ccb0490a",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "bd42a0bd-dd7e-595c-8d1d-7afabc4ed049"
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6855-010-negro.jpg",
+      "image_id": "61a6a770-a277-53ad-adc4-df045e6d3311",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "4ef2fc98-fe62-5d4c-b050-5ad312c088e0"
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6855-010-negro.jpg",
+      "image_id": "16898a2b-7a4c-5b4e-8ca3-22320271898c",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "df53883d-2875-5a71-afe8-1f4097e8b234"
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "image_id": "f2fec536-fc2f-553f-8d3a-e208f118d3e4",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "923d14cc-c3d8-53b2-b0c5-57568e9f1abd"
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "image_id": "35735ce1-9bfb-55fc-a91e-a754428b61d0",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "e3cd5843-307f-576a-b721-2f58d7df3fdc"
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "image_id": "fbf8cd03-2b78-5654-8dc9-83e66b414158",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "a6a0d134-e4a9-58ba-b512-37076fc99a33"
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "image_id": "0a1de623-eff4-5441-a66c-fcf64c100664",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "29cf5cee-af27-5da0-aaba-c8f4f6712101"
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "image_id": "c4fb1ebb-8d8c-5d38-8f52-b573e172b41e",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "909bf47b-9242-5955-b2ed-03adf2922580"
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park7-bv6708-010-negro.webp",
+      "image_id": "8f798315-d5ba-53ff-8def-8e6ee177fe17",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "f3890276-9ad2-545b-948b-484f5ed1495b"
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park7-bv6708-010-negro.webp",
+      "image_id": "8f22f5a1-12a1-5975-af3b-92c3175729d3",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "033875cd-b8de-50d6-bb3d-49e98e146178"
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park7-bv6708-010-negro.webp",
+      "image_id": "602038d4-9c20-539c-8c06-aff08731cc9c",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "96945dfc-af18-5da8-8e6e-c49b8c673ed2"
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-cristal-782244-02-blanco.avif",
+      "image_id": "d54267c1-cbd7-5f7b-ae92-93b7b2b8f0e1",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "7a594c35-880e-5682-b282-a3cc01d8854c"
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-cristal-782244-02-blanco.avif",
+      "image_id": "400970a2-2ef9-5b97-909c-a20fecf71033",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "d82aafc7-3257-5bc8-8093-c9139562e910"
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-cristal-782244-02-blanco.avif",
+      "image_id": "7e428372-41b2-5658-a378-577352cb2390",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "61600bf0-bb76-5b31-9c9b-1df55ddd3471"
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-S",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/ua-tech2-1326413-001-negro.avif",
+      "image_id": "90568783-e9df-5f83-a13e-2f73fbe5e400",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "b6bdb52f-a904-56b8-a863-f23aea89ffc6"
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-M",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/ua-tech2-1326413-001-negro.avif",
+      "image_id": "8b1928f8-81ad-5648-b20c-ba4bb2c3dafd",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "b271319c-457a-58c5-bbbf-62280abd0803"
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-L",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/ua-tech2-1326413-001-negro.avif",
+      "image_id": "7f0c9b9f-1d86-593e-9f10-8a8ac714dce1",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "09875bf7-7cbd-5f6d-92e9-47d78e8763a6"
+    }
+  ],
+  "null_attributes": [
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "valor": null,
+      "valor_id": "7325e3a3-aa9a-db8e-9339-9f2b414b0d42",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "41",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "attribute_id": "1cca8c82-80a5-4f4f-bc4b-75033be06686",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "Negro",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "attribute_id": "31ea3ccf-1c5b-4665-aa73-253b1dfb39ed",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "valor": null,
+      "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "42",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "attribute_id": "ff82df7c-502b-480b-b25e-68e8a5c36d21",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "value_name": "Negro",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "attribute_id": "cab1667c-0867-487f-a981-3a4bb203cd3d",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "valor": null,
+      "valor_id": "ae3eba02-52e6-4a8a-d71f-231960bdd9a4",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "38",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "attribute_id": "1f65f614-e84e-48c9-a384-e03027c8ee15",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "valor": null,
+      "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "Gris",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "attribute_id": "c43d8eac-7d82-4ae9-83a2-4a6b302c00f5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "valor": null,
+      "valor_id": "ea281936-1025-b09c-755e-545db73051b6",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "39",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "attribute_id": "424a578b-cb18-4cf2-9210-87b2600d2a53",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "valor": null,
+      "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "value_name": "Gris",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "attribute_id": "8afe5171-f861-4d19-9af9-8cdae8db3a93",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "valor": null,
+      "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "value_name": "42",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "attribute_id": "0cd853d4-d0bf-4f42-b1fa-708dce5936a5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "valor": null,
+      "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "value_name": "Negro",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "attribute_id": "e5c1881c-19fe-492a-98b8-2542ab137d0e",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "valor": null,
+      "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "value_name": "M",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "attribute_id": "e62095a4-cc72-460b-9e66-906a59df49c6",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    },
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "valor": null,
+      "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "value_name": "Azul",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "attribute_id": "611c0963-64cc-4a67-9956-a222c8d3e0d5",
+      "value_active": true,
+      "identificador": true,
+      "value_belongs": true,
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "caracteristica_tipo": "LISTA",
+      "caracteristica_estado": "ACTIVO"
+    }
+  ]
+}

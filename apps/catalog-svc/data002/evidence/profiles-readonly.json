@@ -1,0 +1,1725 @@
+{
+  "products": [
+    {
+      "id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "slug": "ulp-inka-athletics",
+      "estado": "BORRADOR",
+      "nombre": "Puma Ultra Play",
+      "marca_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-ULP-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "descripcion": "Calzado de fútbol para entrenamiento, color negro.",
+      "categoria_id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a"
+    },
+    {
+      "id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "slug": "nike-park3-mujer-bv6860-010",
+      "estado": "BORRADOR",
+      "nombre": "Nike Park III Mujer",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK3-W-BV6860-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Short Park III mujer BV6860-010 negro, modelo separado.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9"
+    },
+    {
+      "id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+      "slug": "nike-academy-hv4386-100",
+      "estado": "BORRADOR",
+      "nombre": "Nike Academy",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-ACADEMY-HV4386-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Balón Nike Academy talla 5, simple.",
+      "categoria_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "catalog_version": 0,
+      "tiene_variantes": false,
+      "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af"
+    },
+    {
+      "id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "slug": "ent22-inka-athletics",
+      "estado": "BORRADOR",
+      "nombre": "adidas Entrada 22",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT22-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "descripcion": "Camiseta de entrenamiento, color azul.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "slug": "adidas-runxcushioned-jd9558",
+      "estado": "BORRADOR",
+      "nombre": "adidas RUNxCUSHIONED",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-RUNX-JD9558-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Medias JD9558, un par por SKU.",
+      "categoria_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "db4cefc7-9412-5c82-a91f-58b73a9909cd"
+    },
+    {
+      "id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "slug": "adidas-squadra-25-shorts-jh3407",
+      "estado": "BORRADOR",
+      "nombre": "adidas Squadra 25 Shorts",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-SQUA25-JH3407-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Short hombre JH3407 azul claro/blanco.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9"
+    },
+    {
+      "id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "slug": "adidas-squadra-25-jersey-jg5832",
+      "estado": "BORRADOR",
+      "nombre": "adidas Squadra 25 Jersey",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-SQUA25-JG5832-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Camiseta entrenamiento hombre JG5832 negra.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "slug": "nike-park-vii-bv6708-010",
+      "estado": "BORRADOR",
+      "nombre": "Nike Park VII",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK7-BV6708-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Camiseta adulta hombre Park VII BV6708-010 negra.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "slug": "puma-sporting-cristal-782244-02",
+      "estado": "BORRADOR",
+      "nombre": "Puma Sporting Cristal Training",
+      "marca_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-SC-782244-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Camiseta entrenamiento Sporting Cristal 782244_02 blanca.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+      "slug": "puma-orbita-serie-a-balon-084641-02",
+      "estado": "BORRADOR",
+      "nombre": "Puma Orbita Serie A Réplica",
+      "marca_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-ORBITA-084641-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Balón Orbita 084641_02 multicolor, talla 5, simple.",
+      "categoria_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "catalog_version": 0,
+      "tiene_variantes": false,
+      "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af"
+    },
+    {
+      "id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "slug": "under-armour-tech-20-1326413-001",
+      "estado": "BORRADOR",
+      "nombre": "Under Armour Tech 2.0 Tee",
+      "marca_id": "514d9c18-b418-559b-a692-e304183560ad",
+      "sku_base": "UA-TECH20-1326413-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Camiseta UA Tech 2.0 hombre 1326413-001 negra.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "slug": "adidas-entrada-26-jersey",
+      "estado": "BORRADOR",
+      "nombre": "adidas Entrada 26 Jersey",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT26-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Camiseta adulta Entrada 26; JZ2506 azul y JZ2508 blanco.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e"
+    },
+    {
+      "id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "slug": "adidas-entrada-22-shorts-h57505",
+      "estado": "BORRADOR",
+      "nombre": "adidas Entrada 22 Shorts",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT22-SHORT-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Short fútbol Entrada 22 H57505 hombre gris.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9"
+    },
+    {
+      "id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "slug": "adidas-predator-flexible-ground-ig7760",
+      "estado": "BORRADOR",
+      "nombre": "adidas Predator Flexible Ground",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-PRED-IG7760-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Chimpunes IG7760 Flexible Ground; tallas exactas 38,40,42,43.",
+      "categoria_id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a"
+    },
+    {
+      "id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "slug": "pitch-inka-athletics",
+      "estado": "BORRADOR",
+      "nombre": "Nike Pitch",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PITCH-05",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "descripcion": "Balón de fútbol recreativo, talla 5.",
+      "categoria_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "catalog_version": 0,
+      "tiene_variantes": false,
+      "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af"
+    },
+    {
+      "id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "slug": "rf3-inka-athletics",
+      "estado": "BORRADOR",
+      "nombre": "adidas Runfalcon 3.0",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-RF3-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "descripcion": "Zapatillas para correr de uso diario, color gris.",
+      "categoria_id": "303886ae-f3f0-bc9c-145a-660979597595",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589"
+    },
+    {
+      "id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+      "slug": "adidas-messi-club-ji8291",
+      "estado": "BORRADOR",
+      "nombre": "adidas Messi Club",
+      "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-MESSI-JI8291-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Balón Messi Club JI8291 multicolor, talla 5, simple.",
+      "categoria_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "catalog_version": 0,
+      "tiene_variantes": false,
+      "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af"
+    },
+    {
+      "id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "slug": "nike-park3-hombre-bv6855-010",
+      "estado": "BORRADOR",
+      "nombre": "Nike Park III Hombre",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK3-M-BV6855-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Short Park III hombre BV6855-010 negro.",
+      "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9"
+    },
+    {
+      "id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "slug": "rev7-inka-athletics",
+      "estado": "BORRADOR",
+      "nombre": "Nike Revolution 7",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-REV7-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "descripcion": "Zapatillas de running para entrenamiento diario, color negro.",
+      "categoria_id": "303886ae-f3f0-bc9c-145a-660979597595",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589"
+    },
+    {
+      "id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "slug": "nike-everyday-plus-fq0327",
+      "estado": "BORRADOR",
+      "nombre": "Nike Everyday Plus Cushioned",
+      "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-EVP-FQ0327-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "descripcion": "Medias Nike Everyday Plus, un par; negro/blanco.",
+      "categoria_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+      "catalog_version": 0,
+      "tiene_variantes": true,
+      "tipo_producto_id": "db4cefc7-9412-5c82-a91f-58b73a9909cd"
+    }
+  ],
+  "profiles": null,
+  "variants": [
+    {
+      "id": "033875cd-b8de-50d6-bb3d-49e98e146178",
+      "sku": "NIK-PARK7-BV6708-NEG-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "09875bf7-7cbd-5f6d-92e9-47d78e8763a6",
+      "sku": "UA-TECH20-1326413-NEG-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "0cd5c7bf-363b-5501-b237-d6ff14814f67",
+      "sku": "ADI-ENT26-BLA-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "0d6a3d1f-50fc-5e74-b50b-3844d2f3bcfa",
+      "sku": "ADI-SQUA25-JH3407-AZU-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "161d02f4-1913-51c7-aa37-140c6fef4bca",
+      "sku": "ADI-SQUA25-JH3407-AZU-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "1c995251-cf8c-55e2-878a-ea83f9f4b351",
+      "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "bac7a07c-2684-523f-aca4-761f1e15d128"
+        }
+      }
+    },
+    {
+      "id": "284276f3-e0ab-5ffb-a394-3664374aa09b",
+      "sku": "ADI-PRED-IG7760-MUL-43",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "35e25c52-aa9b-5572-b656-15b701e4894c"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "c636cd16-7146-52d9-a1a5-faab92c5ea42"
+        }
+      }
+    },
+    {
+      "id": "29cf5cee-af27-5da0-aaba-c8f4f6712101",
+      "sku": "NIK-PARK3-W-BV6860-NEG-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "2cc6f948-5d34-5ed1-9bfc-c5ff9f39d63f",
+      "sku": "ADI-PRED-IG7760-MUL-42",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "35e25c52-aa9b-5572-b656-15b701e4894c"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25"
+        }
+      }
+    },
+    {
+      "id": "30723507-bc26-53e2-b3e1-e2a03124445d",
+      "sku": "ADI-SQUA25-JG5832-NEG-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "347eebb8-f145-5e3f-8cad-31ffa45ccabc",
+      "sku": "ADI-ENT22-SHORT-GRI-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "35133a17-114a-381e-090a-87446d5fc701",
+      "sku": "ADI-ENT22-AZU-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "3cde5b53-8282-5491-a423-80a912ee8b71",
+      "sku": "ADI-ENT22-SHORT-GRI-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "sku": "NIK-REV7-NEG-42",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25"
+        }
+      }
+    },
+    {
+      "id": "4ef2fc98-fe62-5d4c-b050-5ad312c088e0",
+      "sku": "NIK-PARK3-M-BV6855-NEG-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "sku": "ADI-RF3-GRI-38",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "ae3eba02-52e6-4a8a-d71f-231960bdd9a4"
+        }
+      }
+    },
+    {
+      "id": "61600bf0-bb76-5b31-9c9b-1df55ddd3471",
+      "sku": "PUM-SC-782244-BLA-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "629792a7-60fb-57f5-9747-f3b54cf8b553",
+      "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6e8053e7-d856-5a20-9a0b-9a34d497def5"
+        }
+      }
+    },
+    {
+      "id": "62ca791d-dd40-5846-8105-3650730c08cf",
+      "sku": "ADI-SQUA25-JH3407-AZU-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "677f8fcc-caaf-5cc9-a060-c7756d5ab1c2",
+      "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "20ead521-e596-521d-a057-7c41b52d0626"
+        }
+      }
+    },
+    {
+      "id": "73829aef-a02c-5555-82f1-03a495d44ced",
+      "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "0234fd28-6c7f-5203-bef5-733196f382a6"
+        }
+      }
+    },
+    {
+      "id": "7a594c35-880e-5682-b282-a3cc01d8854c",
+      "sku": "PUM-SC-782244-BLA-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "7f8c7bf8-3086-5849-a21f-722bb13bff1c",
+      "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "0223e905-3700-5c92-87ac-f5a0615b2e96"
+        }
+      }
+    },
+    {
+      "id": "7f943d67-1e76-5594-b3be-f0670c1072bc",
+      "sku": "ADI-ENT26-AZU-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "83709a1d-e38f-5c11-b389-4b72321eda59",
+      "sku": "ADI-ENT26-AZU-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "840b28a1-46fc-5e3a-a176-cb150e25e8a7",
+      "sku": "ADI-PRED-IG7760-MUL-38",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "35e25c52-aa9b-5572-b656-15b701e4894c"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "ae3eba02-52e6-4a8a-d71f-231960bdd9a4"
+        }
+      }
+    },
+    {
+      "id": "864ea99c-a2d8-5906-b93f-ac5300fdfa3e",
+      "sku": "ADI-PRED-IG7760-MUL-40",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "35e25c52-aa9b-5572-b656-15b701e4894c"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "c90f8581-0fe2-5fd4-b08c-8b5d3f616399"
+        }
+      }
+    },
+    {
+      "id": "909bf47b-9242-5955-b2ed-03adf2922580",
+      "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "353dbffe-8b38-5575-8f35-a7a8e42d8946"
+        }
+      }
+    },
+    {
+      "id": "91f677b4-3ee9-539d-9ed9-6804f8922a26",
+      "sku": "ADI-SQUA25-JG5832-NEG-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "923d14cc-c3d8-53b2-b0c5-57568e9f1abd",
+      "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6e7505c8-4ae3-5850-86b2-d01d0b40bace"
+        }
+      }
+    },
+    {
+      "id": "968ec637-15e1-549c-b8ba-da77ed375edc",
+      "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "bac7a07c-2684-523f-aca4-761f1e15d128"
+        }
+      }
+    },
+    {
+      "id": "96945dfc-af18-5da8-8e6e-c49b8c673ed2",
+      "sku": "NIK-PARK7-BV6708-NEG-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "9a4bb6a1-1e68-5d32-b861-51a1f20ba8f3",
+      "sku": "ADI-ENT26-BLA-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "sku": "PUM-ULP-NEG-42",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "122e93d8-cd1a-4b0e-8224-859fcff6db25"
+        }
+      }
+    },
+    {
+      "id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "sku": "NIK-REV7-NEG-41",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "7325e3a3-aa9a-db8e-9339-9f2b414b0d42"
+        }
+      }
+    },
+    {
+      "id": "a6a0d134-e4a9-58ba-b512-37076fc99a33",
+      "sku": "NIK-PARK3-W-BV6860-NEG-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "ab8ae29e-84d5-58fb-b237-c07bc618386c",
+      "sku": "ADI-SQUA25-JG5832-NEG-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "b1d488a5-fba8-5fd4-90b7-b7440cd59a40",
+      "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "c417b2a9-f655-57a5-976c-128a0b3c1527"
+        }
+      }
+    },
+    {
+      "id": "b271319c-457a-58c5-bbbf-62280abd0803",
+      "sku": "UA-TECH20-1326413-NEG-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "b6bdb52f-a904-56b8-a863-f23aea89ffc6",
+      "sku": "UA-TECH20-1326413-NEG-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "bc260f04-d0c1-57d6-862a-6d7ae44c74ff",
+      "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "0234fd28-6c7f-5203-bef5-733196f382a6"
+        }
+      }
+    },
+    {
+      "id": "bd42a0bd-dd7e-595c-8d1d-7afabc4ed049",
+      "sku": "NIK-PARK3-M-BV6855-NEG-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "d756023d-9a33-5fab-af73-9d386b498f21",
+      "sku": "ADI-ENT26-AZU-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "d82aafc7-3257-5bc8-8093-c9139562e910",
+      "sku": "PUM-SC-782244-BLA-M",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "f0ec53c9-fb28-7464-e308-a2c171d943a3"
+        }
+      }
+    },
+    {
+      "id": "df53883d-2875-5a71-afe8-1f4097e8b234",
+      "sku": "NIK-PARK3-M-BV6855-NEG-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    },
+    {
+      "id": "e3cd5843-307f-576a-b721-2f58d7df3fdc",
+      "sku": "NIK-PARK3-W-BV6860-NEG-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "e8a0b20b-a6fd-5a78-9e6b-8199f32742c2",
+      "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "0223e905-3700-5c92-87ac-f5a0615b2e96"
+        }
+      }
+    },
+    {
+      "id": "eecf0794-1eea-5cf3-83a6-42795902726e",
+      "sku": "ADI-ENT26-BLA-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "sku": "ADI-RF3-GRI-39",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "updated_at": "2026-10-14T01:02:46.114333+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "ea281936-1025-b09c-755e-545db73051b6"
+        }
+      }
+    },
+    {
+      "id": "f3890276-9ad2-545b-948b-484f5ed1495b",
+      "sku": "NIK-PARK7-BV6708-NEG-S",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "6787802a-f29f-5a1b-a495-1d034f1002b6"
+        }
+      }
+    },
+    {
+      "id": "f60c691e-74fe-5507-a111-a1fd4e1c1f5a",
+      "sku": "ADI-ENT22-SHORT-GRI-L",
+      "estado": "BORRADOR",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "updated_at": "2026-10-17T09:41:52.439246+00:00",
+      "catalog_version": 0,
+      "identifying_key": {
+        "acee6db1-ba1c-f020-caf8-f439b09556ff": {
+          "valor_id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf"
+        },
+        "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd": {
+          "valor_id": "68e9a97e-7e35-5c46-aed9-046556f9387b"
+        }
+      }
+    }
+  ],
+  "audited_at": "2026-11-03T23:31:36.464781+00:00",
+  "identities": [
+    {
+      "id": "1fb83549-de75-4489-a51f-9224648b3b83",
+      "sku": "ADI-ENT22-AZU-M",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701"
+    },
+    {
+      "id": "fe8a75a1-d44a-41da-b8ba-2bfed14a6349",
+      "sku": "ADI-ENT22-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "variant_id": null
+    },
+    {
+      "id": "e8bbd8a2-9d53-4cc0-899e-35879ab093b6",
+      "sku": "ADI-ENT22-SHORT-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": null
+    },
+    {
+      "id": "de6fe700-32c2-4354-a3f2-9d3e0ed6c79b",
+      "sku": "ADI-ENT22-SHORT-GRI-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "f60c691e-74fe-5507-a111-a1fd4e1c1f5a"
+    },
+    {
+      "id": "e2485b7a-27fe-4d56-9691-461f1ff8f457",
+      "sku": "ADI-ENT22-SHORT-GRI-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "3cde5b53-8282-5491-a423-80a912ee8b71"
+    },
+    {
+      "id": "38a2f874-54a1-4195-beab-69d9cda3adb4",
+      "sku": "ADI-ENT22-SHORT-GRI-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "347eebb8-f145-5e3f-8cad-31ffa45ccabc"
+    },
+    {
+      "id": "184f8386-11c3-4b18-b37b-f42974ad528b",
+      "sku": "ADI-ENT26-AZU-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "d756023d-9a33-5fab-af73-9d386b498f21"
+    },
+    {
+      "id": "c64e267e-105c-44c1-9ca4-c785d9eed0f5",
+      "sku": "ADI-ENT26-AZU-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "7f943d67-1e76-5594-b3be-f0670c1072bc"
+    },
+    {
+      "id": "9c2801c5-8a19-477c-af55-0c3b2a6c5bf3",
+      "sku": "ADI-ENT26-AZU-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "83709a1d-e38f-5c11-b389-4b72321eda59"
+    },
+    {
+      "id": "dbe82ede-ac1d-410d-a576-b875b6e430f6",
+      "sku": "ADI-ENT26-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": null
+    },
+    {
+      "id": "d972b913-90e8-4660-94db-323f5993c782",
+      "sku": "ADI-ENT26-BLA-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "9a4bb6a1-1e68-5d32-b861-51a1f20ba8f3"
+    },
+    {
+      "id": "6cc310b7-7a64-4203-a779-994e0060f570",
+      "sku": "ADI-ENT26-BLA-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "0cd5c7bf-363b-5501-b237-d6ff14814f67"
+    },
+    {
+      "id": "3b900f1a-e7d6-4414-9377-75154fea9f53",
+      "sku": "ADI-ENT26-BLA-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "eecf0794-1eea-5cf3-83a6-42795902726e"
+    },
+    {
+      "id": "5e226593-924b-4ee2-9d4b-0eac22c2616e",
+      "sku": "ADI-MESSI-JI8291-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+      "variant_id": null
+    },
+    {
+      "id": "abb089a4-b6cb-4fc8-846c-7a7ac9adfd46",
+      "sku": "ADI-PRED-IG7760-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": null
+    },
+    {
+      "id": "4fbdd519-3dd7-4512-aa84-3ad3a1d4a987",
+      "sku": "ADI-PRED-IG7760-MUL-38",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "840b28a1-46fc-5e3a-a176-cb150e25e8a7"
+    },
+    {
+      "id": "fea91919-d38f-4a45-9584-e2fc8e4d4e5b",
+      "sku": "ADI-PRED-IG7760-MUL-40",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "864ea99c-a2d8-5906-b93f-ac5300fdfa3e"
+    },
+    {
+      "id": "9f1b8f46-f568-45e7-9e11-6280feb48445",
+      "sku": "ADI-PRED-IG7760-MUL-42",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "2cc6f948-5d34-5ed1-9bfc-c5ff9f39d63f"
+    },
+    {
+      "id": "61578bef-98ea-433b-99fe-0bffc23b2ed1",
+      "sku": "ADI-PRED-IG7760-MUL-43",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "284276f3-e0ab-5ffb-a394-3664374aa09b"
+    },
+    {
+      "id": "d52d71f9-25e8-4e95-8b98-fad87974f403",
+      "sku": "ADI-RF3-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": null
+    },
+    {
+      "id": "5fbdfbb6-2c5d-44fb-a896-27e2e44405c9",
+      "sku": "ADI-RF3-GRI-38",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17"
+    },
+    {
+      "id": "43ba45b9-c161-4387-a1c9-db2b1f17afc2",
+      "sku": "ADI-RF3-GRI-39",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f"
+    },
+    {
+      "id": "998126c8-3e64-4ca1-8e22-e2d8aefb3780",
+      "sku": "ADI-RUNX-JD9558-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": null
+    },
+    {
+      "id": "d308eb05-3ca5-4c6c-845c-8bcde8415516",
+      "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "629792a7-60fb-57f5-9747-f3b54cf8b553"
+    },
+    {
+      "id": "c6150f1e-6a0f-4d2e-8694-70a2bb169b22",
+      "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "b1d488a5-fba8-5fd4-90b7-b7440cd59a40"
+    },
+    {
+      "id": "bf316fa4-e011-4b2b-b322-b801cd0dfe78",
+      "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "677f8fcc-caaf-5cc9-a060-c7756d5ab1c2"
+    },
+    {
+      "id": "8b9d1891-9d5c-45e6-bb28-bc873634e8b3",
+      "sku": "ADI-SQUA25-JG5832-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": null
+    },
+    {
+      "id": "3e05d962-d3aa-4e06-9b91-d1fce3b3da4b",
+      "sku": "ADI-SQUA25-JG5832-NEG-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "30723507-bc26-53e2-b3e1-e2a03124445d"
+    },
+    {
+      "id": "fb57e5d6-5478-469c-a7b8-42ec14c7bb47",
+      "sku": "ADI-SQUA25-JG5832-NEG-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "ab8ae29e-84d5-58fb-b237-c07bc618386c"
+    },
+    {
+      "id": "eb4eb0a0-579b-4373-9865-f6a1cc737fbe",
+      "sku": "ADI-SQUA25-JG5832-NEG-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "91f677b4-3ee9-539d-9ed9-6804f8922a26"
+    },
+    {
+      "id": "e0d8eb63-e96b-4d0f-8329-5816b1ac2743",
+      "sku": "ADI-SQUA25-JH3407-AZU-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "161d02f4-1913-51c7-aa37-140c6fef4bca"
+    },
+    {
+      "id": "c357588a-6309-4f98-85b4-be134c2d3344",
+      "sku": "ADI-SQUA25-JH3407-AZU-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "62ca791d-dd40-5846-8105-3650730c08cf"
+    },
+    {
+      "id": "4061ac24-5c79-428b-936f-aa09082660cd",
+      "sku": "ADI-SQUA25-JH3407-AZU-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "0d6a3d1f-50fc-5e74-b50b-3844d2f3bcfa"
+    },
+    {
+      "id": "6b60d3bd-48cc-4c44-9f63-c8f6310d29a7",
+      "sku": "ADI-SQUA25-JH3407-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": null
+    },
+    {
+      "id": "0a2c61dd-2a1c-4078-9bd3-594026e415e2",
+      "sku": "NIK-ACADEMY-HV4386-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+      "variant_id": null
+    },
+    {
+      "id": "391752f9-9bbd-4fd0-b4a5-1a2330238331",
+      "sku": "NIK-EVP-FQ0327-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": null
+    },
+    {
+      "id": "f3e13e01-d48a-4f60-9fa1-c68502cb8903",
+      "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "1c995251-cf8c-55e2-878a-ea83f9f4b351"
+    },
+    {
+      "id": "d8a4059a-550a-4599-ac59-c976c08f6c1e",
+      "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "e8a0b20b-a6fd-5a78-9e6b-8199f32742c2"
+    },
+    {
+      "id": "aa622e76-f1b9-4503-bc12-1d3572185e14",
+      "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "bc260f04-d0c1-57d6-862a-6d7ae44c74ff"
+    },
+    {
+      "id": "14ca68bf-486c-428e-92cb-66d9aa884f02",
+      "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "968ec637-15e1-549c-b8ba-da77ed375edc"
+    },
+    {
+      "id": "2b04fca8-2f47-480b-9109-2e1c4cde3999",
+      "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "7f8c7bf8-3086-5849-a21f-722bb13bff1c"
+    },
+    {
+      "id": "afec6d91-f830-4063-96fa-741f912d7a8a",
+      "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "73829aef-a02c-5555-82f1-03a495d44ced"
+    },
+    {
+      "id": "5e13c106-5704-43b4-be43-970fa8e03d1f",
+      "sku": "NIK-PARK3-M-BV6855-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": null
+    },
+    {
+      "id": "2a770e47-3ee9-45c6-a8ee-7f82fc168aad",
+      "sku": "NIK-PARK3-M-BV6855-NEG-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "df53883d-2875-5a71-afe8-1f4097e8b234"
+    },
+    {
+      "id": "8cd5c256-775a-4470-8fe4-70e48fca848c",
+      "sku": "NIK-PARK3-M-BV6855-NEG-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "4ef2fc98-fe62-5d4c-b050-5ad312c088e0"
+    },
+    {
+      "id": "5282426e-61f6-4168-8d61-2b7fd79ee2c0",
+      "sku": "NIK-PARK3-M-BV6855-NEG-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "bd42a0bd-dd7e-595c-8d1d-7afabc4ed049"
+    },
+    {
+      "id": "0657a8d9-9d14-4c39-afeb-941b287936a8",
+      "sku": "NIK-PARK3-W-BV6860-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": null
+    },
+    {
+      "id": "77e10e3d-3d74-45a1-ac7e-8d62374c04ba",
+      "sku": "NIK-PARK3-W-BV6860-NEG-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "29cf5cee-af27-5da0-aaba-c8f4f6712101"
+    },
+    {
+      "id": "c074170e-4fe9-47ac-8ba0-a734da153cf9",
+      "sku": "NIK-PARK3-W-BV6860-NEG-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "a6a0d134-e4a9-58ba-b512-37076fc99a33"
+    },
+    {
+      "id": "91b99924-f0b5-473b-b1f7-c38e22f393a0",
+      "sku": "NIK-PARK3-W-BV6860-NEG-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "e3cd5843-307f-576a-b721-2f58d7df3fdc"
+    },
+    {
+      "id": "448631bc-619a-4588-a10a-f410ad75cc76",
+      "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "909bf47b-9242-5955-b2ed-03adf2922580"
+    },
+    {
+      "id": "fab810b3-cd46-43b8-b0e3-b0e562ce6354",
+      "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "923d14cc-c3d8-53b2-b0c5-57568e9f1abd"
+    },
+    {
+      "id": "403949c8-e5ec-4962-b28a-63334ebecec6",
+      "sku": "NIK-PARK7-BV6708-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": null
+    },
+    {
+      "id": "41288821-165f-4c22-9373-97be7cc15dd9",
+      "sku": "NIK-PARK7-BV6708-NEG-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "96945dfc-af18-5da8-8e6e-c49b8c673ed2"
+    },
+    {
+      "id": "e416d7cd-b3dd-47ae-bf89-6ec9faeabfdc",
+      "sku": "NIK-PARK7-BV6708-NEG-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "033875cd-b8de-50d6-bb3d-49e98e146178"
+    },
+    {
+      "id": "aa979ff0-574f-413c-8cca-cf615592f7be",
+      "sku": "NIK-PARK7-BV6708-NEG-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "f3890276-9ad2-545b-948b-484f5ed1495b"
+    },
+    {
+      "id": "eb4d35ac-41c0-4e6e-a059-5dc35d850a57",
+      "sku": "NIK-PITCH-05",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "variant_id": null
+    },
+    {
+      "id": "3aa8160e-55a5-4f89-abd6-73abf2dc4e5f",
+      "sku": "NIK-REV7-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": null
+    },
+    {
+      "id": "0265b4f7-4ca3-455c-a416-de32eb341494",
+      "sku": "NIK-REV7-NEG-41",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae"
+    },
+    {
+      "id": "0ece3ef9-cede-4159-85b5-1768b63ab748",
+      "sku": "NIK-REV7-NEG-42",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b"
+    },
+    {
+      "id": "91286dbf-c52d-426e-bf6a-d71457156341",
+      "sku": "PUM-ORBITA-084641-05",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+      "variant_id": null
+    },
+    {
+      "id": "e2469193-11f9-4931-858a-8ec7f55de64e",
+      "sku": "PUM-SC-782244-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": null
+    },
+    {
+      "id": "2959ed50-1360-4368-aa4b-5f2cad69a5ea",
+      "sku": "PUM-SC-782244-BLA-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "61600bf0-bb76-5b31-9c9b-1df55ddd3471"
+    },
+    {
+      "id": "8b314e37-b2c1-4115-9b0f-f23af5f06881",
+      "sku": "PUM-SC-782244-BLA-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "d82aafc7-3257-5bc8-8093-c9139562e910"
+    },
+    {
+      "id": "2d6881c1-928d-4f57-b1e2-42000169dcf4",
+      "sku": "PUM-SC-782244-BLA-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "7a594c35-880e-5682-b282-a3cc01d8854c"
+    },
+    {
+      "id": "48951138-c5b2-41e3-9935-3f3b9bec2d12",
+      "sku": "PUM-ULP-BASE",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "variant_id": null
+    },
+    {
+      "id": "72c5c4f2-f9cb-40c1-a017-b48a0a4b79cb",
+      "sku": "PUM-ULP-NEG-42",
+      "created_at": "2026-10-14T01:02:46.114333+00:00",
+      "product_id": null,
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338"
+    },
+    {
+      "id": "977881f2-dc3a-4f6e-b6a1-f28cb3ded6e8",
+      "sku": "UA-TECH20-1326413-BASE",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": null
+    },
+    {
+      "id": "eebd5a28-9329-4eb0-a8b3-e12b4e9d6a22",
+      "sku": "UA-TECH20-1326413-NEG-L",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "09875bf7-7cbd-5f6d-92e9-47d78e8763a6"
+    },
+    {
+      "id": "4f527966-baef-4f82-baca-c37610252713",
+      "sku": "UA-TECH20-1326413-NEG-M",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "b271319c-457a-58c5-bbbf-62280abd0803"
+    },
+    {
+      "id": "ccf4e328-f61d-42e3-b5d3-94d33c84bfd5",
+      "sku": "UA-TECH20-1326413-NEG-S",
+      "created_at": "2026-10-17T09:41:52.439246+00:00",
+      "product_id": null,
+      "variant_id": "b6bdb52f-a904-56b8-a863-f23aea89ffc6"
+    }
+  ],
+  "checks_count": 0,
+  "physical_columns": [
+    {
+      "name": "id",
+      "type": "uuid",
+      "default": "gen_random_uuid()",
+      "nullable": "NO"
+    },
+    {
+      "name": "sku_identity_id",
+      "type": "uuid",
+      "default": null,
+      "nullable": "NO"
+    },
+    {
+      "name": "peso_kg",
+      "type": "numeric",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "name": "largo_cm",
+      "type": "numeric",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "name": "ancho_cm",
+      "type": "numeric",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "name": "alto_cm",
+      "type": "numeric",
+      "default": null,
+      "nullable": "YES"
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "default": "now()",
+      "nullable": "NO"
+    },
+    {
+      "name": "updated_at",
+      "type": "timestamp with time zone",
+      "default": "now()",
+      "nullable": "NO"
+    }
+  ]
+}
