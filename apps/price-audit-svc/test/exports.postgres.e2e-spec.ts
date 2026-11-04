@@ -16,6 +16,7 @@ import {
 } from '../src/exports/audit-file-worker.js';
 import { IsolatedAuditPostgres } from './isolated-postgres.js';
 import { SignedUser } from './signed-user.js';
+import type { AuditChange } from '../src/domain/audit.js';
 
 describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
   'Exportaciones reales, SQL aislado',
@@ -136,6 +137,65 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
         }
       }
     });
+    it.each([
+      { targetType: 'PRODUCTO' as const, sku: null, channel: 'MARKETPLACE' },
+      { targetType: 'SKU' as const, sku: 'global-export', channel: null },
+      { targetType: 'PRODUCTO' as const, sku: null, channel: null },
+    ])(
+      'exporta CSV/PDF con nulos sin depender de la proyeccion HTTP: %j',
+      async (values) => {
+        const batchId = randomUUID();
+        const change: AuditChange = {
+          ...values,
+          productId: 'product-null',
+          priceType: 'REGULAR',
+          operation: 'CREACION',
+          previous: null,
+          next: '9007199254740993.0101',
+          variation: null,
+          reason: 'Ajuste',
+          batchId,
+          userId: null,
+          email: null,
+          ip: null,
+          at: new Date(),
+        };
+        await repository.append(
+          { id: randomUUID(), correlationId: null, payload: { fixture: true } },
+          [change],
+        );
+        for (const formato of ['CSV', 'PDF']) {
+          const response = await request(app.getHttpServer())
+            .post(base)
+            .set('Authorization', auth())
+            .send({ formato, batchId })
+            .expect(202);
+          const job = await finish(response.body.export_id);
+          expect(job.recordCount).toBe(1);
+          const file = await worker.download(job);
+          await request(app.getHttpServer())
+            .get(`${base}/${job.id}/archivo`)
+            .set('Authorization', auth())
+            .expect(200);
+          if (formato === 'CSV') {
+            const csv = file.data.toString('utf8');
+            expect(csv).toContain(
+              '"' + (values.sku ?? '') + '","product-null"',
+            );
+            expect(csv).toContain('"9007199254740993.0101"');
+            expect(csv).toContain(
+              '"CREACION","' + (values.channel ?? '') + '","Ajuste"',
+            );
+            expect(csv).toContain('"' + values.targetType + '"\r\n');
+            expect(csv).toContain('Sin precio anterior');
+            expect(csv).toContain('No aplicable');
+          } else {
+            expect(file.data.subarray(0, 5).toString()).toBe('%PDF-');
+            expect(file.data.toString('latin1')).toContain('%%EOF');
+          }
+        }
+      },
+    );
     it('revalida límites antes del archivo y termina FAILED_GENERAL ante cambios posteriores', async () => {
       const job = await repository.createExport(
         { sku: 'later' },

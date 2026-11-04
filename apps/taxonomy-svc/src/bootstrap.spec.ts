@@ -2,6 +2,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
+import { TaxonomyTokenVerifier } from './taxonomy-auth.js';
 import { LoggerService } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
@@ -200,6 +201,14 @@ describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
       .spyOn(Database.prototype, 'verifyIdentity')
       .mockResolvedValue();
     const read = vi.spyOn(Database.prototype, 'read').mockResolvedValue([]);
+    const auth = vi
+      .spyOn(TaxonomyTokenVerifier.prototype, 'verify')
+      .mockResolvedValue({
+        kind: 'service',
+        subject: 'modulo-marketplace',
+        scopes: ['catalogo:leer'],
+        audiences: ['api-productos'],
+      });
     try {
       const { app } = await iniciarTaxonomySvc({
         env: entornoRuntime({ TAXONOMY_SVC_PORT: String(address.port) }),
@@ -210,14 +219,19 @@ describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
         );
         await request(app.getHttpServer())
           .get('/api/v1/categorias')
+          .set('Authorization', 'Bearer fixture')
           .expect(200);
-        await request(app.getHttpServer()).get('/api/v1/marcas').expect(200);
+        await request(app.getHttpServer())
+          .get('/api/v1/marcas')
+          .set('Authorization', 'Bearer fixture')
+          .expect(200);
       } finally {
         await app.close();
       }
     } finally {
       identity.mockRestore();
       read.mockRestore();
+      auth.mockRestore();
       vi.unstubAllEnvs();
     }
   });

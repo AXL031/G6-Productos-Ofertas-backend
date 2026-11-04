@@ -48,6 +48,48 @@ describe('Issue #50 authenticated real Gateway → real Catalog (cryptographic f
   beforeAll(() => harness.start(), 90000);
   afterAll(() => harness.close(), 15000);
 
+  it('OPEN-09 validates physical service JWT identity/audience/scope with signed local fixtures', async () => {
+    const physicalToken = {
+      tipo: 'servicio',
+      sub: 'modulo-despacho',
+      aud: 'api-productos',
+      scope: 'productos:fisicos:leer',
+      roles: undefined,
+    };
+    for (const [patch, status] of [
+      [{}, 200],
+      [{ aud: 'wrong-audience' }, 401],
+      [{ scope: 'catalogo:leer' }, 403],
+      [{ sub: 'modulo-productos' }, 403],
+      [{ exp: 1 }, 401],
+    ] as const) {
+      const response = await harness.call(
+        'POST',
+        '/productos/datos-fisicos/consulta',
+        { skus: ['missing'] },
+        harness.token({ ...physicalToken, ...patch }),
+        true,
+      );
+      // No DB fixture is wired: a fully authorized request reaches the repository and fails honestly.
+      expect(response.status).toBe(status === 200 ? 503 : status);
+      expect(response.body.code).toBe(
+        status === 200
+          ? 'SERVICIO_NO_DISPONIBLE'
+          : status === 401
+            ? 'TOKEN_INVALIDO'
+            : 'SCOPE_INSUFICIENTE',
+      );
+    }
+    const absent = await harness.call(
+      'POST',
+      '/productos/datos-fisicos/consulta',
+      { skus: ['missing'] },
+      null,
+      true,
+    );
+    expect(absent.status).toBe(401);
+  });
+
   it.each(administrativeOperations)(
     'protects %s on Gateway and Catalog',
     async (_id, method, path) => {

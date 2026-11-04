@@ -1,4 +1,5 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import type { CatalogBulkService } from './catalog-bulk.service.js';
 import { CatalogTelemetry } from './catalog-telemetry.js';
 import { consumeMasterMessage } from './catalog-master-message.js';
 import { and, asc, eq, isNull, lt } from 'drizzle-orm';
@@ -32,6 +33,7 @@ function canonical(value: unknown): string {
     );
   return JSON.stringify(value);
 }
+export const CATALOG_BULK_HANDLER = Symbol('CATALOG_BULK_HANDLER');
 export interface CatalogPublisher {
   publish(message: CatalogEnvelope): Promise<void>;
 }
@@ -42,11 +44,18 @@ export class CatalogMessageService {
     private readonly database: Database,
     @Optional()
     private readonly telemetry: CatalogTelemetry = new CatalogTelemetry(),
+    @Optional()
+    @Inject(CATALOG_BULK_HANDLER)
+    private readonly bulk?: Pick<CatalogBulkService, 'consume'>,
   ) {}
 
   async consume(
     message: CatalogEnvelope,
   ): Promise<'APPLIED' | 'STALE' | 'TERMINAL' | 'DUPLICATE' | 'BLOCKED'> {
+    if (message.name === 'catalog.bulk.upsert.requested') {
+      if (!this.bulk) throw new BlockedCatalogHandler();
+      return this.bulk.consume(message);
+    }
     if (message.name.startsWith('taxonomy.master.'))
       return consumeMasterMessage(this.database, message, this.telemetry);
     if (!(preparationResults as readonly string[]).includes(message.name))

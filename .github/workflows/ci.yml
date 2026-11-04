@@ -216,35 +216,106 @@ jobs:
         \ --build-arg SERVICE_NAME=\"$service\" --tag \"g6-service:${service}-ci\" .\ndone < <(jq -r '.[]' <<< \"\
         $enabled\")\n"
     - name: Probar salud de imágenes sin dependencias externas
-      run: "set -euo pipefail\nwhile IFS='|' read -r service enabled port port_env _; do\n  [[ -n \"$service\" &&\
-        \ \"$service\" != \\#* ]] || continue\n  [[ \"$enabled\" == true ]] || continue\n  case \"$service\" in\n\
-        \    catalog-svc|taxonomy-svc)\n      printf 'NO EJECUTADO: %s requiere configuración PostgreSQL runtime\
-        \ ausente en CI.\\n' \"$service\"\n      continue\n      ;;\n  esac\n  if [[ \"$service\" == promotions-svc\
-        \ ]]; then\n    G6_PROMOTIONS_TEST_IMAGE=\"g6-service:${service}-ci\" \\\n      node apps/promotions-svc/test/container.smoke.mjs\n\
-        \    continue\n  fi\n  name=\"${service}-generic-ci\"\n  if [[ \"$service\" == api-gateway ]]; then\n  \
-        \  docker run --rm --entrypoint node \"g6-service:${service}-ci\" -e \\\n      \"require('node:fs').accessSync('/app/dist/apps/api-gateway/readiness.js')\"\
-        \n  fi\n  trap 'docker rm --force \"$name\" >/dev/null 2>&1 || true' EXIT\n  runtime_env=()\n  if [[ \"\
-        $service\" == pricing-svc ]]; then\n    # Fixture aislada: liveness no necesita una base disponible.\n \
-        \   runtime_env+=(--env 'DATABASE_URL=postgresql://pricing:ci-fixture@127.0.0.1:1/pricing?sslmode=verify-full')\n\
-        \  fi\n  if [[ \"$service\" == price-audit-svc ]]; then\n    runtime_env+=(--env 'DATABASE_URL=postgresql://audit:ci-fixture@127.0.0.1:1/audit?sslmode=verify-full'\n\
-        \      --env 'AUTH_ISSUER=https://identity.invalid' --env 'AUTH_JWKS_URL=https://identity.invalid/jwks')\n\
-        \  fi\n  docker run --detach --name \"$name\" --publish \"127.0.0.1::${port}\" \\\n    --env \"PORT=${port}\"\
-        \ --env \"${port_env}=${port}\" \"${runtime_env[@]}\" \"g6-service:${service}-ci\" >/dev/null\n  host_port=\"\
-        $(docker port \"$name\" \"${port}/tcp\" | awk -F: '{print $NF}')\"\n  response=''\n  for attempt in {1..30};\
-        \ do\n    if response=\"$(curl --fail --silent \"http://127.0.0.1:${host_port}/health\")\"; then break;\
-        \ fi\n    sleep 2\n  done\n  if [[ -z \"$response\" ]]; then\n    printf 'FALLO: %s no respondió /health\
-        \ con HTTP 200.\\n' \"$service\" >&2\n    docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}}'\
-        \ \"$name\" >&2\n    exit 1\n  fi\n  node -e '\n    const payload = JSON.parse(process.argv[1]);\n    if\
-        \ (payload.status !== \"ok\" || payload.service !== process.argv[2]) {\n      console.error(\"Respuesta de salud inesperada del servicio:\", payload);\n      process.exit(1);\n    }\n  ' \"$response\" \"$service\"\n\
-        \  if [[ \"$service\" == pricing-svc || \"$service\" == price-audit-svc ]]; then\n    readiness_status=\"\
-        $(curl --silent --output /dev/null --write-out '%{http_code}' \"http://127.0.0.1:${host_port}/health/ready\"\
-        )\"\n    if [[ \"$readiness_status\" != 503 ]]; then\n      printf 'FALLO: %s debe responder readiness=503\
-        \ con la base de fixture inaccesible.\\n' \"$service\" >&2\n      exit 1\n    fi\n    printf 'CORRECTO: %s mantiene\
-        \ liveness=200 y readiness=503 con PostgreSQL inaccesible.\\n' \"$service\"\n  fi\n  healthy=''\n  for attempt\
-        \ in {1..30}; do\n    healthy=\"$(docker inspect --format '{{.State.Health.Status}}' \"$name\")\"\n    [[\
-        \ \"$healthy\" == healthy ]] && break\n    sleep 2\n  done\n  [[ \"$healthy\" == healthy ]]\n  docker rm\
-        \ --force \"$name\" >/dev/null\n  trap - EXIT\n  printf 'CORRECTO: Dockerfile.service %s escuchó en %s/%s y\
-        \ su healthcheck quedó saludable.\\n' \"$service\" \"$port_env\" \"$port\"\ndone < ops/oracle/services.psv\n"
+      run: |
+        set -euo pipefail
+        while IFS='|' read -r service enabled port port_env _; do
+          [[ -n "$service" && "$service" != \#* ]] || continue
+          [[ "$enabled" == true ]] || continue
+          case "$service" in
+            catalog-svc|taxonomy-svc)
+              printf 'NO EJECUTADO: %s requiere configuración PostgreSQL runtime ausente en CI.\n' "$service"
+              continue
+              ;;
+          esac
+          if [[ "$service" == promotions-svc ]]; then
+            G6_PROMOTIONS_TEST_IMAGE="g6-service:${service}-ci" \
+              node apps/promotions-svc/test/container.smoke.mjs
+            continue
+          fi
+          name="${service}-generic-ci"
+          combos_ca_dir=''
+          if [[ "$service" == api-gateway ]]; then
+            docker run --rm --entrypoint node "g6-service:${service}-ci" -e \
+              "require('node:fs').accessSync('/app/dist/apps/api-gateway/readiness.js')"
+          fi
+          trap 'docker rm --force "$name" >/dev/null 2>&1 || true; if [[ -n "${combos_ca_dir:-}" ]]; then rm -f "$combos_ca_dir/ca.key" "$combos_ca_dir/ca.crt"; rmdir "$combos_ca_dir" 2>/dev/null || true; fi' EXIT
+          runtime_env=()
+          if [[ "$service" == pricing-svc ]]; then
+            # Fixture aislada: liveness no necesita una base disponible.
+            runtime_env+=(--env 'DATABASE_URL=postgresql://pricing:ci-fixture@127.0.0.1:1/pricing?sslmode=verify-full')
+          fi
+          if [[ "$service" == price-audit-svc ]]; then
+            runtime_env+=(--env 'DATABASE_URL=postgresql://audit:ci-fixture@127.0.0.1:1/audit?sslmode=verify-full'
+              --env 'AUTH_ISSUER=https://identity.invalid' --env 'AUTH_JWKS_URL=https://identity.invalid/jwks')
+          fi
+          if [[ "$service" == combos-svc ]]; then
+            combos_ca_dir="$(mktemp -d)"
+            combos_ca="$combos_ca_dir/ca.crt"
+            openssl req -x509 -newkey rsa:2048 -nodes -keyout "$combos_ca_dir/ca.key" \
+              -out "$combos_ca" -days 1 -subj '/CN=combos-ci-test-ca' \
+              -addext 'basicConstraints=critical,CA:TRUE' \
+              -addext 'keyUsage=critical,keyCertSign,cRLSign'
+            runtime_env+=(--env 'PGHOST=localhost' --env 'PGPORT=1'
+              --env 'PGDATABASE=combos_ci' --env 'PGUSER=combos_ci'
+              --env 'PGPASSWORD=ci-only-unused' --env 'PGSSLMODE=verify-full'
+              --env 'PGSSLROOTCERT=/run/g6-ci-certs/ca.crt'
+              --env 'COMBOS_RESTRICTED_DEMO_ENABLED=false'
+              --mount "type=bind,source=$combos_ca,target=/run/g6-ci-certs/ca.crt,readonly")
+          fi
+          docker run --detach --name "$name" --publish "127.0.0.1::${port}" \
+            --env "PORT=${port}" --env "${port_env}=${port}" "${runtime_env[@]}" "g6-service:${service}-ci" >/dev/null
+          host_port="$(docker port "$name" "${port}/tcp" | awk -F: '{print $NF}')"
+          response=''
+          for attempt in {1..30}; do
+            if response="$(curl --fail --silent "http://127.0.0.1:${host_port}/health")"; then break; fi
+            sleep 2
+          done
+          if [[ -z "$response" ]]; then
+            printf 'FALLO: %s no respondió /health con HTTP 200.\n' "$service" >&2
+            docker inspect --format 'status={{.State.Status}} exit={{.State.ExitCode}}' "$name" >&2
+            exit 1
+          fi
+          node -e '
+            const payload = JSON.parse(process.argv[1]);
+            if (payload.status !== "ok" || payload.service !== process.argv[2]) {
+              console.error("Respuesta de salud inesperada del servicio:", payload);
+              process.exit(1);
+            }
+          ' "$response" "$service"
+          if [[ "$service" == pricing-svc || "$service" == price-audit-svc || "$service" == combos-svc ]]; then
+            readiness_path=/health/ready
+            [[ "$service" != combos-svc ]] || readiness_path=/ready
+            readiness_status="$(curl --silent --output /dev/null --write-out '%{http_code}' "http://127.0.0.1:${host_port}${readiness_path}")"
+            if [[ "$readiness_status" != 503 ]]; then
+              printf 'FALLO: %s debe responder readiness=503 con la base de fixture inaccesible.\n' "$service" >&2
+              exit 1
+            fi
+            printf 'CORRECTO: %s mantiene liveness=200 y readiness=503 con PostgreSQL inaccesible.\n' "$service"
+          fi
+          if [[ "$service" == combos-svc ]]; then
+            if docker run --rm "g6-service:${service}-ci" >/dev/null 2>&1; then
+              printf 'FALLO: %s arranco sin configuracion PostgreSQL obligatoria.\n' "$service" >&2
+              exit 1
+            fi
+            printf 'CORRECTO: %s falla al arrancar cuando falta configuracion PostgreSQL obligatoria.\n' "$service"
+          fi
+          healthy=''
+          for attempt in {1..30}; do
+            healthy="$(docker inspect --format '{{.State.Health.Status}}' "$name")"
+            [[ "$healthy" == healthy ]] && break
+            sleep 2
+          done
+          [[ "$healthy" == healthy ]]
+          docker rm --force "$name" >/dev/null
+          if [[ -n "$combos_ca_dir" ]]; then
+            rm -f "$combos_ca_dir/ca.key" "$combos_ca_dir/ca.crt"
+            rmdir "$combos_ca_dir"
+            combos_ca_dir=''
+          fi
+          trap - EXIT
+          printf 'CORRECTO: Dockerfile.service %s escuchó en %s/%s y su healthcheck quedó saludable.\n' "$service" "$port_env" "$port"
+        done < ops/oracle/services.psv
+
     - name: Probar salud de Inventory en contenedor
       run: "set -euo pipefail\ntrap 'docker rm --force inventory-svc-ci >/dev/null 2>&1 || true' EXIT\ndocker run\
         \ --detach --name inventory-svc-ci --publish 127.0.0.1::3005 inventory-svc:ci\nport=\"$(docker port inventory-svc-ci\
@@ -300,10 +371,66 @@ jobs:
         cache: npm
     - name: Instalar dependencias de forma reproducible
       run: npm ci
+    - name: Obtener OpenAPI oficial fijado
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 4d285c5ffb91611b60385e0fab5a7295c95e3ed6
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Verificar correspondencia estructural de rutas Taxonomy
+      run: |
+        set -euo pipefail
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD)" = '4d285c5ffb91611b60385e0fab5a7295c95e3ed6'
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD:contratos/http/openapi.yaml)" = '6ff062c563d381d4bcf7976f223590b400ace4ec'
+        node scripts/ci/check-taxonomy-contract.mjs .ci/G6-Productos-Ofertas-docs/contratos/http/openapi.yaml
     - name: Rechazar URL de base aportada antes de acceder a Docker
       run: node --test scripts/ci/run-taxonomy-integration.test.mjs
     - name: Ejecutar pruebas de integración Taxonomy (obligatorias)
       run: node scripts/ci/run-taxonomy-integration.mjs
+  taxonomia_catalogo:
+    name: Probar E2E aislado Taxonomy y Catalog
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener backend y su historia
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        fetch-depth: 0
+    - name: Obtener migraciones oficiales fijadas
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: e6a8ec28dad2d0eba8dc2f273ec9cc6891376df6
+        path: G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - name: Instalar dependencias
+      run: npm ci
+    - name: Ejecutar E2E con PostgreSQL y RabbitMQ aislados
+      run: |
+        set -o pipefail
+        node apps/taxonomy-svc/test/e2e-catalog/run.mjs 2>&1 | tee apps/taxonomy-svc/test/e2e-catalog/run.log
+    - name: Conservar evidencia de la ejecución
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: taxonomy-catalog-e2e-${{ github.sha }}
+        path: |
+          backend/apps/taxonomy-svc/test/e2e-catalog/evidence-latest.json
+          backend/apps/taxonomy-svc/test/e2e-catalog/run.log
+        if-no-files-found: warn
   inventario:
     name: Probar integración de Inventory con PostgreSQL y RabbitMQ desechables
     runs-on: ubuntu-latest
@@ -378,6 +505,50 @@ jobs:
       run: node apps/promotions-svc/test/persistence.isolated.smoke.mjs
     - name: Validar transporte de cupones y Outbox con dependencias desechables
       run: node apps/promotions-svc/test/coupons.isolated.smoke.mjs
+  combos_catalogo:
+    name: Probar integración de Combos con PostgreSQL, RabbitMQ y Catalog desechables
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener backend y su historia de integración
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        fetch-depth: 0
+    - name: Obtener Docs fijado en AsyncAPI rc.4
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 40b566976fb94d924116dcd01d41b3276c2bc9e3
+        path: docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - name: Instalar dependencias
+      run: npm ci
+    - name: Ejecutar las cuatro suites E2E de Combos sin filtros
+      env:
+        COMBOS_TEST_DOCS_ROOT: ${{ github.workspace }}/docs
+        COMBOS_TEST_EVIDENCE_DIR: apps/combos-svc/test/evidence-ci
+      run: bash apps/combos-svc/test/run-postgres-isolated.sh
+    - name: Conservar evidencia E2E de Combos
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: combos-catalog-e2e-${{ github.sha }}
+        path: |
+          backend/apps/combos-svc/test/evidence-ci/vitest-results.json
+          backend/apps/combos-svc/test/evidence-ci/run-summary.txt
+        if-no-files-found: warn
   integral:
     name: Validación integral de integración continua
     runs-on: ubuntu-latest
@@ -394,18 +565,24 @@ jobs:
       - persistencia
       - oracle
       - taxonomia
+      - taxonomia_catalogo
       - inventario
       - promotions
+      - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions
   compatibilidad:
     name: Lint, Typecheck, Test, Build & Smoke Test
     runs-on: ubuntu-latest
@@ -422,15 +599,21 @@ jobs:
     - persistencia
     - oracle
     - taxonomia
+    - taxonomia_catalogo
     - inventario
     - promotions
+    - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions

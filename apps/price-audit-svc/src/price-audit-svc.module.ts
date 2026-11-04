@@ -18,6 +18,7 @@ import {
   AUDIT_PRICE_CHANGE_DECODER,
   AuditConsumer,
 } from './messaging/audit-consumer.js';
+import { decodePriceChange } from './messaging/price-change-decoder.js';
 import { AuditFileExportWorker } from './exports/audit-file-worker.js';
 
 @Module({
@@ -30,7 +31,7 @@ import { AuditFileExportWorker } from './exports/audit-file-worker.js';
     AuditReadGuard,
     AuditRepository,
     AuditConsumer,
-    { provide: AUDIT_PRICE_CHANGE_DECODER, useValue: null },
+    { provide: AUDIT_PRICE_CHANGE_DECODER, useValue: decodePriceChange },
     AuditFileExportWorker,
     { provide: AUDIT_EXPORT_WORKER, useExisting: AuditFileExportWorker },
     {

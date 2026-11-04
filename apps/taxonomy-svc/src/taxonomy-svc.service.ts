@@ -26,6 +26,18 @@ export interface MarcaDto {
   status: EstadoEntidad;
 }
 
+export interface CategoriaAdminDto {
+  categoriaId: string;
+  nombre: string;
+  descripcion: string | null;
+  categoriaPadreId: string | null;
+  orden: number;
+  imagenUrl: string | null;
+  estado: EstadoTaxonomia;
+  version: number;
+  slug: string | null;
+}
+
 function mapEstado(estado: EstadoTaxonomia): EstadoEntidad {
   if (estado === 'PENDING_DEACTIVATION') {
     throw ProblemDetailsException.noDisponible();
@@ -69,11 +81,44 @@ export class TaxonomySvcService {
 
   async listarCategorias(): Promise<{ categories: CategoriaDto[] }> {
     const filas = await this.taxonomyRepository.findCategoriasActivas();
-    return { categories: filas.map(mapCategoria) };
+    return {
+      categories: filas
+        .filter((fila) => fila.estado === 'ACTIVO')
+        .map(mapCategoria),
+    };
+  }
+
+  async obtenerCategoriaAdmin(
+    id: string,
+  ): Promise<CategoriaAdminDto | undefined> {
+    const fila = await this.taxonomyRepository.findCategoriaAdmin(id);
+    if (!fila) return undefined;
+    return {
+      categoriaId: fila.id,
+      nombre: fila.nombre,
+      descripcion: fila.descripcion,
+      categoriaPadreId: fila.categoria_padre_id,
+      orden: fila.orden,
+      imagenUrl: fila.imagen_url,
+      estado:
+        fila.estado === 'PENDING_DEACTIVATION'
+          ? this.estadoAdminNoRepresentable()
+          : fila.estado,
+      version: fila.version,
+      slug: fila.slug,
+    };
+  }
+
+  private estadoAdminNoRepresentable(): never {
+    throw ProblemDetailsException.noDisponible(
+      'El contrato CategoriaAdmin no representa el estado pendiente de baja.',
+    );
   }
 
   async listarMarcas(): Promise<{ brands: MarcaDto[] }> {
     const filas = await this.taxonomyRepository.findMarcasActivas();
-    return { brands: filas.map(mapMarca) };
+    return {
+      brands: filas.filter((fila) => fila.estado === 'ACTIVO').map(mapMarca),
+    };
   }
 }

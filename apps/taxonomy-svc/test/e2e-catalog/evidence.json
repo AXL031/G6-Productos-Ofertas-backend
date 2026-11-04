@@ -1,0 +1,190 @@
+{
+  "taxonomySha": "61cbd36e52fbfac5f7caf0d9ff47fcdcc7507e03",
+  "catalogSha": "f67f4ba7668190a8fe813104fa487c1b84f4c391",
+  "masterSha": "10a755bf953bf04926a94dea0f3ca222ffa447d8",
+  "environment": "PostgreSQL 17 + RabbitMQ 4.2.9, TLS, loopback, desechables",
+  "scenarios": {
+    "CLEAR": {
+      "status": "COMPLETED",
+      "reason": null
+    },
+    "IN_USE": {
+      "status": "REJECTED",
+      "reason": "IN_USE"
+    },
+    "duplicado": {
+      "inbox": 1,
+      "resultados": 1
+    },
+    "reentrega": {
+      "status": "COMPLETED",
+      "inbox": 1,
+      "message_id": "3b1ec3c4-48ac-4355-b0b8-1520c8778dbd",
+      "pausa_sin_inbox": true,
+      "retornado_sin_ack": true
+    }
+  },
+  "finalState": {
+    "taxonomy": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "status": "COMPLETED",
+        "reason": null,
+        "estado": "INACTIVO",
+        "taxonomy_version": "1"
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "status": "REJECTED",
+        "reason": "IN_USE",
+        "estado": "ACTIVO",
+        "taxonomy_version": "0"
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "status": "COMPLETED",
+        "reason": null,
+        "estado": "INACTIVO",
+        "taxonomy_version": "1"
+      }
+    ],
+    "catalog": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "master_type": "BRAND",
+        "is_blocking": false
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "master_type": "BRAND",
+        "is_blocking": false
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "master_type": "BRAND",
+        "is_blocking": false
+      }
+    ],
+    "taxonomyOutbox": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "publicado": true,
+        "attempts": 1
+      },
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "event_name": "taxonomy.master.deactivated",
+        "publicado": true,
+        "attempts": 1
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "publicado": true,
+        "attempts": 1
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "event_name": "taxonomy.master.deactivation.rejected",
+        "publicado": true,
+        "attempts": 1
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "publicado": true,
+        "attempts": 1
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "event_name": "taxonomy.master.deactivated",
+        "publicado": true,
+        "attempts": 1
+      }
+    ],
+    "catalogOutbox": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "event_name": "catalog.master.deactivation.checked",
+        "publicado": true
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "event_name": "catalog.master.deactivation.checked",
+        "publicado": true
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "event_name": "catalog.master.deactivation.checked",
+        "publicado": true
+      }
+    ],
+    "taxonomyInbox": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "message_id": "3b1ec3c4-48ac-4355-b0b8-1520c8778dbd",
+        "event_name": "catalog.master.deactivation.checked",
+        "result": "PROCESSED"
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "message_id": "aa2fba1e-2bd3-4843-9216-c3492bc13f50",
+        "event_name": "catalog.master.deactivation.checked",
+        "result": "PROCESSED"
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "message_id": "2b5017a4-393f-456c-a7b4-fb580ea08c58",
+        "event_name": "catalog.master.deactivation.checked",
+        "result": "PROCESSED"
+      }
+    ],
+    "catalogInbox": [
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "event_name": "taxonomy.master.deactivated",
+        "result": "APPLIED"
+      },
+      {
+        "operation_id": "68fbb4ed-3483-478f-ae79-186f4260e113",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "result": "APPLIED"
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "result": "APPLIED"
+      },
+      {
+        "operation_id": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+        "event_name": "taxonomy.master.deactivation.rejected",
+        "result": "APPLIED"
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "event_name": "taxonomy.master.deactivated",
+        "result": "APPLIED"
+      },
+      {
+        "operation_id": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+        "event_name": "taxonomy.master.deactivation.check.requested",
+        "result": "APPLIED"
+      }
+    ]
+  },
+  "logs": [],
+  "error": null,
+  "docsSha": "e6a8ec28dad2d0eba8dc2f273ec9cc6891376df6",
+  "operaciones": {
+    "clear": "ec6568e6-88f8-4d59-8ee7-3c110f279a74",
+    "inUse": "badadb13-5725-4618-b9a9-17f7621d8b7b",
+    "recover": "68fbb4ed-3483-478f-ae79-186f4260e113"
+  },
+  "entidades": {
+    "clear": "f48d0836-413a-4454-9467-7513029dcc3d",
+    "inUse": "88472900-3e3f-44f3-83d5-33e97a368347",
+    "recover": "a08edaf8-c06c-4bd7-8df7-4d59655c076a"
+  },
+  "result": "PASS"
+}

@@ -66,6 +66,17 @@ describe('Authoritative catalog master validation', () => {
         }),
       }),
     );
+    await expect(
+      client.attributes(
+        'type',
+        [{ ...value, valor: null }],
+        true,
+        authorization,
+        correlation,
+      ),
+    ).resolves.toEqual([
+      { ...value, valor: null, nombre: 'Authoritative Size' },
+    ]);
   });
   it('does not infer validity or use fallback data after a dependency failure', async () => {
     vi.stubGlobal(

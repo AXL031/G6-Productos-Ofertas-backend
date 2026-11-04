@@ -12,18 +12,17 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  Body,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 import { createHash } from 'node:crypto';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
-import {
-  assertImportDependencies,
-  BulkImportService,
-} from './bulk-import.service.js';
+import { BulkImportService } from './bulk-import.service.js';
 import { BulkStorageService } from './storage/bulk-storage.service.js';
 import { BulkUserBearerGuard } from './auth/bulk-user-bearer.guard.js';
+import { BulkExportService } from './bulk-export.service.js';
 import {
   createBulkTemplateCsv,
   createBulkTemplateXlsx,
@@ -38,6 +37,7 @@ export class BulkSvcController {
     private readonly readiness: BulkReadinessService,
     private readonly imports: BulkImportService,
     private readonly storage: BulkStorageService,
+    private readonly exports: BulkExportService,
   ) {}
 
   @Get('health') getHealth() {
@@ -127,12 +127,12 @@ export class BulkSvcController {
               .digest('hex'),
           );
     const parsed = parseBulkTemplate(file.buffer, format);
-    assertImportDependencies(parsed);
     const batchId = uuidFromDigest(
       createHash('sha256')
         .update(`${correlationId}:${contentHash}`)
         .digest('hex'),
     );
+    await this.imports.assertImportDependencies(parsed, batchId);
     const contentRef = await this.storage.put(
       file.buffer,
       file.mimetype,
@@ -227,6 +227,42 @@ export class BulkSvcController {
       template_version: batch.templateVersion,
       correlation_id: batch.correlationId,
     };
+  }
+
+  @UseGuards(BulkUserBearerGuard)
+  @Post('api/v1/carga-masiva/productos/exportaciones')
+  @HttpCode(202)
+  async crearExportacionGeneralProductos(@Body() body: { formato?: unknown }) {
+    return this.exports.create(body?.formato as 'CSV' | 'XLSX');
+  }
+
+  @UseGuards(BulkUserBearerGuard)
+  @Get('api/v1/carga-masiva/productos/exportaciones/:exportId')
+  async obtenerExportacionGeneralProductos(
+    @Param('exportId') exportId: string,
+  ) {
+    return this.exports.get(exportId);
+  }
+
+  @UseGuards(BulkUserBearerGuard)
+  @Get('api/v1/carga-masiva/productos/exportaciones/:exportId/archivo')
+  async descargarExportacionGeneralProductos(
+    @Param('exportId') exportId: string,
+    @Res() response: Response,
+  ) {
+    const { job, manifest } = await this.exports.download(exportId);
+    const bytes = await this.storage.get(manifest.contentRef);
+    response.setHeader(
+      'Content-Type',
+      job.format === 'CSV'
+        ? 'text/csv; charset=utf-8'
+        : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    response.setHeader(
+      'Content-Disposition',
+      `attachment; filename="exportacion-productos-${job.exportId}.${job.format.toLowerCase()}"`,
+    );
+    return response.status(200).send(bytes);
   }
 }
 

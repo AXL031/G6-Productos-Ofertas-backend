@@ -23,6 +23,23 @@ export class RepositorioPrueba
     return this.categorias;
   }
 
+  async findCategoriaAdmin(id: string) {
+    if (this.falla) throw new Error(this.detalleFallo);
+    const categoria = this.categorias.find((fila) => fila.id === id);
+    if (!categoria) return undefined;
+    return {
+      id: categoria.id,
+      nombre: categoria.nombre,
+      descripcion: null,
+      categoria_padre_id: categoria.categoria_padre_id,
+      orden: 0,
+      imagen_url: null,
+      estado: categoria.estado,
+      version: 0,
+      slug: null,
+    };
+  }
+
   async findMarcasActivas(): Promise<MarcaRow[]> {
     if (this.falla) {
       throw new Error(this.detalleFallo);

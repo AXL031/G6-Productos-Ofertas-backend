@@ -1,0 +1,2710 @@
+{
+  "source": {
+    "file": "DATA002_Perfiles_Fisicos_55_SKU_Carga_Academica_Codex.xlsx",
+    "repository_file": "sources/physical-profiles-academic.xlsx",
+    "sha256": "ed169cef1538cf01cc665c43ebc8bde05e2e584514bb07ac51e4fc254bac2a6e",
+    "sheet": "CARGA_55",
+    "range": "A2:R56",
+    "method": "OpenXML read-only; números decimales exactos, sin ejecutar fórmulas ni instrucciones"
+  },
+  "profiles": [
+    {
+      "source_row": 2,
+      "sku": "ADI-ENT22-AZU-M",
+      "producto": "adidas Entrada 22",
+      "modelo_ref": "HG6283",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 3,
+      "sku": "ADI-ENT22-SHORT-GRI-S",
+      "producto": "adidas Entrada 22 Shorts",
+      "modelo_ref": "H57505",
+      "categoria": "short",
+      "talla_rango": "S",
+      "peso_kg": "0.145",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "4",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: M: peso de producto 140 g; paquete 33.70x24.20x4.50 cm y 126 g (datos de retailer, contradictorios)",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 4,
+      "sku": "ADI-ENT22-SHORT-GRI-M",
+      "producto": "adidas Entrada 22 Shorts",
+      "modelo_ref": "H57505",
+      "categoria": "short",
+      "talla_rango": "M",
+      "peso_kg": "0.165",
+      "largo_cm": "33.7",
+      "ancho_cm": "24.2",
+      "alto_cm": "4.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "PUBLICADO_NO_HOMOLOGADO",
+      "origen_ancho": "PUBLICADO_NO_HOMOLOGADO",
+      "origen_alto": "PUBLICADO_NO_HOMOLOGADO",
+      "url_fuente_medidas": "https://www.galaxus.fr/en/s3/product/adidas-entrada-22-shorts-men-m-sweatpants-35235570",
+      "presentacion_fisica": "Short talla M doblado y empaquetado; dimensiones de paquete según minorista",
+      "observaciones": "Peso conservado como ESTIMACIÓN: minorista indica producto 0,140 kg, paquete 0,126 kg (inconsistente). Investigación: M: peso de producto 140 g; paquete 33.70x24.20x4.50 cm y 126 g (datos de retailer, contradictorios)",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 5,
+      "sku": "ADI-ENT22-SHORT-GRI-L",
+      "producto": "adidas Entrada 22 Shorts",
+      "modelo_ref": "H57505",
+      "categoria": "short",
+      "talla_rango": "L",
+      "peso_kg": "0.19",
+      "largo_cm": "35",
+      "ancho_cm": "25",
+      "alto_cm": "5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: M: peso de producto 140 g; paquete 33.70x24.20x4.50 cm y 126 g (datos de retailer, contradictorios)",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 6,
+      "sku": "ADI-ENT26-AZU-S",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.17",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "2.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 7,
+      "sku": "ADI-ENT26-AZU-M",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 8,
+      "sku": "ADI-ENT26-AZU-L",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.205",
+      "largo_cm": "34",
+      "ancho_cm": "24",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 9,
+      "sku": "ADI-ENT26-BLA-S",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.17",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "2.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 10,
+      "sku": "ADI-ENT26-BLA-M",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 11,
+      "sku": "ADI-ENT26-BLA-L",
+      "producto": "adidas Entrada 26 Jersey",
+      "modelo_ref": "JZ2506/JZ2508",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.205",
+      "largo_cm": "34",
+      "ancho_cm": "24",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Adidas no publica peso ni dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 12,
+      "sku": "ADI-MESSI-JI8291-05",
+      "producto": "adidas Messi Club",
+      "modelo_ref": "JI8291",
+      "categoria": "balon",
+      "talla_rango": "5",
+      "peso_kg": "0.42",
+      "largo_cm": "22",
+      "ancho_cm": "22",
+      "alto_cm": "22",
+      "tipo_unidad": "PRODUCTO_SIMPLE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "balón tamaño 5 inflado, sin empaque; simulación",
+      "observaciones": "Diámetro/peso estimados para balón inflado talla 5; no es medida de embalaje. Investigación: Retailer informa peso de balón 420 g, pero no acredita código JI8291 en la ficha.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 13,
+      "sku": "ADI-PRED-IG7760-MUL-38",
+      "producto": "adidas Predator Flexible Ground",
+      "modelo_ref": "IG7760",
+      "categoria": "chimpun",
+      "talla_rango": "38",
+      "peso_kg": "0.82",
+      "largo_cm": "32",
+      "ancho_cm": "20",
+      "alto_cm": "12",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~297 g en US13; no aplica automáticamente a tallas 38-43; otra tienda declara 800 g sin especificar alcance.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 14,
+      "sku": "ADI-PRED-IG7760-MUL-40",
+      "producto": "adidas Predator Flexible Ground",
+      "modelo_ref": "IG7760",
+      "categoria": "chimpun",
+      "talla_rango": "40",
+      "peso_kg": "0.87",
+      "largo_cm": "34",
+      "ancho_cm": "22",
+      "alto_cm": "12.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~297 g en US13; no aplica automáticamente a tallas 38-43; otra tienda declara 800 g sin especificar alcance.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 15,
+      "sku": "ADI-PRED-IG7760-MUL-42",
+      "producto": "adidas Predator Flexible Ground",
+      "modelo_ref": "IG7760",
+      "categoria": "chimpun",
+      "talla_rango": "42",
+      "peso_kg": "0.93",
+      "largo_cm": "35",
+      "ancho_cm": "23",
+      "alto_cm": "13",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~297 g en US13; no aplica automáticamente a tallas 38-43; otra tienda declara 800 g sin especificar alcance.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 16,
+      "sku": "ADI-PRED-IG7760-MUL-43",
+      "producto": "adidas Predator Flexible Ground",
+      "modelo_ref": "IG7760",
+      "categoria": "chimpun",
+      "talla_rango": "43",
+      "peso_kg": "0.97",
+      "largo_cm": "36",
+      "ancho_cm": "24",
+      "alto_cm": "13",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~297 g en US13; no aplica automáticamente a tallas 38-43; otra tienda declara 800 g sin especificar alcance.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 17,
+      "sku": "ADI-RF3-GRI-38",
+      "producto": "adidas Runfalcon 3.0",
+      "modelo_ref": "HP7552 (referencia gris)",
+      "categoria": "zapatilla",
+      "talla_rango": "38",
+      "peso_kg": "0.85",
+      "largo_cm": "32",
+      "ancho_cm": "20",
+      "alto_cm": "12",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: 286 g en UK 8.5, no sirve como peso de par/caja ni tallas 38/39.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 18,
+      "sku": "ADI-RF3-GRI-39",
+      "producto": "adidas Runfalcon 3.0",
+      "modelo_ref": "HP7552 (referencia gris)",
+      "categoria": "zapatilla",
+      "talla_rango": "39",
+      "peso_kg": "0.88",
+      "largo_cm": "33",
+      "ancho_cm": "21",
+      "alto_cm": "12",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: 286 g en UK 8.5, no sirve como peso de par/caja ni tallas 38/39.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 19,
+      "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+      "producto": "adidas RUNxCUSHIONED",
+      "modelo_ref": "JD9558",
+      "categoria": "medias",
+      "talla_rango": "EU 34-36",
+      "peso_kg": "0.08",
+      "largo_cm": "20",
+      "ancho_cm": "12",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Pack confirmado de 1 par; no peso publicado.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 20,
+      "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+      "producto": "adidas RUNxCUSHIONED",
+      "modelo_ref": "JD9558",
+      "categoria": "medias",
+      "talla_rango": "EU 37-39",
+      "peso_kg": "0.09",
+      "largo_cm": "21",
+      "ancho_cm": "13",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Pack confirmado de 1 par; no peso publicado.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 21,
+      "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+      "producto": "adidas RUNxCUSHIONED",
+      "modelo_ref": "JD9558",
+      "categoria": "medias",
+      "talla_rango": "EU 40-42",
+      "peso_kg": "0.1",
+      "largo_cm": "22",
+      "ancho_cm": "14",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Pack confirmado de 1 par; no peso publicado.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 22,
+      "sku": "ADI-SQUA25-JG5832-NEG-S",
+      "producto": "adidas Squadra 25 Jersey",
+      "modelo_ref": "JG5832",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.17",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "2.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Sin peso ni dimensiones específicos.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 23,
+      "sku": "ADI-SQUA25-JG5832-NEG-M",
+      "producto": "adidas Squadra 25 Jersey",
+      "modelo_ref": "JG5832",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Sin peso ni dimensiones específicos.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 24,
+      "sku": "ADI-SQUA25-JG5832-NEG-L",
+      "producto": "adidas Squadra 25 Jersey",
+      "modelo_ref": "JG5832",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.205",
+      "largo_cm": "34",
+      "ancho_cm": "24",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Sin peso ni dimensiones específicos.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 25,
+      "sku": "ADI-SQUA25-JH3407-AZU-S",
+      "producto": "adidas Squadra 25 Shorts",
+      "modelo_ref": "JH3407",
+      "categoria": "short",
+      "talla_rango": "S",
+      "peso_kg": "0.145",
+      "largo_cm": "27",
+      "ancho_cm": "20",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Retailer informa 0.25 kg, talla no determinada, mezcla adulto/juvenil.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 26,
+      "sku": "ADI-SQUA25-JH3407-AZU-M",
+      "producto": "adidas Squadra 25 Shorts",
+      "modelo_ref": "JH3407",
+      "categoria": "short",
+      "talla_rango": "M",
+      "peso_kg": "0.165",
+      "largo_cm": "29",
+      "ancho_cm": "21",
+      "alto_cm": "3.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Retailer informa 0.25 kg, talla no determinada, mezcla adulto/juvenil.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 27,
+      "sku": "ADI-SQUA25-JH3407-AZU-L",
+      "producto": "adidas Squadra 25 Shorts",
+      "modelo_ref": "JH3407",
+      "categoria": "short",
+      "talla_rango": "L",
+      "peso_kg": "0.185",
+      "largo_cm": "31",
+      "ancho_cm": "22",
+      "alto_cm": "4",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Retailer informa 0.25 kg, talla no determinada, mezcla adulto/juvenil.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 28,
+      "sku": "NIK-ACADEMY-HV4386-05",
+      "producto": "Nike Academy",
+      "modelo_ref": "HV4386-100",
+      "categoria": "balon",
+      "talla_rango": "5",
+      "peso_kg": "0.43",
+      "largo_cm": "22",
+      "ancho_cm": "22",
+      "alto_cm": "22",
+      "tipo_unidad": "PRODUCTO_SIMPLE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "balón tamaño 5 inflado, sin empaque; simulación",
+      "observaciones": "Diámetro/peso estimados para balón inflado talla 5; no es medida de embalaje. Investigación: Modelo y talla confirmados; peso/dimensiones no publicados.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 29,
+      "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 34-38",
+      "peso_kg": "0.08",
+      "largo_cm": "20",
+      "ancho_cm": "12",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 30,
+      "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 38-42",
+      "peso_kg": "0.09",
+      "largo_cm": "21",
+      "ancho_cm": "13",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 31,
+      "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 42-46",
+      "peso_kg": "0.1",
+      "largo_cm": "22",
+      "ancho_cm": "14",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 32,
+      "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 34-38",
+      "peso_kg": "0.08",
+      "largo_cm": "20",
+      "ancho_cm": "12",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 33,
+      "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 38-42",
+      "peso_kg": "0.09",
+      "largo_cm": "21",
+      "ancho_cm": "13",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 34,
+      "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+      "producto": "Nike Everyday Plus Cushioned",
+      "modelo_ref": "FQ0327-010/FQ0327-100",
+      "categoria": "medias",
+      "talla_rango": "EU 42-46",
+      "peso_kg": "0.1",
+      "largo_cm": "22",
+      "ancho_cm": "14",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "un par con envoltorio, simulación",
+      "observaciones": "Unidad considerada: 1 par doblado y en sobre; no pack de 3/6. Investigación: Un par, tallas EU verificadas; peso de publicaciones 6-pares no es aplicable.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 35,
+      "sku": "NIK-PARK3-M-BV6855-NEG-S",
+      "producto": "Nike Park III Hombre",
+      "modelo_ref": "BV6855-010",
+      "categoria": "short",
+      "talla_rango": "S",
+      "peso_kg": "0.145",
+      "largo_cm": "27",
+      "ancho_cm": "20",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto; Nike no informa peso ni dimensiones de unidad.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 36,
+      "sku": "NIK-PARK3-M-BV6855-NEG-M",
+      "producto": "Nike Park III Hombre",
+      "modelo_ref": "BV6855-010",
+      "categoria": "short",
+      "talla_rango": "M",
+      "peso_kg": "0.165",
+      "largo_cm": "29",
+      "ancho_cm": "21",
+      "alto_cm": "3.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto; Nike no informa peso ni dimensiones de unidad.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 37,
+      "sku": "NIK-PARK3-M-BV6855-NEG-L",
+      "producto": "Nike Park III Hombre",
+      "modelo_ref": "BV6855-010",
+      "categoria": "short",
+      "talla_rango": "L",
+      "peso_kg": "0.185",
+      "largo_cm": "31",
+      "ancho_cm": "22",
+      "alto_cm": "4",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto; Nike no informa peso ni dimensiones de unidad.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 38,
+      "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+      "producto": "Nike Park III Mujer",
+      "modelo_ref": "BV6860-010",
+      "categoria": "short",
+      "talla_rango": "XS",
+      "peso_kg": "0.13",
+      "largo_cm": "25",
+      "ancho_cm": "18",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin peso/dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 39,
+      "sku": "NIK-PARK3-W-BV6860-NEG-S",
+      "producto": "Nike Park III Mujer",
+      "modelo_ref": "BV6860-010",
+      "categoria": "short",
+      "talla_rango": "S",
+      "peso_kg": "0.145",
+      "largo_cm": "27",
+      "ancho_cm": "20",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin peso/dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 40,
+      "sku": "NIK-PARK3-W-BV6860-NEG-M",
+      "producto": "Nike Park III Mujer",
+      "modelo_ref": "BV6860-010",
+      "categoria": "short",
+      "talla_rango": "M",
+      "peso_kg": "0.165",
+      "largo_cm": "29",
+      "ancho_cm": "21",
+      "alto_cm": "3.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin peso/dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 41,
+      "sku": "NIK-PARK3-W-BV6860-NEG-L",
+      "producto": "Nike Park III Mujer",
+      "modelo_ref": "BV6860-010",
+      "categoria": "short",
+      "talla_rango": "L",
+      "peso_kg": "0.185",
+      "largo_cm": "31",
+      "ancho_cm": "22",
+      "alto_cm": "4",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin peso/dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 42,
+      "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+      "producto": "Nike Park III Mujer",
+      "modelo_ref": "BV6860-010",
+      "categoria": "short",
+      "talla_rango": "XL",
+      "peso_kg": "0.21",
+      "largo_cm": "33",
+      "ancho_cm": "23",
+      "alto_cm": "4",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "short doblado + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin peso/dimensiones por talla.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 43,
+      "sku": "NIK-PARK7-BV6708-NEG-S",
+      "producto": "Nike Park VII",
+      "modelo_ref": "BV6708-010",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.17",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "2.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin medidas físicas.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 44,
+      "sku": "NIK-PARK7-BV6708-NEG-M",
+      "producto": "Nike Park VII",
+      "modelo_ref": "BV6708-010",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin medidas físicas.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 45,
+      "sku": "NIK-PARK7-BV6708-NEG-L",
+      "producto": "Nike Park VII",
+      "modelo_ref": "BV6708-010",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.205",
+      "largo_cm": "34",
+      "ancho_cm": "24",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Modelo exacto, sin medidas físicas.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 46,
+      "sku": "NIK-PITCH-05",
+      "producto": "Nike Pitch",
+      "modelo_ref": "FZ2636-100 (referencia, submodelo del SKU no fijado)",
+      "categoria": "balon",
+      "talla_rango": "5",
+      "peso_kg": "0.43",
+      "largo_cm": "22",
+      "ancho_cm": "22",
+      "alto_cm": "22",
+      "tipo_unidad": "PRODUCTO_SIMPLE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "balón tamaño 5 inflado, sin empaque; simulación",
+      "observaciones": "Diámetro/peso estimados para balón inflado talla 5; no es medida de embalaje. Investigación: Circunferencia talla 5: 68-70 cm. Retailer Falabella reporta 90 g para FZ2636, inverosímil como balón de partido; NO USAR.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 47,
+      "sku": "NIK-REV7-NEG-41",
+      "producto": "Nike Revolution 7",
+      "modelo_ref": "FB2207-005 (referencia negra)",
+      "categoria": "zapatilla",
+      "talla_rango": "41",
+      "peso_kg": "0.95",
+      "largo_cm": "34",
+      "ancho_cm": "22",
+      "alto_cm": "13",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~286 g en UK9, no representa el par/caja ni talla 41/42.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 48,
+      "sku": "NIK-REV7-NEG-42",
+      "producto": "Nike Revolution 7",
+      "modelo_ref": "FB2207-005 (referencia negra)",
+      "categoria": "zapatilla",
+      "talla_rango": "42",
+      "peso_kg": "0.98",
+      "largo_cm": "35",
+      "ancho_cm": "23",
+      "alto_cm": "13",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Una zapatilla: ~286 g en UK9, no representa el par/caja ni talla 41/42.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 49,
+      "sku": "PUM-ORBITA-084641-05",
+      "producto": "Puma Orbita Serie A Réplica",
+      "modelo_ref": "084641_02",
+      "categoria": "balon",
+      "talla_rango": "5",
+      "peso_kg": "0.43",
+      "largo_cm": "22",
+      "ancho_cm": "22",
+      "alto_cm": "22",
+      "tipo_unidad": "PRODUCTO_SIMPLE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "balón tamaño 5 inflado, sin empaque; simulación",
+      "observaciones": "Diámetro/peso estimados para balón inflado talla 5; no es medida de embalaje. Investigación: Talla 5 y réplica, sin peso específico verificado.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 50,
+      "sku": "PUM-SC-782244-BLA-S",
+      "producto": "Puma Sporting Cristal Training",
+      "modelo_ref": "782244_02",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.17",
+      "largo_cm": "30",
+      "ancho_cm": "22",
+      "alto_cm": "2.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Tejido 170 g en ficha PUMA es gramaje/material, NO peso de prenda.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 51,
+      "sku": "PUM-SC-782244-BLA-M",
+      "producto": "Puma Sporting Cristal Training",
+      "modelo_ref": "782244_02",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.185",
+      "largo_cm": "32",
+      "ancho_cm": "23",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Tejido 170 g en ficha PUMA es gramaje/material, NO peso de prenda.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 52,
+      "sku": "PUM-SC-782244-BLA-L",
+      "producto": "Puma Sporting Cristal Training",
+      "modelo_ref": "782244_02",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.205",
+      "largo_cm": "34",
+      "ancho_cm": "24",
+      "alto_cm": "3",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Tejido 170 g en ficha PUMA es gramaje/material, NO peso de prenda.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 53,
+      "sku": "PUM-ULP-NEG-42",
+      "producto": "Puma Ultra Play",
+      "modelo_ref": "107224-02 (posible FG/AG, pendiente)",
+      "categoria": "chimpun",
+      "talla_rango": "42",
+      "peso_kg": "0.93",
+      "largo_cm": "35",
+      "ancho_cm": "23",
+      "alto_cm": "13",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "par con caja, simulación",
+      "observaciones": "Estimación para PAR de calzado y caja; fuentes de peso por zapatilla y otras tallas no son equivalentes. Investigación: Confirmar variante exacta/suela antes de atribuir medidas.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 54,
+      "sku": "UA-TECH20-1326413-NEG-S",
+      "producto": "Under Armour Tech 2.0 Tee",
+      "modelo_ref": "1326413-001",
+      "categoria": "camiseta",
+      "talla_rango": "S",
+      "peso_kg": "0.125",
+      "largo_cm": "28",
+      "ancho_cm": "19",
+      "alto_cm": "1.5",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Ficha del minorista para talla L: producto 0.130 kg y 27.5×18.7×1.4 cm; paquete 0.149 kg y 31×20.5×1.7 cm.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 55,
+      "sku": "UA-TECH20-1326413-NEG-M",
+      "producto": "Under Armour Tech 2.0 Tee",
+      "modelo_ref": "1326413-001",
+      "categoria": "camiseta",
+      "talla_rango": "M",
+      "peso_kg": "0.138",
+      "largo_cm": "30",
+      "ancho_cm": "20",
+      "alto_cm": "1.6",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "ESTIMACION_ACADEMICA",
+      "origen_largo": "ESTIMACION_ACADEMICA",
+      "origen_ancho": "ESTIMACION_ACADEMICA",
+      "origen_alto": "ESTIMACION_ACADEMICA",
+      "url_fuente_medidas": "",
+      "presentacion_fisica": "camiseta doblada + bolsa, simulación",
+      "observaciones": "Investigación: Ficha del minorista para talla L: producto 0.130 kg y 27.5×18.7×1.4 cm; paquete 0.149 kg y 31×20.5×1.7 cm.",
+      "estado_revision": "PENDIENTE_CARGA"
+    },
+    {
+      "source_row": 56,
+      "sku": "UA-TECH20-1326413-NEG-L",
+      "producto": "Under Armour Tech 2.0 Tee",
+      "modelo_ref": "1326413-001",
+      "categoria": "camiseta",
+      "talla_rango": "L",
+      "peso_kg": "0.149",
+      "largo_cm": "31",
+      "ancho_cm": "20.5",
+      "alto_cm": "1.7",
+      "tipo_unidad": "VARIANTE",
+      "origen_peso": "PUBLICADO_NO_HOMOLOGADO",
+      "origen_largo": "PUBLICADO_NO_HOMOLOGADO",
+      "origen_ancho": "PUBLICADO_NO_HOMOLOGADO",
+      "origen_alto": "PUBLICADO_NO_HOMOLOGADO",
+      "url_fuente_medidas": "https://www.armamat.com/en/p/ua-tech-2-0-ss-tee-11338406035/",
+      "presentacion_fisica": "Camiseta talla L acondicionada; masa y medidas de paquete publicados por minorista",
+      "observaciones": "Fuente diferencia artículo (0,130 kg) y paquete (0,149 kg); se usa paquete coherentemente. Investigación: Ficha del minorista para talla L: producto 0.130 kg y 27.5×18.7×1.4 cm; paquete 0.149 kg y 31×20.5×1.7 cm.",
+      "estado_revision": "PENDIENTE_CARGA"
+    }
+  ],
+  "supporting_sheets": {
+    "RESUMEN": [
+      {
+        "row": 1,
+        "cells": {
+          "A": {
+            "value": "DATA-002 · Perfiles físicos académicos para Codex",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "C": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "D": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 2,
+        "cells": {
+          "A": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "B": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "C": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "D": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 4,
+        "cells": {
+          "A": {
+            "value": "TODOS los campos físicos completos · Medidas creíbles basadas en evidencia o estimación · Sin ejecución en Supabase",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "C": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "D": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 6,
+        "cells": {
+          "A": {
+            "value": "Concepto",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Valor",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Criterio de medición",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 7,
+        "cells": {
+          "A": {
+            "value": "SKU vendibles previstos",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "55",
+            "type": "n",
+            "formula": "COUNTA(CARGA_55!A2:A56)"
+          },
+          "D": {
+            "value": "Unidad física vendible: prenda doblada en bolsa, par de calzado con caja, par de medias en bolsa o balón inflado.",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 8,
+        "cells": {
+          "A": {
+            "value": "Peso (kg) completos",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "55",
+            "type": "n",
+            "formula": "COUNT(CARGA_55!F2:F56)"
+          },
+          "D": {
+            "value": "Peso y dimensiones representan la unidad preparada de forma plausible para manejo/despacho.",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 9,
+        "cells": {
+          "A": {
+            "value": "Largo (cm) completos",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "55",
+            "type": "n",
+            "formula": "COUNT(CARGA_55!G2:G56)"
+          },
+          "D": {
+            "value": "Los valores publicados se reutilizan únicamente cuando representan una presentación comparable; el resto son estimaciones académicas.",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 10,
+        "cells": {
+          "A": {
+            "value": "Ancho (cm) completos",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "55",
+            "type": "n",
+            "formula": "COUNT(CARGA_55!H2:H56)"
+          },
+          "D": {
+            "value": "El producto padre con variantes NO recibe perfil: solo 51 SKU de variantes + 4 productos simples.",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 11,
+        "cells": {
+          "A": {
+            "value": "Alto (cm) completos",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "55",
+            "type": "n",
+            "formula": "COUNT(CARGA_55!I2:I56)"
+          },
+          "D": {
+            "value": "Los cuatro valores se trasladan a catalog.sku_physical_profiles mediante sku_identity_id (por JOIN con SKU).",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 12,
+        "cells": {
+          "A": {
+            "value": "Valores de referencia publicados",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "7",
+            "type": "n",
+            "formula": "COUNTIF(CARGA_55!K2:N56,\"PUBLICADO_NO_HOMOLOGADO\")"
+          },
+          "D": {
+            "value": "No confundir datos completos con autorización de escritura o estado ACTIVO.",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          },
+          "F": {
+            "value": "",
+            "type": "n",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 13,
+        "cells": {
+          "A": {
+            "value": "Valores estimados",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "213",
+            "type": "n",
+            "formula": "COUNTIF(CARGA_55!K2:N56,\"ESTIMACION_ACADEMICA\")"
+          }
+        }
+      },
+      {
+        "row": 14,
+        "cells": {
+          "A": {
+            "value": "Productos simples",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "4",
+            "type": "n",
+            "formula": "COUNTIF(CARGA_55!J2:J56,\"PRODUCTO_SIMPLE\")"
+          }
+        }
+      },
+      {
+        "row": 15,
+        "cells": {
+          "A": {
+            "value": "Variantes vendibles",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "51",
+            "type": "n",
+            "formula": "COUNTIF(CARGA_55!J2:J56,\"VARIANTE\")"
+          }
+        }
+      }
+    ],
+    "FUENTES": [
+      {
+        "row": 1,
+        "cells": {
+          "A": {
+            "value": "producto",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "modelo_referencia",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "talla_fuente",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "magnitud",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "valor_publicado",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "unidad",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "limitacion",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "estado_evidencia",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "url",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 2,
+        "cells": {
+          "A": {
+            "value": "adidas Entrada 22 Shorts",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "H57505",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "M",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso artículo",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.14",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Tienda Galaxus dice 140 g; paquete 126 g, inconsistencia logística",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "REFERENCIA_CONTRADICTORIA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.galaxus.fr/en/s3/product/adidas-entrada-22-shorts-men-m-sweatpants-35235570",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 3,
+        "cells": {
+          "A": {
+            "value": "adidas Entrada 22 Shorts",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "H57505",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "M",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Dimensiones paquete",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "33.7×24.2×4.5",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "cm",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Paquete en tienda Galaxus; no son dimensiones artículo ni tallas S/L",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "SOLO_EMPAQUE",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.galaxus.fr/en/s3/product/adidas-entrada-22-shorts-men-m-sweatpants-35235570",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 4,
+        "cells": {
+          "A": {
+            "value": "Under Armour Tech 2.0 Tee",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "1326413-001",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "L",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso artículo",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.13",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Minorista identifica color 001 y talla L",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "REFERENCIA_ESPECIFICA_POR_TALLA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.armamat.com/en/p/ua-tech-2-0-ss-tee-11338406035/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 5,
+        "cells": {
+          "A": {
+            "value": "Under Armour Tech 2.0 Tee",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "1326413-001",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "L",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Dimensiones artículo",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "27.5×18.7×1.4",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "cm",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Tienda indica dimensiones de artículo, aparentemente plegado",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "REFERENCIA_ESPECIFICA_POR_TALLA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.armamat.com/en/p/ua-tech-2-0-ss-tee-11338406035/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 6,
+        "cells": {
+          "A": {
+            "value": "Under Armour Tech 2.0 Tee",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "1326413-001",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "L",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso paquete",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.149",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Diferente del peso artículo 0.130 kg",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "SOLO_EMPAQUE",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.armamat.com/en/p/ua-tech-2-0-ss-tee-11338406035/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 7,
+        "cells": {
+          "A": {
+            "value": "Under Armour Tech 2.0 Tee",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "1326413-001",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "L",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Dimensiones paquete",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "31×20.5×1.7",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "cm",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Paquete en minorista; no confundir con dimensiones artículo",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "SOLO_EMPAQUE",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.armamat.com/en/p/ua-tech-2-0-ss-tee-11338406035/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 8,
+        "cells": {
+          "A": {
+            "value": "adidas Runfalcon 3.0",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "HP7552",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "UK 8.5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso una zapatilla",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.286",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Adidas oficial; SKU catalogados en tallas 38 y 39, no son UK8.5",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "OTRA_TALLA_PESO_UNIDAD",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.adidas.com.au/runfalcon-3.0-shoes/HP7552.html",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 9,
+        "cells": {
+          "A": {
+            "value": "Nike Revolution 7",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "FB2207-005",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "UK 9",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso una zapatilla",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.286",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Nike oficial; SKU catalogados tallas 41 y 42",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "OTRA_TALLA_PESO_UNIDAD",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.nike.com/sg/t/revolution-7-road-running-shoes-dC34tK/FB2207-005",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 10,
+        "cells": {
+          "A": {
+            "value": "adidas Predator Flexible Ground",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "IG7760",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "US 13",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso una zapatilla",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.297",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Minorista japonés; otras tallas de Catálogo",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "OTRA_TALLA_PESO_UNIDAD",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.big-b.jp/shoeslist/ashoes.html?shoesinfoid=213564",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 11,
+        "cells": {
+          "A": {
+            "value": "adidas Messi Club",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Messi Club sin código exacto",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso balón",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.42",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Falabella SKU Messi Club, sin JI8291 explícito; verificar identidad",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "MODELO_NO_VERIFICADO_COMPLETO",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.falabella.com.pe/falabella-pe/product/145808771/Pelota-de-Futbol-Messi-Club-5/145808772",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 12,
+        "cells": {
+          "A": {
+            "value": "adidas Squadra 25 Shorts",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "JH3407",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "No especificado",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso declarado",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.25",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Tienda mezcla adulto/juvenil y no especifica talla ni alcance del peso",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "PRESENTACION_INDETERMINADA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.mdhteamwear.co.uk/product/teamwear/shorts-teamwear/no-pockets/squadra-25-short-7/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 13,
+        "cells": {
+          "A": {
+            "value": "Nike Pitch",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "FZ2636-100",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Circunferencia talla",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "68–70",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "cm",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Tabla de tallas Nike Perú: diámetro teórico ~21.65–22.28 cm si inflado",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "RANGO_TALLA_NO_EMPAQUE",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.nike.com.pe/nike-pitch-pelota-de-futbol/fz2636-100/10974269001.html",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 14,
+        "cells": {
+          "A": {
+            "value": "Nike Pitch",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "FZ2636-100",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso declarado",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.09",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Tienda Falabella presenta 90 g para referencia FZ2636; dato dudoso y no usar",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "RECHAZAR_DATO_DUDOSO",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.falabella.com.pe/falabella-pe/product/21025149/pelota-futbol-unisex-nike",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 15,
+        "cells": {
+          "A": {
+            "value": "Balones de fútbol en partido reglamentario",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Normativa IFAB",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Peso reglamentario",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "0.410–0.450",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "kg",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Norma para balones de partido; NO prueba peso de los cuatro modelos de entrenamiento/replica",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "RANGO_NORMATIVO_NO_PRODUCTO",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://backup.theifab.com/laws/latest/the-ball/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 16,
+        "cells": {
+          "A": {
+            "value": "Balones de fútbol en partido reglamentario",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Normativa IFAB",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "5",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Circunferencia reglamentaria",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "68–70",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "cm",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Norma para balones de partido, no embalaje ni ficha SKU",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "RANGO_NORMATIVO_NO_PRODUCTO",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://backup.theifab.com/laws/latest/the-ball/",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 17,
+        "cells": {
+          "A": {
+            "value": "Nike Everyday Plus Cushioned",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "FQ0327-100",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "EU 34-38 etc",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Unidad de venta",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "1",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "par",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Nike Perú especifica 1 par, no pack de seis",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "UNIDAD_CONFIRMADA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.nike.com.pe/nike-everyday-plus-medias-acolchadas-1-par/fq0327-100/10931650002.html",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 18,
+        "cells": {
+          "A": {
+            "value": "adidas RUNxCUSHIONED",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "JD9558",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "EU 34-36 etc",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Unidad de venta",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "1",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "par",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Adidas oficial indica 1 par",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "UNIDAD_CONFIRMADA",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 19,
+        "cells": {
+          "A": {
+            "value": "Puma Sporting Cristal Training",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "782244_02",
+            "type": "str",
+            "formula": null
+          },
+          "C": {
+            "value": "No especificado",
+            "type": "str",
+            "formula": null
+          },
+          "D": {
+            "value": "Gramaje tejido",
+            "type": "str",
+            "formula": null
+          },
+          "E": {
+            "value": "170",
+            "type": "str",
+            "formula": null
+          },
+          "F": {
+            "value": "g (sin especificar g/m²)",
+            "type": "str",
+            "formula": null
+          },
+          "G": {
+            "value": "Ficha PUMA indica tejido jacquard de 170g; NO es peso de camiseta",
+            "type": "str",
+            "formula": null
+          },
+          "H": {
+            "value": "NO_ES_PESO_ARTICULO",
+            "type": "str",
+            "formula": null
+          },
+          "I": {
+            "value": "https://pe.puma.com/pd/camiseta-de-training-sporting-cristal-para-hombre/782244.html",
+            "type": "str",
+            "formula": null
+          }
+        }
+      }
+    ],
+    "INSTRUCCIONES": [
+      {
+        "row": 1,
+        "cells": {
+          "A": {
+            "value": "CAMPO / REGLA",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "INSTRUCCIÓN PARA CODEX",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 2,
+        "cells": {
+          "A": {
+            "value": "Propósito",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Preparar 55 perfiles físicos SKU-vendibles en el issue DATA-002 #12 (proyecto académico).",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 3,
+        "cells": {
+          "A": {
+            "value": "Asignación exacta",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "CARGA_55!peso_kg→catalog.sku_physical_profiles.peso_kg; largo_cm→largo_cm; ancho_cm→ancho_cm; alto_cm→alto_cm.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 4,
+        "cells": {
+          "A": {
+            "value": "Unidades",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Peso en kg y dimensiones en cm. Son NUMÉRICOS positivos, no cadenas con unidades.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 5,
+        "cells": {
+          "A": {
+            "value": "SKU",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "El SKU de CARGA_55 identifica la fila existente de catalog.sku_identity. Nunca insertar sku_identity ni crear UUID/SKU comerciales.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 6,
+        "cells": {
+          "A": {
+            "value": "Producto padre",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "NO insertar perfil para 16 sku_base de productos con variantes; solo 51 variantes + 4 productos simples.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 7,
+        "cells": {
+          "A": {
+            "value": "Presentación",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Medida física académica de unidad vendible preparada para logística (prenda/medias dobladas, par de zapatos con caja, balón inflado).",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 8,
+        "cells": {
+          "A": {
+            "value": "Estimaciones",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "ESTIMACION_ACADEMICA indica valor plausible, NO medido. Marco permite estimaciones en este trabajo académico.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 9,
+        "cells": {
+          "A": {
+            "value": "Publicado",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "PUBLICADO_NO_HOMOLOGADO indica dato de ficha comercial para una presentación comparable. No equivale a medición certificada.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 10,
+        "cells": {
+          "A": {
+            "value": "Idempotencia",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Preparar INSERT/UPSERT por sku_identity_id único, con guardias de SKU, propietario y conflicto; no usar UPDATE sin filtros seguros.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 11,
+        "cells": {
+          "A": {
+            "value": "Transacción",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Preflight read-only y postcheck; ejecutar en PostgreSQL descartable; abortar si falta algún SKU o existen divergencias.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 12,
+        "cells": {
+          "A": {
+            "value": "Estado",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "Dejar productos y variantes BORRADOR; no crear activation_checks COMPLETED ni habilitar ventas.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 13,
+        "cells": {
+          "A": {
+            "value": "Supabase",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "El issue #12 requiere autorización expresa, alcance y proceso aprobados para escrituras sobre Supabase compartido. Excel no sustituye esa aprobación.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 14,
+        "cells": {
+          "A": {
+            "value": "Fuente",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "FUENTES conserva evidencia comercial y sus límites; la fuente del campo queda también señalada por origen_*.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      },
+      {
+        "row": 15,
+        "cells": {
+          "A": {
+            "value": "Volumen",
+            "type": "str",
+            "formula": null
+          },
+          "B": {
+            "value": "El volumen se deriva con largo×ancho×alto; NO es un campo de catalog.sku_physical_profiles.",
+            "type": "str",
+            "formula": null
+          }
+        }
+      }
+    ]
+  }
+}

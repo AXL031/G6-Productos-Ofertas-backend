@@ -56,6 +56,12 @@ SECURITY_DISCOVERY_URL=https://issuer:3443/.well-known/openid-configuration
 SECURITY_JWKS_URL=https://issuer:3443/keys
 NODE_EXTRA_CA_CERTS=/run/certs/postgres-ca.crt
 EOF
+cat >> "$scratch/taxonomy.env" <<EOF
+SECURITY_ISSUER=https://issuer:3443
+SECURITY_DISCOVERY_URL=https://issuer:3443/.well-known/openid-configuration
+SECURITY_JWKS_URL=https://issuer:3443/keys
+NODE_EXTRA_CA_CERTS=/run/certs/postgres-ca.crt
+EOF
 cat > "$scratch/gateway.env" <<EOF
 AUTH_ISSUER=https://issuer:3443
 AUTH_JWKS_URL=https://issuer:3443/keys
@@ -119,7 +125,8 @@ try {
   const page = await repo.listCandidates({canal:'MARKETPLACE',pagina:1,tamanio:20,orden:'NOMBRE_ASC'});
   assert.equal(page.total, 0);
   assert.equal(await repo.findCandidateBySlug('inexistente'), null);
-  await assert.rejects(new TaxonomyClient().category('inexistente'), e => e.getStatus() === 422);
+  const credential = await (await fetch('https://issuer:3443/valid')).json();
+  await assert.rejects(new TaxonomyClient().category('inexistente', undefined, { authorization: 'Bearer ' + credential.token, user: false }), e => e.getStatus() === 422);
 } finally { await db.onModuleDestroy(); }
 console.log('PASS: Catalog Drizzle PostgreSQL y Catalog -> Taxonomy HTTP');"
 docker stop "$pg_name" >/dev/null

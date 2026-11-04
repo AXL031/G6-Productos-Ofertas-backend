@@ -100,10 +100,17 @@ export class CatalogQueryService {
       !Array.isArray(skus) ||
       skus.length < 1 ||
       skus.length > 100 ||
-      !skus.every((sku) => typeof sku === 'string' && sku.length > 0)
+      !skus.every((sku) => typeof sku === 'string' && sku.length > 0) ||
+      new Set(skus).size !== skus.length
     )
       throw new HttpException({ code: 'SKU_INVALIDO' }, 422);
-    return this.repository.physicalData(skus);
+    try {
+      return await this.repository.physicalData(skus);
+    } catch (error) {
+      if (error instanceof HttpException && error.getStatus() === 422)
+        throw error;
+      throw new ServiceUnavailableException();
+    }
   }
 
   async preparation(productId: string) {

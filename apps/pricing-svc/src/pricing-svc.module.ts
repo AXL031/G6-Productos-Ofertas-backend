@@ -13,8 +13,12 @@ import { PricingMutations } from './application/pricing-mutations.js';
 import {
   CommercialPrices,
   PRICING_CATALOG_CONTEXT,
-  PRICING_CHANNEL_IDS,
 } from './http/commercial-prices.js';
+import {
+  CatalogContextHttp,
+  PRICING_CATALOG_TOKEN,
+} from './http/catalog-context.js';
+import { CatalogServiceToken } from './http/catalog-token.js';
 import { PricingOutboxRelay } from './messaging/outbox-relay.js';
 import {
   PRICING_FACT_FACTORY,
@@ -40,8 +44,14 @@ import {
     PricingMutations,
     CommercialPrices,
     PricingOutboxRelay,
-    { provide: PRICING_CATALOG_CONTEXT, useValue: null },
-    { provide: PRICING_CHANNEL_IDS, useValue: {} },
+    CatalogContextHttp,
+    { provide: PRICING_CATALOG_CONTEXT, useExisting: CatalogContextHttp },
+    CatalogServiceToken,
+    {
+      provide: PRICING_CATALOG_TOKEN,
+      useFactory: (tokens: CatalogServiceToken) => () => tokens.get(),
+      inject: [CatalogServiceToken],
+    },
     { provide: PRICING_WRITE_AUTHORIZER, useValue: null },
     { provide: PRICING_FACT_FACTORY, useValue: null },
     {

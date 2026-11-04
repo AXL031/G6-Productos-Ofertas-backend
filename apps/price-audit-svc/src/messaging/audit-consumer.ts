@@ -23,6 +23,7 @@ import {
 export const AUDIT_PRICE_CHANGE_DECODER = Symbol('AUDIT_PRICE_CHANGE_DECODER');
 export type AuditPriceChangeDecoder = (
   data: Record<string, unknown>,
+  occurredAt: Date,
 ) => AuditChange[];
 function record(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
@@ -75,6 +76,7 @@ export function decodeEnvelope(message: ConsumeMessage) {
     correlationId: body.correlation_id,
     payload: body,
     data: body.data,
+    occurredAt: new Date(body.occurred_at),
   };
 }
 @Injectable()
@@ -188,7 +190,7 @@ export class AuditConsumer
       const envelope = decodeEnvelope(message);
       let entries: AuditChange[];
       try {
-        entries = this.decoder!(envelope.data);
+        entries = this.decoder!(envelope.data, envelope.occurredAt);
         if (!Array.isArray(entries) || !entries.length) throw new Error();
         entries = entries.map(validateChange);
       } catch {

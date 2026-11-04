@@ -8,6 +8,7 @@
 | `BULK_SVC_PORT` | Puerto HTTP; tiene prioridad sobre `PORT`. |
 | `PORT` | Puerto alternativo y valor compatible con Compose (`3008`). |
 | `BULK_SVC_HOST` | Opcional. Solo admite `127.0.0.1` o `0.0.0.0`. |
+| `BULK_CATALOG_COMMAND_V2_ENABLED` | Opcional; solo admite `true` o `false`. Por defecto `false`. Habilita la emisión de `catalog.bulk.upsert.requested` schema v2 para ACTUALIZACION de variantes mediante `rows[].sku_variante`. Mantener desactivada hasta contar con Catalog compatible y prueba conjunta satisfactoria. |
 | `DATABASE_URL` | Opcional para conservar el smoke de liveness de CI. Si se define, debe ser una URL PostgreSQL válida y segura. |
 | `PGSSLMODE` | Opcional si `DATABASE_URL` ya contiene `sslmode`; ambos valores deben coincidir. PostgreSQL remoto exige `verify-full`. |
 | `PGSSLROOTCERT` | CA PostgreSQL opcional para conexiones no productivas con confianza configurada y requerida para PostgreSQL remoto en production. Debe ser un archivo PEM legible. |
@@ -60,3 +61,7 @@ Use una instancia PostgreSQL desechable, cree/prepare el schema `bulk` y `bulk.b
 ## Alcance y compatibilidad
 
 Esta etapa no implementa endpoints comerciales de importación/exportación, parser CSV/XLSX, límite de tamaño contractual, multipart, persistencia de negocio, DDL, migraciones, workers ni AMQP. El Dockerfile y Compose genéricos mantienen el puerto `3008`, `PORT` y `BULK_SVC_PORT`, la comprobación `/health` y el montaje read-only de la CA; el host por defecto en production acepta el contenedor sin cambiar el binding loopback publicado.
+
+## RabbitMQ Bulk (#93)
+
+El transporte está deshabilitado por defecto. Solo `BULK_AMQP_ENABLED=true` junto con `BULK_AMQP_URL` lo activa; la URL no debe registrarse en logs. El runtime utiliza exchanges y la cola existentes, sin declarar ni modificar recursos. El Outbox conserva los mensajes pendientes ante fallo/confirmación ausente o publicación sin ruta. Retry/DLX compartido no está configurado ni aprobado; las pruebas usan RabbitMQ aislado y desechable.

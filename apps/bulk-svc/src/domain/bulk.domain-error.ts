@@ -10,7 +10,9 @@ export type BulkDomainErrorCode =
   | 'PARTIAL_RESULT'
   | 'BATCH_NOT_FOUND'
   | 'STORAGE_UNAVAILABLE'
-  | 'PERSISTENCE_FAILURE';
+  | 'PERSISTENCE_FAILURE'
+  | 'EXPORT_NOT_FOUND'
+  | 'EXPORT_NOT_READY';
 
 export class BulkDomainError extends Error {
   constructor(

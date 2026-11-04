@@ -5,10 +5,16 @@ import { ProblemDetailsException } from '../errors/taxonomy.errors.js';
 import type { TaxonomyReadinessIndicator } from '../health/readiness.port.js';
 import type {
   CategoriaRow,
+  CategoriaAdminRow,
   MarcaRow,
   TaxonomyRepository,
 } from '../taxonomy.repository.js';
-import { categorias, esquemaTaxonomia, marcas } from './taxonomy.schema.js';
+import {
+  categorias,
+  categorySeo,
+  esquemaTaxonomia,
+  marcas,
+} from './taxonomy.schema.js';
 
 export type TaxonomyDb = NodePgDatabase<typeof esquemaTaxonomia>;
 
@@ -121,6 +127,30 @@ export class DrizzleTaxonomyRepository
         .from(categorias)
         .where(eq(categorias.estado, 'ACTIVO'));
       return filas.map(aCategoriaRow);
+    } catch (error) {
+      this.traducirError(error);
+    }
+  }
+
+  async findCategoriaAdmin(id: string): Promise<CategoriaAdminRow | undefined> {
+    try {
+      const [row] = await this.db
+        .select({
+          id: categorias.id,
+          nombre: categorias.nombre,
+          descripcion: categorias.descripcion,
+          categoria_padre_id: categorias.categoriaPadreId,
+          orden: categorias.orden,
+          imagen_url: categorias.imagenUrl,
+          estado: categorias.estado,
+          version: categorias.taxonomyVersion,
+          slug: categorySeo.slug,
+        })
+        .from(categorias)
+        .leftJoin(categorySeo, eq(categorySeo.categoriaId, categorias.id))
+        .where(eq(categorias.id, id))
+        .limit(1);
+      return row;
     } catch (error) {
       this.traducirError(error);
     }

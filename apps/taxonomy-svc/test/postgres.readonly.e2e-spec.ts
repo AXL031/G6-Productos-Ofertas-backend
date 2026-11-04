@@ -8,6 +8,7 @@ import { TaxonomySvcModule } from '../src/taxonomy-svc.module.js';
 import { Database } from '../src/database.js';
 import { TAXONOMY_REPOSITORY } from '../src/taxonomy.repository.js';
 import { PostgresTaxonomyRepository } from '../src/postgres-taxonomy.repository.js';
+import { TaxonomyAuthGuard } from '../src/taxonomy-auth.js';
 
 describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'taxonomy')(
   'Taxonomy real PostgreSQL SELECT',
@@ -18,7 +19,10 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'taxonomy')(
       app = (
         await Test.createTestingModule({
           imports: [TaxonomySvcModule],
-        }).compile()
+        })
+          .overrideGuard(TaxonomyAuthGuard)
+          .useValue({ canActivate: () => true })
+          .compile()
       ).createNestApplication();
       await app.init();
       db = app.get(Database);
@@ -100,10 +104,10 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'taxonomy')(
             .expect(200);
           await request(started.app.getHttpServer())
             .get('/api/v1/categorias')
-            .expect(200);
+            .expect(401);
           await request(started.app.getHttpServer())
             .get('/api/v1/marcas')
-            .expect(200);
+            .expect(401);
           await started.app.get(Database).onModuleDestroy();
           await request(started.app.getHttpServer()).get('/health').expect(200);
           await request(started.app.getHttpServer())

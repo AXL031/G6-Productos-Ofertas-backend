@@ -32,6 +32,8 @@ describe('Invariantes de la bitácora', () => {
       next: null,
     },
     { next: '0' },
+    { next: '1.001' },
+    { operation: 'MODIFICACION', previous: '0', variation: null },
   ])('preserva semántica aprobada, incluido cero real: %j', (values) => {
     const input = { ...change, ...values } as AuditChange;
     expect(validateChange(input)).toEqual(input);
@@ -39,7 +41,6 @@ describe('Invariantes de la bitácora', () => {
   it.each([
     { previous: '0' },
     { next: null },
-    { next: '1.001' },
     { next: '-1' },
     { next: 'NaN' },
     { reason: '  ' },

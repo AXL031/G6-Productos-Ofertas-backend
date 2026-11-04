@@ -1,3 +1,4 @@
+import { CatalogBulkIdentity } from '../src/catalog-bulk.service.js';
 import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
@@ -22,6 +23,7 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
     origin: string,
     provider: CatalogPricingIdentityProvider,
     filter: CatalogPriceFilter;
+  let issuedScope = 'precios:leer';
   let issueStatus = 200,
     priceStatus = 200,
     tokenPatch: Record<string, unknown> = {},
@@ -40,7 +42,7 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
         sub: 'modulo-productos',
         tipo: 'servicio',
         aud: ['api-productos'],
-        scope: 'precios:leer',
+        scope: issuedScope,
         iat: now,
         exp: now + 600,
         jti: randomUUID(),
@@ -82,7 +84,7 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
                   accessToken: token(),
                   tokenType: 'Bearer',
                   expiresIn: 600,
-                  scopes: ['precios:leer'],
+                  scopes: [issuedScope],
                 }
               : { code: 'CLIENTE_INVALIDO' },
           ),
@@ -133,6 +135,7 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
     origin = 'http://127.0.0.1:' + address.port;
   });
   beforeEach(() => {
+    issuedScope = 'precios:leer';
     issueStatus = 200;
     priceStatus = 200;
     tokenPatch = {};
@@ -168,6 +171,37 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
     orden: 'NOMBRE_ASC' as const,
     precioMax: '100',
   };
+  it('Bulk requests only catalogo:leer and verifies the returned G6 service identity before Taxonomy calls', async () => {
+    const security = {
+      issuer: origin,
+      discoveryUrl: origin + '/discovery',
+      jwksUrl: origin + '/keys',
+    };
+    const config = {
+      security,
+      serviceCredentials: {
+        tokenUrl: origin + '/api/v1/auth/token',
+        clientSecret: 'isolated-private-secret',
+      },
+    } as CatalogConfig;
+    issuedScope = 'catalogo:leer';
+    const bulk = new CatalogBulkIdentity(
+      config,
+      new CatalogTokenVerifier(security),
+    );
+    expect(await bulk.authorization(AbortSignal.timeout(5000))).toMatch(
+      /^Bearer /,
+    );
+    expect(forms[0].get('scope')).toBe('catalogo:leer');
+    expect(forms[0].get('client_id')).toBe('modulo-productos');
+    issuedScope = 'precios:leer';
+    await expect(
+      new CatalogBulkIdentity(
+        config,
+        new CatalogTokenVerifier(security),
+      ).authorization(AbortSignal.timeout(5000)),
+    ).rejects.toMatchObject({ status: 503 });
+  });
   it('acquires one own bearer for concurrent batches, verifies RSA/JWKS and caches until expiry', async () => {
     const candidates = Array.from({ length: 201 }, (_, i) => ({
       sku: 'sku-' + i,
@@ -196,6 +230,7 @@ describe('Catalog own modulo-productos token via G7 HTTP contract and real local
         filter.matchingProducts([{ sku: 'sku', productId: 'p' }], query),
       ).rejects.toMatchObject({ status: 503 });
       expect(priceBearers).toEqual([]);
+      issuedScope = 'precios:leer';
       issueStatus = 200;
       expect(
         await filter.matchingProducts([{ sku: 'sku', productId: 'p' }], query),

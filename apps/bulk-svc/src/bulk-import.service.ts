@@ -1,5 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
+import {
+  buildCatalogBulkCommands,
+  stableUuid,
+  type CatalogBulkCommand,
+  type CatalogBulkRow,
+} from './messaging/catalog-bulk-upsert.js';
 import { parseBulkTemplate } from './domain/bulk-template-v2.js';
 import {
   BulkDomainError,
@@ -11,13 +17,22 @@ import {
 } from './domain/bulk.validation.js';
 import { BulkPersistenceError } from './persistence/bulk.persistence.errors.js';
 import {
+  BULK_ENVIRONMENT,
+  type BulkEnvironment,
+} from './config/bulk-environment.js';
+import {
   BulkPersistenceRepository,
   type DomainResultInput,
 } from './persistence/bulk.repository.js';
 
 @Injectable()
 export class BulkImportService {
-  constructor(private readonly repository: BulkPersistenceRepository) {}
+  constructor(
+    private readonly repository: BulkPersistenceRepository,
+    @Optional()
+    @Inject(BULK_ENVIRONMENT)
+    private readonly environment?: BulkEnvironment,
+  ) {}
 
   async receiveImport(input: {
     bytes: Buffer;
@@ -32,8 +47,22 @@ export class BulkImportService {
         'PLANTILLA_INCOMPATIBLE',
         'template_version debe ser 2.',
       );
-    const parsed = parseBulkTemplate(input.bytes, input.format);
-    assertImportDependencies(parsed);
+    const batchId = input.batchId ?? randomUUID();
+    const parsedFile = parseBulkTemplate(input.bytes, input.format);
+    const parsed = {
+      ...parsedFile,
+      rows: parsedFile.rows.map((row) => {
+        const rowId = stableUuid(
+          `${batchId}:bulk-row:${row.rowNumber}:${row.rowId}`,
+        );
+        return { ...row, rowId, rowOperationId: rowId };
+      }),
+    };
+    await this.assertImportDependencies(parsed, batchId);
+    const commandV2 =
+      (this.environment?.catalogCommandV2Enabled ?? false) &&
+      parsed.mode === 'ACTUALIZACION' &&
+      parsed.rows.some((row) => row.variant !== null);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
       rowId: row.rowId,
       productId: row.productId,
@@ -49,13 +78,14 @@ export class BulkImportService {
       defaultLocationId: row.defaultLocationId,
     }));
     const result = await this.createImport({
-      batchId: input.batchId ?? randomUUID(),
+      batchId,
       correlationId: input.correlationId,
       contentRef: input.contentRef,
       format: input.format,
       templateVersion: parsed.templateVersion,
       rows,
       intentRows: parsed.rows,
+      catalogCommandVersion: commandV2 ? 2 : 1,
     });
     return { ...result, parsed };
   }
@@ -84,6 +114,7 @@ export class BulkImportService {
     templateVersion: number;
     rows: NormalizedBulkRow[];
     intentRows?: unknown[];
+    catalogCommandVersion?: 1 | 2;
   }) {
     const normalized = validateBulkImport(input);
     const uuid =
@@ -102,6 +133,53 @@ export class BulkImportService {
       rowId: row.rowId,
       requiredDomains: row.requiredDomains,
     }));
+    const catalogRows = (input.intentRows ?? []).map((value) => {
+      if (typeof value !== 'object' || value === null) {
+        throw new BulkDomainError(
+          'INVALID_INPUT',
+          'La intención normalizada de Catalog está incompleta.',
+        );
+      }
+      const row = value as Record<string, unknown>;
+      return {
+        row_number: Number(row.rowNumber),
+        row_operation_id: String(row.rowOperationId),
+        producto_id: typeof row.productId === 'string' ? row.productId : null,
+        sku_base: String(row.skuBase),
+        product: row.product as Record<string, unknown>,
+        variant_id: typeof row.variantId === 'string' ? row.variantId : null,
+        variant: (row.variant as Record<string, unknown> | null) ?? null,
+        ...(input.catalogCommandVersion === 2 &&
+        typeof row.skuVariant === 'string'
+          ? { sku_variante: row.skuVariant }
+          : {}),
+      } satisfies CatalogBulkRow;
+    });
+    let priorAdmission: Record<string, unknown> | null;
+    try {
+      priorAdmission = await this.repository.findImportAdmissionIntent(
+        input.batchId,
+      );
+    } catch (error) {
+      throw mapBulkPersistenceError(error);
+    }
+    const persistedCommands = Array.isArray(priorAdmission?.catalogCommands)
+      ? priorAdmission.catalogCommands
+      : null;
+    const commands: CatalogBulkCommand[] = persistedCommands
+      ? persistedCommands.map((value) => {
+          const envelope = value as CatalogBulkCommand['envelope'];
+          return { envelope, serialized: JSON.stringify(envelope) };
+        })
+      : catalogRows.length
+        ? buildCatalogBulkCommands({
+            batchId: input.batchId,
+            correlationId: input.correlationId,
+            rows: catalogRows,
+            schemaVersion: input.catalogCommandVersion ?? 1,
+            occurredAt: new Date(),
+          })
+        : [];
     try {
       return await this.repository.createImportBatch({
         batchId: input.batchId,
@@ -112,11 +190,22 @@ export class BulkImportService {
           contentRef: input.contentRef,
         },
         rows: persistedRows,
+        catalogCommands: commands.map(({ envelope }) => ({
+          messageId: envelope.message_id,
+          eventName: envelope.name,
+          kind: envelope.kind,
+          schemaVersion: envelope.schema_version,
+          correlationId: envelope.correlation_id,
+          operationId: envelope.operation_id,
+          occurredAt: new Date(envelope.occurred_at),
+          payload: envelope as unknown as Record<string, unknown>,
+        })),
         admissionIntent: {
           format: input.format,
           templateVersion: input.templateVersion,
           contentRef: input.contentRef,
           rows: input.intentRows ?? normalized,
+          catalogCommands: commands.map(({ envelope }) => envelope),
         },
       });
     } catch (error) {
@@ -156,6 +245,27 @@ export class BulkImportService {
     }
   }
 
+  async assertImportDependencies(
+    parsed: ReturnType<typeof parseBulkTemplate>,
+    batchId?: string,
+  ): Promise<void> {
+    if (
+      (this.environment?.catalogCommandV2Enabled ?? false) ||
+      parsed.mode !== 'ACTUALIZACION' ||
+      !parsed.rows.some((row) => row.variant !== null)
+    ) {
+      return;
+    }
+    if (batchId) {
+      try {
+        if (await this.repository.findImportAdmissionIntent(batchId)) return;
+      } catch (error) {
+        throw mapBulkPersistenceError(error);
+      }
+    }
+    assertImportDependencies(parsed, false);
+  }
+
   async resumeBatch(batchId: string) {
     try {
       return await this.repository.requeueBatch(batchId);
@@ -183,14 +293,16 @@ export class BulkImportService {
 
 export function assertImportDependencies(
   parsed: ReturnType<typeof parseBulkTemplate>,
+  catalogCommandV2Enabled = false,
 ): void {
   if (
+    !catalogCommandV2Enabled &&
     parsed.mode === 'ACTUALIZACION' &&
     parsed.rows.some((row) => row.variant !== null)
   ) {
     throw new BulkDomainError(
       'DEPENDENCY_PENDING',
-      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere resolver sku_variante a variant_id mediante la lectura autorizada de Catalog.',
+      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere BULK_CATALOG_COMMAND_V2_ENABLED=true para emitir sku_variante al consumidor compatible de Catalog.',
     );
   }
 }

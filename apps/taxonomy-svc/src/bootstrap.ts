@@ -4,6 +4,8 @@ import type { INestApplication, LoggerService } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { TaxonomySvcModule } from './taxonomy-svc.module.js';
 import { Database, readDatabaseConfig, parseDatabaseUrl } from './database.js';
+import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
+import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import {
   validarEntorno,
   ConfiguracionInvalidaError,
@@ -56,7 +58,7 @@ export async function crearAplicacion(
   }
   const logger = new SanitizedLogger(opciones.logger);
   const app = await NestFactory.create(
-    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl }),
+    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl, env }),
     { logger },
   );
   app.useLogger(logger);
@@ -86,15 +88,18 @@ export async function iniciarTaxonomySvc(
   readDatabaseConfig(env);
   const { port, host } = readHttpConfig(env);
   const logger = new SanitizedLogger(opciones.logger);
-  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(), {
+  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(env), {
     logger,
     abortOnError: false,
   });
   app.useLogger(logger);
   try {
+    app.get(TaxonomyAmqpRuntime).configurar(env);
     await app.get(Database).verifyIdentity(env);
     app.enableShutdownHooks();
     await app.listen(port, host);
+    app.get(DeactivationRecoveryRunner).iniciar();
+    app.get(TaxonomyAmqpRuntime).iniciar();
     logger.log({ service: 'taxonomy-svc', code: 'APPLICATION_STARTED' });
     return {
       app,

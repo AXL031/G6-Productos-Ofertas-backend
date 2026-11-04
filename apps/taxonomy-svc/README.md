@@ -2,6 +2,18 @@
 
 Microservicio de taxonomía (categorías y marcas) del backend G6.
 
+## Consultas HTTP: estado del issue #37
+
+`listarCategorias` y `listarMarcas` consultan registros activos del esquema propio. OpenAPI 0.6.0-rc.2 exige `serviceBearer`, audiencia `api-productos` y scope `catalogo:leer` para ambas operaciones. El guard valida JWT de servicio con firma RS256 mediante discovery y JWKS, emisor, caducidad, audiencia y scope; responde 401 para credenciales inválidas, 403 ante scope insuficiente y 503 cuando Seguridad no está disponible. Configure `SECURITY_ISSUER`, `SECURITY_DISCOVERY_URL` y `SECURITY_JWKS_URL` juntos; sin configuración el acceso autenticado falla cerrado. El registro y grant del scope en Seguridad siguen pendientes. Las pruebas locales de lectura no acreditan autenticación, homologación externa ni despliegue.
+
+El modo demo local es optativo y reversible: `ALLOW_DEMO_UNAUTHENTICATED=true` solo se acepta con `NODE_ENV=test` o `development`, y permite únicamente GET `/api/v1/categorias` y `/api/v1/marcas` sin Authorization desde un par TCP de loopback. Un Authorization presente siempre sigue el guard JWT. No se confía en cabeceras de IP o identidad. Este límite no habilita conexiones entre contenedores ni acredita el aislamiento Gateway/Oracle exigido por la política H4; estas topologías requieren coordinación y evidencia antes de ampliar el acceso.
+
+## Escrituras de categorías y marcas (#38)
+
+Las mutaciones administrativas requieren JWT humano con audiencia `api-productos`; el modo demo no las habilita anónimamente. Las marcas aceptan multipart y conservan la URI explícita si se proporciona; si se envía un archivo sin URI, se guarda `logo_url = NULL`. Taxonomy no conserva el binario ni comprueba la disponibilidad de la URI; almacenar el archivo corresponde a un responsable externo. La validación revisa tamaño y estructura de PNG/JPEG/WebP, e integridad CRC y descompresión de PNG; no decodifica completamente los píxeles JPEG/WebP. En la edición multipart, enviar `descripcion`, `paisOrigenIso` o `logo` como campo vacío borra el valor correspondiente; omitirlo conserva el valor. El registro de una URI no acredita almacenamiento, homologación ni despliegue.
+
+El microservicio valida la estructura de la imagen y persiste la URI/cadena (`logo_url`) o `NULL` en la base de datos. El almacenamiento físico del binario y la infraestructura de CDN permanecen pendientes de definición por la arquitectura/owner externo, sin alterar los contratos OpenAPI vigentes.
+
 ## Variables de entorno
 
 El servicio valida la configuración en el arranque y falla cerrado (`fail-closed`): si falta o es inválida alguna variable requerida, no inicia. Nunca imprimir ni registrar valores reales; las credenciales se enmascaran en los logs.
@@ -29,13 +41,37 @@ El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y u
 
 **Alcance parcial del issue #35:** los mapeos Drizzle cubren categorías y marcas de las 12 tablas del modelo físico. Queda pendiente mapear las otras diez tablas y validar la persistencia contra las migraciones oficiales; el fixture aislado de estas pruebas no ejecuta dichas migraciones. Este avance no cierra el issue #35.
 
+**Alcance parcial de SPEC-009/010 (issue #36):** siguen pendientes la gestión HTTP completa de características (`listarCaracteristicas`, `crearCaracteristica`, `obtenerCaracteristica`, `actualizarCaracteristica`, `desactivarCaracteristica` y `reactivarCaracteristica`), `reactivarValorCaracteristica` y `reactivarTipoProducto`. Las operaciones `listarTiposProducto` y `obtenerEsquemaTipoProducto` aceptan usuarios o el cliente de servicio `modulo-productos` con audiencia `api-productos` y scope `catalogo:leer`; las demás lecturas requieren usuario y las mutaciones exigen rol `GESTOR_COMERCIAL`. El OpenAPI actual aún declara `userBearer` para estas lecturas; la coordinación contractual y los grants efectivos siguen pendientes. La ejecución local de pruebas no acredita homologación con Catálogo ni despliegue.
+
+El límite de valores LISTA se configura mediante `MAX_ACTIVE_LIST_VALUES`; la migración aditiva `0005_configurable_list_values.sql` instala el valor inicial y actualiza el trigger para aplicar el mismo límite. Su aplicación a cualquier base compartida requiere el procedimiento autorizado.
+
 - Driver `drizzle-orm` sobre `pg` (`node-postgres`).
 - Esquema en `src/persistence/taxonomy.schema.ts`: `taxonomy.categories` y `taxonomy.brands` mapeadas al modelo físico, incluido el enum `taxonomy.estado_entidad` y la columna generada `nombre_normalizado`.
 - `DrizzleTaxonomyRepository` implementa `TaxonomyRepository` y `TaxonomyReadinessIndicator`; las lecturas filtran por `estado = 'ACTIVO'`.
 - Con `DATABASE_URL` definida el módulo usa el repositorio Drizzle; sin ella usa `UnconfiguredTaxonomyRepository` (responde `503`). Los fallos de conexión se traducen a `503 SERVICIO_NO_DISPONIBLE`; el resto se propaga y el filtro lo sanitiza como `500 ERROR_INTERNO`.
 - Las escrituras se agrupan con `enTransaccion` (commit/rollback) y el pool se cierra al apagar la aplicación (`onApplicationShutdown`).
 
+## Mensajería de desactivación — habilitación controlada
+
+Si se configuran conjuntamente `RABBITMQ_URL` y `TAXONOMY_CATALOG_AMQP_USER`, el runtime usa el vhost `g6-productos-ofertas`, consume `po.taxonomia.q` con ACK manual y publica los tres eventos de baja en los exchanges contractuales. La URL debe incluir usuario y contraseña, y el usuario esperado de Catalog debe ser distinto del usuario de Taxonomy. Una configuración incompleta o inválida falla al arrancar; sin ambas variables el transporte está deshabilitado. No registrar credenciales. Con AMQP habilitado, readiness exige conexión y consumidor activos.
+
+El consumidor valida el envelope y la identidad AMQP, registra Inbox y finaliza en una transacción; los duplicados idénticos no repiten efectos y una colisión de `message_id` pausa el consumo. Un mensaje inválido se registra mediante su huella y causa antes de ACK. El consumidor admite los cinco tipos contractuales. Después de tres fallos locales de persistencia, el consumidor se pausa sin ACK; el cierre devuelve la entrega al broker y no se presupone DLQ. El Outbox solo se marca publicado tras confirmación; si el commit posterior falla, el mismo `message_id` puede publicarse de nuevo. Una confirmación tampoco prueba entrega de negocio: un alternate exchange puede aceptar mensajes sin binding. Se requiere supervisar la cola sin ruta. La ausencia o nulidad de `causation_id` se admite conforme al AsyncAPI; en ese caso se exige una solicitud Outbox de la misma operación y correlación, además de validar entidad y versión. Si el campo viene informado debe corresponder al `message_id` de la solicitud; la coordinación con Catalog sigue pendiente.
+
+El relay recorre pendientes mediante un cursor en memoria: un fallo conserva la fila, incrementa `attempts` y registra `BROKER_PUBLISH_UNCONFIRMED`, pero permite avanzar a otras operaciones. Los eventos de la misma operación esperan a sus predecesores pendientes para preservar el orden causal. Al terminar el recorrido, el cursor vuelve al principio para reintentar; el reinicio también lo reinicia. Alertar por intentos persistentes y resolver la causa mediante intervención autorizada; no se descarta ningún mensaje ni se supone una DLQ.
+
+El relay también publica `taxonomy.category.updated`, `taxonomy.product-type-schema.changed` y `taxonomy.characteristic-value.updated` desde el Outbox en `po.eventos.x`. Las pruebas aisladas no acreditan bindings, ACL ni conectividad del broker compartido. La baja de asociaciones requiere la migración aditiva `0004_product_type_pending_version.sql`; su aplicación a infraestructura compartida queda sujeta al proceso autorizado.
+
+La conexión al broker compartido no está acreditada: Marco debe verificar red, ACL, bindings y topología; López/Poma deben homologar el flujo y su evidencia. Las pruebas con dobles no acreditan integración real RabbitMQ ni despliegue. No habilitar este transporte en Oracle hasta verificar estas condiciones y los permisos de `taxonomy.inbox`/`taxonomy.outbox` en la instalación autorizada.
+
 ## Pruebas de integración (Postgres aislado)
+
+### Observabilidad y reconciliación de bajas vencidas
+
+Al ejecutar `recuperarVencidas()`, las operaciones con entidad ausente, estado distinto o versión no coincidente permanecen `IN_PROGRESS`: no se modifica la entidad, no se emite resultado terminal y no se libera ninguna barrera de Catálogo. El servicio registra el aviso estructurado `taxonomy.deactivation.recovery_discrepancy`, con `operation_id`, tipo y motivo; omite datos de conexión y payloads. Cada instancia inspecciona como máximo una vez cada cinco minutos y registra hasta 50 identificadores. La consulta obtiene como máximo 51 discrepancias con un cursor de UUID que rota entre inspecciones y `muestra_truncada` indica que hay más de 50 en la página; no calcula un total exacto. El cursor es local a cada instancia y se reinicia al reiniciar el proceso. El límite de frecuencia es por instancia y se reinicia al reiniciar el proceso, por lo que la plataforma debe deduplicar entre réplicas. Los casos discrepantes no ocupan los 50 lugares destinados a recuperaciones válidas. Un cambio concurrente durante la restauración se reporta como `CAMBIO_CONCURRENTE`, también con límite de frecuencia por instancia. Si hay pocas o ninguna discrepancia, la inspección aún puede recorrer las operaciones vencidas; medir el plan con datos representativos antes de producción y evaluar un índice mediante el proceso de migración autorizado.
+
+Medición local exploratoria: `EXPLAIN (ANALYZE, BUFFERS, TIMING OFF)` sobre PostgreSQL 17 desechable, con 100 000 operaciones sintéticas vencidas y sin discrepancias, devolvió 0 filas en 130,498 ms y mostró un recorrido secuencial de las operaciones. Es una muestra local sin carga concurrente ni datos productivos, no una garantía de latencia; requiere medición con cardinalidad e índices reales antes del despliegue.
+
+El owner de Taxonomy debe investigar la operación y contrastar su versión autoritativa, estado e integración con Catálogo antes de decidir una reconciliación. No debe forzar una versión, liberar barreras ni aplicar SQL a la base compartida sin el proceso autorizado. Una vez corregida y verificada la causa mediante ese proceso, una ejecución posterior puede recuperar la operación; la transacción registra el resultado en outbox. El runner local ejecuta la recuperación cada 10 segundos, evita solapamientos y espera el trabajo en curso al cerrar. Configurar una alerta operativa sobre este evento y monitorear su persistencia también queda pendiente de la plataforma; un aviso local no acredita alerta desplegada ni reconciliación externa.
 
 `scripts/ci/run-taxonomy-integration.mjs` aprovisiona y elimina su propio contenedor `postgres:17-alpine`, publica el puerto solo en loopback y genera la URL/credenciales internamente. Rechaza `TAXONOMY_TEST_DATABASE_URL` recibida desde el entorno. PostgreSQL se inicia con un identificador aleatorio de sesión que el preflight coteja mediante `current_setting()` antes de permitir cualquier DDL; un testigo insertado en una URL recibida no se considera acreditación. No apuntar pruebas destructivas a Supabase ni a bases compartidas.
 

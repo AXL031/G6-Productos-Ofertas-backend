@@ -7,7 +7,9 @@ import {
   UseFilters,
   UseGuards,
   SetMetadata,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PricingReads } from './pricing-reads.js';
 import {
   COMMERCIAL_PRICING_READ,
@@ -53,15 +55,34 @@ export class PricingReadController {
 
   @Get()
   @SetMetadata(COMMERCIAL_PRICING_READ, true)
-  batch(@Query() query: Record<string, unknown>) {
+  batch(
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     const { skus, channel, at, historical } = parseCommercialQuery(query, true);
-    return this.commercial.batch(skus, channel, at, historical);
+    return this.commercial.batch(
+      skus,
+      channel,
+      at,
+      historical,
+      String(response.getHeader('X-Correlation-Id')),
+    );
   }
   @Get('skus/:sku')
   @SetMetadata(COMMERCIAL_PRICING_READ, true)
-  sku(@Param('sku') sku: string, @Query() query: Record<string, unknown>) {
+  sku(
+    @Param('sku') sku: string,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     const { channel, at, historical } = parseCommercialQuery(query);
-    return this.commercial.sku(sku, channel, at, historical);
+    return this.commercial.sku(
+      sku,
+      channel,
+      at,
+      historical,
+      String(response.getHeader('X-Correlation-Id')),
+    );
   }
 
   @Get('productos/:productoId')

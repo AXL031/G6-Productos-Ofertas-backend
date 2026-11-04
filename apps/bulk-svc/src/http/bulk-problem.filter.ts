@@ -17,6 +17,7 @@ export class BulkProblemFilter implements ExceptionFilter {
     let detail = 'No se pudo completar la operación.';
     if (error instanceof BulkDomainError) {
       const mapped: Record<string, [number, string]> = {
+        INVALID_INPUT: [400, 'VALIDACION'],
         ARCHIVO_INVALIDO: [400, 'ARCHIVO_INVALIDO'],
         ARCHIVO_EXCEDE_LIMITE: [413, 'ARCHIVO_EXCEDE_LIMITE'],
         PLANTILLA_INCOMPATIBLE: [422, 'PLANTILLA_INCOMPATIBLE'],
@@ -24,6 +25,8 @@ export class BulkProblemFilter implements ExceptionFilter {
         IDEMPOTENCY_CONFLICT: [409, 'IDEMPOTENCY_CONFLICT'],
         INVALID_TRANSITION: [409, 'IDEMPOTENCY_CONFLICT'],
         BATCH_NOT_FOUND: [404, 'LOTE_NO_ENCONTRADO'],
+        EXPORT_NOT_FOUND: [404, 'LOTE_NO_ENCONTRADO'],
+        EXPORT_NOT_READY: [503, 'SERVICIO_NO_DISPONIBLE'],
         STORAGE_UNAVAILABLE: [503, 'SERVICIO_NO_DISPONIBLE'],
         PERSISTENCE_FAILURE: [503, 'SERVICIO_NO_DISPONIBLE'],
         DEPENDENCY_PENDING: [503, 'SERVICIO_NO_DISPONIBLE'],

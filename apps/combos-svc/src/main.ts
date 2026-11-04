@@ -2,6 +2,9 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { NestFactory } from '@nestjs/core';
 import { CombosSvcModule } from './combos-svc.module.js';
+import { readCombosEnvironment } from './config/combos-environment.js';
+import { CombosProblemFilter } from './http/combos-problem.filter.js';
+import { combosCorrelationMiddleware } from './http/combos-correlation.middleware.js';
 
 function loadEnv(): void {
   const envPath = resolve(process.cwd(), '.env');
@@ -10,25 +13,14 @@ function loadEnv(): void {
   }
 }
 
-function resolvePort(): number {
-  const rawPort = process.env.COMBOS_SVC_PORT ?? process.env.PORT ?? '3007';
-  const port = Number(rawPort);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(
-      '[' +
-        'combos-svc' +
-        '] Puerto invalido: ' +
-        String(rawPort) +
-        '. Debe ser un entero entre 1 y 65535.',
-    );
-  }
-  return port;
-}
-
 async function bootstrap() {
   loadEnv();
-  const port = resolvePort();
+  const config = readCombosEnvironment(process.env);
   const app = await NestFactory.create(CombosSvcModule);
-  await app.listen(port);
+  app.setGlobalPrefix('api/v1', { exclude: ['health', 'ready'] });
+  app.use(combosCorrelationMiddleware);
+  app.useGlobalFilters(new CombosProblemFilter());
+  app.enableShutdownHooks();
+  await app.listen(config.port, config.host);
 }
 await bootstrap();
