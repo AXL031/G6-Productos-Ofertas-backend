@@ -21,6 +21,7 @@ export function reviewData() {
   const audit = read('evidence/supabase-readonly.json');
   const live = read('evidence/audit-followup-readonly.json');
   const http = read('evidence/storage-image-http.json');
+  const runx = read('evidence/jd9558-image-correspondence.json');
   const references = read('sources/model-color-review.json');
   const images = read('image-map.json');
   const historical = JSON.parse(
@@ -128,7 +129,16 @@ export function reviewData() {
     const object = http.find((o) => o.url === url);
     if (!object) throw Error('DATA002_IMAGE_EVIDENCE_MISSING:' + p.sku);
     const historic = historical.productos.find((h) => h.id === p.product_id);
-    const conflict = p.sku.startsWith('ADI-RUNX-');
+    const isRunx = p.sku.startsWith('ADI-RUNX-');
+    if (
+      isRunx &&
+      (url !== runx.stored_image.url ||
+        object.sha256 !== runx.stored_image.sha256 ||
+        object.sha256 !== runx.official_image.sha256 ||
+        runx.stored_image.status !== 200 ||
+        runx.official_image.status !== 200)
+    )
+      throw Error('DATA002_RUNX_IMAGE_EVIDENCE_MISMATCH');
     return {
       sku: p.sku,
       sku_identity_id: p.sku_identity_id,
@@ -148,13 +158,13 @@ export function reviewData() {
         : p.sku === 'NIK-PITCH-05'
           ? 'PROPUESTA_A_IMAGEN_PRODUCTO'
           : 'EXISTENTE',
-      visual_review: conflict
-        ? 'CONFLICTO_NEGRO_CATALOGO_VS_GRIS_VISIBLE'
+      visual_review: isRunx
+        ? 'IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256'
         : color === 'SIN_ATRIBUTO_COLOR'
-          ? 'FOTO_COHERENTE_FZ2636_101; FALTA_COLOR_EN_CATALOGO'
-          : 'MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE',
+          ? 'ASOCIACION_POR_NOMBRE_Y_SKU; FALTA_COLOR_EN_CATALOGO'
+          : 'ASOCIACION_POR_NOMBRE_Y_SKU',
       limitation:
-        'Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía.',
+        'Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json.',
     };
   });
   emit('reference-image-review.json', rows);

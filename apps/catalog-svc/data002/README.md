@@ -5,6 +5,12 @@ y [metodología de estimación y plantillas](METODOLOGIA-PERFILES.md). Esta revi
 preserva el Excel y las 220 medidas, distingue artículo de embalaje, corrige
 referencias por color y conserva un bloqueo semántico explícito antes de cargar.
 
+Corrección puntual sobre el HEAD auditado `1ce011899c074e765e77772c049f2837c0462c4a`:
+la matriz diferencia asociación por nombre/SKU de inspección visual individual.
+JD9558 conserva Negro y su fotografía coincide por SHA-256 con la imagen oficial;
+[evidencia reproducible y límites](evidence/jd9558-image-correspondence.json).
+Su portada se reincorpora a B; las cuatro adicionales siguen separadas.
+
 **PENDIENTE_APROBACION_MARCO**. Preparación offline; ningún SQL de escritura de
 este paquete fue ejecutado en Supabase compartido. No cierra #12, habilita ventas
 ni acredita integración autenticada, homologación, despliegue Oracle o readiness.
@@ -34,6 +40,9 @@ Owner Gabriel Poma, rama `poma`, destino propuesto `slzglmtiyrzygpkiuthf`, schem
 - Base Backend al iniciar: `f995307b7f704f24c5ef0fb5806518947dc41c07`;
   master `eeaf39ad666d7bc5a11c0b2a80d9c8c4b0016414`: poma 0 adelante/1 atrás.
   No hubo merge, rebase ni sincronización masiva. El diff nuevo es DATA-002.
+- Compatibilidad de esta corrección: `origin/master@1bf615e9cae70b93eeec9fcfec862d450e9ebfb9`
+  consultado mediante fetch; GitHub informa MERGEABLE/CLEAN. Se conserva `poma`
+  sin merge, rebase ni force push. La CI del nuevo SHA se verifica aparte en la PR.
 
 ## Auditoría real y diferencias
 
@@ -80,7 +89,7 @@ identificadoras derivadas no presentan inconsistencias en la auditoría.
 | Paquete | Escrituras máximas en primera ejecución | Aprobación |
 |---|---|---|
 | A — siete vinculaciones | 6 UPDATE exclusivamente `variant_images.url`; 1 INSERT `product_images` Nike Pitch | Pendiente |
-| B — portadas | 11 INSERT `product_images`, RUNx excluido por discordancia de color | Pendiente de ejecución; cuatro portadas adicionales separadas |
+| B — portadas | 12 INSERT `product_images`, incluido RUNx acreditado por SHA-256 oficial | Pendiente de ejecución; cuatro portadas adicionales separadas |
 | C — barras 0002 | DDL ya existente; cero códigos inventados | Pendiente, proceso de migración oficial |
 | D — publicación 0003 | DDL ya existente; históricos NULL, nuevos false | Pendiente, después de 0002 |
 | E — perfiles académicos | 55 INSERT `sku_physical_profiles`, solo filas ausentes; reintento idéntico sin UPDATE | Estimaciones admitidas; decisión artículo/embalaje y ejecución pendientes |
@@ -89,16 +98,22 @@ identificadoras derivadas no presentan inconsistencias en la auditoría.
 archivo, object_id y eTag exactos de A. Incluye Nike Pitch
 `abab3400-46eb-58f7-78d5-8204418b60d9`, SKU `NIK-PITCH-05`.
 El INSERT omite `id`: usa `gen_random_uuid()` de la tabla. Los cinco objetos
-nuevos existen; metadatos positivos y MIME de imagen comprobados. La auditoría
-posterior exige correspondencia entre SKU, color y fotografía: se realizó revisión
-visual, lectura HTTP y contraste comercial, registrados en reference-image-review.
+nuevos existen; metadatos positivos y MIME de imagen comprobados. La matriz
+reference-image-review conserva lectura HTTP, hashes y referencias comerciales.
+La clasificación general es ASOCIACION_POR_NOMBRE_Y_SKU: los nombres manuales
+identifican producto/modelo/color, sin acreditar inspección visual individual.
 
-`cover-map.json` fija once padres, imagen/variante fuente del mismo modelo,
+`cover-map.json` fija doce padres, imagen/variante fuente del mismo modelo,
 fuente comercial histórica, archivo, object_id y eTag. Reutiliza URL sin copiar
 objetos. La matriz histórica `005` conserva su clasificación original. Los cuatro
 padres adicionales quedan fuera del SQL B como `PENDING_SEPARATE_PROPOSAL`.
-RUNx está en `image_conflicts`: Negro en catálogo frente a gris visible. No se
-crea una portada con esa foto hasta resolver la discrepancia de forma autorizada.
+RUNx conserva Negro: adidas denomina JD9558 Black / White / Black. Su imagen
+almacenada y la enlazada desde la página oficial tienen exactamente el mismo
+SHA-256; evidence/jd9558-image-correspondence.json registra URLs, fecha, bytes y
+método. Se retira el supuesto conflicto por tejido jaspeado y se reincorpora
+su portada solo a la propuesta offline B. Una foto compartida por tres tallas
+no acredita inspecciones individuales, talla ni autenticidad. image_conflicts
+queda vacío; las cuatro portadas adicionales siguen separadas.
 
 Cada paquete tiene preflight, aplicación propuesta y postcheck independientes.
 Los UPDATE aceptan solo el placeholder exacto o el resultado idéntico ya aplicado;
@@ -110,10 +125,10 @@ portadas requieren conciliación técnica. No sobrescribe imágenes ni amplía e
 mapeo de modelos. Bloqueos de tabla impiden duplicados por concurrencia de escritores.
 
 Después de A: cuatro imágenes de producto globales; el lote original sigue con
-tres y el `004` histórico continúa válido. Después de B: 14 imágenes producto
-globales (15 si A también se aprobó); el lote original tiene 14, por lo que la
+tres y el `004` histórico continúa válido. Después de B: 15 imágenes producto
+globales (16 si A también se aprobó); el lote original tiene 15, por lo que la
 expectativa histórica exacta de tres deja de aplicar. **No se modifica `004`**:
-`covers-postcheck.sql` verifica los once padres y sus fuentes; las pruebas
+`covers-postcheck.sql` verifica los doce padres y sus fuentes; las pruebas
 comparan los registros originales completos, las identidades y estados.
 
 ## Perfiles y activación
@@ -201,7 +216,7 @@ historial oficial antes de ejecución. `migrations-preflight.sql` y
    PR, archivos y SHA-256 de `SHA256SUMS`, responsable, ventana y recuperación.
    Merge, acceso a Supabase o este issue no son autorización.
 2. Repetir auditoría y preflight en destino. Para A: seis READY o
-   ALREADY_APPLIED y Pitch true. Para B: once fuentes revisadas, excluyendo RUNx; los
+   ALREADY_APPLIED y Pitch true. Para B: doce fuentes documentadas, incluido RUNx; los
    cuatro modelos fuera de propuesta siguen excluidos. Para E: 55 READY o
    ALREADY_APPLIED, sin conflictos, mapeo 51 variantes + 4 simples y decisión
    documentada sobre artículo/embalaje. READY estructural no cierra esta decisión.
@@ -298,7 +313,7 @@ SKU/resultado exactas, y la prueba enfocada y repetición global aplicable pasar
 | BLOQUEADO_ESPECÍFICO | Marco + owner BD | Carga E: aprobar destino, 55 identidades, valores/hashes exactos y procedimiento de ejecución |
 | BLOQUEADO_ESPECÍFICO | Marco/Arquitectura + G2 si aplica | Artículo/embalaje: fuente intrínseca separada o excepción académica delimitada antes de solicitar carga |
 | BLOQUEADO_ESPECÍFICO | Poma + Marco | Ocho identificadores locales y atributos Pitch: propuesta separada; los doce JSON null con IDs válidos no requieren normalización |
-| BLOQUEADO_ESPECÍFICO | Administrador + Poma | Foto RUNx: resolver color sin sobrescribir datos originales; cuatro portadas adicionales separadas |
+| IMPLEMENTAR_AHORA | Poma | RUNx: correspondencia oficial acreditada por SHA-256, Negro conservado y portada reincorporada a propuesta B; cuatro portadas adicionales separadas |
 | BLOQUEADO_ESPECÍFICO | Vera/Pricing + Taco/Inventory + Poma | Preparación: ejecutar flujo autorizado y confirmar mensajes reales por producto/SKU/operation_id |
 | BLOQUEADO_ESPECÍFICO | Marco/Docs | Consolidar 0002/0003 y modelo físico en historial normativo antes de aplicar |
 | BLOQUEADO_ESPECÍFICO | Castilla/entorno CI | E2E integral Bulk: disponer de Docker y ejecutar bulk-postgres-outage sin exclusión |

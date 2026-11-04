@@ -92,7 +92,7 @@ const pitch = {
   ...objectFor('nike-pitch-talla.jpg'),
 };
 const covers = manifest.productos
-  .filter((p) => p.tiene_variantes && p.sku_base !== 'ADI-RUNX-JD9558-BASE')
+  .filter((p) => p.tiene_variantes)
   .map((p) => {
     const candidate = audit.variant_images
       .filter((i) =>
@@ -113,23 +113,22 @@ const covers = manifest.productos
       source_image_id: candidate.id,
       evidence: p.evidencia_comercial,
       verification:
-        'CORRESPONDENCIA_MODELO_COLOR_REVISADA; VER reference-image-review.csv',
+        p.sku_base === 'ADI-RUNX-JD9558-BASE'
+          ? 'IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256; VER evidence/jd9558-image-correspondence.json'
+          : 'ASOCIACION_POR_NOMBRE_Y_SKU; VER reference-image-review.csv',
       ...objectFor(presentation.archivo_storage),
     };
   });
 const blockedCovers = audit.products
   .filter(
-    (p) =>
-      p.tiene_variantes &&
-      p.sku_base !== 'ADI-RUNX-JD9558-BASE' &&
-      !covers.some((c) => c.product_id === p.id),
+    (p) => p.tiene_variantes && !covers.some((c) => c.product_id === p.id),
   )
   .map((p) => ({
     product_id: p.id,
     sku: p.sku_base,
     status: 'PENDING_SEPARATE_PROPOSAL',
     reason:
-      'Mantener como propuesta separada de las portadas originales según auditoría; referencia e imagen revisadas en reference-image-review.csv.',
+      'Mantener como propuesta separada de las portadas originales según auditoría; asociación documental en reference-image-review.csv.',
   }));
 emit('image-map.json', JSON.stringify({ images, pitch }, null, 2));
 emit(
@@ -138,14 +137,7 @@ emit(
     {
       covers,
       pending_proposal: blockedCovers,
-      image_conflicts: [
-        {
-          sku: 'ADI-RUNX-JD9558-BASE',
-          status: 'BLOCKED_IMAGE_COLOR_CONFLICT',
-          reason:
-            'Negro en Taxonomy frente a gris visible; no proponer portada con esta fotografía.',
-        },
-      ],
+      image_conflicts: [],
     },
     null,
     2,
@@ -266,7 +258,7 @@ SELECT id,product_id,url,principal,posicion,created_at FROM catalog.product_imag
 );
 emit(
   'covers-preflight.sql',
-  `-- Mapeo revisado de 11 padres; RUNx excluido por conflicto de color.
+  `-- Mapeo documental de 12 padres; JD9558 coincide por SHA-256 con la imagen oficial.
 SELECT m.*, ${storageOk} AND ${coverOk} AS source_ok,
   CASE WHEN EXISTS (SELECT 1 FROM catalog.product_images i JOIN storage.objects o
     ON i.url=${literal(publicBase)}||o.name AND o.bucket_id='catalog-products'
@@ -288,7 +280,7 @@ emit(
 );
 emit(
   'covers-postcheck.sql',
-  `-- 11 padres mapeados; RUNx bloqueado por color y cuatro adicionales separados.
+  `-- 12 padres mapeados, incluido JD9558; cuatro adicionales separados.
 SELECT m.sku, ${coverOk} AND ${storageOk} AND EXISTS (SELECT 1 FROM catalog.product_images i JOIN storage.objects o
   ON i.url=${literal(publicBase)}||o.name AND o.bucket_id='catalog-products'
   WHERE i.product_id=m.product_id::uuid AND i.url=m.url AND (o.metadata->>'size')::bigint>0
@@ -695,6 +687,7 @@ const files = [
   'attribute-review.json',
   'evidence/physical-quality-review.json',
   'evidence/storage-image-http.json',
+  'evidence/jd9558-image-correspondence.json',
   'evidence/audit-followup-readonly.json',
   'prepare-profiles.mjs',
   'extract-profiles.py',

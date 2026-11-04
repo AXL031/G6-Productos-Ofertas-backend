@@ -13,8 +13,8 @@
     "image_sha256": "05a192e8a2218714aef0efb8e89f993010a29af110dcf138de2461a5d9f0a58d",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT22-SHORT-GRI-S",
@@ -30,8 +30,8 @@
     "image_sha256": "e62c138cb4baa40fcb0106c4359d27a52aced988858582198d32ed5d74365a91",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT22-SHORT-GRI-M",
@@ -47,8 +47,8 @@
     "image_sha256": "e62c138cb4baa40fcb0106c4359d27a52aced988858582198d32ed5d74365a91",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT22-SHORT-GRI-L",
@@ -64,8 +64,8 @@
     "image_sha256": "e62c138cb4baa40fcb0106c4359d27a52aced988858582198d32ed5d74365a91",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-AZU-S",
@@ -81,8 +81,8 @@
     "image_sha256": "ddc23e238342f229d660b7ce2d53eadc39eca6e2ed225e51358b138237ed5a9b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-AZU-M",
@@ -98,8 +98,8 @@
     "image_sha256": "ddc23e238342f229d660b7ce2d53eadc39eca6e2ed225e51358b138237ed5a9b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-AZU-L",
@@ -115,8 +115,8 @@
     "image_sha256": "ddc23e238342f229d660b7ce2d53eadc39eca6e2ed225e51358b138237ed5a9b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-BLA-S",
@@ -132,8 +132,8 @@
     "image_sha256": "378ea7a6db603277c1c81a444424a3a17bfd4d7db1fd8bcfc93346f9a554d859",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-BLA-M",
@@ -149,8 +149,8 @@
     "image_sha256": "378ea7a6db603277c1c81a444424a3a17bfd4d7db1fd8bcfc93346f9a554d859",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-ENT26-BLA-L",
@@ -166,8 +166,8 @@
     "image_sha256": "378ea7a6db603277c1c81a444424a3a17bfd4d7db1fd8bcfc93346f9a554d859",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-MESSI-JI8291-05",
@@ -183,8 +183,8 @@
     "image_sha256": "f64f17799226028d005835f2d4dc7afc8874ad14f89a5a8b02da72b7ac2b374a",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-PRED-IG7760-MUL-38",
@@ -200,8 +200,8 @@
     "image_sha256": "17856ca958be95f6a1045ad9e0b5f61ede41b9b1e9ecc37f28f9a730cc2a3086",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-PRED-IG7760-MUL-40",
@@ -217,8 +217,8 @@
     "image_sha256": "17856ca958be95f6a1045ad9e0b5f61ede41b9b1e9ecc37f28f9a730cc2a3086",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-PRED-IG7760-MUL-42",
@@ -234,8 +234,8 @@
     "image_sha256": "17856ca958be95f6a1045ad9e0b5f61ede41b9b1e9ecc37f28f9a730cc2a3086",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-PRED-IG7760-MUL-43",
@@ -251,8 +251,8 @@
     "image_sha256": "17856ca958be95f6a1045ad9e0b5f61ede41b9b1e9ecc37f28f9a730cc2a3086",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-RF3-GRI-38",
@@ -268,8 +268,8 @@
     "image_sha256": "27b511dcd523792dd19060758cacfd67c3baee9ebe9525306fde519388eef4ee",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-RF3-GRI-39",
@@ -285,8 +285,8 @@
     "image_sha256": "27b511dcd523792dd19060758cacfd67c3baee9ebe9525306fde519388eef4ee",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-RUNX-JD9558-NEG-EU3436",
@@ -295,15 +295,15 @@
     "manufacturer_code": "JD9558",
     "original_model_reference": "JD9558",
     "catalog_color": "Negro",
-    "reference_color": "Negro",
-    "reference_url": "https://www.adidas.com/bh/en/runxcushioned-socks-1-pair/JD9558.html",
-    "reference_evidence": "FUENTE_HISTORICA_MANIFIESTO_002_005",
+    "reference_color": "Black / White / Black",
+    "reference_url": "https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html",
+    "reference_evidence": "PRIMARY_SOURCE_VERIFIED; IDENTICAL_OFFICIAL_IMAGE_SHA256",
     "image_url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
     "image_sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "CONFLICTO_NEGRO_CATALOGO_VS_GRIS_VISIBLE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-RUNX-JD9558-NEG-EU3739",
@@ -312,15 +312,15 @@
     "manufacturer_code": "JD9558",
     "original_model_reference": "JD9558",
     "catalog_color": "Negro",
-    "reference_color": "Negro",
-    "reference_url": "https://www.adidas.com/bh/en/runxcushioned-socks-1-pair/JD9558.html",
-    "reference_evidence": "FUENTE_HISTORICA_MANIFIESTO_002_005",
+    "reference_color": "Black / White / Black",
+    "reference_url": "https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html",
+    "reference_evidence": "PRIMARY_SOURCE_VERIFIED; IDENTICAL_OFFICIAL_IMAGE_SHA256",
     "image_url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
     "image_sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "CONFLICTO_NEGRO_CATALOGO_VS_GRIS_VISIBLE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-RUNX-JD9558-NEG-EU4042",
@@ -329,15 +329,15 @@
     "manufacturer_code": "JD9558",
     "original_model_reference": "JD9558",
     "catalog_color": "Negro",
-    "reference_color": "Negro",
-    "reference_url": "https://www.adidas.com/bh/en/runxcushioned-socks-1-pair/JD9558.html",
-    "reference_evidence": "FUENTE_HISTORICA_MANIFIESTO_002_005",
+    "reference_color": "Black / White / Black",
+    "reference_url": "https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html",
+    "reference_evidence": "PRIMARY_SOURCE_VERIFIED; IDENTICAL_OFFICIAL_IMAGE_SHA256",
     "image_url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
     "image_sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "CONFLICTO_NEGRO_CATALOGO_VS_GRIS_VISIBLE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JG5832-NEG-S",
@@ -353,8 +353,8 @@
     "image_sha256": "231cb9fb17447ea6cf94c7a0ec5ce12e94c7668301674436ee1bf1518d70570c",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JG5832-NEG-M",
@@ -370,8 +370,8 @@
     "image_sha256": "231cb9fb17447ea6cf94c7a0ec5ce12e94c7668301674436ee1bf1518d70570c",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JG5832-NEG-L",
@@ -387,8 +387,8 @@
     "image_sha256": "231cb9fb17447ea6cf94c7a0ec5ce12e94c7668301674436ee1bf1518d70570c",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JH3407-AZU-S",
@@ -404,8 +404,8 @@
     "image_sha256": "a9cb536ab4411836b98ff18ff447119edc192c0f1232e76a66fcfb305e7c354e",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JH3407-AZU-M",
@@ -421,8 +421,8 @@
     "image_sha256": "a9cb536ab4411836b98ff18ff447119edc192c0f1232e76a66fcfb305e7c354e",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "ADI-SQUA25-JH3407-AZU-L",
@@ -438,8 +438,8 @@
     "image_sha256": "a9cb536ab4411836b98ff18ff447119edc192c0f1232e76a66fcfb305e7c354e",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-ACADEMY-HV4386-05",
@@ -455,8 +455,8 @@
     "image_sha256": "24af0eab78b7186c393142ab11a85699ece03b6226a1065ddc710856c53490d6",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-NEG-EU3438",
@@ -472,8 +472,8 @@
     "image_sha256": "ba89d2324a2eb60e304a497b0d3dc3f9601c049cf99e511e52fb5d1157654dc2",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-NEG-EU3842",
@@ -489,8 +489,8 @@
     "image_sha256": "ba89d2324a2eb60e304a497b0d3dc3f9601c049cf99e511e52fb5d1157654dc2",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-NEG-EU4246",
@@ -506,8 +506,8 @@
     "image_sha256": "ba89d2324a2eb60e304a497b0d3dc3f9601c049cf99e511e52fb5d1157654dc2",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-BLA-EU3438",
@@ -523,8 +523,8 @@
     "image_sha256": "db336e87878235dcb3c75ac7afb91b029d3dcc5d1dcceccd73f3654e33d53fda",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-BLA-EU3842",
@@ -540,8 +540,8 @@
     "image_sha256": "db336e87878235dcb3c75ac7afb91b029d3dcc5d1dcceccd73f3654e33d53fda",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-EVP-FQ0327-BLA-EU4246",
@@ -557,8 +557,8 @@
     "image_sha256": "db336e87878235dcb3c75ac7afb91b029d3dcc5d1dcceccd73f3654e33d53fda",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-M-BV6855-NEG-S",
@@ -574,8 +574,8 @@
     "image_sha256": "277908183c9c9c6cbbb4ea3d99ce6deafbca1b80f5cebe749bbda55a388f2f5b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-M-BV6855-NEG-M",
@@ -591,8 +591,8 @@
     "image_sha256": "277908183c9c9c6cbbb4ea3d99ce6deafbca1b80f5cebe749bbda55a388f2f5b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-M-BV6855-NEG-L",
@@ -608,8 +608,8 @@
     "image_sha256": "277908183c9c9c6cbbb4ea3d99ce6deafbca1b80f5cebe749bbda55a388f2f5b",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-W-BV6860-NEG-XS",
@@ -625,8 +625,8 @@
     "image_sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-W-BV6860-NEG-S",
@@ -642,8 +642,8 @@
     "image_sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-W-BV6860-NEG-M",
@@ -659,8 +659,8 @@
     "image_sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-W-BV6860-NEG-L",
@@ -676,8 +676,8 @@
     "image_sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK3-W-BV6860-NEG-XL",
@@ -693,8 +693,8 @@
     "image_sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK7-BV6708-NEG-S",
@@ -710,8 +710,8 @@
     "image_sha256": "f580bed1deb62ad387fbc5458332e286d2d0e52812876c05a077e62efdc03f78",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK7-BV6708-NEG-M",
@@ -727,8 +727,8 @@
     "image_sha256": "f580bed1deb62ad387fbc5458332e286d2d0e52812876c05a077e62efdc03f78",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PARK7-BV6708-NEG-L",
@@ -744,8 +744,8 @@
     "image_sha256": "f580bed1deb62ad387fbc5458332e286d2d0e52812876c05a077e62efdc03f78",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-PITCH-05",
@@ -761,8 +761,8 @@
     "image_sha256": "3fce61b9042e0a7b0191aecbdb40eebdb44fb0079c76e1387265e7073c6d4f8f",
     "http_status": 200,
     "link_status": "PROPUESTA_A_IMAGEN_PRODUCTO",
-    "visual_review": "FOTO_COHERENTE_FZ2636_101; FALTA_COLOR_EN_CATALOGO",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU; FALTA_COLOR_EN_CATALOGO",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-REV7-NEG-41",
@@ -778,8 +778,8 @@
     "image_sha256": "d88aac3a63fa649e186ee2bb6df5039370c60e5c1b66d6f64dde061260cda3a9",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "NIK-REV7-NEG-42",
@@ -795,8 +795,8 @@
     "image_sha256": "d88aac3a63fa649e186ee2bb6df5039370c60e5c1b66d6f64dde061260cda3a9",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "PUM-ORBITA-084641-05",
@@ -812,8 +812,8 @@
     "image_sha256": "295c659f4882b9242fb95f3c2ab6f7f1c9b554695b3a2d12b187804ebf015ded",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "PUM-SC-782244-BLA-S",
@@ -829,8 +829,8 @@
     "image_sha256": "42b9f68e1134a59b9346b03be00a888fd491559b330901f44e400a68fd93443d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "PUM-SC-782244-BLA-M",
@@ -846,8 +846,8 @@
     "image_sha256": "42b9f68e1134a59b9346b03be00a888fd491559b330901f44e400a68fd93443d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "PUM-SC-782244-BLA-L",
@@ -863,8 +863,8 @@
     "image_sha256": "42b9f68e1134a59b9346b03be00a888fd491559b330901f44e400a68fd93443d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "PUM-ULP-NEG-42",
@@ -880,8 +880,8 @@
     "image_sha256": "8a3d508bca48dcf4663a3ed8b61536bb126c91ca211cf72db0145803222c2021",
     "http_status": 200,
     "link_status": "PROPUESTA_A_REEMPLAZO_PLACEHOLDER",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "UA-TECH20-1326413-NEG-S",
@@ -897,8 +897,8 @@
     "image_sha256": "a2b9263308390f03319f2b1dca465eb0238243251001a290770dfdb93f967f5d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "UA-TECH20-1326413-NEG-M",
@@ -914,8 +914,8 @@
     "image_sha256": "a2b9263308390f03319f2b1dca465eb0238243251001a290770dfdb93f967f5d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   },
   {
     "sku": "UA-TECH20-1326413-NEG-L",
@@ -931,7 +931,7 @@
     "image_sha256": "a2b9263308390f03319f2b1dca465eb0238243251001a290770dfdb93f967f5d",
     "http_status": 200,
     "link_status": "EXISTENTE",
-    "visual_review": "MODELO_Y_FAMILIA_COLOR_COHERENTES_VISUALMENTE",
-    "limitation": "Revisión visual de foto pública y referencia; no acredita talla individual, medición, etiqueta física ni autenticidad de mercancía."
+    "visual_review": "ASOCIACION_POR_NOMBRE_Y_SKU",
+    "limitation": "Asociación documental por nombre y SKU; no acredita inspección visual individual, talla, medición, etiqueta física ni autenticidad de mercancía. JD9558 dispone además de igualdad binaria con la imagen oficial documentada en evidence/jd9558-image-correspondence.json."
   }
 ]

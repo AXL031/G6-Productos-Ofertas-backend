@@ -265,6 +265,11 @@ for (const [label, mutation] of [
     assert.equal(sql(fullImages), before);
   });
 test('portadas revisadas, conservación de existentes, reintento y cuatro fuera de propuesta', () => {
+  const coverMap = JSON.parse(read('cover-map.json'));
+  assert.equal(covers.length, 12);
+  assert.ok(covers.some((c) => c.sku === 'ADI-RUNX-JD9558-BASE'));
+  assert.equal(coverMap.pending_proposal.length, 4);
+  assert.deepEqual(coverMap.image_conflicts, []);
   const before = sql(canonical);
   const originalImages = scalar(
     'SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM catalog.product_images i',
@@ -577,6 +582,32 @@ for (const [label, change] of [
     assert.equal(sql(canonical), before);
   });
 test('fuente: rechaza duplicados, filas incompletas, SKU ajenos y tipo erróneo antes de generar SQL', () => {
+  const images = JSON.parse(read('reference-image-review.json'));
+  assert.equal(images.length, 55);
+  assert.equal(
+    images.filter((r) =>
+      r.visual_review.startsWith('ASOCIACION_POR_NOMBRE_Y_SKU'),
+    ).length,
+    52,
+  );
+  const runx = images.filter((r) => r.sku.startsWith('ADI-RUNX-'));
+  const proof = JSON.parse(read('evidence/jd9558-image-correspondence.json'));
+  assert.equal(runx.length, 3);
+  assert.equal(proof.official_image.status, 200);
+  assert.equal(proof.stored_image.status, 200);
+  assert.equal(proof.official_image.sha256, proof.stored_image.sha256);
+  for (const r of runx) {
+    assert.equal(r.catalog_color, 'Negro');
+    assert.equal(r.reference_color, 'Black / White / Black');
+    assert.equal(r.reference_url, proof.official_product_url);
+    assert.equal(r.image_url, proof.stored_image.url);
+    assert.equal(r.image_sha256, proof.official_image.sha256);
+    assert.equal(
+      r.visual_review,
+      'IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256',
+    );
+  }
+  assert.ok(images.every((r) => r.http_status === 200));
   const review = JSON.parse(read('evidence/physical-quality-review.json'));
   assert.deepEqual(
     [

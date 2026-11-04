@@ -93,27 +93,38 @@ dos faltantes en un supuesto fallo de los doce valores LISTA válidos.
 
 ## 5. Correspondencia de imágenes
 
-Se leyeron 23 objetos públicos, todos HTTP 200, y se inspeccionaron visualmente
-modelo y familia de color. `evidence/storage-image-http.json` registra URL,
-object_id, bytes y SHA-256. La matriz por 55 SKU relaciona atributo de color,
-referencia comercial, foto, hash y estado de vínculo (existente o propuesto A).
-La revisión no acredita la talla fotografiada ni la autenticidad de una unidad
-física. La ausencia de atributos de color de Nike Pitch permanece explícita.
+Se conservan las verificaciones de 23 objetos públicos HTTP 200 y sus URL,
+object_id, bytes y SHA-256 en `evidence/storage-image-http.json`. La matriz de
+55 SKU conserva las asociaciones SKU/color/referencia/fotografía y distingue
+vínculos actuales y propuestos. Los nombres fueron asignados manualmente para
+identificar producto, modelo y color: acreditan asociación documental, sin
+acreditar inspección visual individual de los SKU. Se sustituye la clasificación
+automática anterior por `ASOCIACION_POR_NOMBRE_Y_SKU` (52 filas, incluida Pitch
+con su atributo de color pendiente). No se crean actas de inspección manual.
+Se conservan las referencias comerciales, incluida FZ2636-101 de Nike Pitch,
+sin convertir esas referencias en certificación visual de cada unidad.
 
-La fotografía Nike Pitch coincide con la referencia oficial FZ2636-101 y su
-combinación White/Blue Fury/Glacier Blue; la referencia -100 del Excel se conserva
-solo como valor original y no como referencia revisada de esa foto.
+Para los tres SKU RUNxCUSHIONED JD9558 se conserva **Negro** de Taxonomy. La
+[página oficial adidas](https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html)
+identifica el código JD9558 y el color **Black / White / Black**. El tejido gris
+jaspeado no contradice por sí solo esa denominación comercial.
 
-RUNxCUSHIONED: los tres SKU tienen Negro en Taxonomy, pero el objeto se ve gris.
-No se resuelve por el nombre del archivo ni por una etiqueta comercial ambigua.
-Se registra `CONFLICTO_NEGRO_CATALOGO_VS_GRIS_VISIBLE`. Resolver con una foto
-negra acreditada del modelo o una corrección de color explícitamente autorizada;
-el administrador gestiona el archivo/permisos. No se toca el objeto existente.
+La fotografía concreta de Storage coincide **byte a byte** con la imagen
+principal enlazada desde esa página oficial: ambas respuestas HTTP 200,
+30 170 bytes, SHA-256
+`d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487`.
+URLs, método, fecha y límites están registrados en
+`evidence/jd9558-image-correspondence.json`. Las tres filas se clasifican
+`IMAGEN_IDENTICA_A_FUENTE_OFICIAL_POR_SHA256`: una misma fotografía asociada a
+tres tallas, sin afirmar tres inspecciones individuales ni acreditar talla o
+autenticidad. Se retira el supuesto conflicto Negro/gris sin alterar fotos,
+nombres, URLs, asociaciones ni atributos de Catálogo.
 
-B queda en **11 portadas**, excluyendo RUNx. Las cuatro portadas adicionales
-permanecen como propuesta separada, no se incorporan a B. Después de B el lote
-original tiene 14 imágenes de producto; si también se aplica A, hay 15 globales.
-El postcheck histórico 004 permanece intacto y se usan postchecks del mapeo nuevo.
+La evidencia binaria permite reincorporar RUNx a **B: 12 portadas propuestas**.
+Las cuatro portadas adicionales permanecen separadas; no se incorporan a B.
+Después de B el lote original tendría 15 imágenes de producto; si también se
+aplica A, habría 16 globales. El postcheck histórico 004 permanece intacto y
+se usan postchecks del mapeo nuevo. Ningún SQL se ejecutó en Supabase compartido.
 
 ## 6. PostgreSQL Ubuntu y CI
 
