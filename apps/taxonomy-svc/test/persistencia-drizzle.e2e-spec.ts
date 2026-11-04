@@ -1789,6 +1789,24 @@ describeIntegracion(
       }
     });
 
+    // contract-test: 'listarCategorias'
+    // contract-test: 'listarMarcas'
+    // contract-test: 'obtenerCategoriaAdmin'
+    // contract-test: 'crearCategoria'
+    // contract-test: 'actualizarCategoria'
+    // contract-test: 'reactivarCategoria'
+    // contract-test: 'crearMarca'
+    // contract-test: 'actualizarMarca'
+    // contract-test: 'reactivarMarca'
+    // contract-test: 'listarTiposProducto'
+    // contract-test: 'crearTipoProducto'
+    // contract-test: 'obtenerTipoProducto'
+    // contract-test: 'listarValoresCaracteristica'
+    // contract-test: 'crearValorCaracteristica'
+    // contract-test: 'actualizarValorCaracteristica'
+    // contract-test: 'obtenerEsquemaTipoProducto'
+    // contract-test: 'asociarCaracteristicaTipoProducto'
+    // contract-test: 'actualizarAsociacionTipoCaracteristica'
     it('consulta categorías y marcas con JWT verificado y PostgreSQL aislado', async () => {
       const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
       const issuer = 'https://security.example.test';
@@ -1857,8 +1875,10 @@ describeIntegracion(
       let nuevaMarca: string | undefined;
       let marcaConUrl: string | undefined;
       let categoryCreated: string | undefined;
+      let categoriaAdminId: string | undefined;
       let tipoCreado: string | undefined;
       let caracteristicaCreada: string | undefined;
+      let caracteristicaHttpCreada: string | undefined;
       try {
         await admin.query(
           "INSERT INTO taxonomy.brands (id, nombre, estado) VALUES ($1, $2, 'INACTIVO')",
@@ -1903,7 +1923,7 @@ describeIntegracion(
         await expect(
           nest.get(TaxonomyUserGuard).canActivate(guardContext),
         ).resolves.toBe(true);
-        const categoriaAdminId = randomUUID();
+        categoriaAdminId = randomUUID();
         await admin.query(
           "INSERT INTO taxonomy.categories (id, nombre, descripcion, nivel, orden, imagen_url, estado, taxonomy_version) VALUES ($1, 'Categoria HTTP Admin', 'Persistida', 1, 4, 'https://cdn.example.test/categoria.webp', 'ACTIVO', 9)",
           [categoriaAdminId],
@@ -2080,11 +2100,26 @@ describeIntegracion(
             [`Característica HTTP ${brandId}`],
           )
         ).rows[0].id as string;
-        await request(nest.getHttpServer())
+        const valorCreado = await request(nest.getHttpServer())
           .post(`/api/v1/caracteristicas/${caracteristicaCreada}/valores`)
           .set('Authorization', `Bearer ${token('', true)}`)
           .send({ nombre: 'Rojo' })
           .expect(201);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/caracteristicas/${caracteristicaCreada}/valores`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        const valorEditado = await request(nest.getHttpServer())
+          .patch(
+            `/api/v1/caracteristicas/${caracteristicaCreada}/valores/${valorCreado.body.valorId}`,
+          )
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: 'Rojo oscuro', version: 0 })
+          .expect(200);
+        expect(valorEditado.body).toMatchObject({
+          nombre: 'Rojo oscuro',
+          version: 1,
+        });
         await request(nest.getHttpServer())
           .post(`/api/v1/tipos-producto/${tipoCreado}/caracteristicas`)
           .set('Authorization', `Bearer ${token('', true)}`)
@@ -2101,6 +2136,17 @@ describeIntegracion(
         expect(esquemaHttp.body).toMatchObject({
           schemaVersion: 2,
           caracteristicas: [{ caracteristicaId: caracteristicaCreada }],
+        });
+        const asociacionEditada = await request(nest.getHttpServer())
+          .patch(
+            `/api/v1/tipos-producto/${tipoCreado}/caracteristicas/${caracteristicaCreada}`,
+          )
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ obligatoria: false, schemaVersion: 2 })
+          .expect(200);
+        expect(asociacionEditada.body).toMatchObject({
+          obligatoria: false,
+          schemaVersion: 3,
         });
         await request(nest.getHttpServer())
           .get(`/api/v1/tipos-producto/${tipoCreado}/caracteristicas`)
@@ -2122,7 +2168,7 @@ describeIntegracion(
             .get(`/api/v1/${path}`)
             .set(
               'Authorization',
-              `Bearer ${token('catalogo:leer', false, [], 'catalog-svc')}`,
+              `Bearer ${token('catalogo:leer', false, [], 'modulo-marketplace')}`,
             )
             .expect(200);
           await request(nest.getHttpServer())
@@ -2156,6 +2202,15 @@ describeIntegracion(
           .set('Authorization', `Bearer ${token('', true)}`)
           .expect(200);
         expect(retry.body).toEqual(reactivada.body);
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado='INACTIVO' WHERE id=$1",
+          [categoriaAdminId],
+        );
+        const categoriaReactivada = await request(nest.getHttpServer())
+          .post(`/api/v1/categorias/${categoriaAdminId}/reactivar`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(categoriaReactivada.body.estado).toBe('ACTIVO');
         const categoryBody = {
           nombre: `Http ${brandId}`,
           slugConfirmado: `http-${brandId}`,
@@ -2272,6 +2327,240 @@ describeIntegracion(
           paisOrigenIso: null,
           logoUrl: null,
         });
+
+        // contract-test: 'obtenerArbolCategoriasAdmin'
+        await request(nest.getHttpServer())
+          .get('/api/v1/categorias/arbol')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'listarCategoriasAdmin'
+        await request(nest.getHttpServer())
+          .get('/api/v1/categorias/administracion?pagina=1&tamanio=10')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'listarMarcasAdmin'
+        await request(nest.getHttpServer())
+          .get('/api/v1/marcas/administracion?pagina=1&tamanio=10')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'obtenerMarcaAdmin'
+        await request(nest.getHttpServer())
+          .get(`/api/v1/marcas/${brandId}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'crearCaracteristica'
+        const caracteristicaHttp = await request(nest.getHttpServer())
+          .post('/api/v1/caracteristicas')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({
+            nombre: `Característica HTTP nueva ${brandId}`,
+            tipo: 'LISTA',
+          })
+          .expect(201);
+        caracteristicaHttpCreada = caracteristicaHttp.body.caracteristicaId;
+        const valoresHttp = await Promise.all(
+          ['Rojo', 'Azul', 'Verde'].map(async (nombre) => {
+            const response = await request(nest.getHttpServer())
+              .post(
+                `/api/v1/caracteristicas/${caracteristicaHttpCreada}/valores`,
+              )
+              .set('Authorization', `Bearer ${token('', true)}`)
+              .send({ nombre })
+              .expect(201);
+            return response.body.valorId as string;
+          }),
+        );
+        await admin.query(
+          "UPDATE taxonomy.characteristic_values SET estado='INACTIVO' WHERE id=$1",
+          [valoresHttp[1]],
+        );
+        await admin.query(
+          "UPDATE taxonomy.characteristic_values SET estado='PENDING_DEACTIVATION' WHERE id=$1",
+          [valoresHttp[2]],
+        );
+        // contract-test: 'obtenerCaracteristica'
+        await request(nest.getHttpServer())
+          .get(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'listarCaracteristicas'
+        const caracteristicasHttp = await request(nest.getHttpServer())
+          .get('/api/v1/caracteristicas?pagina=1&tamanio=20&tipo=LISTA')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(
+          caracteristicasHttp.body.items.some(
+            (item: { caracteristicaId: string }) =>
+              item.caracteristicaId === caracteristicaHttpCreada,
+          ),
+        ).toBe(true);
+        // contract-test: 'actualizarCaracteristica'
+        const caracteristicaEditada = await request(nest.getHttpServer())
+          .patch(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({
+            nombre: `Característica HTTP editada ${brandId}`,
+            version: 0,
+          })
+          .expect(200);
+        expect(caracteristicaEditada.body.version).toBe(1);
+        expect(caracteristicaEditada.body.valores).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              valorId: valoresHttp[0],
+              estado: 'ACTIVO',
+            }),
+            expect.objectContaining({
+              valorId: valoresHttp[1],
+              estado: 'INACTIVO',
+            }),
+          ]),
+        );
+        expect(caracteristicaEditada.body.valores).toHaveLength(2);
+        expect(
+          caracteristicaEditada.body.valores.every(
+            (valor: { estado: string }) =>
+              valor.estado === 'ACTIVO' || valor.estado === 'INACTIVO',
+          ),
+        ).toBe(true);
+        const caracteristicaConsultada = await request(nest.getHttpServer())
+          .get(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(caracteristicaConsultada.body.valores).toHaveLength(2);
+        const listaCaracteristicas = await request(nest.getHttpServer())
+          .get('/api/v1/caracteristicas?pagina=1&tamanio=20&tipo=LISTA')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        const itemCaracteristica = listaCaracteristicas.body.items.find(
+          (item: { caracteristicaId: string }) =>
+            item.caracteristicaId === caracteristicaHttpCreada,
+        );
+        expect(itemCaracteristica.valores).toHaveLength(2);
+        expect(
+          itemCaracteristica.valores.every(
+            (valor: { estado: string }) =>
+              valor.estado === 'ACTIVO' || valor.estado === 'INACTIVO',
+          ),
+        ).toBe(true);
+        const tipoInmutable = await request(nest.getHttpServer())
+          .patch(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ tipo: 'TEXTO', version: 1 })
+          .expect(409);
+        expect(tipoInmutable.body.code).toBe('TIPO_CARACTERISTICA_INMUTABLE');
+        // contract-test: 'desactivarCaracteristica'
+        await request(nest.getHttpServer())
+          .post(
+            `/api/v1/caracteristicas/${caracteristicaHttpCreada}/desactivar`,
+          )
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'reactivarCaracteristica'
+        const caracteristicaReactivada = await request(nest.getHttpServer())
+          .post(`/api/v1/caracteristicas/${caracteristicaHttpCreada}/reactivar`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(caracteristicaReactivada.body.estado).toBe('ACTIVO');
+
+        await admin.query(
+          "UPDATE taxonomy.characteristic_values SET estado='INACTIVO' WHERE caracteristica_id=$1 AND nombre='Rojo oscuro'",
+          [caracteristicaCreada],
+        );
+        // contract-test: 'reactivarValorCaracteristica'
+        const valorReactivado = await request(nest.getHttpServer())
+          .post(
+            `/api/v1/caracteristicas/${caracteristicaCreada}/valores/${(await admin.query("SELECT id FROM taxonomy.characteristic_values WHERE caracteristica_id=$1 AND nombre='Rojo oscuro'", [caracteristicaCreada])).rows[0].id}/reactivar`,
+          )
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(valorReactivado.body.estado).toBe('ACTIVO');
+
+        await admin.query(
+          "UPDATE taxonomy.product_types SET estado='INACTIVO' WHERE id=$1",
+          [tipoCreado],
+        );
+        // contract-test: 'reactivarTipoProducto'
+        const tipoReactivado = await request(nest.getHttpServer())
+          .post(`/api/v1/tipos-producto/${tipoCreado}/reactivar`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(tipoReactivado.body.estado).toBe('ACTIVO');
+
+        // contract-test: 'resolverSlugCategoriaCreacion'
+        const propuesta = await request(nest.getHttpServer())
+          .post('/api/v1/seo/categorias/slug/resolver')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ nombre: `Categoría SEO ${brandId}` })
+          .expect(200);
+        expect(propuesta.body).toEqual({
+          slug: `categoria-seo-${brandId}`,
+          colisionResuelta: false,
+        });
+        const slugOriginal = `http-${brandId}`;
+        // contract-test: 'obtenerSeoPorSlug'
+        await request(nest.getHttpServer())
+          .get(`/api/v1/seo/${slugOriginal}`)
+          .expect(200);
+        // contract-test: 'actualizarSeoCategoria'
+        const seoActualizado = await request(nest.getHttpServer())
+          .patch(`/api/v1/categorias/${categoryCreated}/seo`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({
+            slug: `categoria-seo-${brandId}`,
+            metaTitulo: 'Título SEO',
+            metaDescripcion: 'Descripción SEO',
+          })
+          .expect(200);
+        expect(seoActualizado.body).toMatchObject({
+          categoriaId: categoryCreated,
+          slug: `categoria-seo-${brandId}`,
+          metaTitulo: 'Título SEO',
+        });
+        const slugHistoricoRechazado = await request(nest.getHttpServer())
+          .patch(`/api/v1/categorias/${categoryCreated}/seo`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({ slug: slugOriginal })
+          .expect(409);
+        expect(slugHistoricoRechazado.body.code).toBe('SLUG_DUPLICADO');
+        const slugCreacionRechazado = await request(nest.getHttpServer())
+          .post('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .send({
+            nombre: `No reutilizar slug ${brandId}`,
+            slugConfirmado: slugOriginal,
+          })
+          .expect(409);
+        expect(slugCreacionRechazado.body.code).toBe('SLUG_DUPLICADO');
+        // contract-test: 'obtenerSeoCategoriaAdmin'
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoryCreated}/seo`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        // contract-test: 'listarHistorialSlugCategoria'
+        const historialSeo = await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoryCreated}/seo/historial`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(historialSeo.body).toContainEqual(
+          expect.objectContaining({
+            oldSlug: slugOriginal,
+            newSlug: `categoria-seo-${brandId}`,
+          }),
+        );
+        // contract-test: 'resolverSlugAnterior'
+        const redireccion = await request(nest.getHttpServer())
+          .get(`/api/v1/seo/resoluciones/${slugOriginal}`)
+          .expect(200);
+        expect(redireccion.body).toEqual({
+          old_slug: slugOriginal,
+          new_slug: `categoria-seo-${brandId}`,
+          resolution: 'PERMANENT',
+        });
+        // contract-test: 'obtenerSeoPorSlug'
+        await request(nest.getHttpServer())
+          .get(`/api/v1/seo/categoria-seo-${brandId}`)
+          .expect(200);
       } finally {
         await nest?.close();
         if (tipoCreado) {
@@ -2290,12 +2579,26 @@ describeIntegracion(
         }
         if (caracteristicaCreada) {
           await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.characteristic-value.updated' AND payload->'data'->>'caracteristica_id'=$1",
+            [caracteristicaCreada],
+          );
+          await admin.query(
             'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id = $1',
             [caracteristicaCreada],
           );
           await admin.query(
             'DELETE FROM taxonomy.characteristics WHERE id = $1',
             [caracteristicaCreada],
+          );
+        }
+        if (caracteristicaHttpCreada) {
+          await admin.query(
+            'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id = $1',
+            [caracteristicaHttpCreada],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.characteristics WHERE id = $1',
+            [caracteristicaHttpCreada],
           );
         }
         if (nuevaMarca)
@@ -2308,6 +2611,10 @@ describeIntegracion(
           ]);
         if (categoryCreated) {
           await admin.query(
+            'DELETE FROM taxonomy.slug_history WHERE categoria_id = $1',
+            [categoryCreated],
+          );
+          await admin.query(
             "DELETE FROM taxonomy.outbox WHERE payload->'data'->>'categoria_id' = $1",
             [categoryCreated],
           );
@@ -2317,6 +2624,19 @@ describeIntegracion(
           );
           await admin.query('DELETE FROM taxonomy.categories WHERE id = $1', [
             categoryCreated,
+          ]);
+        }
+        if (categoriaAdminId) {
+          await admin.query(
+            "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.category.updated' AND payload->'data'->>'categoria_id'=$1",
+            [categoriaAdminId],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.category_seo WHERE categoria_id=$1',
+            [categoriaAdminId],
+          );
+          await admin.query('DELETE FROM taxonomy.categories WHERE id=$1', [
+            categoriaAdminId,
           ]);
         }
         await admin.query('DELETE FROM taxonomy.brands WHERE id = $1', [
@@ -2509,6 +2829,214 @@ describeIntegracion(
           [solicitud.entityId],
         );
         vi.restoreAllMocks();
+      }
+    });
+
+    // contract-test: 'obtenerOperacionMaestra'
+    it('consulta operaciones de baja desde HTTP sobre el esquema local migrado', async () => {
+      const operationId = randomUUID();
+      const entityId = randomUUID();
+      await admin.query(
+        "INSERT INTO taxonomy.master_deactivation_operations (operation_id, entity_type, entity_id, source_version, status, correlation_id) VALUES ($1, 'BRAND', $2, 7, 'REQUESTED', $3)",
+        [operationId, entityId, randomUUID()],
+      );
+      const moduleFixture = await Test.createTestingModule({
+        imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
+      })
+        .overrideProvider(Database)
+        .useValue({
+          read: (callback: (db: NodePgDatabase) => Promise<unknown>) =>
+            callback(dbApp),
+        })
+        .overrideProvider(TaxonomyTokenVerifier)
+        .useValue({
+          verify: async (token: string) => ({
+            kind: 'user',
+            subject: randomUUID(),
+            roles: token === 'gestor' ? ['GESTOR_COMERCIAL'] : [],
+            audiences: ['api-productos'],
+          }),
+        })
+        .compile();
+      const appHttp = moduleFixture.createNestApplication();
+      try {
+        await appHttp.init();
+        await request(appHttp.getHttpServer())
+          .get(`/api/v1/taxonomia/operaciones/${operationId}`)
+          .set('Authorization', 'Bearer usuario')
+          .expect(403);
+        await request(appHttp.getHttpServer())
+          .get(`/api/v1/taxonomia/operaciones/${operationId}`)
+          .set('Authorization', 'Bearer gestor')
+          .expect(200)
+          .expect(({ body }) => {
+            expect(body).toMatchObject({
+              operation_id: operationId,
+              entity_type: 'BRAND',
+              entity_id: entityId,
+              version: 7,
+              status: 'PENDING_DEACTIVATION',
+              result: null,
+              code: null,
+            });
+          });
+      } finally {
+        await appHttp.close();
+        await admin.query(
+          'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = $1',
+          [operationId],
+        );
+      }
+    });
+
+    // contract-test: 'solicitarDesactivacionCategoria'
+    // contract-test: 'solicitarDesactivacionMarca'
+    // contract-test: 'solicitarDesactivacionTipoProducto'
+    // contract-test: 'solicitarDesactivacionValorCaracteristica'
+    // contract-test: 'solicitarDesasociacionTipoCaracteristica'
+    it('admite las cinco clases de baja segura HTTP y deduplica por correlación', async () => {
+      const categoryId = randomUUID();
+      const brandId = randomUUID();
+      const typeId = randomUUID();
+      const characteristicId = randomUUID();
+      const valueId = randomUUID();
+      const operationIds: string[] = [];
+      await admin.query(
+        readFileSync(
+          resolve(
+            'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+          ),
+          'utf8',
+        ),
+      );
+      const moduleFixture = await Test.createTestingModule({
+        imports: [TaxonomySvcModule.forRoot({ databaseUrl: urlApp })],
+      })
+        .overrideProvider(Database)
+        .useValue({
+          read: (callback: (db: NodePgDatabase) => Promise<unknown>) =>
+            callback(dbApp),
+        })
+        .overrideProvider(TaxonomyTokenVerifier)
+        .useValue({
+          verify: async () => ({
+            kind: 'user',
+            subject: randomUUID(),
+            roles: ['GESTOR_COMERCIAL'],
+            audiences: ['api-productos'],
+          }),
+        })
+        .compile();
+      const appHttp = moduleFixture.createNestApplication();
+      try {
+        await admin.query(
+          'INSERT INTO taxonomy.categories (id, nombre) VALUES ($1, $2)',
+          [categoryId, `Baja HTTP ${categoryId}`],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.brands (id, nombre) VALUES ($1, $2)',
+          [brandId, `Baja HTTP ${brandId}`],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.product_types (id, nombre) VALUES ($1, $2)',
+          [typeId, `Baja HTTP ${typeId}`],
+        );
+        await admin.query(
+          "INSERT INTO taxonomy.characteristics (id, nombre, tipo) VALUES ($1, $2, 'LISTA')",
+          [characteristicId, `Baja HTTP ${characteristicId}`],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.characteristic_values (id, caracteristica_id, nombre) VALUES ($1, $2, $3)',
+          [valueId, characteristicId, 'Opción'],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.product_type_characteristics (tipo_producto_id, caracteristica_id) VALUES ($1, $2)',
+          [typeId, characteristicId],
+        );
+        await appHttp.init();
+        const token = 'Bearer gestor';
+        const solicitar = async (
+          path: string,
+          correlationId = randomUUID(),
+        ) => {
+          const response = await request(appHttp.getHttpServer())
+            .post(path)
+            .set('Authorization', token)
+            .set('X-Correlation-Id', correlationId);
+          if (response.status !== 202)
+            throw new Error(
+              `${path} status=${response.status} body=${JSON.stringify(response.body)}`,
+            );
+          operationIds.push(response.body.operation_id as string);
+          expect(response.body).toMatchObject({
+            correlation_id: correlationId,
+            status: 'ACCEPTED',
+          });
+          return response.body.operation_id as string;
+        };
+        const correlationId = randomUUID();
+        const categoryOperation = await solicitar(
+          `/api/v1/categorias/${categoryId}/desactivar`,
+          correlationId,
+        );
+        await expect(
+          solicitar(
+            `/api/v1/categorias/${categoryId}/desactivar`,
+            correlationId,
+          ),
+        ).resolves.toBe(categoryOperation);
+        await solicitar(`/api/v1/marcas/${brandId}/desactivar`);
+        await solicitar(`/api/v1/tipos-producto/${typeId}/desactivar`);
+        await solicitar(
+          `/api/v1/caracteristicas/${characteristicId}/valores/${valueId}/desactivar`,
+        );
+        await solicitar(
+          `/api/v1/tipos-producto/${typeId}/caracteristicas/${characteristicId}/desasociar`,
+        );
+        expect(operationIds).toHaveLength(6);
+        expect(new Set(operationIds).size).toBe(5);
+        const states = await admin.query(
+          'SELECT entity_type, status FROM taxonomy.master_deactivation_operations WHERE operation_id = ANY($1::uuid[]) ORDER BY entity_type',
+          [operationIds],
+        );
+        expect(states.rows).toHaveLength(5);
+        expect(states.rows.every((row) => row.status === 'IN_PROGRESS')).toBe(
+          true,
+        );
+      } finally {
+        await appHttp.close();
+        await admin.query(
+          "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1",
+          [typeId],
+        );
+        if (operationIds.length) {
+          await admin.query(
+            'DELETE FROM taxonomy.outbox WHERE operation_id = ANY($1::uuid[])',
+            [operationIds],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = ANY($1::uuid[])',
+            [operationIds],
+          );
+        }
+        await admin.query(
+          'DELETE FROM taxonomy.product_type_characteristics WHERE tipo_producto_id=$1 AND caracteristica_id=$2',
+          [typeId, characteristicId],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.characteristic_values WHERE id=$1',
+          [valueId],
+        );
+        await admin.query('DELETE FROM taxonomy.characteristics WHERE id=$1', [
+          characteristicId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.product_types WHERE id=$1', [
+          typeId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.categories WHERE id=$1', [
+          categoryId,
+        ]);
+        await admin.query('DELETE FROM taxonomy.brands WHERE id=$1', [brandId]);
       }
     });
 

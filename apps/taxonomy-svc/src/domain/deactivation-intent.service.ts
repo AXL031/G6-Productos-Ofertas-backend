@@ -28,6 +28,39 @@ export class DeactivationIntentService {
   private proximoAvisoConcurrente = 0;
   constructor(private readonly database: Database) {}
 
+  async obtenerOperacion(operationId: string) {
+    if (!esUuid(operationId)) return undefined;
+    return this.database.read(async (db) => {
+      const r =
+        await db.execute(sql`SELECT operation_id,entity_type,entity_id,source_version,status,reason,updated_at
+        FROM taxonomy.master_deactivation_operations WHERE operation_id=${operationId}::uuid`);
+      const row = r.rows[0];
+      if (!row) return undefined;
+      const status =
+        row.status === 'COMPLETED'
+          ? 'COMPLETED'
+          : row.status === 'REJECTED' || row.status === 'FAILED'
+            ? 'REJECTED'
+            : 'PENDING_DEACTIVATION';
+      const reason = typeof row.reason === 'string' ? row.reason : null;
+      return {
+        operation_id: row.operation_id,
+        entity_type: row.entity_type,
+        entity_id: row.entity_id,
+        version: Number(row.source_version),
+        status,
+        result:
+          status === 'COMPLETED'
+            ? 'CLEAR'
+            : reason === 'IN_USE'
+              ? 'IN_USE'
+              : null,
+        code: null,
+        updated_at: new Date(String(row.updated_at)).toISOString(),
+      };
+    });
+  }
+
   async registrar(intencion: IdentidadBaja): Promise<ResultadoRegistro> {
     if (
       ![

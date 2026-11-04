@@ -51,7 +51,7 @@ export class ProductTypeService {
       db.transaction(async (tx) => {
         const condicion = estado
           ? sql`WHERE estado = ${estado}::taxonomy.estado_entidad`
-          : sql``;
+          : sql`WHERE estado IN ('ACTIVO', 'INACTIVO')`;
         const totalResult = await tx.execute(
           sql`SELECT count(*)::int AS total FROM taxonomy.product_types ${condicion}`,
         );
@@ -125,6 +125,32 @@ export class ProductTypeService {
         VALUES (${nombre}) ON CONFLICT (nombre) DO NOTHING
         RETURNING id, nombre, estado, schema_version`);
         return resultado.rows[0] ? mapear(resultado.rows[0]) : null;
+      }),
+    );
+  }
+
+  async reactivar(
+    id: string,
+  ): Promise<'NO_ENCONTRADO' | 'BAJA_EN_PROCESO' | TipoProductoAdmin> {
+    if (!esUuid(id)) return 'NO_ENCONTRADO';
+    return this.database.read((db) =>
+      db.transaction(async (tx) => {
+        const actual =
+          await tx.execute(sql`SELECT id, nombre, estado, schema_version
+        FROM taxonomy.product_types WHERE id = ${id}::uuid FOR UPDATE`);
+        const row = actual.rows[0];
+        if (!row) return 'NO_ENCONTRADO' as const;
+        if (row.estado === 'PENDING_DEACTIVATION')
+          return 'BAJA_EN_PROCESO' as const;
+        if (row.estado === 'INACTIVO') {
+          const updated = await tx.execute(sql`UPDATE taxonomy.product_types
+          SET estado = 'ACTIVO', taxonomy_version = taxonomy_version + 1, updated_at = statement_timestamp()
+          WHERE id = ${id}::uuid AND estado = 'INACTIVO'
+          RETURNING id, nombre, estado, schema_version`);
+          if (!updated.rows[0]) throw new Error('CAMBIO_CONCURRENTE');
+          return mapear(updated.rows[0]);
+        }
+        return mapear(row);
       }),
     );
   }

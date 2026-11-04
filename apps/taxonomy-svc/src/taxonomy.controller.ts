@@ -1,5 +1,8 @@
 import { Controller, Get, Headers, Query, UseGuards } from '@nestjs/common';
-import { TaxonomyAuthGuard } from './taxonomy-auth.js';
+import {
+  AllowTaxonomyServiceClients,
+  TaxonomyAuthGuard,
+} from './taxonomy-auth.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
 import type { CategoriaDto, MarcaDto } from './taxonomy-svc.service.js';
@@ -29,6 +32,11 @@ export class TaxonomyController {
   constructor(private readonly taxonomyService: TaxonomySvcService) {}
 
   @Get('categorias')
+  @AllowTaxonomyServiceClients(
+    'modulo-marketplace',
+    'modulo-chatbot',
+    'modulo-retail',
+  )
   async listarCategorias(
     @Query() consulta: Consulta,
     @Headers('x-correlation-id') correlationId?: string,
@@ -38,6 +46,11 @@ export class TaxonomyController {
   }
 
   @Get('marcas')
+  @AllowTaxonomyServiceClients(
+    'modulo-marketplace',
+    'modulo-chatbot',
+    'modulo-retail',
+  )
   async listarMarcas(
     @Query() consulta: Consulta,
     @Headers('x-correlation-id') correlationId?: string,

@@ -413,7 +413,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const payload = Buffer.from(
       JSON.stringify({
         iss: issuer,
-        sub: 'catalog-svc',
+        sub: 'modulo-marketplace',
         tipo: 'servicio',
         aud: 'api-productos',
         scope: 'catalogo:leer',
@@ -521,6 +521,47 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+  });
+  it('aplica la allowlist M2M contractual directamente en Taxonomy', async () => {
+    const categorias = '/api/v1/categorias';
+    const marcas = '/api/v1/marcas';
+    for (const cliente of [
+      'modulo-marketplace',
+      'modulo-chatbot',
+      'modulo-retail',
+    ]) {
+      const autorizacion = 'Bearer ' + token({ sub: cliente });
+      await request(app.getHttpServer())
+        .get(categorias)
+        .set('Authorization', autorizacion)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(marcas)
+        .set('Authorization', autorizacion)
+        .expect(200);
+    }
+    for (const cliente of [
+      'catalog-svc',
+      'modulo-productos',
+      'otro-servicio',
+    ]) {
+      const autorizacion = 'Bearer ' + token({ sub: cliente });
+      await request(app.getHttpServer())
+        .get(categorias)
+        .set('Authorization', autorizacion)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(marcas)
+        .set('Authorization', autorizacion)
+        .expect(403);
+    }
+    const scopeInsuficiente =
+      'Bearer ' +
+      token({ sub: 'modulo-marketplace', scope: 'catalogo:escribir' });
+    await request(app.getHttpServer())
+      .get(categorias)
+      .set('Authorization', scopeInsuficiente)
+      .expect(403);
   });
   it('actualizarCategoria valida JWT, cuerpo y conflictos', async () => {
     const path = '/api/v1/categorias/11111111-1111-4111-8111-111111111111';
@@ -819,7 +860,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url + '/desconocido')
-        .expect(path === 'categorias' ? 401 : 404);
+        .expect(401);
     },
   );
   it.each([

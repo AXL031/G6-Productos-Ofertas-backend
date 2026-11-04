@@ -14,11 +14,14 @@ import {
   TaxonomyUserGuard,
   TaxonomyCommercialGuard,
   AllowTaxonomyServiceRead,
+  RequireTaxonomyCommercialUser,
 } from './taxonomy-auth.js';
 import { esUuid, ProblemDetailsException } from './errors/taxonomy.errors.js';
 import { ProductTypeService } from './domain/product-type.service.js';
 import { CharacteristicValueService } from './domain/characteristic-value.service.js';
 import { ProductTypeCharacteristicService } from './domain/product-type-characteristic.service.js';
+import { CharacteristicService } from './domain/characteristic.service.js';
+import { DeactivationIntentService } from './domain/deactivation-intent.service.js';
 import {
   MasterDeactivationRequestService,
   type SolicitudMaestra,
@@ -34,11 +37,12 @@ function validarId(id: string): void {
   if (!esUuid(id))
     throw ProblemDetailsException.validacion('Identificador inválido.');
 }
+function validarCorrelacion(correlationId?: string): void {
+  if (correlationId !== undefined && !esUuid(correlationId))
+    throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
+}
 function estadoValido(estado?: string): string | undefined {
-  if (
-    estado !== undefined &&
-    !['ACTIVO', 'INACTIVO', 'PENDING_DEACTIVATION'].includes(estado)
-  )
+  if (estado !== undefined && !['ACTIVO', 'INACTIVO'].includes(estado))
     throw ProblemDetailsException.validacion('Estado inválido.');
   return estado;
 }
@@ -55,6 +59,14 @@ function problema(status: number, code: string): ProblemDetailsException {
     code,
   });
 }
+function valorNumericoInvalido(): ProblemDetailsException {
+  return new ProblemDetailsException({
+    type: '/errores/valor-numerico-invalido',
+    title: 'Valor numérico inválido',
+    status: 422,
+    code: 'VALOR_NUMERICO_INVALIDO',
+  });
+}
 
 @Controller('api/v1')
 @UseGuards(TaxonomyUserGuard)
@@ -64,7 +76,183 @@ export class TaxonomyMastersController {
     private readonly valores: CharacteristicValueService,
     private readonly asociaciones: ProductTypeCharacteristicService,
     private readonly bajas: MasterDeactivationRequestService,
+    private readonly caracteristicas: CharacteristicService,
+    private readonly intenciones: DeactivationIntentService,
   ) {}
+
+  @Get('taxonomia/operaciones/:operationId')
+  @RequireTaxonomyCommercialUser()
+  async obtenerOperacionMaestra(
+    @Param('operationId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    validarCorrelacion(correlationId);
+    const result = await this.intenciones.obtenerOperacion(id);
+    if (!result) throw problema(404, 'OPERACION_MAESTRA_NO_ENCONTRADA');
+    return result;
+  }
+
+  @Get('caracteristicas')
+  @UseGuards(TaxonomyCommercialGuard)
+  async listarCaracteristicas(
+    @Query('pagina') paginaTexto?: string,
+    @Query('tamanio') tamanioTexto?: string,
+    @Query('estado') estado?: string,
+    @Query('tipo') tipo?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarCorrelacion(correlationId);
+    const pagina = paginaTexto === undefined ? 1 : Number(paginaTexto);
+    const tamanio = tamanioTexto === undefined ? 20 : Number(tamanioTexto);
+    if (
+      !Number.isSafeInteger(pagina) ||
+      pagina < 1 ||
+      !Number.isSafeInteger(tamanio) ||
+      tamanio < 1 ||
+      tamanio > 200 ||
+      (estado !== undefined && !['ACTIVO', 'INACTIVO'].includes(estado)) ||
+      (tipo !== undefined && !['TEXTO', 'NUMERO', 'LISTA'].includes(tipo))
+    )
+      throw ProblemDetailsException.validacion(
+        'Filtros de características inválidos.',
+      );
+    return this.caracteristicas.listar({ pagina, tamanio, estado, tipo });
+  }
+
+  @Post('caracteristicas')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(201)
+  async crearCaracteristica(
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarCorrelacion(correlationId);
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw ProblemDetailsException.validacion();
+    const v = body as Record<string, unknown>;
+    if (
+      typeof v.nombre !== 'string' ||
+      !v.nombre.trim() ||
+      !['TEXTO', 'NUMERO', 'LISTA'].includes(String(v.tipo)) ||
+      (v.unidadMedida !== undefined &&
+        v.unidadMedida !== null &&
+        typeof v.unidadMedida !== 'string') ||
+      (v.tipo !== 'NUMERO' && v.unidadMedida != null)
+    )
+      throw ProblemDetailsException.validacion(
+        'Datos de característica inválidos.',
+      );
+    if (
+      v.tipo === 'NUMERO' &&
+      (typeof v.unidadMedida !== 'string' || !v.unidadMedida.trim())
+    )
+      throw valorNumericoInvalido();
+    const creada = await this.caracteristicas.crear({
+      nombre: v.nombre,
+      tipo: String(v.tipo),
+      unidadMedida: v.unidadMedida as string | null | undefined,
+    });
+    if (!creada)
+      throw ProblemDetailsException.validacion(
+        'Característica fuera de los límites configurados.',
+      );
+    return creada;
+  }
+
+  @Get('caracteristicas/:caracteristicaId')
+  @UseGuards(TaxonomyCommercialGuard)
+  async obtenerCaracteristica(
+    @Param('caracteristicaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    validarCorrelacion(correlationId);
+    const value = await this.caracteristicas.obtener(id);
+    if (!value) throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    return value;
+  }
+
+  @Patch('caracteristicas/:caracteristicaId')
+  @UseGuards(TaxonomyCommercialGuard)
+  async actualizarCaracteristica(
+    @Param('caracteristicaId') id: string,
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    validarCorrelacion(correlationId);
+    if (!body || typeof body !== 'object' || Array.isArray(body))
+      throw ProblemDetailsException.validacion();
+    const v = body as Record<string, unknown>;
+    if (
+      !Number.isSafeInteger(v.version) ||
+      Number(v.version) < 0 ||
+      (v.tipo !== undefined &&
+        !['TEXTO', 'NUMERO', 'LISTA'].includes(String(v.tipo))) ||
+      (v.nombre !== undefined &&
+        (typeof v.nombre !== 'string' || !v.nombre.trim())) ||
+      (v.unidadMedida !== undefined &&
+        v.unidadMedida !== null &&
+        typeof v.unidadMedida !== 'string')
+    )
+      throw ProblemDetailsException.validacion(
+        'Datos de característica inválidos.',
+      );
+    const r = await this.caracteristicas.actualizar(id, {
+      nombre: v.nombre as string | undefined,
+      unidadMedida: v.unidadMedida as string | null | undefined,
+      tipo: v.tipo as string | undefined,
+      version: Number(v.version),
+    });
+    if (r === 'NO_ENCONTRADA')
+      throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    if (r === 'VERSION_CONFLICT') throw problema(409, 'VERSION_CONFLICT');
+    if (r === 'TIPO_CARACTERISTICA_INMUTABLE')
+      throw problema(409, 'TIPO_CARACTERISTICA_INMUTABLE');
+    if (r === 'NOMBRE_DUPLICADO')
+      throw ProblemDetailsException.validacion(
+        'Ya existe una característica con ese nombre.',
+      );
+    if (r === 'BAJA_EN_PROCESO') throw problema(409, 'VERSION_CONFLICT');
+    if (r === 'UNIDAD_INCOMPATIBLE')
+      throw ProblemDetailsException.validacion(
+        'La unidad de medida solo aplica a características NUMERO.',
+      );
+    if (r === 'INVALIDA') throw valorNumericoInvalido();
+    return r;
+  }
+
+  @Post('caracteristicas/:caracteristicaId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(200)
+  async desactivarCaracteristica(
+    @Param('caracteristicaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    validarCorrelacion(correlationId);
+    const value = await this.caracteristicas.cambiarEstado(id, 'INACTIVO');
+    if (value === 'BAJA_EN_PROCESO')
+      throw problema(409, 'BAJA_MAESTRA_EN_PROCESO');
+    if (!value) throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    return value;
+  }
+
+  @Post('caracteristicas/:caracteristicaId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(200)
+  async reactivarCaracteristica(
+    @Param('caracteristicaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    validarCorrelacion(correlationId);
+    const value = await this.caracteristicas.cambiarEstado(id, 'ACTIVO');
+    if (value === 'BAJA_EN_PROCESO') throw problema(409, 'VERSION_CONFLICT');
+    if (!value) throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    return value;
+  }
 
   @Get('tipos-producto')
   @AllowTaxonomyServiceRead()
@@ -72,7 +260,9 @@ export class TaxonomyMastersController {
     @Query('pagina') paginaTexto?: string,
     @Query('tamanio') tamanioTexto?: string,
     @Query('estado') estado?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
+    validarCorrelacion(correlationId);
     const pagina = paginaTexto === undefined ? 1 : Number(paginaTexto);
     const tamanio = tamanioTexto === undefined ? 20 : Number(tamanioTexto);
     if (
@@ -87,16 +277,28 @@ export class TaxonomyMastersController {
   }
 
   @Get('tipos-producto/:tipoProductoId')
-  async obtenerTipoProducto(@Param('tipoProductoId') id: string) {
+  async obtenerTipoProducto(
+    @Param('tipoProductoId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
     validarId(id);
+    validarCorrelacion(correlationId);
     const tipo = await this.tipos.obtener(id);
     if (!tipo) throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    if (tipo.estado === 'PENDING_DEACTIVATION')
+      throw ProblemDetailsException.noDisponible(
+        'El contrato TipoProductoAdmin no representa el estado pendiente de baja.',
+      );
     return tipo;
   }
 
   @Post('tipos-producto')
   @UseGuards(TaxonomyCommercialGuard)
-  async crearTipoProducto(@Body() body: unknown) {
+  async crearTipoProducto(
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarCorrelacion(correlationId);
     const resultado = await this.tipos.crear(
       validarTipoProductoCreate(body).nombre,
     );
@@ -109,8 +311,10 @@ export class TaxonomyMastersController {
   async listarValoresCaracteristica(
     @Param('caracteristicaId') id: string,
     @Query('estado') estado?: string,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
     validarId(id);
+    validarCorrelacion(correlationId);
     const valores = await this.valores.listar(id, estadoValido(estado));
     if (!valores) throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
     return valores;
@@ -121,8 +325,10 @@ export class TaxonomyMastersController {
   async crearValorCaracteristica(
     @Param('caracteristicaId') id: string,
     @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
   ) {
     validarId(id);
+    validarCorrelacion(correlationId);
     const resultado = await this.valores.crear(
       id,
       validarValorCaracteristicaWrite(body).nombre,
@@ -167,12 +373,36 @@ export class TaxonomyMastersController {
     return resultado.valor;
   }
 
+  @Post('caracteristicas/:caracteristicaId/valores/:valorId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(200)
+  async reactivarValorCaracteristica(
+    @Param('caracteristicaId') caracteristicaId: string,
+    @Param('valorId') valorId: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(caracteristicaId);
+    validarId(valorId);
+    validarCorrelacion(correlationId);
+    const result = await this.valores.reactivar(caracteristicaId, valorId);
+    if (!result) throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    return result;
+  }
+
   @Get('tipos-producto/:tipoProductoId/caracteristicas')
   @AllowTaxonomyServiceRead()
-  async obtenerEsquemaTipoProducto(@Param('tipoProductoId') id: string) {
+  async obtenerEsquemaTipoProducto(
+    @Param('tipoProductoId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
     validarId(id);
+    validarCorrelacion(correlationId);
     const esquema = await this.tipos.obtenerEsquema(id);
     if (!esquema) throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    if (esquema.tipoProducto.estado === 'PENDING_DEACTIVATION')
+      throw ProblemDetailsException.noDisponible(
+        'El contrato TipoProductoAdmin no representa el estado pendiente de baja.',
+      );
     return esquema;
   }
 
@@ -237,6 +467,8 @@ export class TaxonomyMastersController {
     if (correlationId !== undefined && !esUuid(correlationId))
       throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
     const resultado = await this.bajas.solicitar(solicitud, correlationId);
+    if (resultado.estado === 'CATEGORIA_CON_HIJOS')
+      throw problema(409, 'CATEGORIA_CON_SUBCATEGORIAS_ACTIVAS');
     if (resultado.estado === 'NO_ENCONTRADA')
       throw problema(
         404,
@@ -264,6 +496,23 @@ export class TaxonomyMastersController {
   ) {
     validarId(id);
     return this.solicitar({ tipo: 'PRODUCT_TYPE', id }, correlationId);
+  }
+
+  @Post('tipos-producto/:tipoProductoId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(200)
+  async reactivarTipoProducto(
+    @Param('tipoProductoId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    if (correlationId !== undefined && !esUuid(correlationId))
+      throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
+    const result = await this.tipos.reactivar(id);
+    if (result === 'NO_ENCONTRADO')
+      throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    if (result === 'BAJA_EN_PROCESO') throw problema(409, 'VERSION_CONFLICT');
+    return result;
   }
   @Post('caracteristicas/:caracteristicaId/valores/:valorId/desactivar')
   @UseGuards(TaxonomyCommercialGuard)

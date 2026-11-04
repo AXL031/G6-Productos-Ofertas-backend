@@ -16,8 +16,11 @@ export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
 export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
+const TAXONOMY_SERVICE_CLIENTS = 'taxonomy:service-clients';
 export const AllowTaxonomyServiceRead = () =>
   SetMetadata(TAXONOMY_SERVICE_READ, true);
+export const AllowTaxonomyServiceClients = (...clients: string[]) =>
+  SetMetadata(TAXONOMY_SERVICE_CLIENTS, Object.freeze([...clients]));
 export const RequireTaxonomyCommercialUser = () =>
   SetMetadata(TAXONOMY_COMMERCIAL_USER_READ, true);
 export function readTaxonomyDemoConfig(
@@ -475,7 +478,11 @@ export class TaxonomyAuthGuard implements CanActivate {
       throw new UnauthorizedException();
     if (!principal.scopes.includes('catalogo:leer'))
       throw new ForbiddenException();
-    if (principal.subject === 'modulo-productos')
+    const allowedClients = Reflect.getMetadata(
+      TAXONOMY_SERVICE_CLIENTS,
+      context.getHandler(),
+    ) as readonly string[] | undefined;
+    if (!allowedClients?.includes(principal.subject))
       throw new ForbiddenException();
     return true;
   }

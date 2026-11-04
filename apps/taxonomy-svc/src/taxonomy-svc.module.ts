@@ -27,6 +27,10 @@ import { MasterDeactivationRequestService } from './domain/master-deactivation-r
 import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
 import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
+import { MasterAdminQueryService } from './domain/master-admin-query.service.js';
+import { CharacteristicService } from './domain/characteristic.service.js';
+import { CategorySeoService } from './domain/category-seo.service.js';
+import { CategorySeoController } from './category-seo.controller.js';
 import {
   TAXONOMY_SECURITY_CONFIG,
   TaxonomyAuthGuard,
@@ -52,6 +56,7 @@ export interface OpcionesModuloTaxonomy {
     TaxonomyMastersController,
     TaxonomyAdminQueryController,
     ReadinessController,
+    CategorySeoController,
   ],
   providers: [
     TaxonomySvcService,
@@ -61,6 +66,9 @@ export interface OpcionesModuloTaxonomy {
     DeactivationRecoveryRunner,
     TaxonomyAmqpRuntime,
     TaxonomyMessageStore,
+    MasterAdminQueryService,
+    CharacteristicService,
+    CategorySeoService,
     TaxonomyAuthGuard,
     TaxonomyUserGuard,
     TaxonomyCommercialGuard,

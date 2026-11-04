@@ -14,15 +14,29 @@ import { ProductTypeService } from './domain/product-type.service.js';
 import { CharacteristicValueService } from './domain/characteristic-value.service.js';
 import { ProductTypeCharacteristicService } from './domain/product-type-characteristic.service.js';
 import { MasterDeactivationRequestService } from './domain/master-deactivation-request.service.js';
+import { CharacteristicService } from './domain/characteristic.service.js';
+import { DeactivationIntentService } from './domain/deactivation-intent.service.js';
 
 describe('rutas HTTP de maestros', () => {
   let app: INestApplication;
   const id = '11111111-1111-4111-8111-111111111111';
   const correlation = '22222222-2222-4222-8222-222222222222';
-  const tipos = { obtener: vi.fn(), crear: vi.fn(), listar: vi.fn() };
+  const tipos = {
+    obtener: vi.fn(),
+    obtenerEsquema: vi.fn(),
+    crear: vi.fn(),
+    listar: vi.fn(),
+  };
   const valores = { listar: vi.fn(), crear: vi.fn() };
   const asociaciones = { listar: vi.fn(), crear: vi.fn(), actualizar: vi.fn() };
   const bajas = { solicitar: vi.fn() };
+  const caracteristicas = {
+    listar: vi.fn(),
+    crear: vi.fn(),
+    obtener: vi.fn(),
+    actualizar: vi.fn(),
+    cambiarEstado: vi.fn(),
+  };
   beforeAll(async () => {
     const modulo = await Test.createTestingModule({
       controllers: [TaxonomyMastersController],
@@ -31,6 +45,11 @@ describe('rutas HTTP de maestros', () => {
         { provide: CharacteristicValueService, useValue: valores },
         { provide: ProductTypeCharacteristicService, useValue: asociaciones },
         { provide: MasterDeactivationRequestService, useValue: bajas },
+        { provide: CharacteristicService, useValue: caracteristicas },
+        {
+          provide: DeactivationIntentService,
+          useValue: { obtenerOperacion: vi.fn() },
+        },
       ],
     })
       .overrideGuard(TaxonomyUserGuard)
@@ -105,6 +124,58 @@ describe('rutas HTTP de maestros', () => {
     );
     expect(respuesta.body.code).toBe('VALIDACION');
   });
+  it.each([undefined, ''])(
+    'distingue unidad NUMERO ausente o vacía',
+    async (unidadMedida) => {
+      const respuesta = await request(app.getHttpServer())
+        .post('/api/v1/caracteristicas')
+        .send({ nombre: 'Peso', tipo: 'NUMERO', unidadMedida })
+        .expect(422);
+      expect(respuesta.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(respuesta.body.code).toBe('VALOR_NUMERICO_INVALIDO');
+      expect(caracteristicas.crear).not.toHaveBeenCalled();
+    },
+  );
+  it('trata tipos de unidad estructuralmente inválidos como VALIDACION', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/api/v1/caracteristicas')
+      .send({ nombre: 'Peso', tipo: 'NUMERO', unidadMedida: 42 })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+    expect(caracteristicas.crear).not.toHaveBeenCalled();
+  });
+  it('rechaza unidad incompatible con TEXTO mediante VALIDACION', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/api/v1/caracteristicas')
+      .send({ nombre: 'Color', tipo: 'TEXTO', unidadMedida: 'kg' })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+    expect(caracteristicas.crear).not.toHaveBeenCalled();
+  });
+  it.each([null, ''])(
+    'mapea unidad NUMERO inválida en PATCH a 422',
+    async (unidadMedida) => {
+      caracteristicas.actualizar.mockResolvedValueOnce('INVALIDA');
+      const respuesta = await request(app.getHttpServer())
+        .patch(`/api/v1/caracteristicas/${id}`)
+        .send({ unidadMedida, version: 0 })
+        .expect(422);
+      expect(respuesta.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(respuesta.body.code).toBe('VALOR_NUMERICO_INVALIDO');
+    },
+  );
+  it('mapea unidad incompatible en PATCH a 400 VALIDACION', async () => {
+    caracteristicas.actualizar.mockResolvedValueOnce('UNIDAD_INCOMPATIBLE');
+    const respuesta = await request(app.getHttpServer())
+      .patch(`/api/v1/caracteristicas/${id}`)
+      .send({ unidadMedida: 'kg', version: 0 })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+  });
   it('valida y actualiza la obligatoriedad con control de versión', async () => {
     const path = `/api/v1/tipos-producto/${id}/caracteristicas/${id}`;
     asociaciones.actualizar.mockResolvedValueOnce({
@@ -139,6 +210,11 @@ describe('rutas HTTP de maestros', () => {
 describe('autorización HTTP de escritura de maestros', () => {
   let app: INestApplication;
   const verificar = vi.fn();
+  const tipoService = {
+    crear: vi.fn().mockResolvedValue({ nombre: 'Calzado' }),
+    listar: vi.fn().mockResolvedValue({ items: [] }),
+    obtenerEsquema: vi.fn().mockResolvedValue({ caracteristicas: [] }),
+  };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [TaxonomyMastersController],
@@ -146,23 +222,22 @@ describe('autorización HTTP de escritura de maestros', () => {
         TaxonomyUserGuard,
         TaxonomyCommercialGuard,
         { provide: TaxonomyTokenVerifier, useValue: { verify: verificar } },
-        {
-          provide: ProductTypeService,
-          useValue: {
-            crear: vi.fn().mockResolvedValue({ nombre: 'Calzado' }),
-            listar: vi.fn().mockResolvedValue({ items: [] }),
-            obtenerEsquema: vi.fn().mockResolvedValue({ caracteristicas: [] }),
-          },
-        },
+        { provide: ProductTypeService, useValue: tipoService },
         { provide: CharacteristicValueService, useValue: {} },
         { provide: ProductTypeCharacteristicService, useValue: {} },
         { provide: MasterDeactivationRequestService, useValue: {} },
+        { provide: CharacteristicService, useValue: {} },
+        {
+          provide: DeactivationIntentService,
+          useValue: { obtenerOperacion: vi.fn() },
+        },
       ],
     }).compile();
     app = module.createNestApplication();
     await app.init();
   });
   afterAll(async () => app.close());
+  beforeEach(() => verificar.mockReset());
   it('limita modulo-productos a las dos lecturas autorizadas', async () => {
     const get = () =>
       request(app.getHttpServer()).get('/api/v1/tipos-producto');
@@ -185,6 +260,11 @@ describe('autorización HTTP de escritura de maestros', () => {
     await get().set('Authorization', 'Bearer servicio').expect(200);
     const id = '11111111-1111-4111-8111-111111111111';
     verificar.mockResolvedValueOnce(service);
+    tipoService.obtenerEsquema.mockResolvedValueOnce({
+      tipoProducto: { estado: 'ACTIVO' },
+      caracteristicas: [],
+      schemaVersion: 1,
+    });
     await request(app.getHttpServer())
       .get(`/api/v1/tipos-producto/${id}/caracteristicas`)
       .set('Authorization', 'Bearer servicio')
@@ -233,6 +313,8 @@ describe('autorización HTTP de escritura de maestros', () => {
       audiences: ['api-productos'],
       roles: ['GESTOR_COMERCIAL'],
     });
-    await post().set('Authorization', 'Bearer gestor').expect(201);
+    tipoService.crear.mockResolvedValueOnce({ nombre: 'Calzado' });
+    const response = await post().set('Authorization', 'Bearer gestor');
+    expect(response.status).toBe(201);
   });
 });
