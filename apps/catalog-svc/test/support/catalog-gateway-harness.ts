@@ -164,14 +164,7 @@ export class CatalogGatewayHarness {
         // JWT verification flow is covered by catalog-security.provider.spec.
         .overrideProvider(CATALOG_TAXONOMY_IDENTITY)
         .useValue({
-          authorization: async () =>
-            this.token({
-              tipo: 'servicio',
-              sub: 'modulo-productos',
-              aud: ['api-productos'],
-              scope: 'catalogo:leer',
-              roles: undefined,
-            }),
+          authorization: async () => 'Bearer taxonomy-service-fixture',
         })
         .overrideProvider(Database)
         .useValue(

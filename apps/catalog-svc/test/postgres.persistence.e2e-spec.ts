@@ -2158,7 +2158,10 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
               restrictedDemo ? null : http.token(),
               restrictedDemo,
             );
-            expect(response.status, method + ' ' + path).toBe(status);
+            expect(
+              response.status,
+              method + ' ' + path + ': ' + JSON.stringify(response.body),
+            ).toBe(status);
             expect(response.correlation).toBe(http.correlation);
             if (code) expect(response.body.code).toBe(code);
             return response.body as Record<string, unknown>;
