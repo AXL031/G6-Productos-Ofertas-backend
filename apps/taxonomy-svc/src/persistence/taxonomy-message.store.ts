@@ -81,8 +81,6 @@ export class TaxonomyMessageStore {
   ) {}
   async consumir(envelope: CheckedEnvelope): Promise<void> {
     const d = envelope.data;
-    if (d.entity_type !== 'CATEGORY' && d.entity_type !== 'BRAND')
-      throw new Error('UNSUPPORTED_ENTITY');
     const identidad: IdentidadBaja & { result: unknown } = {
       operationId: envelope.operation_id,
       correlationId: envelope.correlation_id,

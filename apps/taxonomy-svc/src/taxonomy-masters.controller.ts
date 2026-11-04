@@ -5,6 +5,7 @@ import {
   Headers,
   HttpCode,
   Param,
+  Patch,
   Post,
   Query,
   UseGuards,
@@ -124,6 +125,36 @@ export class TaxonomyMastersController {
       throw problema(422, 'VALOR_LISTA_LIMITE_EXCEDIDO');
     if (resultado.estado === 'INVALIDO')
       throw ProblemDetailsException.validacion('No se pudo crear el valor.');
+    return resultado.valor;
+  }
+
+  @Patch('caracteristicas/:caracteristicaId/valores/:valorId')
+  async actualizarValorCaracteristica(
+    @Param('caracteristicaId') caracteristicaId: string,
+    @Param('valorId') id: string,
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(caracteristicaId);
+    validarId(id);
+    if (correlationId !== undefined && !esUuid(correlationId))
+      throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
+    const dto = validarValorCaracteristicaWrite(body);
+    const resultado = await this.valores.actualizar(
+      caracteristicaId,
+      id,
+      dto.nombre,
+      dto.version,
+      correlationId,
+    );
+    if (resultado.estado === 'NO_ENCONTRADA')
+      throw problema(404, 'CARACTERISTICA_NO_ENCONTRADA');
+    if (resultado.estado === 'VERSION_CONFLICT')
+      throw problema(409, 'VERSION_CONFLICT');
+    if (resultado.estado === 'INVALIDO')
+      throw ProblemDetailsException.validacion(
+        'No se pudo actualizar el valor.',
+      );
     return resultado.valor;
   }
 

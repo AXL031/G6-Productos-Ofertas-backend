@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import { randomUUID } from 'node:crypto';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
 
@@ -74,6 +75,62 @@ export class CharacteristicValueService {
         return insertado.rows[0]
           ? ({ estado: 'OK', valor: mapear(insertado.rows[0]) } as const)
           : ({ estado: 'INVALIDO' } as const);
+      }),
+    );
+  }
+
+  async actualizar(
+    caracteristicaId: string,
+    id: string,
+    nombre: string,
+    version?: number | null,
+    correlationId: string = randomUUID(),
+  ): Promise<
+    | { estado: 'OK'; valor: ValorCaracteristicaDto }
+    | { estado: 'NO_ENCONTRADA' }
+    | { estado: 'VERSION_CONFLICT' }
+    | { estado: 'INVALIDO' }
+  > {
+    if (!esUuid(caracteristicaId) || !esUuid(id))
+      return { estado: 'NO_ENCONTRADA' };
+    if (!esUuid(correlationId) || !nombre.trim()) return { estado: 'INVALIDO' };
+    return this.database.read((db) =>
+      db.transaction(async (tx) => {
+        const padre = await tx.execute(
+          sql`SELECT tipo, estado FROM taxonomy.characteristics WHERE id = ${caracteristicaId}::uuid FOR UPDATE`,
+        );
+        if (!padre.rows[0]) return { estado: 'NO_ENCONTRADA' } as const;
+        if (padre.rows[0].tipo !== 'LISTA' || padre.rows[0].estado !== 'ACTIVO')
+          return { estado: 'INVALIDO' } as const;
+        const actual = await tx.execute(
+          sql`SELECT id, nombre, estado, taxonomy_version FROM taxonomy.characteristic_values WHERE id = ${id}::uuid AND caracteristica_id = ${caracteristicaId}::uuid FOR UPDATE`,
+        );
+        const row = actual.rows[0];
+        if (!row) return { estado: 'NO_ENCONTRADA' } as const;
+        if (
+          row.estado !== 'ACTIVO' ||
+          (version != null && String(row.taxonomy_version) !== String(version))
+        )
+          return { estado: 'VERSION_CONFLICT' } as const;
+        if (row.nombre === nombre)
+          return { estado: 'OK', valor: mapear(row) } as const;
+        const duplicado = await tx.execute(
+          sql`SELECT id FROM taxonomy.characteristic_values WHERE caracteristica_id = ${caracteristicaId}::uuid AND nombre = ${nombre} AND id <> ${id}::uuid`,
+        );
+        if (duplicado.rows.length) return { estado: 'INVALIDO' } as const;
+        const actualizada = await tx.execute(
+          sql`UPDATE taxonomy.characteristic_values SET nombre = ${nombre}, taxonomy_version = taxonomy_version + 1 WHERE id = ${id}::uuid RETURNING id, nombre, estado, taxonomy_version, updated_at`,
+        );
+        const fila = actualizada.rows[0];
+        if (!fila) throw new Error('VALOR_CARACTERISTICA_INVALIDO');
+        await tx.execute(sql`WITH evento AS (SELECT gen_random_uuid() AS message_id, statement_timestamp() AS fecha)
+        INSERT INTO taxonomy.outbox (message_id, event_name, kind, schema_version, correlation_id, occurred_at, payload)
+        SELECT evento.message_id, 'taxonomy.characteristic-value.updated', 'event', 1, ${correlationId}::uuid, evento.fecha,
+          jsonb_build_object('message_id', evento.message_id, 'schema_version', 1, 'occurred_at', evento.fecha,
+            'correlation_id', ${correlationId}::uuid, 'producer', 'taxonomy-svc', 'kind', 'event',
+            'name', 'taxonomy.characteristic-value.updated', 'data', jsonb_build_object('caracteristica_id', ${caracteristicaId}::text,
+              'valor_id', ${id}::text, 'nombre', ${nombre}::text, 'change_type', 'RENAMED', 'updated_at', ${fila.updated_at}::timestamptz)) FROM evento`);
+        return { estado: 'OK', valor: mapear(fila) } as const;
       }),
     );
   }

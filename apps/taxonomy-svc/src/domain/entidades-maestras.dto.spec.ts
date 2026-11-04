@@ -25,6 +25,17 @@ describe('validación de DTOs de maestros', () => {
       validarAsociacionUpdate({ obligatoria: false, schemaVersion: 2 }),
     ).toEqual({ obligatoria: false, schemaVersion: 2 });
   });
+  it('solo conserva obligatoriedad en el DTO de la asociación', () => {
+    expect(
+      validarTipoProductoCreate({ nombre: 'Calzado', obligatoria: true }),
+    ).toEqual({ nombre: 'Calzado' });
+    expect(
+      validarValorCaracteristicaWrite({ nombre: 'Rojo', obligatoria: true }),
+    ).toEqual({ nombre: 'Rojo', version: undefined });
+    expect(
+      validarAsociacionCreate({ caracteristicaId: 'id', obligatoria: true }),
+    ).toMatchObject({ obligatoria: true });
+  });
   it.each([
     () => validarTipoProductoCreate({ nombre: '' }),
     () => validarValorCaracteristicaWrite({ nombre: 'x', version: -1 }),

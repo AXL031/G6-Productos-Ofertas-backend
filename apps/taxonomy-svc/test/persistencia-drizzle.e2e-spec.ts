@@ -208,6 +208,41 @@ describeIntegracion(
                 await expect(servicio.registrar(identidad)).resolves.toBe(
                   'REINTENTO',
                 );
+                const store = new TaxonomyMessageStore(database, servicio);
+                const solicitud = await tx.execute(
+                  sql`SELECT message_id FROM taxonomy.outbox WHERE operation_id = ${identidad.operationId}::uuid AND event_name = 'taxonomy.master.deactivation.check.requested'`,
+                );
+                const causationId = String(solicitud.rows[0]?.message_id);
+                const respuesta = (
+                  operationId: string,
+                  messageId: string,
+                  causation: string,
+                  result: 'CLEAR' | 'IN_USE',
+                  version: number,
+                ) =>
+                  parseChecked({
+                    message_id: messageId,
+                    operation_id: operationId,
+                    correlation_id: identidad.correlationId,
+                    causation_id: causation,
+                    schema_version: 1,
+                    occurred_at: new Date().toISOString(),
+                    producer: 'catalog-svc',
+                    kind: 'result',
+                    name: 'catalog.master.deactivation.checked',
+                    data: {
+                      entity_type: entityType,
+                      entity_id: entidadId,
+                      version,
+                      result,
+                      ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+                        ? {
+                            tipo_producto_id: tipo.id,
+                            caracteristica_id: caracteristica.id,
+                          }
+                        : {}),
+                    },
+                  });
                 if (entityType === 'PRODUCT_TYPE_CHARACTERISTIC') {
                   await expect(
                     servicio.registrar({
@@ -216,16 +251,31 @@ describeIntegracion(
                     }),
                   ).resolves.toBe('CONFLICTO');
                 }
-                await expect(
-                  servicio.finalizar({
-                    ...identidad,
-                    version: identidad.version + 1,
-                    result: 'CLEAR',
-                  }),
-                ).resolves.toBe('IGNORADA');
-                await expect(
-                  servicio.finalizar({ ...identidad, result: 'IN_USE' }),
-                ).resolves.toBe('RECHAZADA');
+                const obsoleta = respuesta(
+                  identidad.operationId,
+                  randomUUID(),
+                  causationId,
+                  'CLEAR',
+                  identidad.version + 1,
+                );
+                await store.consumir(obsoleta);
+                const sinUso = await tx.execute(
+                  sql`SELECT result FROM taxonomy.inbox WHERE message_id = ${obsoleta.message_id}::uuid`,
+                );
+                expect(sinUso.rows).toEqual([{ result: 'IGNORED' }]);
+                const enUso = respuesta(
+                  identidad.operationId,
+                  randomUUID(),
+                  causationId,
+                  'IN_USE',
+                  identidad.version,
+                );
+                await store.consumir(enUso);
+                await store.consumir(enUso);
+                const rechazo = await tx.execute(
+                  sql`SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = ${identidad.operationId}::uuid`,
+                );
+                expect(rechazo.rows).toEqual([{ status: 'REJECTED' }]);
                 const segunda = { ...identidad, operationId: randomUUID() };
                 await expect(servicio.registrar(segunda)).resolves.toBe(
                   'REGISTRADA',
@@ -244,9 +294,26 @@ describeIntegracion(
                 await expect(servicio.registrar(tercera)).resolves.toBe(
                   'REGISTRADA',
                 );
-                await expect(
-                  servicio.finalizar({ ...tercera, result: 'CLEAR' }),
-                ).resolves.toBe('COMPLETADA');
+                const solicitudTercera = await tx.execute(
+                  sql`SELECT message_id FROM taxonomy.outbox WHERE operation_id = ${tercera.operationId}::uuid AND event_name = 'taxonomy.master.deactivation.check.requested'`,
+                );
+                const clear = respuesta(
+                  tercera.operationId,
+                  randomUUID(),
+                  String(solicitudTercera.rows[0]?.message_id),
+                  'CLEAR',
+                  identidad.version,
+                );
+                await store.consumir(clear);
+                await store.consumir(clear);
+                const completada = await tx.execute(
+                  sql`SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id = ${tercera.operationId}::uuid`,
+                );
+                expect(completada.rows).toEqual([{ status: 'COMPLETED' }]);
+                const inbox = await tx.execute(
+                  sql`SELECT count(*)::int AS total FROM taxonomy.inbox WHERE message_id = ${clear.message_id}::uuid AND result = 'PROCESSED'`,
+                );
+                expect(inbox.rows).toEqual([{ total: 1 }]);
                 const eventos = await tx.execute(
                   sql`SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=${tercera.operationId}::uuid AND event_name='taxonomy.master.deactivated'`,
                 );
@@ -296,10 +363,56 @@ describeIntegracion(
       ).rows[0].id as string;
       try {
         const valores = new CharacteristicValueService(database);
-        expect(await valores.crear(caracteristica, 'Rojo')).toMatchObject({
+        const creado = await valores.crear(caracteristica, 'Rojo');
+        expect(creado).toMatchObject({
           estado: 'OK',
           valor: { nombre: 'Rojo', estado: 'ACTIVO', version: 0 },
         });
+        if (creado.estado !== 'OK') throw new Error('Valor ausente');
+        await admin.query(`REVOKE INSERT ON taxonomy.outbox FROM ${ROL_APP}`);
+        try {
+          await expect(
+            valores.actualizar(caracteristica, creado.valor.valorId, 'Azul', 0),
+          ).rejects.toThrow();
+          expect(
+            (
+              await admin.query(
+                'SELECT nombre, taxonomy_version FROM taxonomy.characteristic_values WHERE id=$1',
+                [creado.valor.valorId],
+              )
+            ).rows,
+          ).toEqual([{ nombre: 'Rojo', taxonomy_version: '0' }]);
+        } finally {
+          await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        }
+        expect(
+          await valores.actualizar(
+            caracteristica,
+            creado.valor.valorId,
+            'Azul',
+            0,
+          ),
+        ).toMatchObject({
+          estado: 'OK',
+          valor: { nombre: 'Azul', version: 1 },
+        });
+        expect(
+          (
+            await admin.query(
+              "SELECT payload->'data' AS data FROM taxonomy.outbox WHERE event_name='taxonomy.characteristic-value.updated' AND payload->'data'->>'valor_id'=$1",
+              [creado.valor.valorId],
+            )
+          ).rows,
+        ).toEqual([
+          {
+            data: expect.objectContaining({
+              caracteristica_id: caracteristica,
+              valor_id: creado.valor.valorId,
+              nombre: 'Azul',
+              change_type: 'RENAMED',
+            }),
+          },
+        ]);
         expect(await valores.listar(caracteristica)).toHaveLength(1);
         const asociaciones = new ProductTypeCharacteristicService(database);
         expect(await asociaciones.crear(tipo, caracteristica, true, 0)).toEqual(
@@ -335,6 +448,11 @@ describeIntegracion(
           },
         ]);
       } finally {
+        await admin.query(`GRANT INSERT ON taxonomy.outbox TO ${ROL_APP}`);
+        await admin.query(
+          "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.characteristic-value.updated' AND payload->'data'->>'caracteristica_id'=$1",
+          [caracteristica],
+        );
         await admin.query(
           "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.product-type-schema.changed' AND payload->'data'->>'tipo_producto_id'=$1",
           [tipo],
@@ -355,6 +473,92 @@ describeIntegracion(
           [caracteristica],
         );
         vi.restoreAllMocks();
+      }
+    });
+
+    it('serializa renombrados concurrentes de un valor por versión', async () => {
+      const nombre = `concurrencia-valor-${randomUUID()}`;
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const caracteristica = (
+        await admin.query(
+          "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+          [nombre],
+        )
+      ).rows[0].id;
+      const valor = (
+        await admin.query(
+          "INSERT INTO taxonomy.characteristic_values (caracteristica_id, nombre) VALUES ($1, 'Inicial') RETURNING id",
+          [caracteristica],
+        )
+      ).rows[0].id;
+      try {
+        const servicio = new CharacteristicValueService(database);
+        const resultados = await Promise.all([
+          servicio.actualizar(caracteristica, valor, 'Primero', 0),
+          servicio.actualizar(caracteristica, valor, 'Segundo', 0),
+        ]);
+        expect(resultados.map((r) => r.estado).sort()).toEqual([
+          'OK',
+          'VERSION_CONFLICT',
+        ]);
+        expect(
+          (
+            await admin.query(
+              'SELECT taxonomy_version FROM taxonomy.characteristic_values WHERE id=$1',
+              [valor],
+            )
+          ).rows[0].taxonomy_version,
+        ).toBe('1');
+        expect(
+          (
+            await admin.query(
+              "SELECT count(*)::int AS total FROM taxonomy.outbox WHERE event_name='taxonomy.characteristic-value.updated' AND payload->'data'->>'valor_id'=$1",
+              [valor],
+            )
+          ).rows[0].total,
+        ).toBe(1);
+      } finally {
+        await admin.query(
+          "DELETE FROM taxonomy.outbox WHERE event_name='taxonomy.characteristic-value.updated' AND payload->'data'->>'valor_id'=$1",
+          [valor],
+        );
+        await admin.query(
+          'DELETE FROM taxonomy.characteristic_values WHERE id=$1',
+          [valor],
+        );
+        await admin.query('DELETE FROM taxonomy.characteristics WHERE id=$1', [
+          caracteristica,
+        ]);
+        vi.restoreAllMocks();
+      }
+    });
+
+    it('mantiene inmutable el tipo de una característica en PostgreSQL', async () => {
+      const nombre = `inmutable-${randomUUID()}`;
+      const creado = await admin.query(
+        "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+        [nombre],
+      );
+      try {
+        await expect(
+          admin.query(
+            "UPDATE taxonomy.characteristics SET tipo = 'TEXTO' WHERE id = $1",
+            [creado.rows[0].id],
+          ),
+        ).rejects.toThrow(/inmutable/i);
+        const actual = await admin.query(
+          'SELECT tipo FROM taxonomy.characteristics WHERE id = $1',
+          [creado.rows[0].id],
+        );
+        expect(actual.rows[0].tipo).toBe('LISTA');
+      } finally {
+        await admin.query(
+          'DELETE FROM taxonomy.characteristics WHERE id = $1',
+          [creado.rows[0].id],
+        );
       }
     });
 
@@ -2497,6 +2701,288 @@ describeIntegracion(
         }
       },
     );
+
+    it('procesa los tres maestros por RabbitMQ real sin duplicar Inbox ni Outbox', async () => {
+      const rabbit = new RabbitTaxonomyDesechable();
+      const database = new Database();
+      vi.spyOn(database, 'read').mockImplementation(async (query) =>
+        query(dbApp),
+      );
+      const intentos = new DeactivationIntentService(database);
+      const store = new TaxonomyMessageStore(database, intentos);
+      const procesar = vi.spyOn(store, 'consumir');
+      const nombre = `rabbit-maestros-${randomUUID()}`;
+      const operaciones: string[] = [];
+      const mensajes: string[] = [];
+      let tipo: string | undefined;
+      let otroTipo: string | undefined;
+      let caracteristica: string | undefined;
+      let valor: string | undefined;
+      let asociacion: string | undefined;
+      let broker: ChannelModel | undefined;
+      let catalog: ChannelModel | undefined;
+      let runtime: TaxonomyAmqpRuntime | undefined;
+      const original = (
+        await admin.query(
+          "SELECT pg_get_functiondef('taxonomy.fn_bump_product_type_schema_version()'::regprocedure) AS definition",
+        )
+      ).rows[0].definition as string;
+      const esperar = async (condicion: () => Promise<boolean> | boolean) => {
+        for (let i = 0; i < 200; i++) {
+          if (await condicion()) return;
+          await new Promise((resolve) => setTimeout(resolve, 100));
+        }
+        throw new Error('Tiempo de espera agotado para maestros RabbitMQ');
+      };
+      try {
+        await admin.query(
+          readFileSync(
+            resolve(
+              'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+            ),
+            'utf8',
+          ),
+        );
+        tipo = (
+          await admin.query(
+            'INSERT INTO taxonomy.product_types (nombre) VALUES ($1) RETURNING id',
+            [nombre],
+          )
+        ).rows[0].id as string;
+        otroTipo = (
+          await admin.query(
+            'INSERT INTO taxonomy.product_types (nombre) VALUES ($1) RETURNING id',
+            [nombre + '-esquema'],
+          )
+        ).rows[0].id as string;
+        caracteristica = (
+          await admin.query(
+            "INSERT INTO taxonomy.characteristics (nombre, tipo) VALUES ($1, 'LISTA') RETURNING id",
+            [nombre],
+          )
+        ).rows[0].id as string;
+        valor = (
+          await admin.query(
+            'INSERT INTO taxonomy.characteristic_values (caracteristica_id, nombre) VALUES ($1, $2) RETURNING id',
+            [caracteristica, nombre],
+          )
+        ).rows[0].id as string;
+        asociacion = (
+          await admin.query(
+            'INSERT INTO taxonomy.product_type_characteristics (tipo_producto_id, caracteristica_id) VALUES ($1, $2) RETURNING id',
+            [otroTipo, caracteristica],
+          )
+        ).rows[0].id as string;
+        const urls = await rabbit.iniciar();
+        broker = await connect(urls.taxonomyUrl);
+        const canal = await broker.createChannel();
+        for (const exchange of [
+          'po.comandos.x',
+          'po.eventos.x',
+          'po.resultados.x',
+        ])
+          await canal.assertExchange(exchange, 'topic', { durable: true });
+        for (const queue of [
+          'po.taxonomia.q',
+          'prueba.solicitudes.q',
+          'prueba.terminal.q',
+          'prueba.esquema.q',
+        ])
+          await canal.assertQueue(queue, { durable: true });
+        await canal.bindQueue(
+          'po.taxonomia.q',
+          'po.resultados.x',
+          'catalog.master.deactivation.checked',
+        );
+        await canal.bindQueue(
+          'prueba.solicitudes.q',
+          'po.comandos.x',
+          'taxonomy.master.deactivation.check.requested',
+        );
+        await canal.bindQueue(
+          'prueba.terminal.q',
+          'po.eventos.x',
+          'taxonomy.master.deactivated',
+        );
+        await canal.bindQueue(
+          'prueba.esquema.q',
+          'po.eventos.x',
+          'taxonomy.product-type-schema.changed',
+        );
+        catalog = await connect(urls.catalogUrl);
+        const productor = await catalog.createConfirmChannel();
+        runtime = new TaxonomyAmqpRuntime(store);
+        runtime.configurar({
+          RABBITMQ_URL: urls.taxonomyUrl,
+          TAXONOMY_CATALOG_AMQP_USER: 'catalog_test',
+        });
+        runtime.iniciar();
+        await esperar(() => runtime!.disponible());
+        for (const [entityType, entityId, version] of [
+          ['PRODUCT_TYPE', tipo, 0],
+          ['CHARACTERISTIC_VALUE', valor, 0],
+          ['PRODUCT_TYPE_CHARACTERISTIC', asociacion, 2],
+        ] as const) {
+          const operationId = randomUUID();
+          const correlationId = randomUUID();
+          const messageId = randomUUID();
+          operaciones.push(operationId);
+          mensajes.push(messageId);
+          const datosAsociacion =
+            entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+              ? { tipoProductoId: otroTipo, caracteristicaId: caracteristica }
+              : {};
+          expect(
+            await intentos.registrar({
+              operationId,
+              correlationId,
+              entityType,
+              entityId,
+              version,
+              ...datosAsociacion,
+            }),
+          ).toBe('REGISTRADA');
+          await esperar(
+            async () =>
+              (await canal.checkQueue('prueba.solicitudes.q')).messageCount ===
+              1,
+          );
+          const solicitud = await canal.get('prueba.solicitudes.q', {
+            noAck: true,
+          });
+          if (!solicitud) throw new Error('Solicitud no publicada');
+          const causa = JSON.parse(solicitud.content.toString())
+            .message_id as string;
+          const respuesta = {
+            message_id: messageId,
+            correlation_id: correlationId,
+            operation_id: operationId,
+            causation_id: causa,
+            schema_version: 1,
+            occurred_at: new Date().toISOString(),
+            producer: 'catalog-svc',
+            kind: 'result',
+            name: 'catalog.master.deactivation.checked',
+            data: {
+              entity_type: entityType,
+              entity_id: entityId,
+              version,
+              result: 'CLEAR',
+              ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+                ? {
+                    tipo_producto_id: otroTipo,
+                    caracteristica_id: caracteristica,
+                  }
+                : {}),
+            },
+          };
+          const enviar = () =>
+            new Promise<void>((resolve, reject) =>
+              productor.publish(
+                'po.resultados.x',
+                respuesta.name,
+                Buffer.from(JSON.stringify(respuesta)),
+                {
+                  persistent: true,
+                  contentType: 'application/json',
+                  userId: 'catalog_test',
+                  messageId,
+                  correlationId,
+                },
+                (error) => (error ? reject(error) : resolve()),
+              ),
+            );
+          await enviar();
+          await esperar(
+            async () =>
+              (
+                await admin.query(
+                  'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+                  [operationId],
+                )
+              ).rows[0]?.status === 'COMPLETED',
+          );
+          await esperar(
+            async () =>
+              (await canal.checkQueue('prueba.terminal.q')).messageCount === 1,
+          );
+          const terminal = await canal.get('prueba.terminal.q', {
+            noAck: true,
+          });
+          if (!terminal) throw new Error('Resultado terminal no publicado');
+          expect(JSON.parse(terminal.content.toString())).toMatchObject({
+            operation_id: operationId,
+            data: { entity_type: entityType, entity_id: entityId },
+          });
+          const antes = procesar.mock.calls.length;
+          await enviar();
+          await esperar(() => procesar.mock.calls.length > antes);
+          await procesar.mock.results[antes].value;
+          expect(
+            (
+              await admin.query(
+                'SELECT count(*)::int AS n FROM taxonomy.inbox WHERE message_id=$1 AND result=$2',
+                [messageId, 'PROCESSED'],
+              )
+            ).rows,
+          ).toEqual([{ n: 1 }]);
+          expect(
+            (
+              await admin.query(
+                "SELECT count(*)::int AS n FROM taxonomy.outbox WHERE operation_id=$1 AND event_name='taxonomy.master.deactivated'",
+                [operationId],
+              )
+            ).rows,
+          ).toEqual([{ n: 1 }]);
+          expect(runtime.disponible()).toBe(true);
+        }
+      } finally {
+        await runtime?.onModuleDestroy();
+        await catalog?.close().catch(() => undefined);
+        await broker?.close().catch(() => undefined);
+        rabbit.cerrar();
+        if (mensajes.length)
+          await admin.query(
+            'DELETE FROM taxonomy.inbox WHERE message_id = ANY($1::uuid[])',
+            [mensajes],
+          );
+        if (operaciones.length) {
+          await admin.query(
+            'DELETE FROM taxonomy.outbox WHERE operation_id = ANY($1::uuid[])',
+            [operaciones],
+          );
+          await admin.query(
+            'DELETE FROM taxonomy.master_deactivation_operations WHERE operation_id = ANY($1::uuid[])',
+            [operaciones],
+          );
+        }
+        if (asociacion)
+          await admin.query(
+            'DELETE FROM taxonomy.product_type_characteristics WHERE id=$1',
+            [asociacion],
+          );
+        if (valor)
+          await admin.query(
+            'DELETE FROM taxonomy.characteristic_values WHERE id=$1',
+            [valor],
+          );
+        if (tipo)
+          await admin.query('DELETE FROM taxonomy.product_types WHERE id=$1', [
+            tipo,
+          ]);
+        if (otroTipo)
+          await admin.query('DELETE FROM taxonomy.product_types WHERE id=$1', [
+            otroTipo,
+          ]);
+        if (caracteristica)
+          await admin.query(
+            'DELETE FROM taxonomy.characteristics WHERE id=$1',
+            [caracteristica],
+          );
+        await admin.query(original);
+        vi.restoreAllMocks();
+      }
+    }, 90_000);
 
     it('recupera una entrega sin ACK al reiniciar, sin duplicar efectos, con RabbitMQ real aislado', async () => {
       const rabbit = new RabbitTaxonomyDesechable();

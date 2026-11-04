@@ -140,31 +140,22 @@ describe('Taxonomy AMQP', () => {
     'PRODUCT_TYPE',
     'CHARACTERISTIC_VALUE',
     'PRODUCT_TYPE_CHARACTERISTIC',
-  ])(
-    'reconoce %s sin aplicar efectos antes de implementar su dominio',
-    async (entityType) => {
-      const checked = parseChecked({
-        ...envelope,
-        data: {
-          ...envelope.data,
-          entity_type: entityType,
-          ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
-            ? {
-                tipo_producto_id: envelope.data.entity_id,
-                caracteristica_id: envelope.data.entity_id,
-              }
-            : {}),
-        },
-      });
-      const store = new TaxonomyMessageStore(
-        {} as ConstructorParameters<typeof TaxonomyMessageStore>[0],
-        {} as ConstructorParameters<typeof TaxonomyMessageStore>[1],
-      );
-      await expect(store.consumir(checked)).rejects.toThrow(
-        'UNSUPPORTED_ENTITY',
-      );
-    },
-  );
+  ])('reconoce el envelope de %s', async (entityType) => {
+    const checked = parseChecked({
+      ...envelope,
+      data: {
+        ...envelope.data,
+        entity_type: entityType,
+        ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+          ? {
+              tipo_producto_id: envelope.data.entity_id,
+              caracteristica_id: envelope.data.entity_id,
+            }
+          : {}),
+      },
+    });
+    expect(checked.data.entity_type).toBe(entityType);
+  });
   it('valida configuración sin exponer credenciales', () => {
     expect(leerAmqp({})).toBeUndefined();
     expect(() =>
