@@ -2358,6 +2358,26 @@ describeIntegracion(
           })
           .expect(201);
         caracteristicaHttpCreada = caracteristicaHttp.body.caracteristicaId;
+        const valoresHttp = await Promise.all(
+          ['Rojo', 'Azul', 'Verde'].map(async (nombre) => {
+            const response = await request(nest.getHttpServer())
+              .post(
+                `/api/v1/caracteristicas/${caracteristicaHttpCreada}/valores`,
+              )
+              .set('Authorization', `Bearer ${token('', true)}`)
+              .send({ nombre })
+              .expect(201);
+            return response.body.valorId as string;
+          }),
+        );
+        await admin.query(
+          "UPDATE taxonomy.characteristic_values SET estado='INACTIVO' WHERE id=$1",
+          [valoresHttp[1]],
+        );
+        await admin.query(
+          "UPDATE taxonomy.characteristic_values SET estado='PENDING_DEACTIVATION' WHERE id=$1",
+          [valoresHttp[2]],
+        );
         // contract-test: 'obtenerCaracteristica'
         await request(nest.getHttpServer())
           .get(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
@@ -2384,6 +2404,45 @@ describeIntegracion(
           })
           .expect(200);
         expect(caracteristicaEditada.body.version).toBe(1);
+        expect(caracteristicaEditada.body.valores).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({
+              valorId: valoresHttp[0],
+              estado: 'ACTIVO',
+            }),
+            expect.objectContaining({
+              valorId: valoresHttp[1],
+              estado: 'INACTIVO',
+            }),
+          ]),
+        );
+        expect(caracteristicaEditada.body.valores).toHaveLength(2);
+        expect(
+          caracteristicaEditada.body.valores.every(
+            (valor: { estado: string }) =>
+              valor.estado === 'ACTIVO' || valor.estado === 'INACTIVO',
+          ),
+        ).toBe(true);
+        const caracteristicaConsultada = await request(nest.getHttpServer())
+          .get(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        expect(caracteristicaConsultada.body.valores).toHaveLength(2);
+        const listaCaracteristicas = await request(nest.getHttpServer())
+          .get('/api/v1/caracteristicas?pagina=1&tamanio=20&tipo=LISTA')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        const itemCaracteristica = listaCaracteristicas.body.items.find(
+          (item: { caracteristicaId: string }) =>
+            item.caracteristicaId === caracteristicaHttpCreada,
+        );
+        expect(itemCaracteristica.valores).toHaveLength(2);
+        expect(
+          itemCaracteristica.valores.every(
+            (valor: { estado: string }) =>
+              valor.estado === 'ACTIVO' || valor.estado === 'INACTIVO',
+          ),
+        ).toBe(true);
         const tipoInmutable = await request(nest.getHttpServer())
           .patch(`/api/v1/caracteristicas/${caracteristicaHttpCreada}`)
           .set('Authorization', `Bearer ${token('', true)}`)

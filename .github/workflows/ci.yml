@@ -371,6 +371,19 @@ jobs:
         cache: npm
     - name: Instalar dependencias de forma reproducible
       run: npm ci
+    - name: Obtener OpenAPI oficial fijado
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 4d285c5ffb91611b60385e0fab5a7295c95e3ed6
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Verificar correspondencia estructural de rutas Taxonomy
+      run: |
+        set -euo pipefail
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD)" = '4d285c5ffb91611b60385e0fab5a7295c95e3ed6'
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD:contratos/http/openapi.yaml)" = '6ff062c563d381d4bcf7976f223590b400ace4ec'
+        node scripts/ci/check-taxonomy-contract.mjs .ci/G6-Productos-Ofertas-docs/contratos/http/openapi.yaml
     - name: Rechazar URL de base aportada antes de acceder a Docker
       run: node --test scripts/ci/run-taxonomy-integration.test.mjs
     - name: Ejecutar pruebas de integración Taxonomy (obligatorias)

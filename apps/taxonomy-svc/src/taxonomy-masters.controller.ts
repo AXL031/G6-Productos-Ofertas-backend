@@ -59,6 +59,14 @@ function problema(status: number, code: string): ProblemDetailsException {
     code,
   });
 }
+function valorNumericoInvalido(): ProblemDetailsException {
+  return new ProblemDetailsException({
+    type: '/errores/valor-numerico-invalido',
+    title: 'Valor numérico inválido',
+    status: 422,
+    code: 'VALOR_NUMERICO_INVALIDO',
+  });
+}
 
 @Controller('api/v1')
 @UseGuards(TaxonomyUserGuard)
@@ -127,13 +135,19 @@ export class TaxonomyMastersController {
       typeof v.nombre !== 'string' ||
       !v.nombre.trim() ||
       !['TEXTO', 'NUMERO', 'LISTA'].includes(String(v.tipo)) ||
-      (v.tipo === 'NUMERO' &&
-        (typeof v.unidadMedida !== 'string' || !v.unidadMedida.trim())) ||
+      (v.unidadMedida !== undefined &&
+        v.unidadMedida !== null &&
+        typeof v.unidadMedida !== 'string') ||
       (v.tipo !== 'NUMERO' && v.unidadMedida != null)
     )
       throw ProblemDetailsException.validacion(
         'Datos de característica inválidos.',
       );
+    if (
+      v.tipo === 'NUMERO' &&
+      (typeof v.unidadMedida !== 'string' || !v.unidadMedida.trim())
+    )
+      throw valorNumericoInvalido();
     const creada = await this.caracteristicas.crear({
       nombre: v.nombre,
       tipo: String(v.tipo),
@@ -201,8 +215,11 @@ export class TaxonomyMastersController {
         'Ya existe una característica con ese nombre.',
       );
     if (r === 'BAJA_EN_PROCESO') throw problema(409, 'VERSION_CONFLICT');
-    if (r === 'INVALIDA')
-      throw ProblemDetailsException.validacion('Unidad de medida inválida.');
+    if (r === 'UNIDAD_INCOMPATIBLE')
+      throw ProblemDetailsException.validacion(
+        'La unidad de medida solo aplica a características NUMERO.',
+      );
+    if (r === 'INVALIDA') throw valorNumericoInvalido();
     return r;
   }
 

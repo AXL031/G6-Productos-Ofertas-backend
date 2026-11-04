@@ -124,6 +124,58 @@ describe('rutas HTTP de maestros', () => {
     );
     expect(respuesta.body.code).toBe('VALIDACION');
   });
+  it.each([undefined, ''])(
+    'distingue unidad NUMERO ausente o vacía',
+    async (unidadMedida) => {
+      const respuesta = await request(app.getHttpServer())
+        .post('/api/v1/caracteristicas')
+        .send({ nombre: 'Peso', tipo: 'NUMERO', unidadMedida })
+        .expect(422);
+      expect(respuesta.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(respuesta.body.code).toBe('VALOR_NUMERICO_INVALIDO');
+      expect(caracteristicas.crear).not.toHaveBeenCalled();
+    },
+  );
+  it('trata tipos de unidad estructuralmente inválidos como VALIDACION', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/api/v1/caracteristicas')
+      .send({ nombre: 'Peso', tipo: 'NUMERO', unidadMedida: 42 })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+    expect(caracteristicas.crear).not.toHaveBeenCalled();
+  });
+  it('rechaza unidad incompatible con TEXTO mediante VALIDACION', async () => {
+    const respuesta = await request(app.getHttpServer())
+      .post('/api/v1/caracteristicas')
+      .send({ nombre: 'Color', tipo: 'TEXTO', unidadMedida: 'kg' })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+    expect(caracteristicas.crear).not.toHaveBeenCalled();
+  });
+  it.each([null, ''])(
+    'mapea unidad NUMERO inválida en PATCH a 422',
+    async (unidadMedida) => {
+      caracteristicas.actualizar.mockResolvedValueOnce('INVALIDA');
+      const respuesta = await request(app.getHttpServer())
+        .patch(`/api/v1/caracteristicas/${id}`)
+        .send({ unidadMedida, version: 0 })
+        .expect(422);
+      expect(respuesta.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(respuesta.body.code).toBe('VALOR_NUMERICO_INVALIDO');
+    },
+  );
+  it('mapea unidad incompatible en PATCH a 400 VALIDACION', async () => {
+    caracteristicas.actualizar.mockResolvedValueOnce('UNIDAD_INCOMPATIBLE');
+    const respuesta = await request(app.getHttpServer())
+      .patch(`/api/v1/caracteristicas/${id}`)
+      .send({ unidadMedida: 'kg', version: 0 })
+      .expect(400);
+    expect(respuesta.body.code).toBe('VALIDACION');
+  });
   it('valida y actualiza la obligatoriedad con control de versión', async () => {
     const path = `/api/v1/tipos-producto/${id}/caracteristicas/${id}`;
     asociaciones.actualizar.mockResolvedValueOnce({
