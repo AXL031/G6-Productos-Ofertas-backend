@@ -409,6 +409,19 @@ export class DeactivationIntentService {
       : 'taxonomy.master.deactivation.rejected';
     const kind = completa ? 'event' : 'result';
     const reason = completa ? null : 'IN_USE';
+    const asociacionFinal =
+      completa && tipo === 'PRODUCT_TYPE_CHARACTERISTIC'
+        ? await bloquearFuenteBaja(tx, tipo, fila.entity_id)
+        : undefined;
+    if (
+      completa &&
+      tipo === 'PRODUCT_TYPE_CHARACTERISTIC' &&
+      (!asociacionFinal ||
+        asociacionFinal.version !== version + 1 ||
+        !asociacionFinal.tipoProductoId ||
+        !asociacionFinal.caracteristicaId)
+    )
+      throw new Error('VERSION_ASOCIACION_INCONSISTENTE');
     await tx.execute(sql`UPDATE taxonomy.master_deactivation_operations
         SET status = ${status}::taxonomy.estado_operacion_baja, reason = ${reason}, updated_at = statement_timestamp()
         WHERE operation_id = ${fila.operation_id}::uuid AND status = 'IN_PROGRESS'`);
@@ -421,11 +434,12 @@ export class DeactivationIntentService {
             'producer', 'taxonomy-svc', 'kind', ${kind}::text, 'name', ${nombre}::text,
             'data', jsonb_build_object('entity_type', ${fila.entity_type}::text, 'entity_id', ${fila.entity_id}::text,
               'version', ${version}::bigint) || CASE WHEN ${completa}::boolean THEN '{}'::jsonb ELSE jsonb_build_object('reason', 'IN_USE') END
-              || CASE WHEN ${tipo}::text = 'PRODUCT_TYPE_CHARACTERISTIC' THEN jsonb_build_object('tipo_producto_id', ${fuente.tipoProductoId ?? null}::text, 'caracteristica_id', ${fuente.caracteristicaId ?? null}::text) ELSE '{}'::jsonb END)
+              || CASE WHEN ${tipo}::text = 'PRODUCT_TYPE_CHARACTERISTIC' THEN jsonb_build_object('tipo_producto_id', ${fuente.tipoProductoId ?? null}::text, 'caracteristica_id', ${fuente.caracteristicaId ?? null}::text) ELSE '{}'::jsonb END
+              || CASE WHEN ${asociacionFinal?.version ?? null}::bigint IS NOT NULL THEN jsonb_build_object('schema_version_resultante', ${asociacionFinal?.version ?? null}::bigint) ELSE '{}'::jsonb END)
         FROM evento
       `);
     if (completa && tipo === 'PRODUCT_TYPE_CHARACTERISTIC') {
-      const actual = await bloquearFuenteBaja(tx, tipo, fila.entity_id);
+      const actual = asociacionFinal;
       if (
         !actual ||
         actual.version !== version + 1 ||

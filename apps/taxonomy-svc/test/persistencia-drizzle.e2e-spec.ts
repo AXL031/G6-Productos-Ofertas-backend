@@ -319,6 +319,17 @@ describeIntegracion(
                 );
                 expect(eventos.rows).toEqual([{ n: 1 }]);
                 if (entityType === 'PRODUCT_TYPE_CHARACTERISTIC') {
+                  const terminal = await tx.execute(
+                    sql`SELECT payload->'data' AS data FROM taxonomy.outbox WHERE operation_id=${tercera.operationId}::uuid AND event_name='taxonomy.master.deactivated'`,
+                  );
+                  expect(terminal.rows).toEqual([
+                    {
+                      data: expect.objectContaining({
+                        version: 2,
+                        schema_version_resultante: 3,
+                      }),
+                    },
+                  ]);
                   const cambio = await tx.execute(
                     sql`SELECT payload->'data' AS data FROM taxonomy.outbox WHERE operation_id=${tercera.operationId}::uuid AND event_name='taxonomy.product-type-schema.changed'`,
                   );
