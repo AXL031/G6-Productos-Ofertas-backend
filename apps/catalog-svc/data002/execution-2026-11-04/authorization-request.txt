@@ -1,0 +1,221 @@
+# Ejecutar DATA-002 en Supabase — Carga definitiva autorizada
+
+## Contexto
+
+Repositorio:
+https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend
+
+Issue:
+https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/12
+
+PR #175, ya fusionada a `master`:
+https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/pull/175
+
+Proyecto Supabase:
+`slzglmtiyrzygpkiuthf`
+
+El responsable de Catálogo ha confirmado que contamos con autorización para ejecutar la carga de DATA-002 en Supabase y usar los permisos de lectura necesarios para verificar las imágenes de Storage.
+
+**DECISIÓN DEFINITIVA SOBRE LOS PERFILES FÍSICOS:**
+
+Se utilizarán los 55 perfiles físicos preparados en el Excel original, con sus 220 valores exactos.
+
+Por tratarse de un proyecto académico, se adopta expresamente una **excepción académica para utilizar las medidas logísticas estimadas** en `catalog.sku_physical_profiles`, incluyendo las dimensiones con bolsa, envoltorio o caja cuando así aparezcan en el Excel.
+
+Esta decisión significa:
+
+- No recalcular los valores.
+- No quitar arbitrariamente el peso de las bolsas o cajas.
+- No sustituir las medidas por otras supuestamente intrínsecas.
+- No generar nuevas estimaciones.
+- Conservar exactamente los 220 valores originales.
+- Documentar claramente que son medidas académicas de presentación logística, no mediciones certificadas del artículo sin embalaje.
+- Registrar la excepción en la evidencia de ejecución, sin afirmar que cambió el contrato normativo general.
+
+La decisión sobre los datos ya está tomada. No vuelvas a plantear la elección entre medidas intrínsecas y logísticas.
+
+## 1. Revisión inicial obligatoria
+
+Antes de ejecutar operaciones:
+
+1. Lee `AGENTS.md` completo.
+2. Lee el issue #12.
+3. Utiliza exclusivamente la implementación fusionada en `master`, no una versión anterior de `poma`.
+4. Revisa `apps/catalog-svc/data002/README.md`.
+5. Revisa los manifiestos, archivos SQL, hashes y procedimientos aprobados.
+6. Confirma que estás conectado al proyecto Supabase correcto.
+7. Comprueba el estado actual del esquema `catalog` y registra una evidencia inicial.
+
+El objetivo no es realizar nuevamente la preparación offline, sino ejecutar la carga real de los datos ya preparados.
+
+## 2. Permisos de Storage
+
+Las 23 fotografías existentes ya están almacenadas en el bucket público `catalog-products`.
+
+La comprobación de acceso a Storage realizada por el responsable devolvió resultados correctos.
+
+Vuelve a verificar que `po_catalog_owner` pueda consultar los metadatos necesarios de `storage.objects` y `storage.buckets`.
+
+Si los permisos funcionan, no los modifiques.
+
+No subir, eliminar, sobrescribir ni mover fotografías.
+
+## 3. Ejecutar paquete A — Imágenes
+
+Utiliza:
+
+- `images-preflight.sql`
+- `images-apply-proposed.sql`
+- `images-postcheck.sql`
+
+Ejecuta el paquete autorizado para:
+
+- Reemplazar las seis URL placeholder de variantes por las URL reales ya existentes.
+- Registrar la imagen faltante de Nike Pitch.
+- Conservar las asociaciones SKU, UUID y variantes.
+- Comprobar los cambios mediante el postcheck.
+
+El resultado esperado es cero URL placeholder en las variantes.
+
+## 4. Ejecutar paquete B — Portadas
+
+Utiliza:
+
+- `covers-preflight.sql`
+- `covers-apply-proposed.sql`
+- `covers-postcheck.sql`
+
+Ejecuta el paquete autorizado para registrar las doce portadas documentadas, incluida adidas RUNxCUSHIONED JD9558.
+
+Reutiliza las fotografías de las variantes existentes.
+
+Hay cuatro portadas adicionales fuera del paquete original. Revísalas y prepara su propuesta independiente usando únicamente asociaciones verificables. Ejecútala solo si queda comprendida en la autorización vigente.
+
+No inventes fotografías ni modifiques archivos de Storage.
+
+## 5. Ejecutar paquete E — Los 55 perfiles físicos
+
+**Este es un objetivo prioritario y su decisión sobre las medidas ya está resuelta.**
+
+Utiliza:
+
+- `profiles-preflight.sql`
+- `profiles-apply-proposed.sql`
+- `profiles-postcheck.sql`
+
+Inserta exactamente 55 registros en:
+
+`catalog.sku_physical_profiles`
+
+Distribución:
+
+- 51 SKU de variantes.
+- 4 SKU de productos simples.
+
+Campos:
+
+- `sku_identity_id`
+- `peso_kg`
+- `largo_cm`
+- `ancho_cm`
+- `alto_cm`
+
+**Utiliza exactamente los 220 valores del Excel.**
+
+La fuente contiene algunas medidas con embalaje, otras sin embalaje y estimaciones académicas. Deben conservarse tal como fueron aprobadas para este lote académico.
+
+### Tratamiento de la barrera semántica
+
+El script incorpora la comprobación:
+
+`DATA002_PHYSICAL_SEMANTICS_NOT_APPROVED`
+
+No elimines ni alteres esa protección.
+
+La decisión adoptada para este lote es:
+
+`ACADEMIC_LOGISTIC_EXCEPTION_APPROVED`
+
+Documenta expresamente esta excepción y configura el valor de sesión:
+
+`catalog.data002_physical_semantics=ACADEMIC_LOGISTIC_EXCEPTION_APPROVED`
+
+Utiliza el mecanismo de sesión contemplado por el procedimiento aprobado, garantizando que la configuración y el script se ejecuten en la misma conexión PostgreSQL.
+
+La excepción únicamente aplica a estos 55 SKU y no modifica las reglas generales de Catálogo.
+
+Si falta una constancia formal exigida por el procedimiento de autorización, identifica ese único bloqueo; no modifiques las medidas ni elimines la barrera para forzar la carga.
+
+Antes de insertar, ejecuta el preflight y verifica que los 55 registros sean aptos para inserción.
+
+Después, ejecuta el SQL original completo, respetando transacciones y verificaciones.
+
+Finalmente, comprueba que:
+
+- Existan 55 perfiles físicos.
+- Cada uno corresponda al SKU correcto.
+- Los 220 valores coincidan exactamente con el Excel.
+- No existan perfiles para los 16 SKU padre no vendibles.
+- No se hayan modificado productos, variantes ni identidades existentes.
+
+## 6. Resolver pendientes adicionales de DATA-002
+
+Revisa también:
+
+- Las ocho asociaciones identificadoras de producto pendientes.
+- Los dos atributos obligatorios de Nike Pitch.
+- Las cuatro portadas adicionales.
+- Las migraciones `0002` y `0003`.
+
+Completa únicamente aquello que esté definido por contratos vigentes, respaldado por datos reales y comprendido en la autorización.
+
+Para migraciones, utiliza exclusivamente `datos/deploy/migrate.py`, verificando previamente el historial normativo, los checksums y la secuencia correspondiente. No crees registros manuales de historial ni inventes barcodes.
+
+Los doce atributos LISTA con JSONB `null` y `valor_id` válido deben permanecer intactos.
+
+## 7. Reglas estrictas de ejecución
+
+- Ejecuta realmente las operaciones autorizadas en Supabase, no solamente pruebas locales.
+- Utiliza el rol correcto, transacciones completas y el procedimiento oficial.
+- No fragmentes un SQL transaccional en llamadas distintas que pierdan la misma sesión.
+- No cambies el estado de productos o variantes de `BORRADOR` a `ACTIVO`.
+- No modifiques precios ni inventarios.
+- No crees SKU, productos ni variantes nuevos.
+- No alteres los UUID existentes.
+- No ejecutes SQL sobre esquemas de otros módulos.
+- No elimines ni reemplaces imágenes existentes.
+- No elimines registros para hacer coincidir artificialmente los conteos.
+- Si un paquete presenta un conflicto real, detén únicamente ese paquete, conserva la integridad de los demás y registra la causa.
+
+## 8. Verificación final y reporte
+
+Consulta directamente Supabase después de cada operación.
+
+Resultados esperados:
+
+| Elemento | Estado objetivo |
+|---|---|
+| Productos | 20 |
+| Variantes | 51 |
+| Identidades SKU | 71 |
+| SKU vendibles | 55 |
+| Imágenes placeholder | 0 |
+| Perfiles físicos | 55 |
+| Valores físicos cargados | 220, idénticos al Excel |
+| Imágenes de productos | Completadas según paquetes autorizados |
+| Estado de productos | BORRADOR, sin activación automática |
+
+Entrega un reporte final con:
+
+1. Estado anterior y posterior de cada tabla modificada.
+2. Paquetes ejecutados correctamente y paquetes bloqueados.
+3. Cantidad exacta de INSERT y UPDATE por tabla.
+4. Resultado de cada preflight y postcheck.
+5. Confirmación de los 55 perfiles y de los 220 valores originales.
+6. Evidencia de la excepción académica logística utilizada.
+7. Migraciones realmente aplicadas, si corresponde.
+8. Pendientes restantes para completar DATA-002 y habilitar la posterior activación comercial.
+
+Actualiza la evidencia del issue #12. No lo cierres automáticamente sin comprobar todos sus criterios de aceptación.
+
+**Objetivo final:** dejar Supabase con los datos de Catálogo efectivamente completados hasta donde alcance la autorización, reutilizando las imágenes existentes y cargando los 55 perfiles físicos con las medidas académicas originales, sin crear ni modificar información ajena al alcance aprobado.

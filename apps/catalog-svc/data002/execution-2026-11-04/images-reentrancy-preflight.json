@@ -1,0 +1,85 @@
+[
+  {
+    "verification": {
+      "statement_1": [
+        {
+          "sku": "ADI-ENT22-AZU-M",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada22-azul.jpg",
+          "etag": "\"1b1058af89e537cdc25b7e5392daf886\"",
+          "file": "adidas-entrada22-azul.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "c9b5f3d3-542e-4c1b-bd87-e50a53aa0703",
+          "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+          "storage_id": "bf691787-7ad2-42e2-9af4-e75f9e0b34d6",
+          "variant_id": "35133a17-114a-381e-090a-87446d5fc701"
+        },
+        {
+          "sku": "ADI-RF3-GRI-38",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runfalcon3-gris.jpg",
+          "etag": "\"b069348a3f481a1c15aa3db22b58c9c9-1\"",
+          "file": "adidas-runfalcon3-gris.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "bdf64a75-0ee8-4fd2-aeae-e85e27c67cae",
+          "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+          "storage_id": "3830bc41-91ed-4b55-ba3c-ce3a2f638440",
+          "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17"
+        },
+        {
+          "sku": "ADI-RF3-GRI-39",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runfalcon3-gris.jpg",
+          "etag": "\"b069348a3f481a1c15aa3db22b58c9c9-1\"",
+          "file": "adidas-runfalcon3-gris.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "739bdf11-ce20-4f19-a49e-8fa09bda60f3",
+          "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+          "storage_id": "3830bc41-91ed-4b55-ba3c-ce3a2f638440",
+          "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f"
+        },
+        {
+          "sku": "NIK-REV7-NEG-41",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-revolution7-negro.jpg",
+          "etag": "\"632ef3c08b347454ee8361ad8178c153-1\"",
+          "file": "nike-revolution7-negro.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "e807b012-00ba-4d17-a4e5-f47546cd8980",
+          "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+          "storage_id": "adb98816-5445-49c7-8a60-093ff4b6dff2",
+          "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae"
+        },
+        {
+          "sku": "NIK-REV7-NEG-42",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-revolution7-negro.jpg",
+          "etag": "\"632ef3c08b347454ee8361ad8178c153-1\"",
+          "file": "nike-revolution7-negro.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "aba3e97a-6575-4c13-81e7-fe35a2e14d0a",
+          "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+          "storage_id": "adb98816-5445-49c7-8a60-093ff4b6dff2",
+          "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b"
+        },
+        {
+          "sku": "PUM-ULP-NEG-42",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-ultra-play-negro.jpg",
+          "etag": "\"3a9ba6ba7f775f7061d6cb703a3fc34f-1\"",
+          "file": "puma-ultra-play-negro.jpg",
+          "status": "ALREADY_APPLIED",
+          "old_url": "https://placehold.co/800x800/png?text=Imagen+referencial",
+          "image_id": "e26d7736-b820-4e43-b92b-4f95cc773186",
+          "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+          "storage_id": "3150f807-c196-4fc3-be05-f6bd4c6677de",
+          "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338"
+        }
+      ],
+      "statement_2": [
+        {
+          "pitch_preflight_ok": true
+        }
+      ]
+    }
+  }
+]

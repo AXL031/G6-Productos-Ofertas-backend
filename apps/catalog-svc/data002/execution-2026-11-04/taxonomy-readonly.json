@@ -1,0 +1,403 @@
+[
+  {
+    "taxonomy": {
+      "types": [
+        {
+          "id": "455e292f-face-5ea3-387d-db95b93cc9af",
+          "estado": "ACTIVO",
+          "nombre": "Balón deportivo",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "estado": "ACTIVO",
+          "nombre": "Zapatillas deportivas",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+          "estado": "ACTIVO",
+          "nombre": "Chimpunes",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9",
+          "estado": "ACTIVO",
+          "nombre": "Short deportivo",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "b023a151-d69f-ff9a-483a-678eefe6842e",
+          "estado": "ACTIVO",
+          "nombre": "Camiseta deportiva",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "db4cefc7-9412-5c82-a91f-58b73a9909cd",
+          "estado": "ACTIVO",
+          "nombre": "Medias deportivas",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "schema_version": 3,
+          "taxonomy_version": 0
+        }
+      ],
+      "values": [
+        {
+          "id": "0223e905-3700-5c92-87ac-f5a0615b2e96",
+          "estado": "ACTIVO",
+          "nombre": "EU 38-42",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "0234fd28-6c7f-5203-bef5-733196f382a6",
+          "estado": "ACTIVO",
+          "nombre": "EU 42-46",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "122e93d8-cd1a-4b0e-8224-859fcff6db25",
+          "estado": "ACTIVO",
+          "nombre": "42",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "20ead521-e596-521d-a057-7c41b52d0626",
+          "estado": "ACTIVO",
+          "nombre": "EU 40-42",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "353dbffe-8b38-5575-8f35-a7a8e42d8946",
+          "estado": "ACTIVO",
+          "nombre": "XL",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "35e25c52-aa9b-5572-b656-15b701e4894c",
+          "estado": "ACTIVO",
+          "nombre": "Multicolor",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "50347024-7af0-2f6b-03fd-f5bbd3f408cf",
+          "estado": "ACTIVO",
+          "nombre": "Gris",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "52d4b91a-f829-c05e-d60e-31ada29b0513",
+          "estado": "ACTIVO",
+          "nombre": "5",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "61174517-27e1-1c5f-253b-4f6f2daa8b3f",
+          "estado": "ACTIVO",
+          "nombre": "Negro",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "6787802a-f29f-5a1b-a495-1d034f1002b6",
+          "estado": "ACTIVO",
+          "nombre": "S",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "68e9a97e-7e35-5c46-aed9-046556f9387b",
+          "estado": "ACTIVO",
+          "nombre": "L",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "6e7505c8-4ae3-5850-86b2-d01d0b40bace",
+          "estado": "ACTIVO",
+          "nombre": "XS",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "6e8053e7-d856-5a20-9a0b-9a34d497def5",
+          "estado": "ACTIVO",
+          "nombre": "EU 34-36",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "7325e3a3-aa9a-db8e-9339-9f2b414b0d42",
+          "estado": "ACTIVO",
+          "nombre": "41",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "931a4c7d-03d4-1ae2-bc95-817315fafcd6",
+          "estado": "ACTIVO",
+          "nombre": "Azul",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "ae3eba02-52e6-4a8a-d71f-231960bdd9a4",
+          "estado": "ACTIVO",
+          "nombre": "38",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "bac7a07c-2684-523f-aca4-761f1e15d128",
+          "estado": "ACTIVO",
+          "nombre": "EU 34-38",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea",
+          "estado": "ACTIVO",
+          "nombre": "Blanco",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "c417b2a9-f655-57a5-976c-128a0b3c1527",
+          "estado": "ACTIVO",
+          "nombre": "EU 37-39",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "c636cd16-7146-52d9-a1a5-faab92c5ea42",
+          "estado": "ACTIVO",
+          "nombre": "43",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "c90f8581-0fe2-5fd4-b08c-8b5d3f616399",
+          "estado": "ACTIVO",
+          "nombre": "40",
+          "created_at": "2026-10-16T23:48:01.861712+00:00",
+          "updated_at": "2026-10-16T23:48:01.861712+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "ea281936-1025-b09c-755e-545db73051b6",
+          "estado": "ACTIVO",
+          "nombre": "39",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "f0ec53c9-fb28-7464-e308-a2c171d943a3",
+          "estado": "ACTIVO",
+          "nombre": "M",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "taxonomy_version": 0,
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ],
+      "associations": [
+        {
+          "id": "12b26028-3be1-4446-a462-2734a077337b",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "21d0ea00-2932-4122-976b-f97da5edda79",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "23c96a8d-1b4c-4f83-a855-710570e9e5aa",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "35203f8a-ca7b-5bd7-9179-e19a6dbd5ba3",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "46cabd8c-e6f4-4f37-94db-e73aac11bb43",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "574895ac-015f-43c0-8958-229095a8c4db",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "62c0eac7-a34a-577b-bb2a-5929137c2de1",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "db4cefc7-9412-5c82-a91f-58b73a9909cd",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "7054506c-f144-4c1d-8938-12099d417358",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "7ec695ab-9d3e-54aa-96a5-fc5ccdd2484f",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "db4cefc7-9412-5c82-a91f-58b73a9909cd",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "9de01dd2-0a7d-5960-a479-a4a88a23be92",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-17T03:18:08.089262+00:00",
+          "updated_at": "2026-10-17T03:18:08.089262+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "69eaf044-dfea-51e6-ad03-f752a73cd1c9",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        },
+        {
+          "id": "d95e3fc6-1ce0-46d3-b926-0a00049eadc8",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "455e292f-face-5ea3-387d-db95b93cc9af",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        },
+        {
+          "id": "e1a23656-970d-4766-a8cd-6f8ffce18811",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ],
+      "characteristics": [
+        {
+          "id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+          "tipo": "LISTA",
+          "estado": "ACTIVO",
+          "nombre": "Color",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "unidad_medida": null,
+          "taxonomy_version": 0
+        },
+        {
+          "id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+          "tipo": "LISTA",
+          "estado": "ACTIVO",
+          "nombre": "Talla",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "unidad_medida": null,
+          "taxonomy_version": 0
+        }
+      ]
+    }
+  }
+]

@@ -1,0 +1,23 @@
+{
+  "docs_ref": "80f208978c2c703e2b2d62064112365e7b9e1677",
+  "migration_tool_path": "datos/deploy/migrate.py",
+  "migration_tool_blob": "a3c15176cb62474f68923904c91ddf39699135c7",
+  "normative_migrations": [
+    "0001_create_catalog.sql"
+  ],
+  "canonical_0001_blob": "5861536e31b2eb0ccb94d8ad2a4e10f4e792d6d2",
+  "canonical_0001_sha256": "5d90c3e3b3cc87c5287c93076830fb95164261ceda493b2a6ea6e6247ab12662",
+  "ledger": [
+    {
+      "version": "0001_create_catalog.sql",
+      "checksum": "5d90c3e3b3cc87c5287c93076830fb95164261ceda493b2a6ea6e6247ab12662",
+      "applied_at": "2026-10-03T11:11:58.893682+00:00"
+    }
+  ],
+  "canonical_matches_ledger": true,
+  "c_d_applied": false,
+  "blockers": [
+    "0002/0003 no est\u00e1n en el historial normativo; Marco/Docs debe incorporarlas o aprobar bundle temporal verificable.",
+    "El login local catalog_dev_login no puede SET ROLE po_catalog_owner. El migrador exige login de owner autorizado en conexi\u00f3n directa/session TLS verify-full."
+  ]
+}

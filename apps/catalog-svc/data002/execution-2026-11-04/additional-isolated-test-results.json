@@ -1,0 +1,26 @@
+{
+  "engine": "isolated local PostgreSQL",
+  "external_database_urls_accepted": false,
+  "results": [
+    {
+      "case": "14 exact INSERTs, existing rows unchanged, identical replay no-op",
+      "result": "PASS"
+    },
+    {
+      "case": "Fourth cover source conflict rolls back earlier inserts",
+      "result": "PASS"
+    },
+    {
+      "case": "Conflicting Pitch color rolls back eight associations and size insert",
+      "result": "PASS"
+    },
+    {
+      "case": "Both scripts reject wrong role",
+      "result": "PASS"
+    }
+  ],
+  "script_sha256": {
+    "additional-covers-apply-proposed.sql": "7745e683a2d9e8c320749796b1b76a10666fe12b88be4edda4d36bce3a22b96c",
+    "additional-attributes-apply.sql": "c292a07fadc3a2839f62845a4b1ce6c58de59434c46531a94353949f3720edc1"
+  }
+}
