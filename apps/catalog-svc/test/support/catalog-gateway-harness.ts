@@ -89,14 +89,46 @@ export class CatalogGatewayHarness {
           res.statusCode = 503;
           body = {};
         } else if (
-          (restrictedDemo
+          (restrictedDemo &&
+          req.method === 'GET' &&
+          ['/api/v1/categorias', '/api/v1/marcas'].includes(req.url ?? '')
             ? req.headers.authorization !== undefined
-            : !req.headers.authorization?.startsWith('Bearer ')) ||
+            : restrictedDemo
+              ? req.headers.authorization !== 'Bearer taxonomy-service-fixture'
+              : !req.headers.authorization?.startsWith('Bearer ')) ||
           req.headers['x-correlation-id'] !== this.correlation
         ) {
           res.statusCode = 401;
           body = {};
-        } else if (req.url === '/api/v1/categorias/category-fixture')
+        } else if (
+          restrictedDemo &&
+          req.method === 'GET' &&
+          req.url === '/api/v1/categorias'
+        )
+          body = {
+            categories: [
+              {
+                categoria_id: 'category-fixture',
+                name: 'Category fixture',
+                status: 'ACTIVA',
+              },
+            ],
+          };
+        else if (
+          restrictedDemo &&
+          req.method === 'GET' &&
+          req.url === '/api/v1/marcas'
+        )
+          body = {
+            brands: [
+              {
+                marca_id: 'brand-fixture',
+                name: 'Brand fixture',
+                status: 'ACTIVA',
+              },
+            ],
+          };
+        else if (req.url === '/api/v1/categorias/category-fixture')
           body = {
             categoriaId: 'category-fixture',
             nombre: 'Category fixture',

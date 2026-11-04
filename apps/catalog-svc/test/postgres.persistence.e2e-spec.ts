@@ -5032,11 +5032,35 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         {
           inventario: null,
           pricing: { status: 'COMPLETED', manual_retry_allowed: false },
-          variantes: [
+          variantes: expect.arrayContaining([
             {
-              inventario: { status: 'COMPLETED', manual_retry_allowed: false },
+              variant_id: child.variant_id,
+              sku: child.sku,
+              inventario: {
+                status: 'COMPLETED',
+                manual_retry_allowed: false,
+                code: null,
+              },
             },
-          ],
+            {
+              variant_id: inactive.variant_id,
+              sku: inactive.sku,
+              inventario: {
+                status: 'COMPLETED',
+                manual_retry_allowed: false,
+                code: null,
+              },
+            },
+            {
+              variant_id: draft.variant_id,
+              sku: draft.sku,
+              inventario: {
+                status: 'COMPLETED',
+                manual_retry_allowed: false,
+                code: null,
+              },
+            },
+          ]),
         },
       );
       sqlSelectCount = 0;
