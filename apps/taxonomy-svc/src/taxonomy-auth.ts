@@ -5,6 +5,7 @@ import {
   UnauthorizedException,
   ForbiddenException,
   ServiceUnavailableException,
+  SetMetadata,
   type ExecutionContext,
 } from '@nestjs/common';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
@@ -13,6 +14,9 @@ import type { Request } from 'express';
 
 export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
 export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
+const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
+export const AllowTaxonomyServiceRead = () =>
+  SetMetadata(TAXONOMY_SERVICE_READ, true);
 export function readTaxonomyDemoConfig(
   env: Readonly<NodeJS.ProcessEnv>,
 ): boolean {
@@ -388,7 +392,37 @@ export class TaxonomyUserGuard implements CanActivate {
     }
     if (!principal.audiences.includes(SECURITY_AUDIENCE))
       throw new UnauthorizedException();
-    if (principal.kind !== 'user') throw new ForbiddenException();
+    if (principal.kind === 'service') {
+      if (
+        request.method !== 'GET' ||
+        Reflect.getMetadata(TAXONOMY_SERVICE_READ, context.getHandler()) !==
+          true ||
+        principal.subject !== 'modulo-productos' ||
+        !principal.scopes.includes('catalogo:leer')
+      )
+        throw new ForbiddenException();
+      return true;
+    }
+    (request as Request & { taxonomyUser?: TaxonomyPrincipal }).taxonomyUser =
+      principal;
+    return true;
+  }
+}
+
+@Injectable()
+export class TaxonomyCommercialGuard implements CanActivate {
+  canActivate(context: ExecutionContext): boolean {
+    const principal = context
+      .switchToHttp()
+      .getRequest<
+        Request & { taxonomyUser?: TaxonomyPrincipal }
+      >().taxonomyUser;
+    if (
+      !principal ||
+      principal.kind !== 'user' ||
+      !principal.roles.includes('GESTOR_COMERCIAL')
+    )
+      throw new ForbiddenException();
     return true;
   }
 }
@@ -429,6 +463,8 @@ export class TaxonomyAuthGuard implements CanActivate {
     if (!principal.audiences.includes(SECURITY_AUDIENCE))
       throw new UnauthorizedException();
     if (!principal.scopes.includes('catalogo:leer'))
+      throw new ForbiddenException();
+    if (principal.subject === 'modulo-productos')
       throw new ForbiddenException();
     return true;
   }
