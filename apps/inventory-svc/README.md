@@ -96,7 +96,7 @@ Prefijo de las operaciones: `/api/v1` (el Gateway reenvía `originalUrl`). Los
 
 Nunca se exponen DSN, credenciales ni detalles internos.
 
-## 4. Mensajería (AsyncAPI `0.6.0-rc.3` / Topología Oracle)
+## 4. Mensajería (AsyncAPI `0.6.0-rc.4` / Topología Oracle)
 
 Cola principal consumida: `po.inventario.q` (prefetch 20, ACK manual tras el
 commit de Inbox + saldo + operación + resultado Outbox).
@@ -123,8 +123,8 @@ commit de Inbox + saldo + operación + resultado Outbox).
 | Evento | Estado |
 |---|---|
 | `inventory.sku.initialization.requested` | Handler implementado (crea saldo cero, versión 0) |
-| `inventory.bulk.stock.adjust.requested` | **BLOCKED_CONTRACT** — AsyncAPI lo declara `GenericData`, sin semántica ejecutable |
-| `catalog.sku.deactivated` | **BLOCKED_CONTRACT** — mismo motivo |
+| `inventory.bulk.stock.adjust.requested` | **BLOCKED_CONTRACT** — AsyncAPI `0.6.0-rc.4` aún lo declara `GenericData`. Owner productor: Bulk (Marco Castilla); Inventory participa como consumidor. Versión candidata tipada prevista para el 04/11. No se implementa el handler hasta contrato aprobado y versionado. |
+| `catalog.sku.deactivated` | **BLOCKED_CONTRACT** — rc.4 ya define el payload tipado (`{sku, product_id, sku_version, changed_at}`, `schema_version=1`), pero Catalog todavía emite `{product_id, variant_id, sku}` (`apps/catalog-svc/src/catalog-mutation.service.ts`). Owner: Poma / Catálogo. Condición de desbloqueo: que el productor emita el payload rc.4 y se verifique su integración real. |
 
 Ante mensaje inválido o contrato bloqueado, el consumer **pausa y cierra el
 canal sin ACK**; se recupera con causa resuelta y `resume()` o reinicio
@@ -132,11 +132,11 @@ coordinado. `getMetrics()` expone contadores locales (conexión, pausa, ACK,
 duplicados, rechazos, fallos, reconexiones). No hay endpoint/exportador de
 métricas.
 
-### 4.1 Topología física AMQP adoptada (Resolución de nombres físicos / AsyncAPI 0.6.0-rc.3 — alcance parcial #29)
+### 4.1 Topología física AMQP adoptada (nombres adoptados en AsyncAPI 0.6.0-rc.3, vigentes en 0.6.0-rc.4 — alcance parcial #29)
 
 El código de Inventory adopta la nomenclatura física en español oficial de Oracle y las ACLs del usuario `g6_inventario`:
 
-| Elemento | Nombre físico en código (AsyncAPI 0.6.0-rc.3) | Referencia histórica (AsyncAPI 0.6.0-rc.2) | ACL del usuario `g6_inventario` | Estado |
+| Elemento | Nombre físico en código (vigente en AsyncAPI 0.6.0-rc.4) | Referencia histórica (AsyncAPI 0.6.0-rc.2) | ACL del usuario `g6_inventario` | Estado |
 |---|---|---|---|---|
 | Cola de consumo | `po.inventario.q` | `po.inventory.q` | **read** `po.inventario.q` | **Alineado** |
 | Exchange de eventos | `po.eventos.x` | `po.events.x` | **write** `po.eventos.x` | **Alineado** |

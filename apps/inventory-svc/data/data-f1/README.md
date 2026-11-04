@@ -37,12 +37,33 @@ node apps/inventory-svc/data/data-f1/dry-run.mjs --baseline apps/inventory-svc/d
 Al ejecutar el preparador contra el snapshot real de Supabase (`baseline-supabase-2026-11-02.json`), el sistema genera el reporte `dist/inventory-data-f1-dry-run-supabase.json`:
 
 - **Estado:** `CONFLICT` (esperado por diseño; no se sobrescriben saldos existentes).
-- **`ready_for_load`:** `false`.
+- **`ready_for_load`:** `false` (siempre; la autorización nunca se infiere del reporte).
 - **Candidato SHA-256:** `6463cda113854e9a7af0813b42927851c76c0073f4248a3c4f7b21c8105e80d9`.
+- **Hashes del baseline (DATA-004):**
+  - SHA-256 del archivo exportado: `ad48ba9f14b2ff5e1f59205ac94ce27d00ed3f764adbeb9383eb63277f035854`. Acredita la integridad del archivo exportado.
+  - Hash canónico del baseline normalizado: `fd438b524a92ba5a7ac4ebacc858f509e9fc492981588be203d4153cc39fb250`. Identifica el contenido normalizado usado para el análisis.
 - **Resumen del Diff:**
   - `insert: 2` — Registros nuevos sin colisión: los 2 umbrales de stock (`stock_threshold_override`: global 5 y específico 3 para `ADI-ENT22-AZU-M`).
   - `unchanged: 5` — Registros idénticos ya presentes: las 2 ubicaciones (`ALM-LURIN` y `TDA-MIRAFLORES`), más los saldos coincidentes (p. ej. `ADI-RF3-GRI-39` con saldo 0 en ambas ubicaciones y `NIK-REV7-NEG-41` en Miraflores con 4 unidades).
   - `conflict: 31` — Colisiones controladas: corresponden a los 6 saldos donde la propuesta difiere de los saldos existentes en Supabase (advertidos por Poma y Marco) y sus operaciones/kardex/outbox asociados. El motor preserva los datos existentes y rechaza la sobrescritura destructiva.
+
+### 3.1 Ratificación de Catálogo y modelo de bloqueos
+
+La ratificación de Catálogo es **evidencia estructurada** en `catalog-reference.json` (`source.ratified`, `ratified_by`, `ratified_at`, `ratified_skus`), no un supuesto del validador:
+
+- Sin ratificación declarada → blocker `CATALOG_RATIFICATION_REQUIRED` y resultado fail-closed.
+- Ratificación declarada pero malformada (sin responsable, sin fecha, SKUs vacíos o duplicados) → `INVALID_CATALOG_RATIFICATION` y aborto.
+- Cobertura incompleta de los SKU usados → `CATALOG_RATIFICATION_INCOMPLETE`.
+- Los SKU `-BASE` siguen rechazados por `SKU_NOT_SELLABLE_REFERENCE`; las validaciones de identidad y pertenencia se mantienen.
+
+El reporte separa dos alcances, tal como solicitó Marco:
+
+| Alcance | `scope` | `technical_ready` | Contenido |
+|---|---|---|---|
+| Completo | `ALL_PROPOSED_ROWS` | `false` | Conserva los 31 conflictos (`BALANCE_AND_SEED_CONFLICTS_PRESENT`) y los gates de seed/outbox. |
+| Limitado | `THRESHOLDS_ONLY` | `true` | 2 INSERT de umbrales, 0 conflictos de umbral. Sigue requiriendo autorización de Marco (`MARCO_LOAD_AUTHORIZATION_REQUIRED`). |
+
+`full_load.ready_for_load` y `limited_load.ready_for_load` son siempre `false`, y `limited_load.authorized` es siempre `false`: la autorización es un acto externo y verificable, no un valor calculado. `CATALOG_REFERENCE_NOT_PUBLISHED` (productos en BORRADOR) es un gate comercial y no bloquea técnicamente la carga limitada de umbrales por `sku_id`.
 
 ## 4. Propuesta SQL Atómica e Idempotente (`proposal-load.sql`)
 
@@ -86,6 +107,6 @@ Conforme a las observaciones de auditoría de Marco Castilla:
 
 ## 6. Estado y Dependencias Externas
 
-- **Poma / Catálogo #12:** Ratificación técnica completada (7 SKUs en BORRADOR; -BASE excluidos). Falta publicación comercial futura de los productos.
-- **Marco / Infraestructura:** Primera autorización cumplida. Versión corregida del SQL lista para la revisión final de Marco.
-- **Estado del Issue #14:** `IMPLEMENTAR_PARCIAL` (no se ejecutará ninguna escritura en Supabase compartido hasta contar con la segunda autorización escrita).
+- **Poma / Catálogo #12:** Ratificación técnica completada (7 SKUs en BORRADOR; -BASE excluidos) y registrada como evidencia estructurada. Falta publicación comercial futura de los productos.
+- **Marco / Infraestructura:** Emitió la segunda autorización escrita, limitada exclusivamente a los 2 umbrales y condicionada a un preflight satisfactorio inmediato (proyecto `slzglmtiyrzygpkiuthf`, esquema `inventory`, tabla `stock_threshold_override`, script de PR #149 HEAD `6ef2005c7f29b11ef15021a2f5d42b4a17b8ae05`). No autoriza ALTER/UPDATE/DELETE/TRUNCATE, ajuste de stock ni rollback automático. La ejecución sigue pendiente de credenciales de conexión (`DATABASE_URL`/`PG*`), que no están en el `.env` local.
+- **Estado del Issue #14:** `IMPLEMENTAR_PARCIAL`. Preparación, validador, scripts y pruebas cerrados; la escritura en Supabase compartido y el cierre del issue se documentarán por separado tras el preflight y la carga autorizada.
