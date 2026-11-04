@@ -221,4 +221,22 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
       expect(db.outbox).toHaveLength(0);
     },
   );
+
+  it('un payload rc.4 completo de catalog.sku.deactivated sigue bloqueado hasta alinear al productor', async () => {
+    await expect(
+      service.process({
+        ...message(),
+        schema_version: 1,
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku: 'ADI-ENT22-AZU-M',
+          product_id: randomUUID(),
+          sku_version: 1,
+          changed_at: new Date().toISOString(),
+        },
+      }),
+    ).rejects.toMatchObject({ reason: 'BLOCKED_CONTRACT' });
+    expect(db.inbox).toHaveLength(0);
+    expect(db.outbox).toHaveLength(0);
+  });
 });
