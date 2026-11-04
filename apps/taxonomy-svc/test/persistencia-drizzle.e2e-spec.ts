@@ -8,8 +8,11 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import {
   TaxonomyAuthGuard,
+  TaxonomyUserGuard,
+  TaxonomyTokenVerifier,
   TAXONOMY_SECURITY_CONFIG,
 } from '../src/taxonomy-auth.js';
+import { TaxonomyAdminQueryController } from '../src/taxonomy-admin-query.controller.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
@@ -1823,6 +1826,8 @@ describeIntegracion(
         humano = false,
         roles = ['GESTOR_COMERCIAL'],
         cliente = 'modulo-productos',
+        audience = 'api-productos',
+        invalidSignature = false,
       ) => {
         const now = Math.floor(Date.now() / 1000);
         const header = Buffer.from(
@@ -1834,7 +1839,7 @@ describeIntegracion(
             sub: humano ? randomUUID() : cliente,
             tipo: humano ? 'acceso' : 'servicio',
             ...(humano ? { roles } : {}),
-            aud: 'api-productos',
+            aud: audience,
             scope,
             iat: now,
             exp: now + 60,
@@ -1842,7 +1847,10 @@ describeIntegracion(
           }),
         ).toString('base64url');
         const input = `${header}.${payload}`;
-        return `${input}.${sign('RSA-SHA256', Buffer.from(input), keys.privateKey).toString('base64url')}`;
+        const signingKey = invalidSignature
+          ? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey
+          : keys.privateKey;
+        return `${input}.${sign('RSA-SHA256', Buffer.from(input), signingKey).toString('base64url')}`;
       };
       let nest: INestApplication<App> | undefined;
       const brandId = randomUUID();
@@ -1873,6 +1881,163 @@ describeIntegracion(
           .compile();
         nest = moduleFixture.createNestApplication();
         await nest.init();
+        const categoriaAdminToken = token('catalogo:leer');
+        const guardContext = {
+          switchToHttp: () => ({
+            getRequest: () => ({
+              method: 'GET',
+              headers: { authorization: `Bearer ${categoriaAdminToken}` },
+            }),
+          }),
+          getHandler: () =>
+            TaxonomyAdminQueryController.prototype.obtenerCategoriaAdmin,
+        } as unknown as import('@nestjs/common').ExecutionContext;
+        await expect(
+          nest.get(TaxonomyTokenVerifier).verify(categoriaAdminToken),
+        ).resolves.toMatchObject({
+          kind: 'service',
+          subject: 'modulo-productos',
+          scopes: ['catalogo:leer'],
+          audiences: ['api-productos'],
+        });
+        await expect(
+          nest.get(TaxonomyUserGuard).canActivate(guardContext),
+        ).resolves.toBe(true);
+        const categoriaAdminId = randomUUID();
+        await admin.query(
+          "INSERT INTO taxonomy.categories (id, nombre, descripcion, nivel, orden, imagen_url, estado, taxonomy_version) VALUES ($1, 'Categoria HTTP Admin', 'Persistida', 1, 4, 'https://cdn.example.test/categoria.webp', 'ACTIVO', 9)",
+          [categoriaAdminId],
+        );
+        await admin.query(
+          'INSERT INTO taxonomy.category_seo (categoria_id, slug) VALUES ($1, $2)',
+          [categoriaAdminId, `categoria-http-${categoriaAdminId}`],
+        );
+        const adminCategoriaResponse = await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .set('X-Correlation-Id', randomUUID());
+        if (adminCategoriaResponse.status !== 200)
+          throw new Error(
+            `obtenerCategoriaAdmin status=${adminCategoriaResponse.status} body=${JSON.stringify(adminCategoriaResponse.body)}`,
+          );
+        const adminCategoria = adminCategoriaResponse;
+        expect(adminCategoria.body).toEqual({
+          categoriaId: categoriaAdminId,
+          nombre: 'Categoria HTTP Admin',
+          descripcion: 'Persistida',
+          categoriaPadreId: null,
+          orden: 4,
+          imagenUrl: 'https://cdn.example.test/categoria.webp',
+          estado: 'ACTIVO',
+          version: 9,
+          slug: `categoria-http-${categoriaAdminId}`,
+        });
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'PENDING_DEACTIVATION' WHERE id = $1",
+          [categoriaAdminId],
+        );
+        const pendiente = await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(503);
+        expect(pendiente.headers['content-type']).toContain(
+          'application/problem+json',
+        );
+        expect(pendiente.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+        expect(JSON.stringify(pendiente.body)).not.toContain(
+          'PENDING_DEACTIVATION',
+        );
+        expect(JSON.stringify(pendiente.body)).not.toContain('taxonomy.');
+        await admin.query(
+          "UPDATE taxonomy.categories SET estado = 'ACTIVO' WHERE id = $1",
+          [categoriaAdminId],
+        );
+        const categoriaAusente = await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${randomUUID()}`)
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(404);
+        expect(categoriaAusente.body.code).toBe('CATEGORIA_NO_ENCONTRADA');
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .expect(401);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set(
+            'Authorization',
+            `Bearer ${token('catalogo:leer', false, [], 'modulo-productos', 'api-productos', true)}`,
+          )
+          .expect(401);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set(
+            'Authorization',
+            `Bearer ${token('catalogo:leer', false, [], 'modulo-productos', 'audiencia-incorrecta')}`,
+          )
+          .expect(401);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('otro:leer')}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set(
+            'Authorization',
+            `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
+          )
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .post('/api/v1/categorias')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .send({ nombre: 'No autorizada' })
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('', true, [])}`)
+          .expect(403);
+        await request(nest.getHttpServer())
+          .get(`/api/v1/categorias/${categoriaAdminId}`)
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .expect(200);
+        await request(nest.getHttpServer())
+          .get('/api/v1/categorias/no-uuid')
+          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+          .expect(400);
+
+        const writeRoutes = [
+          { method: 'patch', path: `/api/v1/categorias/${categoriaAdminId}` },
+          { method: 'post', path: '/api/v1/marcas' },
+          { method: 'patch', path: `/api/v1/marcas/${brandId}` },
+          { method: 'post', path: '/api/v1/categorias' },
+          { method: 'post', path: `/api/v1/marcas/${brandId}/reactivar` },
+          {
+            method: 'post',
+            path: `/api/v1/categorias/${categoriaAdminId}/reactivar`,
+          },
+        ] as const;
+        for (const route of writeRoutes) {
+          await request(nest.getHttpServer())
+            [route.method](route.path)
+            .set('Authorization', `Bearer ${token('', true, [])}`)
+            .expect(403);
+          await request(nest.getHttpServer())
+            [route.method](route.path)
+            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .expect(403);
+          await request(nest.getHttpServer())
+            [route.method](route.path)
+            .set(
+              'Authorization',
+              `Bearer ${token('', true, ['GESTOR_COMERCIAL'], 'modulo-productos', 'audiencia-incorrecta')}`,
+            )
+            .expect(401);
+          await request(nest.getHttpServer())
+            [route.method](route.path)
+            .expect(401);
+        }
         await request(nest.getHttpServer())
           .get('/api/v1/tipos-producto')
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)

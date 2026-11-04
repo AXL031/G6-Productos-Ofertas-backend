@@ -525,7 +525,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   it('actualizarCategoria valida JWT, cuerpo y conflictos', async () => {
     const path = '/api/v1/categorias/11111111-1111-4111-8111-111111111111';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer())
       .patch(path)
       .send({ nombre: 'X' })
@@ -557,7 +558,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   });
   it('crear y actualizar marcas requieren usuario y aceptan multipart', async () => {
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     const png = readFileSync(
       resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
     );
@@ -668,7 +670,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const path = '/api/v1/categorias';
     const body = { nombre: 'Running', slugConfirmado: 'running' };
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer()).post(path).send(body).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -692,7 +695,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const path =
       '/api/v1/categorias/11111111-1111-4111-8111-111111111111/reactivar';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer()).post(path).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -716,7 +720,11 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   it('reactivarMarca exige JWT humano válido incluso con demo activada', async () => {
     const path =
       '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
-    const human = token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    const human = token({
+      tipo: 'acceso',
+      sub: randomUUID(),
+      roles: ['GESTOR_COMERCIAL'],
+    });
     await request(demoApp.getHttpServer()).post(path).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -727,7 +735,12 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .set(
         'Authorization',
         'Bearer ' +
-          token({ tipo: 'acceso', sub: randomUUID(), roles: [], aud: 'wrong' }),
+          token({
+            tipo: 'acceso',
+            sub: randomUUID(),
+            roles: ['GESTOR_COMERCIAL'],
+            aud: 'wrong',
+          }),
       )
       .expect(401);
     await request(app.getHttpServer())
@@ -735,7 +748,12 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .set(
         'Authorization',
         'Bearer ' +
-          token({ tipo: 'acceso', sub: randomUUID(), roles: [], exp: 1 }),
+          token({
+            tipo: 'acceso',
+            sub: randomUUID(),
+            roles: ['GESTOR_COMERCIAL'],
+            exp: 1,
+          }),
       )
       .expect(401);
     const result = await request(app.getHttpServer())
@@ -754,13 +772,14 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
         'Bearer ' +
           token({ tipo: 'acceso', sub: randomUUID(), roles: undefined }),
       )
-      .expect(200);
+      .expect(403);
   });
   it('reactivarMarca retorna Problem Details si la marca no existe o la baja sigue en curso', async () => {
     const path =
       '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     reactivar.mockResolvedValueOnce({ estado: 'NO_ENCONTRADA' });
     const missing = await request(app.getHttpServer())
       .post(path)
@@ -800,7 +819,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url + '/desconocido')
-        .expect(404);
+        .expect(path === 'categorias' ? 401 : 404);
     },
   );
   it.each([

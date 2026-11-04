@@ -288,6 +288,17 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
   beforeEach(async () => {
     outgoing = [];
     await admin!.query('DELETE FROM taxonomy.product_types');
+    await admin!.query('DELETE FROM taxonomy.category_seo');
+    await admin!.query('DELETE FROM taxonomy.categories');
+    await admin!.query(
+      `INSERT INTO taxonomy.categories
+        (id, nombre, descripcion, orden, imagen_url, estado, taxonomy_version)
+       VALUES ('44444444-4444-4444-8444-444444444444', 'Bebidas', 'Descripción', 7, 'https://img.test/bebidas.png', 'ACTIVO', 3)`,
+    );
+    await admin!.query(
+      `INSERT INTO taxonomy.category_seo (categoria_id, slug)
+       VALUES ('44444444-4444-4444-8444-444444444444', 'bebidas')`,
+    );
     await admin!.query(
       `INSERT INTO taxonomy.product_types (id, nombre, estado) VALUES
         ('11111111-1111-4111-8111-111111111111', 'A Activo', 'ACTIVO'),
@@ -359,6 +370,115 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     outgoing = [];
     const response = await fetch(`${gatewayUrl}/api/v1/tipos-producto`);
     status(response, 401);
+    expect(outgoing).toHaveLength(0);
+  });
+
+  it('sirve obtenerCategoriaAdmin con JWT humano y M2M, DTO persistido y 404 contractual', async () => {
+    const correlationId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
+    const humanToken = createToken(issuerPrivateKey);
+    const human = await fetch(
+      `${gatewayUrl}/api/v1/categorias/44444444-4444-4444-8444-444444444444`,
+      {
+        headers: {
+          authorization: `Bearer ${humanToken}`,
+          'x-correlation-id': correlationId,
+        },
+      },
+    );
+    status(human, 200);
+    expect(await json(human)).toEqual({
+      categoriaId: '44444444-4444-4444-8444-444444444444',
+      nombre: 'Bebidas',
+      descripcion: 'Descripción',
+      categoriaPadreId: null,
+      orden: 7,
+      imagenUrl: 'https://img.test/bebidas.png',
+      estado: 'ACTIVO',
+      version: 3,
+      slug: 'bebidas',
+    });
+    expect(human.headers.get('x-correlation-id')).toBe(correlationId);
+
+    const serviceToken = createToken(issuerPrivateKey, {
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      client_id: 'modulo-productos',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+      roles: [],
+    });
+    outgoing = [];
+    const service = await fetch(
+      `${gatewayUrl}/api/v1/categorias/44444444-4444-4444-8444-444444444444`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    status(service, 200);
+    expect((await json(service)).slug).toBe('bebidas');
+    expect(outgoing).toHaveLength(1);
+    expect(diagnosticHeader(outgoing[0]!.headers, 'authorization')).toBe(
+      `Bearer ${serviceToken}`,
+    );
+
+    const missing = await fetch(
+      `${gatewayUrl}/api/v1/categorias/55555555-5555-4555-8555-555555555555`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    status(missing, 404);
+    expect((await json(missing)).code).toBe('CATEGORIA_NO_ENCONTRADA');
+  });
+
+  it('rechaza cliente, scope y audience M2M incorrectos', async () => {
+    for (const claims of [
+      {
+        tipo: 'servicio',
+        sub: 'otro-modulo',
+        client_id: 'otro-modulo',
+        scope: 'catalogo:leer',
+      },
+      {
+        tipo: 'servicio',
+        sub: 'modulo-productos',
+        client_id: 'modulo-productos',
+        scope: 'catalogo:escribir',
+      },
+      {
+        tipo: 'servicio',
+        sub: 'modulo-productos',
+        client_id: 'modulo-productos',
+        aud: ['audiencia-invalida'],
+        scope: 'catalogo:leer',
+      },
+    ]) {
+      const token = createToken(issuerPrivateKey, { roles: [], ...claims });
+      const response = await fetch(
+        `${gatewayUrl}/api/v1/categorias/44444444-4444-4444-8444-444444444444`,
+        { headers: { authorization: `Bearer ${token}` } },
+      );
+      expect([401, 403]).toContain(response.status);
+    }
+
+    const authorized = createToken(issuerPrivateKey, {
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      client_id: 'modulo-productos',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+      roles: [],
+    });
+    outgoing = [];
+    const otherRead = await fetch(`${gatewayUrl}/api/v1/categorias`, {
+      headers: { authorization: `Bearer ${authorized}` },
+    });
+    status(otherRead, 403);
+    const write = await fetch(`${gatewayUrl}/api/v1/categorias`, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${authorized}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ nombre: 'No autorizada' }),
+    });
+    status(write, 403);
     expect(outgoing).toHaveLength(0);
   });
 

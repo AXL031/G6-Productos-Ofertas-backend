@@ -11,7 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { TaxonomyUserGuard } from './taxonomy-auth.js';
+import { TaxonomyUserGuard, TaxonomyCommercialGuard } from './taxonomy-auth.js';
 import { BrandReactivationService } from './domain/brand-reactivation.service.js';
 import { CategoryReactivationService } from './domain/category-reactivation.service.js';
 import { CategoryCreateService } from './domain/category-create.service.js';
@@ -39,6 +39,7 @@ export class TaxonomyWriteController {
   ) {}
 
   @Patch('categorias/:categoriaId')
+  @UseGuards(TaxonomyCommercialGuard)
   async actualizarCategoria(
     @Param('categoriaId') id: string,
     @Body() body: unknown,
@@ -212,6 +213,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('marcas')
+  @UseGuards(TaxonomyCommercialGuard)
   @UseInterceptors(
     FileInterceptor('logo', {
       limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 9 },
@@ -247,6 +249,7 @@ export class TaxonomyWriteController {
   }
 
   @Patch('marcas/:marcaId')
+  @UseGuards(TaxonomyCommercialGuard)
   @UseInterceptors(
     FileInterceptor('logo', {
       limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 9 },
@@ -297,6 +300,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('categorias')
+  @UseGuards(TaxonomyCommercialGuard)
   async crearCategoria(
     @Body() body: unknown,
     @Headers('x-correlation-id') correlationId?: string,
@@ -381,6 +385,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('marcas/:marcaId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(200)
   async reactivarMarca(
     @Param('marcaId') marcaId: string,
@@ -406,6 +411,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('categorias/:categoriaId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(200)
   async reactivarCategoria(
     @Param('categoriaId') categoriaId: string,

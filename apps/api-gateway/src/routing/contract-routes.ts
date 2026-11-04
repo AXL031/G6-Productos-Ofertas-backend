@@ -1,4 +1,4 @@
-// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: verificarCantidadComercial.
+// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: obtenerCategoriaAdmin.
 import type { ContractRoute } from './contract-route.js';
 export const CONTRACT_ROUTES: readonly ContractRoute[] = [
   {
@@ -3339,7 +3339,10 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
     path: '/api/v1/categorias/{categoriaId}',
     operationId: 'obtenerCategoriaAdmin',
     service: 'taxonomy-svc',
-    security: ['userBearer'],
+    clients: ['modulo-productos'],
+    audience: 'api-productos',
+    scope: 'catalogo:leer',
+    security: ['userBearer', 'serviceBearer'],
     introspection: false,
     headers: [
       {
