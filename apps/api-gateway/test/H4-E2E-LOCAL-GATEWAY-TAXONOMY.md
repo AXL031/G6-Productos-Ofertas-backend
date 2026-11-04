@@ -29,6 +29,8 @@ Con dependencias instaladas y Docker activo, desde la raíz del backend:
 npm exec --yes --package=node@24.15.0 -- node apps/api-gateway/test/run-taxonomy-postgres-gateway.mjs
 ```
 
+La suite usa una configuración Vitest dedicada para que el `npm run test:e2e` general no intente iniciarla sin el PostgreSQL efímero que prepara este runner.
+
 El runner levanta PostgreSQL 17 con puerto publicado solo en `127.0.0.1`, certificado TLS con SAN para loopback y un identificador de instancia aleatorio. La prueba acredita en vivo la identidad del contenedor antes de ejecutar el DDL existente de `apps/taxonomy-svc/test/ddl-taxonomy-prueba.ts`; aplica además la migración local `0005_configurable_list_values.sql` y carga tres tipos deterministas (`ACTIVO`, `INACTIVO`, `PENDING_DEACTIVATION`).
 
 Taxonomy conecta con `PGSSLMODE=verify-full`, CA explícita y rol `taxonomy_app`. El emisor local se sirve por HTTPS; los procesos de prueba confían únicamente en la CA efímera mediante `NODE_EXTRA_CA_CERTS`. Se fijan explícitamente `GATEWAY_DEMO_NO_AUTH_ENABLED=false`, `G6_READ_ONLY_DEMO_ENABLED=false` y `ALLOW_DEMO_UNAUTHENTICATED=false`.
