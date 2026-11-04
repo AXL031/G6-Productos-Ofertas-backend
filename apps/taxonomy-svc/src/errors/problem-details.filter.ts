@@ -90,7 +90,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         .json(problem);
     }
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof HttpException && exception.getStatus() < 500) {
       const status = exception.getStatus();
       const code = codigoPorEstado(status);
       const problem: ProblemDetailsBody = {
@@ -107,24 +107,33 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         .json(problem);
     }
 
+    // Los 5xx no contractuales conservan su estado, pero nunca su mensaje.
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+    const code = codigoPorEstado(status);
     this.logger.error({
       event: 'taxonomy.http.unexpected_error',
       service: 'taxonomy-svc',
-      code: 'ERROR_INTERNO',
+      code,
       ...(correlationId ? { correlation_id: correlationId } : {}),
-      status: HttpStatus.INTERNAL_SERVER_ERROR,
+      status,
       category: 'UNEXPECTED_EXCEPTION',
     });
     const problem: ProblemDetailsBody = {
-      type: tipoPorCodigo('ERROR_INTERNO'),
-      title: 'Error interno',
-      status: HttpStatus.INTERNAL_SERVER_ERROR,
-      code: 'ERROR_INTERNO',
-      detail: DETALLE_ERROR_INTERNO,
+      type: tipoPorCodigo(code),
+      title: TITULOS_POR_ESTADO[status] ?? 'Error interno',
+      status,
+      code,
+      detail:
+        status === HttpStatus.SERVICE_UNAVAILABLE
+          ? 'Servicio temporalmente no disponible'
+          : DETALLE_ERROR_INTERNO,
       correlationId,
     };
     return response
-      .status(HttpStatus.INTERNAL_SERVER_ERROR)
+      .status(status)
       .header('Content-Type', 'application/problem+json')
       .json(problem);
   }

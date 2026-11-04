@@ -1,4 +1,11 @@
-import { ArgumentsHost, BadRequestException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  HttpException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { beforeEach, vi } from 'vitest';
 import { ProblemDetailsFilter } from './problem-details.filter.js';
 import { ProblemDetailsException } from './taxonomy.errors.js';
@@ -204,4 +211,100 @@ describe('ProblemDetailsFilter — application/problem+json (#22)', () => {
     );
     expect(logger.error).not.toHaveBeenCalled();
   });
+  it.each([
+    new InternalServerErrorException('private.person@example.com'),
+    new InternalServerErrorException('postgres://admin:secret@private/db'),
+    new HttpException('Bearer private-token', 500),
+  ])(
+    'sanitiza HttpException 500 y registra �nicamente diagn�stico seguro',
+    (error) => {
+      const { host, respuesta } = crearHost({
+        'x-correlation-id': CORRELACION,
+      });
+      filtro.catch(error, host);
+      expect(respuesta.codigo).toBe(500);
+      expect(respuesta.encabezado).toBe(
+        'Content-Type: application/problem+json',
+      );
+      expect(respuesta.cuerpo).toEqual({
+        type: '/errores/error-interno',
+        title: 'Error interno',
+        status: 500,
+        code: 'ERROR_INTERNO',
+        detail: 'Ha ocurrido un error interno en el servicio',
+        correlationId: CORRELACION,
+      });
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+        event: 'taxonomy.http.unexpected_error',
+        service: 'taxonomy-svc',
+        code: 'ERROR_INTERNO',
+        correlation_id: CORRELACION,
+        status: 500,
+        category: 'UNEXPECTED_EXCEPTION',
+      });
+    },
+  );
+
+  it.each([{}, { 'x-correlation-id': 'private-invalid-id' }])(
+    'omite correlaci�n inv�lida o ausente en HTTP 500',
+    (headers) => {
+      const { host, respuesta } = crearHost(headers);
+      filtro.catch(new InternalServerErrorException('private-token'), host);
+      expect(respuesta.cuerpo?.detail).toBe(
+        'Ha ocurrido un error interno en el servicio',
+      );
+      expect(respuesta.cuerpo?.correlationId).toBeUndefined();
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+        event: 'taxonomy.http.unexpected_error',
+        service: 'taxonomy-svc',
+        code: 'ERROR_INTERNO',
+        status: 500,
+        category: 'UNEXPECTED_EXCEPTION',
+      });
+    },
+  );
+
+  it('preserva 503 sin exponer el mensaje de una excepci�n no contractual', () => {
+    const { host, respuesta } = crearHost({ 'x-correlation-id': CORRELACION });
+    filtro.catch(
+      new ServiceUnavailableException('postgres://secret@private/db'),
+      host,
+    );
+    expect(respuesta.codigo).toBe(503);
+    expect(respuesta.cuerpo).toMatchObject({
+      status: 503,
+      code: 'SERVICIO_NO_DISPONIBLE',
+      detail: 'Servicio temporalmente no disponible',
+      correlationId: CORRELACION,
+    });
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code: 'SERVICIO_NO_DISPONIBLE',
+      status: 503,
+      correlation_id: CORRELACION,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
+  });
+
+  it.each([
+    new BadRequestException('Entrada inv�lida'),
+    new NotFoundException('Categor�a no encontrada'),
+    ProblemDetailsException.noDisponible(
+      'Dependencia temporalmente no disponible',
+    ),
+  ])(
+    'preserva errores controlados y contractuales sin log inesperado',
+    (error) => {
+      const { host, respuesta } = crearHost();
+      filtro.catch(error, host);
+      expect(respuesta.codigo).toBe(error.getStatus());
+      expect(respuesta.cuerpo?.detail).toBe(
+        error instanceof ProblemDetailsException
+          ? error.problem.detail
+          : error.message,
+      );
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
 });
