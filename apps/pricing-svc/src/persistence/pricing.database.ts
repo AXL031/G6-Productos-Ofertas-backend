@@ -39,7 +39,9 @@ export class PricingDatabase implements OnApplicationShutdown {
 
   async check(): Promise<boolean> {
     try {
-      await this.pool.query('SELECT 1 FROM pricing.prices LIMIT 0');
+      await this.pool.query(
+        'SELECT 1 FROM pricing.prices, pricing.price_validities, pricing.scheduled_prices, pricing.bulk_price_jobs, pricing.bulk_price_rows, pricing.outbox LIMIT 0',
+      );
       return true;
     } catch {
       return false;

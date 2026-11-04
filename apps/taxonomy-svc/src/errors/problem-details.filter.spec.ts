@@ -1,4 +1,12 @@
-import { ArgumentsHost, BadRequestException } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  BadRequestException,
+  HttpException,
+  InternalServerErrorException,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import { beforeEach, vi } from 'vitest';
 import { ProblemDetailsFilter } from './problem-details.filter.js';
 import { ProblemDetailsException } from './taxonomy.errors.js';
 import type { ProblemDetailsBody } from './taxonomy.errors.js';
@@ -46,7 +54,11 @@ function crearHost(headers: Record<string, unknown> = {}): {
 }
 
 describe('ProblemDetailsFilter — application/problem+json (#22)', () => {
+  const logger = { error: vi.fn() };
   const filtro = new ProblemDetailsFilter();
+  filtro.usarLogger(logger);
+
+  beforeEach(() => logger.error.mockClear());
 
   it('mapea ProblemDetailsException.validacion a 400 VALIDACION', () => {
     const { host, respuesta } = crearHost({ 'x-correlation-id': CORRELACION });
@@ -104,13 +116,23 @@ describe('ProblemDetailsFilter — application/problem+json (#22)', () => {
     expect(respuesta.cuerpo?.correlationId).toBe(CORRELACION);
   });
 
-  it('convierte un error inesperado a 500 ERROR_INTERNO sin filtrar detalle sensible', () => {
+  it.each([
+    ['PostgreSQL', 'error: relation taxonomy.categories does not exist'],
+    [
+      'contraseña y conexión',
+      'postgres://admin:very-secret@db.internal/taxonomy',
+    ],
+    [
+      'token de autorización',
+      'Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.secret',
+    ],
+    ['correo', 'falló el envío a private.person@example.com'],
+    ['identificador personal', 'documento 4815162342'],
+    ['texto arbitrario', 'una excepción inesperada sin palabras conocidas'],
+  ])('no expone detalles inesperados que contienen %s', (_caso, mensaje) => {
     const { host, respuesta } = crearHost({ 'x-correlation-id': CORRELACION });
 
-    filtro.catch(
-      new Error('select id from taxonomy.categories: conexion rechazada'),
-      host,
-    );
+    filtro.catch(new Error(mensaje), host);
 
     expect(respuesta.codigo).toBe(500);
     expect(respuesta.encabezado).toBe('Content-Type: application/problem+json');
@@ -120,21 +142,56 @@ describe('ProblemDetailsFilter — application/problem+json (#22)', () => {
       status: 500,
       code: 'ERROR_INTERNO',
       correlationId: CORRELACION,
+      detail: 'Ha ocurrido un error interno en el servicio',
     });
+    expect(JSON.stringify(respuesta.cuerpo)).not.toContain(mensaje);
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code: 'ERROR_INTERNO',
+      correlation_id: CORRELACION,
+      status: 500,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
+  });
+
+  it.each([
+    ['error sin mensaje', new Error()],
+    ['valor no Error', { message: 'dato privado arbitrario' }],
+  ])('usa detalle genérico para %s', (_caso, error) => {
+    const { host, respuesta } = crearHost({ 'x-correlation-id': 'no-es-uuid' });
+
+    filtro.catch(error, host);
+
+    expect(respuesta.codigo).toBe(500);
+    expect(respuesta.encabezado).toBe('Content-Type: application/problem+json');
     expect(respuesta.cuerpo?.detail).toBe(
       'Ha ocurrido un error interno en el servicio',
     );
-    expect(respuesta.cuerpo?.detail).not.toContain('taxonomy.categories');
+    expect(respuesta.cuerpo?.correlationId).toBeUndefined();
+    expect(logger.error).toHaveBeenCalledWith({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code: 'ERROR_INTERNO',
+      status: 500,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
   });
 
-  it('conserva el detalle cuando el error no expone datos sensibles', () => {
-    const { host, respuesta } = crearHost();
+  it('conserva un correlation ID válido y omite uno inválido en errores inesperados', () => {
+    const valido = crearHost({ 'x-correlation-id': CORRELACION });
+    const invalido = crearHost({ 'x-correlation-id': 'privado-no-uuid' });
 
-    filtro.catch(new Error('catalogo de taxonomía no disponible'), host);
+    filtro.catch(new Error('mensaje secreto'), valido.host);
+    filtro.catch(new Error('otro mensaje secreto'), invalido.host);
 
-    expect(respuesta.codigo).toBe(500);
-    expect(respuesta.cuerpo?.detail).toBe(
-      'catalogo de taxonomía no disponible',
+    expect(valido.respuesta.cuerpo?.correlationId).toBe(CORRELACION);
+    expect(invalido.respuesta.cuerpo?.correlationId).toBeUndefined();
+    expect(JSON.stringify(valido.respuesta.cuerpo)).not.toContain(
+      'mensaje secreto',
+    );
+    expect(JSON.stringify(invalido.respuesta.cuerpo)).not.toContain(
+      'otro mensaje secreto',
     );
   });
 
@@ -152,5 +209,102 @@ describe('ProblemDetailsFilter — application/problem+json (#22)', () => {
     expect(String(respuesta.cuerpo?.detail)).toContain(
       'El cuerpo es obligatorio',
     );
+    expect(logger.error).not.toHaveBeenCalled();
   });
+  it.each([
+    new InternalServerErrorException('private.person@example.com'),
+    new InternalServerErrorException('postgres://admin:secret@private/db'),
+    new HttpException('Bearer private-token', 500),
+  ])(
+    'sanitiza HttpException 500 y registra �nicamente diagn�stico seguro',
+    (error) => {
+      const { host, respuesta } = crearHost({
+        'x-correlation-id': CORRELACION,
+      });
+      filtro.catch(error, host);
+      expect(respuesta.codigo).toBe(500);
+      expect(respuesta.encabezado).toBe(
+        'Content-Type: application/problem+json',
+      );
+      expect(respuesta.cuerpo).toEqual({
+        type: '/errores/error-interno',
+        title: 'Error interno',
+        status: 500,
+        code: 'ERROR_INTERNO',
+        detail: 'Ha ocurrido un error interno en el servicio',
+        correlationId: CORRELACION,
+      });
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+        event: 'taxonomy.http.unexpected_error',
+        service: 'taxonomy-svc',
+        code: 'ERROR_INTERNO',
+        correlation_id: CORRELACION,
+        status: 500,
+        category: 'UNEXPECTED_EXCEPTION',
+      });
+    },
+  );
+
+  it.each([{}, { 'x-correlation-id': 'private-invalid-id' }])(
+    'omite correlaci�n inv�lida o ausente en HTTP 500',
+    (headers) => {
+      const { host, respuesta } = crearHost(headers);
+      filtro.catch(new InternalServerErrorException('private-token'), host);
+      expect(respuesta.cuerpo?.detail).toBe(
+        'Ha ocurrido un error interno en el servicio',
+      );
+      expect(respuesta.cuerpo?.correlationId).toBeUndefined();
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+        event: 'taxonomy.http.unexpected_error',
+        service: 'taxonomy-svc',
+        code: 'ERROR_INTERNO',
+        status: 500,
+        category: 'UNEXPECTED_EXCEPTION',
+      });
+    },
+  );
+
+  it('preserva 503 sin exponer el mensaje de una excepci�n no contractual', () => {
+    const { host, respuesta } = crearHost({ 'x-correlation-id': CORRELACION });
+    filtro.catch(
+      new ServiceUnavailableException('postgres://secret@private/db'),
+      host,
+    );
+    expect(respuesta.codigo).toBe(503);
+    expect(respuesta.cuerpo).toMatchObject({
+      status: 503,
+      code: 'SERVICIO_NO_DISPONIBLE',
+      detail: 'Servicio temporalmente no disponible',
+      correlationId: CORRELACION,
+    });
+    expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code: 'SERVICIO_NO_DISPONIBLE',
+      status: 503,
+      correlation_id: CORRELACION,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
+  });
+
+  it.each([
+    new BadRequestException('Entrada inv�lida'),
+    new NotFoundException('Categor�a no encontrada'),
+    ProblemDetailsException.noDisponible(
+      'Dependencia temporalmente no disponible',
+    ),
+  ])(
+    'preserva errores controlados y contractuales sin log inesperado',
+    (error) => {
+      const { host, respuesta } = crearHost();
+      filtro.catch(error, host);
+      expect(respuesta.codigo).toBe(error.getStatus());
+      expect(respuesta.cuerpo?.detail).toBe(
+        error instanceof ProblemDetailsException
+          ? error.problem.detail
+          : error.message,
+      );
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
 });

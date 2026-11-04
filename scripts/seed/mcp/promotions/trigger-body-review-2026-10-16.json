@@ -1,0 +1,53 @@
+{
+  "issue": 15,
+  "captured_on": "2026-10-16",
+  "timezone": "America/Lima",
+  "project": "slzglmtiyrzygpkiuthf",
+  "schema": "promotions",
+  "mode": "READ_ONLY_MCP",
+  "audit_role": "postgres",
+  "query": "SELECT p.proname,p.prosecdef,pg_get_functiondef(p.oid) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace WHERE n.nspname='promotions' AND p.proname IN ('fn_check_promotion_complete','fn_check_recommendation_complete','fn_guard_promotion','fn_guard_coupon','fn_lock_parent','fn_touch_updated_at') ORDER BY p.proname",
+  "reviewed_functions": [
+    {
+      "name": "fn_check_promotion_complete",
+      "security_definer": false,
+      "definition_md5": "d0145deb3ff8a947732fe7a0287e2de1"
+    },
+    {
+      "name": "fn_check_recommendation_complete",
+      "security_definer": false,
+      "definition_md5": "f6d9ee589448db4e38869c5f2f9c77e9"
+    },
+    {
+      "name": "fn_guard_coupon",
+      "security_definer": false,
+      "definition_md5": "a9580b5f6f95e3e167c79249e246fc32"
+    },
+    {
+      "name": "fn_guard_promotion",
+      "security_definer": false,
+      "definition_md5": "68cd549045ccfdf34647663d5608c15d"
+    },
+    {
+      "name": "fn_lock_parent",
+      "security_definer": false,
+      "definition_md5": "2f1df9bf6a73019debdd98bbdf6148ba"
+    },
+    {
+      "name": "fn_touch_updated_at",
+      "security_definer": false,
+      "definition_md5": "92c2b5ba8457ef6dd7c684f2bdd95ffa"
+    }
+  ],
+  "findings": [
+    "Los cuerpos revisados comprueban filas propias, toman locks, normalizan código o actualizan timestamps de la fila; no se observan llamadas HTTP/broker ni escrituras externas en esos cuerpos.",
+    "fn_lock_parent usa SQL dinámico con identificador escapado y schema promotions; las tablas/argumentos proceden de los triggers ya inventariados.",
+    "Los triggers de completitud confirman que el borrador sin alcances/candidatos no es insertable."
+  ],
+  "limitations": [
+    "Revisión de seis funciones referenciadas por los triggers de maestros; no es una auditoría global de extensiones, helpers ni permisos.",
+    "El MD5 identifica la definición reportada por PostgreSQL; SHA256SUMS protege los bytes del archivo de evidencia.",
+    "No se ejecutaron triggers ni SQL de escritura, ROLLBACK de ensayo o COMMIT; no equivale a autorización de carga.",
+    "No autentica el login individual ni declara homologación o aprobación externa."
+  ]
+}

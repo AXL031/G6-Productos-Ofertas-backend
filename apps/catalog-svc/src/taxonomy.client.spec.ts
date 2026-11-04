@@ -8,11 +8,13 @@ describe('Taxonomy HTTP boundary', () => {
   let status = 200;
   let body: object = {};
   let path = '';
+  let authorization: string | undefined;
   let origin: string;
   let client: TaxonomyClient;
   beforeAll(async () => {
     server = createServer((request, response) => {
       path = request.url ?? '';
+      authorization = request.headers.authorization;
       response.writeHead(status, { 'content-type': 'application/json' });
       response.end(JSON.stringify(body));
     });
@@ -83,6 +85,56 @@ describe('Taxonomy HTTP boundary', () => {
     await expect(client.category('missing')).rejects.toMatchObject({
       status: 422,
     });
+  });
+  it('forwards verified service credentials and uses administrative routes for users', async () => {
+    body = { brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }] };
+    await client.brand('b', 'trace', {
+      authorization: 'Bearer service-fixture',
+      user: false,
+    });
+    expect(authorization).toBe('Bearer service-fixture');
+    expect(path).toBe('/api/v1/marcas');
+    body = {
+      marcaId: 'b',
+      nombre: 'Brand',
+      estado: 'ACTIVO',
+      version: 1,
+      descripcion: 'Description',
+      logoUrl: null,
+      paisOrigenIso: 'PE',
+    };
+    expect(
+      await client.brand('b', 'trace', {
+        authorization: 'Bearer user-fixture',
+        user: true,
+      }),
+    ).toEqual({
+      marca_id: 'b',
+      name: 'Brand',
+      description: 'Description',
+      logo_url: null,
+      country_code: 'PE',
+    });
+    expect(authorization).toBe('Bearer user-fixture');
+    expect(path).toBe('/api/v1/marcas/b');
+    body = {
+      categoriaId: 'c',
+      nombre: 'Category',
+      estado: 'ACTIVO',
+      version: 1,
+    };
+    await client.category('c', 'trace', {
+      authorization: 'Bearer user-fixture',
+      user: true,
+    });
+    expect(path).toBe('/api/v1/categorias/c');
+    status = 404;
+    await expect(
+      client.category('missing', 'trace', {
+        authorization: 'Bearer user-fixture',
+        user: true,
+      }),
+    ).rejects.toMatchObject({ status: 422 });
   });
   it('does not accept pending/inactive masters as active', async () => {
     for (const state of ['PENDING_DEACTIVATION', 'INACTIVA']) {

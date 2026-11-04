@@ -1,5 +1,13 @@
-import { Controller, Get, HttpStatus, Inject } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  HttpStatus,
+  Inject,
+  Logger,
+  type LoggerService,
+} from '@nestjs/common';
 import { ProblemDetailsException } from '../errors/taxonomy.errors.js';
+import { TaxonomyAmqpRuntime } from '../domain/taxonomy-amqp.runtime.js';
 import { TAXONOMY_READINESS } from './readiness.port.js';
 import type { TaxonomyReadinessIndicator } from './readiness.port.js';
 
@@ -10,9 +18,12 @@ export interface RespuestaReadiness {
 
 @Controller('health')
 export class ReadinessController {
+  private readonly logger: LoggerService = new Logger(ReadinessController.name);
+
   constructor(
     @Inject(TAXONOMY_READINESS)
     private readonly indicador: TaxonomyReadinessIndicator,
+    private readonly amqp: TaxonomyAmqpRuntime,
   ) {}
 
   @Get('readiness')
@@ -35,7 +46,14 @@ export class ReadinessController {
         }
       | null
       | undefined;
+    let dependencia: 'postgres' | 'amqp' = 'postgres';
     try {
+      if (!this.amqp.disponible()) {
+        dependencia = 'amqp';
+        throw ProblemDetailsException.noDisponible(
+          'Mensajería de taxonomía no disponible.',
+        );
+      }
       if (typeof ind?.verificarReadiness === 'function') {
         await ind.verificarReadiness();
         return;
@@ -53,6 +71,16 @@ export class ReadinessController {
         'Indicador de readiness de taxonomía no implementado.',
       );
     } catch (error) {
+      this.logger.warn({
+        event: 'taxonomy.health.readiness_failed',
+        service: 'taxonomy-svc',
+        component: dependencia,
+        state: 'not_ready',
+        reason:
+          dependencia === 'amqp'
+            ? 'AMQP_UNAVAILABLE'
+            : 'POSTGRES_READINESS_FAILED',
+      });
       if (
         error instanceof ProblemDetailsException &&
         error.getStatus() === HttpStatus.SERVICE_UNAVAILABLE

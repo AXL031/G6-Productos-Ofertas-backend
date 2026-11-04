@@ -1,0 +1,1036 @@
+{
+  "version": 1,
+  "capture_method": "Supabase MCP execute_sql; BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY / ROLLBACK",
+  "backend_base_sha": "0be6db48878409a4b73473a79f05f3b70a806c93",
+  "skus": [
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "state": "BORRADOR",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-L",
+      "state": "BORRADOR",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "f60c691e-74fe-5507-a111-a1fd4e1c1f5a",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-M",
+      "state": "BORRADOR",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "3cde5b53-8282-5491-a423-80a912ee8b71",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT22-SHORT-GRI-S",
+      "state": "BORRADOR",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "variant_id": "347eebb8-f145-5e3f-8cad-31ffa45ccabc",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-AZU-L",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "d756023d-9a33-5fab-af73-9d386b498f21",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-AZU-M",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "7f943d67-1e76-5594-b3be-f0670c1072bc",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-AZU-S",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "83709a1d-e38f-5c11-b389-4b72321eda59",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-BLA-L",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "9a4bb6a1-1e68-5d32-b861-51a1f20ba8f3",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-BLA-M",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "0cd5c7bf-363b-5501-b237-d6ff14814f67",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-ENT26-BLA-S",
+      "state": "BORRADOR",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "variant_id": "eecf0794-1eea-5cf3-83a6-42795902726e",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-38",
+      "state": "BORRADOR",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "840b28a1-46fc-5e3a-a176-cb150e25e8a7",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-40",
+      "state": "BORRADOR",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "864ea99c-a2d8-5906-b93f-ac5300fdfa3e",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-42",
+      "state": "BORRADOR",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "2cc6f948-5d34-5ed1-9bfc-c5ff9f39d63f",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-PRED-IG7760-MUL-43",
+      "state": "BORRADOR",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "variant_id": "284276f3-e0ab-5ffb-a394-3664374aa09b",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "state": "BORRADOR",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "state": "BORRADOR",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+      "state": "BORRADOR",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "629792a7-60fb-57f5-9747-f3b54cf8b553",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+      "state": "BORRADOR",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "b1d488a5-fba8-5fd4-90b7-b7440cd59a40",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+      "state": "BORRADOR",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "variant_id": "677f8fcc-caaf-5cc9-a060-c7756d5ab1c2",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-L",
+      "state": "BORRADOR",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "30723507-bc26-53e2-b3e1-e2a03124445d",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-M",
+      "state": "BORRADOR",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "ab8ae29e-84d5-58fb-b237-c07bc618386c",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JG5832-NEG-S",
+      "state": "BORRADOR",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "variant_id": "91f677b4-3ee9-539d-9ed9-6804f8922a26",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-L",
+      "state": "BORRADOR",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "161d02f4-1913-51c7-aa37-140c6fef4bca",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-M",
+      "state": "BORRADOR",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "62ca791d-dd40-5846-8105-3650730c08cf",
+      "catalog_version": 0
+    },
+    {
+      "sku": "ADI-SQUA25-JH3407-AZU-S",
+      "state": "BORRADOR",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "variant_id": "0d6a3d1f-50fc-5e74-b50b-3844d2f3bcfa",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "1c995251-cf8c-55e2-878a-ea83f9f4b351",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "e8a0b20b-a6fd-5a78-9e6b-8199f32742c2",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "bc260f04-d0c1-57d6-862a-6d7ae44c74ff",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "968ec637-15e1-549c-b8ba-da77ed375edc",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "7f8c7bf8-3086-5849-a21f-722bb13bff1c",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+      "state": "BORRADOR",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "variant_id": "73829aef-a02c-5555-82f1-03a495d44ced",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-L",
+      "state": "BORRADOR",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "df53883d-2875-5a71-afe8-1f4097e8b234",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-M",
+      "state": "BORRADOR",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "4ef2fc98-fe62-5d4c-b050-5ad312c088e0",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-M-BV6855-NEG-S",
+      "state": "BORRADOR",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "variant_id": "bd42a0bd-dd7e-595c-8d1d-7afabc4ed049",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-L",
+      "state": "BORRADOR",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "29cf5cee-af27-5da0-aaba-c8f4f6712101",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-M",
+      "state": "BORRADOR",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "a6a0d134-e4a9-58ba-b512-37076fc99a33",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-S",
+      "state": "BORRADOR",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "e3cd5843-307f-576a-b721-2f58d7df3fdc",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+      "state": "BORRADOR",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "909bf47b-9242-5955-b2ed-03adf2922580",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+      "state": "BORRADOR",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "variant_id": "923d14cc-c3d8-53b2-b0c5-57568e9f1abd",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-L",
+      "state": "BORRADOR",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "96945dfc-af18-5da8-8e6e-c49b8c673ed2",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-M",
+      "state": "BORRADOR",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "033875cd-b8de-50d6-bb3d-49e98e146178",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-PARK7-BV6708-NEG-S",
+      "state": "BORRADOR",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "variant_id": "f3890276-9ad2-545b-948b-484f5ed1495b",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "state": "BORRADOR",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+      "catalog_version": 0
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "state": "BORRADOR",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "catalog_version": 0
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-L",
+      "state": "BORRADOR",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "61600bf0-bb76-5b31-9c9b-1df55ddd3471",
+      "catalog_version": 0
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-M",
+      "state": "BORRADOR",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "d82aafc7-3257-5bc8-8093-c9139562e910",
+      "catalog_version": 0
+    },
+    {
+      "sku": "PUM-SC-782244-BLA-S",
+      "state": "BORRADOR",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "variant_id": "7a594c35-880e-5682-b282-a3cc01d8854c",
+      "catalog_version": 0
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "state": "BORRADOR",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "catalog_version": 0
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-L",
+      "state": "BORRADOR",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "09875bf7-7cbd-5f6d-92e9-47d78e8763a6",
+      "catalog_version": 0
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-M",
+      "state": "BORRADOR",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "b271319c-457a-58c5-bbbf-62280abd0803",
+      "catalog_version": 0
+    },
+    {
+      "sku": "UA-TECH20-1326413-NEG-S",
+      "state": "BORRADOR",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "variant_id": "b6bdb52f-a904-56b8-a863-f23aea89ffc6",
+      "catalog_version": 0
+    }
+  ],
+  "brands": [
+    {
+      "id": "07cb79e8-33ee-54d5-aec8-0dbae3cae5b4",
+      "name": "Marathon Sports",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "2ae5529a-b33e-507f-900d-b4a04fc0f831",
+      "name": "Walon",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "514d9c18-b418-559b-a692-e304183560ad",
+      "name": "Under Armour",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "name": "Puma",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "name": "adidas",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "name": "Nike",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    }
+  ],
+  "prices": [
+    {
+      "sku": null,
+      "amount": "69.00",
+      "currency": "PEN",
+      "price_id": "0c341043-eede-5155-a0f0-55c2c9c7f3ef",
+      "channel_id": null,
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "10ab597c-2fd4-5bbb-a98a-ac5fb8f970db",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "109.90",
+      "currency": "PEN",
+      "price_id": "1fc7ab67-0d63-5d2b-ab17-d95293f19b1b",
+      "channel_id": null,
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "dc3461ad-a58d-5ca1-a474-6c2d5f25bbeb",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "59.00",
+      "currency": "PEN",
+      "price_id": "29bc43fb-60e4-5f14-a539-ea31a8e37478",
+      "channel_id": null,
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "bd5bae6f-3b45-59f7-ae21-f690a18a4d2d",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "79.00",
+      "currency": "PEN",
+      "price_id": "2ce89305-8855-50ad-a14c-6d7f96d7a16b",
+      "channel_id": null,
+      "product_id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "54e3c638-ded4-5b4b-abc9-0fa07b8251be",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "219.90",
+      "currency": "PEN",
+      "price_id": "34a4390e-7805-cb75-bc29-e58383bc0cb8",
+      "channel_id": null,
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "valid_from": "2026-10-01T05:00:00.000Z",
+      "valid_until": null,
+      "validity_id": "687b5950-4669-4e6c-b83b-81f16015963a",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "69.90",
+      "currency": "PEN",
+      "price_id": "4575a954-c220-5042-a007-dcc0af2fbda2",
+      "channel_id": null,
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "da40d40c-1b6a-5a72-a50e-2b9adce4099b",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "49.00",
+      "currency": "PEN",
+      "price_id": "559c7165-2f80-5808-a98d-deeca79fd2a4",
+      "channel_id": null,
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "1c0ca457-d785-518e-ad25-db11f6786732",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "279.90",
+      "currency": "PEN",
+      "price_id": "78706bdc-ab26-f3a2-5113-390b1fe49c27",
+      "channel_id": null,
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "valid_from": "2026-10-01T05:00:00.000Z",
+      "valid_until": null,
+      "validity_id": "e6242ecc-3705-4f7a-96d4-d527f59759a2",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "119.00",
+      "currency": "PEN",
+      "price_id": "8077c84d-4b54-55d1-abf6-5c960bc37dfd",
+      "channel_id": null,
+      "product_id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "41acf730-d98d-5758-a6f7-7918fd5a68b8",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "69.90",
+      "currency": "PEN",
+      "price_id": "924928c4-22e7-55b2-a599-7f28f432ffb6",
+      "channel_id": null,
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "edf63cfc-8b14-5ff1-ad37-507c67158787",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "69.00",
+      "currency": "PEN",
+      "price_id": "9da01a9e-71c2-5e63-a868-646a370f512b",
+      "channel_id": null,
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "f4c94520-f2e9-50d2-a7f7-e12a4053de62",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "169.00",
+      "currency": "PEN",
+      "price_id": "a47b818f-1eaa-5325-a32b-161cd6b9ec86",
+      "channel_id": null,
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "b21393ec-0616-5810-ad1c-aa9b54644580",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "89.90",
+      "currency": "PEN",
+      "price_id": "bd607234-c18a-5b80-1350-afc195c1ebb1",
+      "channel_id": null,
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "valid_from": "2026-10-01T05:00:00.000Z",
+      "valid_until": null,
+      "validity_id": "608ca059-1877-4ec4-a609-27f8a1ee8b89",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "259.00",
+      "currency": "PEN",
+      "price_id": "bdd752a8-532e-53f8-a965-e27ce7c74aad",
+      "channel_id": null,
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "f67745bc-52c6-5939-aba8-0634dba143e8",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "79.90",
+      "currency": "PEN",
+      "price_id": "c548fff8-ac7c-27ae-1889-d48f67676ba8",
+      "channel_id": null,
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "valid_from": "2026-10-01T05:00:00.000Z",
+      "valid_until": null,
+      "validity_id": "c431f40c-3bc0-46a1-a56f-87ed2b1f1561",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "79.00",
+      "currency": "PEN",
+      "price_id": "e2aa0a34-58bd-5f26-aab8-fd9df8279046",
+      "channel_id": null,
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "98aca149-77b7-503d-a331-a782f8c3f123",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "129.90",
+      "currency": "PEN",
+      "price_id": "e4fb9610-1a09-5a1f-a291-17c5b23f56d5",
+      "channel_id": null,
+      "product_id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "f0cddeb6-0c68-5947-a1e9-ceb5163bbc1a",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "89.90",
+      "currency": "PEN",
+      "price_id": "e5139e88-7803-5c04-a944-b4eb0b57a1c0",
+      "channel_id": null,
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "c7ce7f72-a860-58a7-ad6c-e3742f3c1b04",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "249.90",
+      "currency": "PEN",
+      "price_id": "e5487a46-cc52-32eb-49cd-695f17246e40",
+      "channel_id": null,
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "valid_from": "2026-10-01T05:00:00.000Z",
+      "valid_until": null,
+      "validity_id": "c673464b-d87b-44bc-a8aa-dc4bb7eb2c97",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    },
+    {
+      "sku": null,
+      "amount": "69.90",
+      "currency": "PEN",
+      "price_id": "ec676abb-bade-5722-a0d4-fbe3525fed55",
+      "channel_id": null,
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "valid_from": "2026-10-17T11:34:20.018Z",
+      "valid_until": null,
+      "validity_id": "d4cce97d-28ec-5ebc-ab86-dedd10f1005b",
+      "is_cancelled": false,
+      "offer_amount": null,
+      "price_version": 1
+    }
+  ],
+  "project": "slzglmtiyrzygpkiuthf",
+  "products": [
+    {
+      "name": "Puma Ultra Play",
+      "state": "BORRADOR",
+      "brand_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-ULP-BASE",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "category_id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Park III Mujer",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK3-W-BV6860-BASE",
+      "product_id": "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Academy",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-ACADEMY-HV4386-05",
+      "product_id": "2ee6399e-2333-5916-847b-f6d2a0f03527",
+      "category_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "has_variants": false,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Entrada 22",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT22-BASE",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas RUNxCUSHIONED",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-RUNX-JD9558-BASE",
+      "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+      "category_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Squadra 25 Shorts",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-SQUA25-JH3407-BASE",
+      "product_id": "536287fd-b2fa-5c1d-a086-7db284725485",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Squadra 25 Jersey",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-SQUA25-JG5832-BASE",
+      "product_id": "59022191-2fb1-5db3-903f-05f8e6be19b1",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Park VII",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK7-BV6708-BASE",
+      "product_id": "79c03413-cf12-56fe-bcd1-32e45cf40221",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Puma Sporting Cristal Training",
+      "state": "BORRADOR",
+      "brand_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-SC-782244-BASE",
+      "product_id": "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Puma Orbita Serie A Réplica",
+      "state": "BORRADOR",
+      "brand_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+      "sku_base": "PUM-ORBITA-084641-05",
+      "product_id": "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+      "category_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "has_variants": false,
+      "catalog_version": 0
+    },
+    {
+      "name": "Under Armour Tech 2.0 Tee",
+      "state": "BORRADOR",
+      "brand_id": "514d9c18-b418-559b-a692-e304183560ad",
+      "sku_base": "UA-TECH20-1326413-BASE",
+      "product_id": "858ed760-beb9-5fdf-aa6d-b6b543b162d2",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Entrada 26 Jersey",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT26-BASE",
+      "product_id": "8be3020b-0f9c-5343-ad74-41740393bece",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Entrada 22 Shorts",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-ENT22-SHORT-BASE",
+      "product_id": "96c6972f-2bd2-5528-8028-5293fe719db9",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Predator Flexible Ground",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-PRED-IG7760-BASE",
+      "product_id": "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+      "category_id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Pitch",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PITCH-05",
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "category_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "has_variants": false,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Runfalcon 3.0",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-RF3-BASE",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "category_id": "303886ae-f3f0-bc9c-145a-660979597595",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "adidas Messi Club",
+      "state": "BORRADOR",
+      "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+      "sku_base": "ADI-MESSI-JI8291-05",
+      "product_id": "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+      "category_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "has_variants": false,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Park III Hombre",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-PARK3-M-BV6855-BASE",
+      "product_id": "b8224b4b-8268-57e4-9d61-d4424828544c",
+      "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Revolution 7",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-REV7-BASE",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "category_id": "303886ae-f3f0-bc9c-145a-660979597595",
+      "has_variants": true,
+      "catalog_version": 0
+    },
+    {
+      "name": "Nike Everyday Plus Cushioned",
+      "state": "BORRADOR",
+      "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+      "sku_base": "NIK-EVP-FQ0327-BASE",
+      "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+      "category_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+      "has_variants": true,
+      "catalog_version": 0
+    }
+  ],
+  "inventory": [
+    {
+      "sku": "ADI-ENT22-AZU-M",
+      "registered_locations": 2,
+      "positive_available_location": true
+    },
+    {
+      "sku": "ADI-RF3-GRI-38",
+      "registered_locations": 2,
+      "positive_available_location": true
+    },
+    {
+      "sku": "ADI-RF3-GRI-39",
+      "registered_locations": 2,
+      "positive_available_location": false
+    },
+    {
+      "sku": "NIK-PITCH-05",
+      "registered_locations": 2,
+      "positive_available_location": true
+    },
+    {
+      "sku": "NIK-REV7-NEG-41",
+      "registered_locations": 2,
+      "positive_available_location": true
+    },
+    {
+      "sku": "NIK-REV7-NEG-42",
+      "registered_locations": 2,
+      "positive_available_location": true
+    },
+    {
+      "sku": "PUM-ULP-NEG-42",
+      "registered_locations": 2,
+      "positive_available_location": true
+    }
+  ],
+  "categories": [
+    {
+      "id": "303886ae-f3f0-bc9c-145a-660979597595",
+      "name": "Running",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "3523cb0c-0f00-27dd-d300-2daffdaf285a",
+      "name": "Ropa",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+      "name": "Medias deportivas",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "49a1dbd0-666d-0d43-6d1e-1053d4564455",
+      "name": "Equipamiento y Accesorios",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "69bda117-9700-d41d-9ccf-f207717068e0",
+      "name": "Entrenamiento",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "cd8aa953-eafd-ce4e-628b-4988ebbcded4",
+      "name": "Calzado",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+      "name": "Fútbol",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    },
+    {
+      "id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+      "name": "Balones",
+      "state": "ACTIVO",
+      "taxonomy_version": 0
+    }
+  ],
+  "captured_at": "2026-10-24T15:23:26.449Z",
+  "seed_privileges": [
+    {
+      "table": "promotions.combination_policy",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.coupons",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.promotion_scopes",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.promotions",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.recommendation_items",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.recommendation_rules",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    }
+  ],
+  "locking_functions": [
+    {
+      "name": "fn_guard_coupon",
+      "definition_md5": "a9580b5f6f95e3e167c79249e246fc32",
+      "security_definer": false,
+      "contains_for_update": true
+    },
+    {
+      "name": "fn_lock_parent",
+      "definition_md5": "2f1df9bf6a73019debdd98bbdf6148ba",
+      "security_definer": false,
+      "contains_for_update": true
+    }
+  ],
+  "promotions_counts": {
+    "coupons": 0,
+    "promotions": 0,
+    "promotion_scopes": 0,
+    "combination_policy": 0,
+    "recommendation_items": 0,
+    "recommendation_rules": 0
+  },
+  "transaction_read_only": "on"
+}

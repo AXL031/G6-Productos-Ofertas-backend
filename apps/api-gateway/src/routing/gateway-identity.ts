@@ -153,7 +153,9 @@ export class GatewayIdentity {
     route: ContractRoute,
     authorization: string | undefined,
   ): Promise<void> {
-    if (this.settings.demoNoAuthEnabled) return;
+    if (isDemoBypassRoute(route, this.settings)) return;
+    if (this.settings.readOnlyDemoEnabled)
+      throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
     if (!route.security.length) {
       if (!this.settings.publicOperations.includes(route.operationId))
         throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
@@ -197,4 +199,26 @@ export class GatewayIdentity {
     if (route.introspection)
       throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
   }
+}
+
+const readOnlyDemoOperations = new Set([
+  'listarProductos',
+  'obtenerProducto',
+  'obtenerProductoPorSlug',
+  'listarCategorias',
+  'listarMarcas',
+  'obtenerPrecioBaseProducto',
+]);
+
+/** Selects a bypass only for routes already found in CONTRACT_ROUTES. */
+export function isDemoBypassRoute(
+  route: ContractRoute,
+  settings: GatewaySettings,
+): boolean {
+  return (
+    settings.demoNoAuthEnabled ||
+    (settings.readOnlyDemoEnabled === true &&
+      route.method === 'GET' &&
+      readOnlyDemoOperations.has(route.operationId))
+  );
 }

@@ -14,10 +14,12 @@ import {
 describe('Gateway no-auth demo mode', () => {
   let provider: Server;
   let app: INestApplication;
+  let settings: ReturnType<typeof readGatewaySettings>;
   let calls: {
     method: string;
     url: string;
     authorization?: string;
+    headers: Record<string, string | string[] | undefined>;
     body: Buffer;
   }[] = [];
   let providerStatus = 200;
@@ -35,6 +37,7 @@ describe('Gateway no-auth demo mode', () => {
         method: req.method!,
         url: req.url!,
         authorization: req.headers.authorization,
+        headers: req.headers,
         body: Buffer.concat(chunks),
       });
       res.writeHead(status, {
@@ -48,7 +51,7 @@ describe('Gateway no-auth demo mode', () => {
     if (!address || typeof address === 'string')
       throw new Error('No test provider address');
     const origin = `http://127.0.0.1:${address.port}`;
-    const settings = readGatewaySettings({
+    settings = readGatewaySettings({
       GATEWAY_CATALOG_SVC_URL: origin,
       GATEWAY_TAXONOMY_SVC_URL: origin,
       GATEWAY_PRICING_SVC_URL: origin,
@@ -85,10 +88,11 @@ describe('Gateway no-auth demo mode', () => {
   it.each(CONTRACT_ROUTES)(
     '$method $path forwards without requiring or forwarding Authorization',
     async (route) => {
-      const path = route.path.replace(
+      const routePath = route.path.replace(
         /\{[^}]+\}/g,
         '11111111-1111-1111-1111-111111111111',
       );
+      const path = `${routePath}?pagina=1`;
       const success = Object.entries(route.responses).find(
         ([status]) => Number(status) >= 200 && Number(status) < 300,
       )!;
@@ -129,18 +133,31 @@ describe('Gateway no-auth demo mode', () => {
     },
   );
 
-  it('ignores invalid supplied Authorization and does not forward it', async () => {
+  it('ignores Authorization and client-supplied identity headers on bypass', async () => {
     const response = await request(app.getHttpServer())
-      .get('/api/v1/productos')
-      .set('Authorization', 'Bearer secret-that-must-not-leak');
+      .get('/api/v1/productos?canal=MARKETPLACE')
+      .set('Authorization', 'not-a-jwt')
+      .set('X-User-Id', 'forged-user')
+      .set('X-Client-Id', 'forged-client')
+      .set('X-Scopes', 'admin')
+      .set('X-Forwarded-For', '203.0.113.1')
+      .set('X-Real-IP', '203.0.113.1');
 
     expect(response.status).toBe(200);
     expect(calls).toHaveLength(1);
     expect(calls[0].authorization).toBeUndefined();
+    for (const name of [
+      'x-user-id',
+      'x-client-id',
+      'x-scopes',
+      'x-forwarded-for',
+      'x-real-ip',
+    ])
+      expect(calls[0].headers[name]).toBeUndefined();
   });
 
   it.each(['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'])(
-    'passes channel %s through to the catalog upstream',
+    'preserves the contractual channel %s through the exact registered operation',
     async (canal) => {
       const response = await request(app.getHttpServer()).get(
         `/api/v1/productos?canal=${canal}`,
@@ -173,5 +190,31 @@ describe('Gateway no-auth demo mode', () => {
     expect(unknown.status).toBe(404);
     expect(wrongMethod.status).toBe(404);
     expect(calls).toHaveLength(0);
+  });
+
+  it('fails closed when a contractual upstream is not configured', async () => {
+    const unavailableSettings = readGatewaySettings({
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+    });
+    const module = await Test.createTestingModule({
+      imports: [ApiGatewayModule],
+    })
+      .overrideProvider(GATEWAY_SETTINGS)
+      .useValue(unavailableSettings)
+      .compile();
+    const unavailableApp = module.createNestApplication({ bodyParser: false });
+    await unavailableApp.listen(0, '127.0.0.1');
+    try {
+      const response = await request(unavailableApp.getHttpServer())
+        .post('/api/v1/productos')
+        .set('Authorization', 'malformed-but-ignored-in-demo')
+        .set('Content-Type', 'application/json')
+        .send({ fixture: true });
+      expect(response.status).toBe(503);
+      expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(calls).toHaveLength(0);
+    } finally {
+      await unavailableApp.close();
+    }
   });
 });

@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "issue": 112,
+  "status": "PREPARED_NO_APPROVED_COMMERCIAL_FIXTURES",
+  "mode": "dry_run",
+  "target": {
+    "environment": "shared",
+    "project_ref": "slzglmtiyrzygpkiuthf",
+    "database": "postgres",
+    "verify_only": true
+  },
+  "runner": "scripts/seed/run.mjs",
+  "registry": "scripts/seed/registry.json",
+  "identity_manifest": "scripts/seed/dataset.json",
+  "sql_execution": false,
+  "persistent_execution": false,
+  "restore_entries": [],
+  "inventory": [
+    {
+      "schema": "taxonomy",
+      "owner": "Leonardo López",
+      "issue": 11,
+      "approved_commercial_fixtures": []
+    },
+    {
+      "schema": "catalog",
+      "owner": "Gabriel Poma",
+      "issue": 12,
+      "approved_commercial_fixtures": []
+    },
+    {
+      "schema": "pricing",
+      "owner": "Leonardo Vera",
+      "issue": 13,
+      "approved_commercial_fixtures": []
+    },
+    {
+      "schema": "inventory",
+      "owner": "Miguel Taco",
+      "issue": 14,
+      "approved_commercial_fixtures": []
+    },
+    {
+      "schema": "promotions",
+      "owner": "Axel Cueva",
+      "issue": 15,
+      "approved_commercial_fixtures": [],
+      "draft": "scripts/seed/mcp/promotions/inka-athletics-draft.json"
+    },
+    {
+      "schema": "combos",
+      "owner": "Marco Castilla",
+      "issue": 16,
+      "approved_commercial_fixtures": []
+    }
+  ],
+  "excluded": [
+    {
+      "file": "scripts/seed/demo/promotions/001_stock_projection.json",
+      "reason": "Fixture técnico reversible de INFRA-001; no es maestro comercial ni acredita stock real."
+    },
+    {
+      "file": "scripts/seed/mcp/promotions/inka-athletics-draft.json",
+      "reason": "Borrador no ejecutable, referencias y aprobación del lote pendientes."
+    }
+  ],
+  "ledger_proposal": {
+    "storage": "Versionado en Git; no crear tablas ni migraciones",
+    "required_per_batch": [
+      "owner",
+      "schema",
+      "tables",
+      "fixture_version",
+      "sha256",
+      "classification",
+      "target",
+      "approval_reference",
+      "baseline_reference",
+      "execution_mode",
+      "result",
+      "postcheck_reference"
+    ],
+    "states": ["PREPARADO", "ROLLBACK", "COMMIT"],
+    "recorded_executions": []
+  },
+  "release_conditions": [
+    {
+      "owner": "Cada owner DATA #11–#16",
+      "operation": "Elegibilidad de fixture",
+      "condition": "Publicar lote completo con versión/hash y aprobación de contenido; no duplicar seeds ni inventar referencias."
+    },
+    {
+      "owner": "Marco Castilla / DATA-VAL #17",
+      "operation": "Validación integrada",
+      "condition": "Auditoría semántica y referencias reconciliadas con evidencia por schema."
+    },
+    {
+      "owner": "Marco y owners afectados",
+      "operation": "Persistencia",
+      "condition": "Aprobación expresa del fixture exacto, schema/tablas/destino y proceso de despliegue; no basta modificar variables locales."
+    }
+  ]
+}

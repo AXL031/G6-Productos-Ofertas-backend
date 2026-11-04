@@ -6,21 +6,60 @@ import { HealthController } from './health/health.controller.js';
 import { PricingReadiness } from './health/pricing-readiness.js';
 import { PricingDatabase } from './persistence/pricing.database.js';
 import { PricingRepository } from './persistence/pricing.repository.js';
+import { PricingReadController } from './http/pricing-read.controller.js';
+import { PricingReads } from './http/pricing-reads.js';
+import { PricingReadGuard } from './http/pricing-read.guard.js';
+import { PricingMutations } from './application/pricing-mutations.js';
+import {
+  CommercialPrices,
+  PRICING_CATALOG_CONTEXT,
+} from './http/commercial-prices.js';
+import {
+  CatalogContextHttp,
+  PRICING_CATALOG_TOKEN,
+} from './http/catalog-context.js';
+import { CatalogServiceToken } from './http/catalog-token.js';
+import { PricingOutboxRelay } from './messaging/outbox-relay.js';
+import {
+  PRICING_FACT_FACTORY,
+  PRICING_WRITE_AUTHORIZER,
+  PricingWriteController,
+} from './http/pricing-write.controller.js';
 
 @Module({
   imports: [],
-  controllers: [PricingSvcController, HealthController],
+  controllers: [
+    PricingSvcController,
+    HealthController,
+    PricingReadController,
+    PricingWriteController,
+  ],
   providers: [
     PricingSvcService,
     PricingReadiness,
     PricingDatabase,
     PricingRepository,
+    PricingReads,
+    PricingReadGuard,
+    PricingMutations,
+    CommercialPrices,
+    PricingOutboxRelay,
+    CatalogContextHttp,
+    { provide: PRICING_CATALOG_CONTEXT, useExisting: CatalogContextHttp },
+    CatalogServiceToken,
+    {
+      provide: PRICING_CATALOG_TOKEN,
+      useFactory: (tokens: CatalogServiceToken) => () => tokens.get(),
+      inject: [CatalogServiceToken],
+    },
+    { provide: PRICING_WRITE_AUTHORIZER, useValue: null },
+    { provide: PRICING_FACT_FACTORY, useValue: null },
     {
       provide: PRICING_CONFIG,
       useFactory: () => validateEnvironment(process.env),
     },
   ],
-  exports: [PricingRepository],
+  exports: [PricingRepository, PricingMutations],
 })
 export class PricingSvcModule {
   static forRoot(env: NodeJS.ProcessEnv): DynamicModule {

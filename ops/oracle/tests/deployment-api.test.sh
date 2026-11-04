@@ -62,10 +62,10 @@ elif [[ "$method" == GET && "$endpoint" =~ ^repos/example/backend/deployments/([
 elif [[ "$method" == GET && "$endpoint" =~ ^repos/example/backend/actions/runs/([0-9]+)$ ]]; then
   case "${BASH_REMATCH[1]}" in
     77)
-      printf 'CD servicios Oracle\t.github/workflows/cd-services-oracle.yml\t%s\t%s\t%s\t%s\texample/backend\n' \
+      printf 'Despliegue continuo de servicios Oracle\t.github/workflows/cd-services-oracle.yml\t%s\t%s\t%s\t%s\texample/backend\n' \
         "${MOCK_RUN_EVENT:-workflow_dispatch}" "${MOCK_RUN_BRANCH:-master}" "${MOCK_RUN_SHA:-$EXPECT_SHA}" "${MOCK_RUN_CONCLUSION:-success}"
       ;;
-    88) printf 'CI\t.github/workflows/ci.yml\tpush\tmaster\t%s\tsuccess\texample/backend\n' "$MOCK_AUTO_SHA" ;;
+    88) printf 'Integración continua (CI)\t.github/workflows/ci.yml\tpush\tmaster\t%s\tsuccess\texample/backend\n' "$MOCK_AUTO_SHA" ;;
     *) exit 2 ;;
   esac
 elif [[ "$method" == GET && "$endpoint" == repos/example/backend/commits/master ]]; then
@@ -101,7 +101,7 @@ git -C "$REPO" add .
 git -C "$REPO" commit --quiet -m 'base'
 readonly SHA_A="$(git -C "$REPO" rev-parse HEAD)"
 readonly SHA_B=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-[[ "$SHA_A" != "$SHA_B" ]] || { echo 'FAIL: fixture de SHA histórico y futuro debe diferir.' >&2; exit 1; }
+[[ "$SHA_A" != "$SHA_B" ]] || { echo 'FALLO: fixture de SHA histórico y futuro debe diferir.' >&2; exit 1; }
 
 run_api() { env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" bash "$ORACLE_DIR/github-deployment-api.sh" "$@"; }
 run_selector() { (cd "$REPO" && env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" bash "$ORACLE_DIR/select-cd-services.sh" manual inventory-svc); }
@@ -114,44 +114,44 @@ auto_output="$TEMP_ROOT/automatic-selection"
 : > "$auto_output"
 env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" MOCK_AUTO_SHA="$SHA_B" \
   GITHUB_REPOSITORY=example/backend GITHUB_REF=refs/heads/master GITHUB_SHA="$SHA_B" GITHUB_OUTPUT="$auto_output" \
-  TRIGGER_EVENT=workflow_run CI_RUN_ID=88 CI_NAME=CI CI_PATH=.github/workflows/ci.yml CI_EVENT=push \
+  TRIGGER_EVENT=workflow_run CI_RUN_ID=88 CI_NAME="Integración continua (CI)" CI_PATH=.github/workflows/ci.yml CI_EVENT=push \
   CI_BRANCH=master CI_SHA="$SHA_B" CI_CONCLUSION=success CI_HEAD_REPOSITORY=example/backend \
   bash "$ROOT/ops/oracle/validate-cd-source.sh"
 grep -qx "sha=$SHA_B" "$auto_output"
 env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc https://github.com/example/backend/actions/runs/77/readiness
 if env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" MOCK_TRIGGER=workflow_run bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc https://github.com/example/backend/actions/runs/77/readiness >/dev/null 2>&1; then
-  echo 'FAIL: un Deployment automático se aceptó como liberación manual.' >&2
+  echo 'FALLO: un Deployment automático se aceptó como liberación manual.' >&2
   exit 1
 fi
-echo 'PASS: procedencia workflow_run rechazada como evidencia de liberación manual.'
+echo 'CORRECTO: procedencia workflow_run rechazada como evidencia de liberación manual.'
 if env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" MOCK_RUN_SHA="$SHA_B" bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc https://github.com/example/backend/actions/runs/77/readiness >/dev/null 2>&1; then
-  echo 'FAIL: se aceptó una ejecución manual cuyo SHA difiere del Deployment.' >&2
+  echo 'FALLO: se aceptó una ejecución manual cuyo SHA difiere del Deployment.' >&2
   exit 1
 fi
-echo 'PASS: Deployment manual en SHA A se acepta como autorización independiente para SHA automático B; run con SHA distinto se rechaza.'
+echo 'CORRECTO: Deployment manual en SHA A se acepta como autorización independiente para SHA automático B; run con SHA distinto se rechaza.'
 for overrides in 'MOCK_RUN_CONCLUSION=failure' 'MOCK_RUN_BRANCH=feature'; do
   if env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" $overrides bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc https://github.com/example/backend/actions/runs/77/readiness >/dev/null 2>&1; then
-    echo "FAIL: ejecución manual con $overrides se aceptó." >&2
+    echo "FALLO: ejecución manual con $overrides se aceptó." >&2
     exit 1
   fi
 done
 if env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" MOCK_STATUS_OVERRIDE=failure bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc https://github.com/example/backend/actions/runs/77/readiness >/dev/null 2>&1; then
-  echo 'FAIL: Deployment manual fallido se aceptó.' >&2
+  echo 'FALLO: Deployment manual fallido se aceptó.' >&2
   exit 1
 fi
 if env PATH="$MOCK_BIN:$PATH" MOCK_STATE="$MOCK_STATE" EXPECT_SHA="$SHA_A" bash "$ROOT/ops/oracle/verify-manual-release-provenance.sh" example/backend "$deployment_id" inventory-svc '' >/dev/null 2>&1; then
-  echo 'FAIL: se aceptó evidencia funcional vacía.' >&2
+  echo 'FALLO: se aceptó evidencia funcional vacía.' >&2
   exit 1
 fi
-echo 'PASS: rama, conclusión, estado del Deployment y evidencia vacía se rechazan.'
-printf 'PASS: mock API validó parámetros, creación, estados y lectura del baseline exitoso.\n'
+echo 'CORRECTO: rama, conclusión, estado del Deployment y evidencia vacía se rechazan.'
+printf 'CORRECTO: mock API validó parámetros, creación, estados y lectura del baseline exitoso.\n'
 
 if run_api create example/backend pricing-svc "$SHA_A" workflow_dispatch 77 >/dev/null 2>&1; then
-  echo 'FAIL: se permitió crear un Deployment para servicio deshabilitado.' >&2
+  echo 'FALLO: se permitió crear un Deployment para servicio deshabilitado.' >&2
   exit 1
 fi
 if run_api status example/backend '100/../../x' success >/dev/null 2>&1; then
-  echo 'FAIL: se aceptó un ID externo que podría alterar el endpoint.' >&2
+  echo 'FALLO: se aceptó un ID externo que podría alterar el endpoint.' >&2
   exit 1
 fi
-printf 'PASS: se rechazaron servicio deshabilitado e ID manipulado.\n'
+printf 'CORRECTO: se rechazaron servicio deshabilitado e ID manipulado.\n'

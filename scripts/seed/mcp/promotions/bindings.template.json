@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "issue": 15,
+  "purpose": "REVIEW",
+  "catalog": {
+    "source": { "reference": null, "sha256": null },
+    "products": [],
+    "skus": []
+  },
+  "pricing": {
+    "source": { "reference": null, "sha256": null },
+    "prices": []
+  },
+  "review": { "reviewer": null, "evidence": null },
+  "campaign_scopes": [
+    { "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901", "skus": [] },
+    { "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902", "skus": [] }
+  ],
+  "recommendations": [
+    { "origin_product_id": null, "candidate_product_ids": [] },
+    { "origin_product_id": null, "candidate_product_ids": [] }
+  ]
+}

@@ -17,6 +17,19 @@ describe('Pricing bootstrap', () => {
     ).rejects.toThrow('DATABASE_URL');
     expect(create).not.toHaveBeenCalled();
   });
+  it('rechaza demo production no confirmada antes de crear Nest o abrir puertos', async () => {
+    const create = vi.spyOn(NestFactory, 'create');
+    await expect(
+      createApplication({
+        NODE_ENV: 'production',
+        PRICING_SVC_PORT: '3002',
+        DATABASE_URL:
+          'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }),
+    ).rejects.toThrow('PRICING_DEMO_PRODUCTION_CONFIRMED=true');
+    expect(create).not.toHaveBeenCalled();
+  });
 
   it('falla el arranque con código 1 y logs JSON sin el valor inválido', async () => {
     vi.stubEnv('NODE_ENV', 'test');

@@ -17,6 +17,7 @@ case "$1 $2" in
     ;;
   'pull ghcr.io/'*'/inventory-svc:'*) printf 'pull %s\n' "$2" >> "$MOCK_DOCKER_LOG" ;;
   'image inspect')
+    if [[ "${5:-}" == *RepoDigests* ]]; then printf 'ghcr.io/example/backend/inventory-svc:%s@sha256:%064d\n' "$MOCK_SHA" 1; exit 0; fi
     case "$MOCK_LABELS" in
       valid) printf '{"org.opencontainers.image.source":"%s","org.opencontainers.image.revision":"%s"}\n' "$MOCK_SOURCE_URL" "$MOCK_SHA" ;;
       wrong-source) printf '{"org.opencontainers.image.source":"https://github.com/other/repo","org.opencontainers.image.revision":"%s"}\n' "$MOCK_SHA" ;;
@@ -43,26 +44,27 @@ run_helper() { local repo="${3:-example/backend}"; env PATH="$TEMP_ROOT/bin:$PAT
 : > "$TEMP_ROOT/output"
 run_helper missing
 grep -qx 'exists=false' "$TEMP_ROOT/output"
-if grep -q '^pull ' "$TEMP_ROOT/docker.log" 2>/dev/null; then echo 'FAIL: una imagen ausente fue descargada.' >&2; exit 1; fi
-echo 'PASS: etiqueta ausente permite primera publicación.'
+if grep -q '^pull ' "$TEMP_ROOT/docker.log" 2>/dev/null; then echo 'FALLO: una imagen ausente fue descargada.' >&2; exit 1; fi
+echo 'CORRECTO: la etiqueta ausente permite una primera publicación.'
 
 : > "$TEMP_ROOT/output"
 run_helper existing valid
 grep -qx 'exists=true' "$TEMP_ROOT/output"
+grep -Eq '^digest=sha256:[0-9a-f]{64}$' "$TEMP_ROOT/output"
 grep -q '^pull ghcr.io/example/backend/inventory-svc:' "$TEMP_ROOT/docker.log"
-echo 'PASS: etiqueta existente con identidad y revisión válidas se reutiliza.'
+echo 'CORRECTO: se reutiliza la etiqueta existente con identidad, revisión y digest válidos.'
 
 : > "$TEMP_ROOT/output"
 real_repository='Taller-SW-Web/G6-Productos-Ofertas-backend'
 run_helper existing valid "$real_repository"
 grep -qx 'image=ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:0123456789012345678901234567890123456789' "$TEMP_ROOT/output"
-echo 'PASS: repositorio GHCR real con mayúsculas se normaliza y su label fuente se verifica sin distinguir caso.'
+echo 'CORRECTO: se normaliza el repositorio GHCR y se valida su origen sin distinguir mayúsculas.'
 
 for labels in wrong-source wrong-revision; do
   : > "$TEMP_ROOT/output"
-  if run_helper existing "$labels" >/dev/null 2>&1; then echo "FAIL: etiqueta $labels se aceptó." >&2; exit 1; fi
+  if run_helper existing "$labels" >/dev/null 2>&1; then echo "FALLO: etiqueta $labels se aceptó." >&2; exit 1; fi
 done
-echo 'PASS: origen/revisión no verificables se rechazan sin sobrescribir.'
+echo 'CORRECTO: se rechaza el origen o revisión no verificable sin sobrescribir.'
 
-if run_helper unknown >/dev/null 2>&1; then echo 'FAIL: error de registry ambiguo se trató como etiqueta libre.' >&2; exit 1; fi
-echo 'PASS: error ambiguo de registry falla cerrado.'
+if run_helper unknown >/dev/null 2>&1; then echo 'FALLO: error de registry ambiguo se trató como etiqueta libre.' >&2; exit 1; fi
+echo 'CORRECTO: un error ambiguo del registro falla de forma segura.'

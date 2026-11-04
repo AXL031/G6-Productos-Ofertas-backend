@@ -13,6 +13,128 @@ const valid = {
 };
 
 describe('Pricing configuration', () => {
+  it('demo es explícita, desactivada por defecto y sin dependencia de G7', () => {
+    expect(validateEnvironment(valid).demoNoAuthEnabled).not.toBe(true);
+    expect(
+      validateEnvironment({ ...valid, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
+        .demoNoAuthEnabled,
+    ).not.toBe(true);
+    const demo = validateEnvironment({
+      ...valid,
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      AUTH_ISSUER: 'invalid-unused',
+    });
+    expect(demo.demoNoAuthEnabled).toBe(true);
+    expect(demo.auth).toBeUndefined();
+    expect(
+      validateEnvironment({
+        ...valid,
+        NODE_ENV: 'development',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }).demoNoAuthEnabled,
+    ).toBe(true);
+  });
+  it.each(['1', 'TRUE', '', ' true', 'yes'])(
+    'rechaza flag demo inválido %j',
+    (flag) => {
+      expect(() =>
+        validateEnvironment({ ...valid, GATEWAY_DEMO_NO_AUTH_ENABLED: flag }),
+      ).toThrow(InvalidPricingConfig);
+    },
+  );
+  it.each([undefined, 'false'])(
+    'rechaza demo production sin confirmación true (%j)',
+    (confirmation) => {
+      expect(() =>
+        validateEnvironment({
+          ...valid,
+          NODE_ENV: 'production',
+          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+          PRICING_DEMO_PRODUCTION_CONFIRMED: confirmation,
+        }),
+      ).toThrow('requiere PRICING_DEMO_PRODUCTION_CONFIRMED=true');
+    },
+  );
+  it.each(['1', 'TRUE', '', ' true', 'yes'])(
+    'rechaza confirmación production inválida %j',
+    (confirmation) => {
+      expect(() =>
+        validateEnvironment({
+          ...valid,
+          PRICING_DEMO_PRODUCTION_CONFIRMED: confirmation,
+        }),
+      ).toThrow(InvalidPricingConfig);
+    },
+  );
+  it('production admite demo sin G7 solo con ambos flags y mantiene TLS obligatorio', () => {
+    const production = {
+      ...valid,
+      NODE_ENV: 'production',
+      DATABASE_URL: valid.DATABASE_URL + '?sslmode=verify-full',
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
+      AUTH_ISSUER: 'ignored-invalid',
+    };
+    const config = validateEnvironment(production);
+    expect(config.demoNoAuthEnabled).toBe(true);
+    expect(config.auth).toBeUndefined();
+    expect(config.databaseSsl).toMatchObject({
+      rejectUnauthorized: true,
+      checkServerIdentity,
+    });
+    expect(() =>
+      validateEnvironment({ ...production, DATABASE_URL: valid.DATABASE_URL }),
+    ).toThrow('sslmode=verify-full');
+  });
+  it.each([undefined, 'false'])(
+    'production conserva autenticación con demo %j aunque exista confirmación',
+    (demo) => {
+      const config = validateEnvironment({
+        ...valid,
+        NODE_ENV: 'production',
+        DATABASE_URL: valid.DATABASE_URL + '?sslmode=verify-full',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: demo,
+        PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
+        AUTH_ISSUER: 'https://identity.test',
+        AUTH_JWKS_URL: 'https://identity.test/jwks',
+      });
+      expect(config.demoNoAuthEnabled).not.toBe(true);
+      expect(config.auth).toEqual({
+        issuer: 'https://identity.test',
+        jwksUrl: 'https://identity.test/jwks',
+      });
+    },
+  );
+  it('valida ambas URLs de identidad sin permitir secretos, fragmentos ni HTTP remoto', () => {
+    expect(
+      validateEnvironment({
+        ...valid,
+        AUTH_ISSUER: 'https://identity.test',
+        AUTH_JWKS_URL: 'https://identity.test/jwks',
+      }).auth,
+    ).toEqual({
+      issuer: 'https://identity.test',
+      jwksUrl: 'https://identity.test/jwks',
+    });
+    for (const pair of [
+      { AUTH_ISSUER: 'https://identity.test' },
+      {
+        AUTH_ISSUER: 'https://identity.test',
+        AUTH_JWKS_URL: 'http://identity.test/jwks',
+      },
+      {
+        AUTH_ISSUER: 'https://user:secret@identity.test',
+        AUTH_JWKS_URL: 'https://identity.test/jwks',
+      },
+      {
+        AUTH_ISSUER: 'https://identity.test#fragment',
+        AUTH_JWKS_URL: 'https://identity.test/jwks',
+      },
+    ])
+      expect(() => validateEnvironment({ ...valid, ...pair })).toThrow(
+        InvalidPricingConfig,
+      );
+  });
   it('acepta configuración válida y prioriza el puerto propio', () => {
     expect(validateEnvironment({ ...valid, PORT: '3000' })).toEqual({
       nodeEnv: 'test',

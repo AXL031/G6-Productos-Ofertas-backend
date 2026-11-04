@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { TaxonomySvcModule } from '../src/taxonomy-svc.module.js';
 import { TAXONOMY_REPOSITORY } from '../src/taxonomy.repository.js';
+import { TaxonomyAmqpRuntime } from '../src/domain/taxonomy-amqp.runtime.js';
 
 describe('Taxonomy readiness versus liveness', () => {
   it('checks repository readiness for each request and recovers', async () => {
@@ -53,6 +54,28 @@ describe('Taxonomy readiness versus liveness', () => {
       expect(JSON.stringify(response.body)).not.toContain(
         'unexpected readiness failure',
       );
+      await request(app.getHttpServer()).get('/health').expect(200);
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('returns 503 when configured AMQP is paused while liveness stays 200', async () => {
+    const module = await Test.createTestingModule({
+      imports: [TaxonomySvcModule],
+    })
+      .overrideProvider(TAXONOMY_REPOSITORY)
+      .useValue({ readiness: async () => true })
+      .overrideProvider(TaxonomyAmqpRuntime)
+      .useValue({ disponible: () => false })
+      .compile();
+    const app = module.createNestApplication();
+    await app.init();
+    try {
+      const readiness = await request(app.getHttpServer())
+        .get('/health/readiness')
+        .expect(503);
+      expect(readiness.body.code).toBe('SERVICIO_NO_DISPONIBLE');
       await request(app.getHttpServer()).get('/health').expect(200);
     } finally {
       await app.close();

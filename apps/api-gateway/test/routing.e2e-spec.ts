@@ -233,6 +233,28 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     ).toBe(404);
     expect(calls).toHaveLength(0);
   });
+
+  it.each(CONTRACT_ROUTES.filter((route) => route.security.length > 0))(
+    'keeps protected operation $operationId authenticated when demo is off',
+    async (route) => {
+      const path = route.path.replace(
+        /\{[^}]+\}/g,
+        '11111111-1111-1111-1111-111111111111',
+      );
+      const agent = request(app.getHttpServer());
+      const methods = {
+        GET: agent.get.bind(agent),
+        POST: agent.post.bind(agent),
+        PATCH: agent.patch.bind(agent),
+        PUT: agent.put.bind(agent),
+        DELETE: agent.delete.bind(agent),
+      };
+      const response =
+        await methods[route.method as keyof typeof methods](path);
+      expect(response.status).toBe(401);
+      expect(calls).toHaveLength(0);
+    },
+  );
   it('preserves stable Problem.code while removing secret-bearing upstream diagnostics', async () => {
     reply = {
       ...reply,
@@ -317,6 +339,73 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     expect(response.body.code).toBe('VALIDACION');
     expect(calls).toHaveLength(0);
   });
+
+  it.each([
+    [400, 'VALIDACION'],
+    [401, 'TOKEN_INVALIDO'],
+    [403, 'SCOPE_INSUFICIENTE'],
+    [422, 'CONTEXTO_ABASTECIMIENTO_INVALIDO'],
+    [429, 'RATE_LIMIT_EXCEDIDO'],
+    [500, 'ERROR_INTERNO'],
+    [503, 'SERVICIO_NO_DISPONIBLE'],
+  ] as const)(
+    'forwards verificarCantidadComercial provider error %s %s safely',
+    async (status, code) => {
+      const correlationId = '22222222-2222-2222-2222-222222222222';
+      reply.status = status;
+      reply.type = 'application/problem+json';
+      reply.body = JSON.stringify({
+        status,
+        code,
+        title: 'Provider error',
+        detail: 'private inventory detail',
+      });
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set(
+          'Authorization',
+          `Bearer ${signed.token({ scope: 'inventario:disponibilidad:leer' })}`,
+        )
+        .set('X-Correlation-Id', correlationId)
+        .send({});
+      expect(response.status).toBe(status);
+      expect(response.body).toMatchObject({ status, code, correlationId });
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(response.headers['x-correlation-id']).toBe(correlationId);
+      expect(response.text).not.toContain('private inventory detail');
+      expect(calls).toHaveLength(1);
+      expect(calls[0].method).toBe('POST');
+      expect(calls[0].url).toBe(
+        '/api/v1/inventario/disponibilidad/comercial/verificar',
+      );
+      expect(calls[0].headers['x-correlation-id']).toBe(correlationId);
+    },
+  );
+
+  it.each([
+    [422, 'VALIDACION', '{"code":"VALIDACION","detail":"private"}'],
+    [503, 'SERVICIO_NO_DISPONIBLE', 'not-json private inventory detail'],
+  ] as const)(
+    'sanitizes invalid provider payload/status pair %s %s',
+    async (status, code, body) => {
+      reply.status = status;
+      reply.type = 'application/problem+json';
+      reply.body = body;
+      const response = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set(
+          'Authorization',
+          `Bearer ${signed.token({ scope: 'inventario:disponibilidad:leer' })}`,
+        )
+        .send({});
+      expect(response.status).toBe(500);
+      expect(response.body.code).toBe('ERROR_INTERNO');
+      expect(response.text).not.toContain('private');
+      expect(response.text).not.toContain('inventory detail');
+    },
+  );
 
   it('does not trust undeclared provider codes after separating local errors', async () => {
     reply.status = 400;

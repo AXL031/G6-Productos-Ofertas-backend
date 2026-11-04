@@ -4,6 +4,8 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
+  type LoggerService,
 } from '@nestjs/common';
 import { ProblemDetailsException, esUuid } from './taxonomy.errors.js';
 import type { ProblemDetailsBody } from './taxonomy.errors.js';
@@ -27,8 +29,7 @@ const TITULOS_POR_ESTADO: Record<number, string | undefined> = {
   [HttpStatus.SERVICE_UNAVAILABLE]: 'Servicio temporalmente no disponible',
 };
 
-const DETALLE_SENSIBLE =
-  /select|insert|update|delete|from|table|relation|column|constraint|duplicate key|syntax error|pg_|schema|connection|password|secret|token/i;
+const DETALLE_ERROR_INTERNO = 'Ha ocurrido un error interno en el servicio';
 
 function codigoPorEstado(estado: number): string {
   switch (estado) {
@@ -44,6 +45,8 @@ function codigoPorEstado(estado: number): string {
       return 'CONFLICTO';
     case HttpStatus.TOO_MANY_REQUESTS:
       return 'RATE_LIMIT_EXCEDIDO';
+    case HttpStatus.PAYLOAD_TOO_LARGE:
+      return 'LOGO_EXCEDE_LIMITE';
     case HttpStatus.SERVICE_UNAVAILABLE:
       return 'SERVICIO_NO_DISPONIBLE';
     default:
@@ -63,6 +66,13 @@ function solicitarCorrelacion(request: SolicitudHttp): string | undefined {
 
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
+  private logger: LoggerService = new Logger(ProblemDetailsFilter.name);
+
+  /** Reemplazable en pruebas; en runtime usa el logger central de Nest. */
+  usarLogger(logger: LoggerService): void {
+    this.logger = logger;
+  }
+
   catch(exception: unknown, host: ArgumentsHost) {
     const context = host.switchToHttp();
     const response = context.getResponse<RespuestaHttp>();
@@ -80,7 +90,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         .json(problem);
     }
 
-    if (exception instanceof HttpException) {
+    if (exception instanceof HttpException && exception.getStatus() < 500) {
       const status = exception.getStatus();
       const code = codigoPorEstado(status);
       const problem: ProblemDetailsBody = {
@@ -97,21 +107,33 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         .json(problem);
     }
 
-    const message = exception instanceof Error ? exception.message : '';
-    const detail =
-      !message || DETALLE_SENSIBLE.test(message)
-        ? 'Ha ocurrido un error interno en el servicio'
-        : message;
+    // Los 5xx no contractuales conservan su estado, pero nunca su mensaje.
+    const status =
+      exception instanceof HttpException
+        ? exception.getStatus()
+        : HttpStatus.INTERNAL_SERVER_ERROR;
+    const code = codigoPorEstado(status);
+    this.logger.error({
+      event: 'taxonomy.http.unexpected_error',
+      service: 'taxonomy-svc',
+      code,
+      ...(correlationId ? { correlation_id: correlationId } : {}),
+      status,
+      category: 'UNEXPECTED_EXCEPTION',
+    });
     const problem: ProblemDetailsBody = {
-      type: tipoPorCodigo('ERROR_INTERNO'),
-      title: 'Error interno',
-      status: HttpStatus.INTERNAL_SERVER_ERROR,
-      code: 'ERROR_INTERNO',
-      detail,
+      type: tipoPorCodigo(code),
+      title: TITULOS_POR_ESTADO[status] ?? 'Error interno',
+      status,
+      code,
+      detail:
+        status === HttpStatus.SERVICE_UNAVAILABLE
+          ? 'Servicio temporalmente no disponible'
+          : DETALLE_ERROR_INTERNO,
       correlationId,
     };
     return response
-      .status(HttpStatus.INTERNAL_SERVER_ERROR)
+      .status(status)
       .header('Content-Type', 'application/problem+json')
       .json(problem);
   }

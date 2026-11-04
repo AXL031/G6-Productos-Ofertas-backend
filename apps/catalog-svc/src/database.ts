@@ -2,7 +2,6 @@ import {
   Injectable,
   Inject,
   Optional,
-  ServiceUnavailableException,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
@@ -10,10 +9,26 @@ import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
 import { checkServerIdentity } from 'node:tls';
 import pg, { type PoolConfig } from 'pg';
-import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { sql } from 'drizzle-orm';
+import {
+  drizzle,
+  type NodePgDatabase,
+  type NodePgTransaction,
+} from 'drizzle-orm/node-postgres';
+import { sql, type ExtractTablesWithRelations } from 'drizzle-orm';
+import type { PgTransactionConfig } from 'drizzle-orm/pg-core';
+import { catalogSchema } from './catalog.schema.js';
+import {
+  CatalogPersistenceError,
+  translatePostgresFailure,
+} from './database-errors.js';
 
 export const CATALOG_POSTGRES_CONFIG = Symbol('CATALOG_POSTGRES_CONFIG');
+
+export type CatalogDatabase = NodePgDatabase<typeof catalogSchema>;
+export type CatalogTransaction = NodePgTransaction<
+  typeof catalogSchema,
+  ExtractTablesWithRelations<typeof catalogSchema>
+>;
 
 export interface PostgresSettings {
   readonly pool: Readonly<PoolConfig>;
@@ -125,7 +140,7 @@ export function readPostgresSettings(
 @Injectable()
 export class Database implements OnModuleDestroy {
   private pool?: pg.Pool;
-  private db?: NodePgDatabase;
+  private db?: CatalogDatabase;
   private closed = false;
   private settings?: PostgresSettings;
 
@@ -139,29 +154,50 @@ export class Database implements OnModuleDestroy {
     return (this.settings ??= readPostgresSettings(process.env));
   }
 
-  async read<T>(query: (db: NodePgDatabase) => Promise<T>): Promise<T> {
+  private connection(): CatalogDatabase {
+    if (this.closed) throw new CatalogPersistenceError('connection');
+    if (!this.pool) {
+      this.pool = new pg.Pool(this.getSettings().pool);
+      // pg emits idle client errors outside the query promise. Never log driver details.
+      this.pool.on('error', () => {
+        this.db = undefined;
+        process.stderr.write(
+          JSON.stringify({
+            service: 'catalog-svc',
+            code: 'DATABASE_IDLE_FAILURE',
+          }) + '\n',
+        );
+      });
+    }
+    this.db ??= drizzle(this.pool, { schema: catalogSchema });
+    return this.db;
+  }
+
+  async read<T>(query: (db: CatalogDatabase) => Promise<T>): Promise<T> {
     try {
-      if (this.closed) throw new Error();
-      if (!this.pool) {
-        this.pool = new pg.Pool(this.getSettings().pool);
-        // pg emite errores de clientes idle fuera de la promesa de consulta.
-        // Nunca emitir el error del driver, SQL, parámetros ni configuración.
-        this.pool.on('error', () => {
-          this.db = undefined;
-          process.stderr.write(
-            JSON.stringify({
-              service: 'catalog-svc',
-              code: 'DATABASE_IDLE_FAILURE',
-            }) + '\n',
-          );
-        });
-      }
-      this.db ??= drizzle(this.pool);
-      return await query(this.db);
-    } catch {
-      throw new ServiceUnavailableException(
-        'Servicio temporalmente no disponible',
-      );
+      return await query(this.connection());
+    } catch (error) {
+      const translated = translatePostgresFailure(error);
+      if (translated) throw translated;
+      throw error;
+    }
+  }
+
+  async transaction<T>(
+    work: (tx: CatalogTransaction) => Promise<T>,
+    config?: PgTransactionConfig,
+  ): Promise<T> {
+    let callbackFinished = false;
+    try {
+      return await this.connection().transaction(async (tx) => {
+        const result = await work(tx);
+        callbackFinished = true;
+        return result;
+      }, config);
+    } catch (error) {
+      const translated = translatePostgresFailure(error, callbackFinished);
+      if (translated) throw translated;
+      throw error;
     }
   }
 
@@ -187,7 +223,7 @@ export class Database implements OnModuleDestroy {
         !row.usage ||
         row.owner_member
       ) {
-        throw new Error();
+        throw new CatalogPersistenceError('other');
       }
     });
   }

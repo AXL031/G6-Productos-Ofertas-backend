@@ -1,9 +1,14 @@
+import { isIP } from 'node:net';
 import { randomUUID } from 'node:crypto';
 import { finished } from 'node:stream/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CONTRACT_ROUTES } from './contract-routes.js';
-import { GatewayFailure, GatewayIdentity } from './gateway-identity.js';
+import {
+  GatewayFailure,
+  GatewayIdentity,
+  isDemoBypassRoute,
+} from './gateway-identity.js';
 import { GATEWAY_SETTINGS, type GatewaySettings } from './gateway-settings.js';
 import type { ContractRoute } from './contract-route.js';
 import { readLimitedResponse } from './bounded-response.js';
@@ -39,6 +44,26 @@ export function matchContractRoute(
           part.startsWith('{') ? actual[i].length > 0 : part === actual[i],
         ),
   );
+}
+
+/** Demo requests are accepted only from the Gateway's private TCP peer. */
+export function isRestrictedDemoPeer(address: string | undefined): boolean {
+  if (!address) return false;
+  const normalized = address.startsWith('::ffff:')
+    ? address.slice('::ffff:'.length)
+    : address;
+  if (isIP(normalized) === 4) {
+    const octets = normalized.split('.').map(Number);
+    return (
+      octets[0] === 10 ||
+      octets[0] === 127 ||
+      (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31) ||
+      (octets[0] === 192 && octets[1] === 168)
+    );
+  }
+  if (isIP(normalized) !== 6) return false;
+  const first = Number.parseInt(normalized.split(':')[0] || '0', 16);
+  return normalized === '::1' || (first >= 0xfc00 && first <= 0xfdff);
 }
 
 async function readRequest(
@@ -118,8 +143,11 @@ export class GatewayProxy {
     res.on('close', disconnected);
     let upload: ReturnType<typeof streamedRequest> | undefined;
     try {
+      const bypass = isDemoBypassRoute(route, this.settings);
+      if (bypass && !isRestrictedDemoPeer(req.socket.remoteAddress))
+        throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
       const uniqueHeaders = new Set([
-        'authorization',
+        ...(!bypass ? ['authorization'] : []),
         'x-correlation-id',
         'idempotency-key',
         ...route.headers.map((h) => h.name),
@@ -132,15 +160,14 @@ export class GatewayProxy {
       }
       if (incomingCorrelation && !uuid.test(incomingCorrelation))
         throw new GatewayFailure(400, 'VALIDACION');
-      const authorization = req.header('authorization');
+      const authorization = bypass ? undefined : req.header('authorization');
       await this.identity.authorize(route, authorization);
       const base = this.settings.upstreams[route.service];
       if (!base) throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
       const headers: Record<string, string> = {
         accept: req.header('accept') ?? 'application/json',
       };
-      if (authorization && !this.settings.demoNoAuthEnabled)
-        headers.authorization = authorization;
+      if (authorization) headers.authorization = authorization;
       for (const header of route.headers) {
         const value =
           header.name === 'x-correlation-id'

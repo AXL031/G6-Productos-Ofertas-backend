@@ -1,6 +1,30 @@
 import { SafeLogger } from './safe-logger.js';
 
 describe('SafeLogger', () => {
+  it('registra duración/estado/correlación con límites y sin contenido externo', () => {
+    const sink = { log: vi.fn(), error: vi.fn(), warn: vi.fn() };
+    const logger = new SafeLogger('test', sink);
+    logger.http('fixture-sensitive-token', NaN, Infinity);
+    expect(sink.log).toHaveBeenLastCalledWith({
+      service: 'pricing-svc',
+      environment: 'test',
+      message: 'Consulta HTTP de Pricing finalizada.',
+      correlation_id: '[REDACTED]',
+      status: 500,
+      duration_ms: 0,
+    });
+    logger.http('74ed2f19-7e70-4915-a6f6-bbc691b82587', 200, 12.4);
+    expect(sink.log).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        status: 200,
+        duration_ms: 12,
+        correlation_id: '74ed2f19-7e70-4915-a6f6-bbc691b82587',
+      }),
+    );
+    expect(JSON.stringify(sink.log.mock.calls)).not.toContain(
+      'fixture-sensitive-token',
+    );
+  });
   it.each(['log', 'error', 'warn', 'debug', 'verbose', 'fatal'] as const)(
     'omite secretos y objetos también en los argumentos de %s',
     (level) => {

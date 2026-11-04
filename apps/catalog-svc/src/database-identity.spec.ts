@@ -105,7 +105,7 @@ describe('Database identity and shared pool', () => {
     const database = new Database(readPostgresSettings(env()));
     try {
       await expect(database.verifyIdentity()).rejects.toMatchObject({
-        status: 503,
+        failure: 'other',
       });
     } finally {
       await database.onModuleDestroy();
@@ -116,12 +116,19 @@ describe('Database identity and shared pool', () => {
     const database = new Database(readPostgresSettings(env()));
     try {
       await database.verifyIdentity();
-      driver.execute.mockRejectedValueOnce(
+      const postgresError = Object.assign(
         new Error('fixture-secret SELECT private'),
+        { code: 'ECONNRESET' },
+      );
+      driver.execute.mockRejectedValueOnce(
+        Object.assign(new Error('Drizzle query failed'), {
+          cause: postgresError,
+          query: 'SELECT private identity data',
+        }),
       );
       await expect(database.verifyIdentity()).rejects.toMatchObject({
-        status: 503,
-        message: 'Servicio temporalmente no disponible',
+        failure: 'connection',
+        message: 'Falló una operación de persistencia de Catálogo',
       });
       await database.verifyIdentity();
       expect(driver.pool).toHaveBeenCalledOnce();

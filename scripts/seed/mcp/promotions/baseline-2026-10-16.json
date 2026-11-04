@@ -1,0 +1,738 @@
+{
+  "captured_on": "2026-10-16",
+  "timezone": "America/Lima",
+  "issue": 15,
+  "mode": "READ_ONLY_MCP",
+  "project": "slzglmtiyrzygpkiuthf",
+  "database": "postgres",
+  "audit_role": "postgres",
+  "individual_login_authenticated": false,
+  "counts": [
+    {
+      "relation": "promotions",
+      "rows": 0
+    },
+    {
+      "relation": "promotion_scopes",
+      "rows": 0
+    },
+    {
+      "relation": "combination_policy",
+      "rows": 0
+    },
+    {
+      "relation": "coupons",
+      "rows": 0
+    },
+    {
+      "relation": "recommendation_rules",
+      "rows": 0
+    },
+    {
+      "relation": "recommendation_items",
+      "rows": 0
+    },
+    {
+      "relation": "catalog_projection",
+      "rows": 0
+    },
+    {
+      "relation": "price_projection",
+      "rows": 0
+    },
+    {
+      "relation": "stock_projection",
+      "rows": 0
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "combination_policy",
+      "column_name": "promotion_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "combination_policy",
+      "column_name": "pricing_offer",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "combination_policy",
+      "column_name": "automatic_promotion",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "combination_policy",
+      "column_name": "coupon",
+      "data_type": "boolean",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "combination_policy",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "combination_policy",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "promotion_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "code",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "state",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "minimum_amount",
+      "data_type": "numeric",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "max_global_uses",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "max_customer_uses",
+      "data_type": "integer",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "cancellation_policy",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "coupons",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "promotion_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "product_id",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "sku",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "promotion_scopes",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "discount_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "discount_value",
+      "data_type": "numeric",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "modality",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "state",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "valid_from",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "valid_until",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "priority",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "enabled_channels",
+      "data_type": "ARRAY",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "first_activated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "promotions",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "rule_id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "product_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "item_order",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "superiority_criterion",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "commercial_justification",
+      "data_type": "text",
+      "is_nullable": "YES",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "recommendation_items",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "id",
+      "data_type": "uuid",
+      "is_nullable": "NO",
+      "column_default": "gen_random_uuid()"
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "name",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "recommendation_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "origin_type",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "origin_id",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "priority",
+      "data_type": "integer",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "state",
+      "data_type": "text",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "valid_from",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "valid_until",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": null
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    },
+    {
+      "table_name": "recommendation_rules",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO",
+      "column_default": "now()"
+    }
+  ],
+  "constraints": [
+    {
+      "relation": "combination_policy",
+      "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    },
+    {
+      "relation": "combination_policy",
+      "definition": "FOREIGN KEY (promotion_id) REFERENCES promotions.promotions(id) ON DELETE RESTRICT"
+    },
+    {
+      "relation": "combination_policy",
+      "definition": "PRIMARY KEY (promotion_id)"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK (((code = promotions.fn_normalize_code(code)) AND ((code COLLATE \"C\") ~ '^[A-Z0-9_-]+$'::text)))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK ((max_customer_uses > 0))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK ((max_global_uses > 0))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK (((minimum_amount > (0)::numeric) AND (minimum_amount <> ALL (ARRAY['NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric]))))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK ((cancellation_policy = ANY (ARRAY['RESTAURAR_EN_CANCELACION'::text, 'NO_RESTAURAR'::text])))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "CHECK ((state = ANY (ARRAY['ACTIVO'::text, 'INACTIVO'::text])))"
+    },
+    {
+      "relation": "coupons",
+      "definition": "FOREIGN KEY (promotion_id) REFERENCES promotions.promotions(id) ON DELETE RESTRICT"
+    },
+    {
+      "relation": "coupons",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "relation": "coupons",
+      "definition": "UNIQUE (code)"
+    },
+    {
+      "relation": "promotion_scopes",
+      "definition": "CHECK ((((product_id IS NOT NULL) AND (length(btrim(product_id)) > 0) AND (sku IS NULL)) OR ((sku IS NOT NULL) AND (length(btrim(sku)) > 0) AND (product_id IS NULL))))"
+    },
+    {
+      "relation": "promotion_scopes",
+      "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    },
+    {
+      "relation": "promotion_scopes",
+      "definition": "FOREIGN KEY (promotion_id) REFERENCES promotions.promotions(id) ON DELETE RESTRICT"
+    },
+    {
+      "relation": "promotion_scopes",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK (((state <> 'ACTIVO'::text) OR (first_activated_at IS NOT NULL)))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK (promotions.fn_valid_channels(enabled_channels))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK (((discount_value > (0)::numeric) AND (discount_value <> ALL (ARRAY['NaN'::numeric, 'Infinity'::numeric, '-Infinity'::numeric])) AND ((discount_type <> 'PORCENTAJE'::text) OR (discount_value <= (100)::numeric))))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((discount_type = ANY (ARRAY['PORCENTAJE'::text, 'MONTO_FIJO'::text])))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((modality = ANY (ARRAY['AUTOMATICA'::text, 'CUPON'::text])))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((length(btrim(name)) > 0))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((isfinite(valid_from) AND isfinite(valid_until) AND (valid_from < valid_until)))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((priority > 0))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "CHECK ((state = ANY (ARRAY['ACTIVO'::text, 'INACTIVO'::text])))"
+    },
+    {
+      "relation": "promotions",
+      "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    },
+    {
+      "relation": "promotions",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "CHECK ((superiority_criterion = ANY (ARRAY['MAYOR_RENDIMIENTO'::text, 'MEJOR_MATERIAL'::text, 'MAYOR_CAPACIDAD'::text, 'FUNCIONALIDAD_ADICIONAL'::text])))"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "CHECK ((length(commercial_justification) <= 500))"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "CHECK ((item_order > 0))"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "CHECK ((length(btrim(product_id)) > 0))"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "FOREIGN KEY (rule_id) REFERENCES promotions.recommendation_rules(id) ON DELETE RESTRICT"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "relation": "recommendation_items",
+      "definition": "UNIQUE (rule_id, product_id)"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((length(btrim(name)) > 0))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((length(btrim(origin_id)) > 0))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((origin_type = ANY (ARRAY['PRODUCTO'::text, 'CATEGORIA'::text])))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((isfinite(valid_from) AND isfinite(valid_until) AND (valid_from < valid_until)))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((priority > 0))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((state = ANY (ARRAY['ACTIVO'::text, 'INACTIVO'::text])))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "CHECK ((recommendation_type = ANY (ARRAY['CROSS_SELL'::text, 'UPSELL'::text])))"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "TRIGGER DEFERRABLE INITIALLY DEFERRED"
+    },
+    {
+      "relation": "recommendation_rules",
+      "definition": "PRIMARY KEY (id)"
+    }
+  ],
+  "triggers": [
+    {
+      "relation": "combination_policy",
+      "trigger_name": "trg_combination_policy_complete",
+      "definition": "CREATE CONSTRAINT TRIGGER trg_combination_policy_complete AFTER INSERT OR DELETE OR UPDATE ON promotions.combination_policy DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION promotions.fn_check_promotion_complete()"
+    },
+    {
+      "relation": "combination_policy",
+      "trigger_name": "trg_combination_policy_lock",
+      "definition": "CREATE TRIGGER trg_combination_policy_lock BEFORE INSERT OR DELETE OR UPDATE ON promotions.combination_policy FOR EACH ROW EXECUTE FUNCTION promotions.fn_lock_parent('promotions', 'promotion_id')"
+    },
+    {
+      "relation": "combination_policy",
+      "trigger_name": "trg_combination_policy_updated_at",
+      "definition": "CREATE TRIGGER trg_combination_policy_updated_at BEFORE UPDATE ON promotions.combination_policy FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    },
+    {
+      "relation": "coupons",
+      "trigger_name": "trg_coupons_guard",
+      "definition": "CREATE TRIGGER trg_coupons_guard BEFORE INSERT OR DELETE OR UPDATE ON promotions.coupons FOR EACH ROW EXECUTE FUNCTION promotions.fn_guard_coupon()"
+    },
+    {
+      "relation": "coupons",
+      "trigger_name": "trg_coupons_updated_at",
+      "definition": "CREATE TRIGGER trg_coupons_updated_at BEFORE UPDATE ON promotions.coupons FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    },
+    {
+      "relation": "promotion_scopes",
+      "trigger_name": "trg_promotion_scopes_complete",
+      "definition": "CREATE CONSTRAINT TRIGGER trg_promotion_scopes_complete AFTER INSERT OR DELETE OR UPDATE ON promotions.promotion_scopes DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION promotions.fn_check_promotion_complete()"
+    },
+    {
+      "relation": "promotion_scopes",
+      "trigger_name": "trg_promotion_scopes_lock",
+      "definition": "CREATE TRIGGER trg_promotion_scopes_lock BEFORE INSERT OR DELETE OR UPDATE ON promotions.promotion_scopes FOR EACH ROW EXECUTE FUNCTION promotions.fn_lock_parent('promotions', 'promotion_id')"
+    },
+    {
+      "relation": "promotion_scopes",
+      "trigger_name": "trg_promotion_scopes_updated_at",
+      "definition": "CREATE TRIGGER trg_promotion_scopes_updated_at BEFORE UPDATE ON promotions.promotion_scopes FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    },
+    {
+      "relation": "promotions",
+      "trigger_name": "trg_promotions_complete",
+      "definition": "CREATE CONSTRAINT TRIGGER trg_promotions_complete AFTER INSERT OR UPDATE ON promotions.promotions DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION promotions.fn_check_promotion_complete()"
+    },
+    {
+      "relation": "promotions",
+      "trigger_name": "trg_promotions_guard",
+      "definition": "CREATE TRIGGER trg_promotions_guard BEFORE INSERT OR UPDATE ON promotions.promotions FOR EACH ROW EXECUTE FUNCTION promotions.fn_guard_promotion()"
+    },
+    {
+      "relation": "promotions",
+      "trigger_name": "trg_promotions_updated_at",
+      "definition": "CREATE TRIGGER trg_promotions_updated_at BEFORE UPDATE ON promotions.promotions FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    },
+    {
+      "relation": "recommendation_items",
+      "trigger_name": "trg_recommendation_items_complete",
+      "definition": "CREATE CONSTRAINT TRIGGER trg_recommendation_items_complete AFTER INSERT OR DELETE OR UPDATE ON promotions.recommendation_items DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION promotions.fn_check_recommendation_complete()"
+    },
+    {
+      "relation": "recommendation_items",
+      "trigger_name": "trg_recommendation_items_lock",
+      "definition": "CREATE TRIGGER trg_recommendation_items_lock BEFORE INSERT OR DELETE OR UPDATE ON promotions.recommendation_items FOR EACH ROW EXECUTE FUNCTION promotions.fn_lock_parent('recommendation_rules', 'rule_id')"
+    },
+    {
+      "relation": "recommendation_items",
+      "trigger_name": "trg_recommendation_items_updated_at",
+      "definition": "CREATE TRIGGER trg_recommendation_items_updated_at BEFORE UPDATE ON promotions.recommendation_items FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    },
+    {
+      "relation": "recommendation_rules",
+      "trigger_name": "trg_recommendation_rules_complete",
+      "definition": "CREATE CONSTRAINT TRIGGER trg_recommendation_rules_complete AFTER INSERT OR UPDATE ON promotions.recommendation_rules DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION promotions.fn_check_recommendation_complete()"
+    },
+    {
+      "relation": "recommendation_rules",
+      "trigger_name": "trg_recommendation_rules_updated_at",
+      "definition": "CREATE TRIGGER trg_recommendation_rules_updated_at BEFORE UPDATE ON promotions.recommendation_rules FOR EACH ROW EXECUTE FUNCTION promotions.fn_touch_updated_at()"
+    }
+  ],
+  "declared_privileges": [
+    {
+      "table": "combination_policy",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    },
+    {
+      "table": "coupons",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    },
+    {
+      "table": "promotion_scopes",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    },
+    {
+      "table": "promotions",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    },
+    {
+      "table": "recommendation_items",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    },
+    {
+      "table": "recommendation_rules",
+      "delete": true,
+      "insert": true,
+      "select": true,
+      "update": true
+    }
+  ],
+  "limitations": [
+    "La consulta de privilegios como postgres no autentica el login individual.",
+    "No se ejecutaron INSERT, UPDATE, DELETE, DDL, ROLLBACK de ensayo ni COMMIT.",
+    "No se inspeccionaron datos de otros schemas.",
+    "El cuerpo de triggers no se ha homologado para un ensayo; la lista de triggers no prueba ausencia de efectos externos."
+  ]
+}

@@ -1,3 +1,5 @@
+> **DOCUMENTO HISTÓRICO — NO REPRESENTA EL ESTADO ACTUAL.** Resultado fechado 2026-10-16; consultar [paquete H4 vigente](../../integraciones/g1-marketplace/README.md). Conservar la evidencia pasada, no asociarla a ramas/SHAs posteriores.
+
 # INT-ASAP G1 — resultado local, 2026-10-16
 
 ## Rama, alcance y coordinación
@@ -184,3 +186,5 @@ validaciones. La fuente TypeScript y el lock de la copia coinciden por hash.
 Esta dependencia queda resuelta; D-CAT-05/06, fixtures y E2E G1 siguen separados.
 Los artefactos locales preexistentes de smoke/runtime se incorporan sin cambios
 para que la auditoría publicada conserve sus referencias y evidencia histórica.
+
+> **DOCUMENTO HISTÓRICO — NO REPRESENTA EL ESTADO ACTUAL.** Resultado local fechado 2026-10-16. Se conserva como evidencia histórica; el estado operativo se consulta en [`integraciones/g1-marketplace/`](../../integraciones/g1-marketplace/README.md), con SHA vigente por rama. Ninguna fila de este corte histórico certifica un SHA posterior.

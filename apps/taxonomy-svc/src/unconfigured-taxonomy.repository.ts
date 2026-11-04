@@ -15,6 +15,12 @@ export class UnconfiguredTaxonomyRepository
     );
   }
 
+  async findCategoriaAdmin(): Promise<never> {
+    throw ProblemDetailsException.noDisponible(
+      'Fuente de datos de taxonomía no configurada para consultar categorías.',
+    );
+  }
+
   async findMarcasActivas(): Promise<MarcaRow[]> {
     throw ProblemDetailsException.noDisponible(
       'Fuente de datos de taxonomía no configurada: registra un proveedor TAXONOMY_REPOSITORY para consultar marcas.',

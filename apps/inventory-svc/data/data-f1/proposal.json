@@ -1,0 +1,87 @@
+{
+  "version": 1,
+  "schema": "inventory",
+  "scenario": "Inka Athletics",
+  "classification": "demo",
+  "synthetic": true,
+  "opening_at": "2026-10-17T00:00:00Z",
+  "notice": "Propuesta sintética de preparación DATA-004. Cantidades e instante propuestos; no son conteo físico ni carga efectuada. Sin reservas ni cuarentenas históricas inventadas.",
+  "locations": [
+    {
+      "id": "9129b578-631e-1735-8427-b683fb524380",
+      "code": "ALM-LURIN",
+      "name": "Centro de distribución Lurín",
+      "type": "ALMACEN_CENTRAL",
+      "external_ref": null,
+      "active": true
+    },
+    {
+      "id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+      "code": "TDA-MIRAFLORES",
+      "name": "Tienda Miraflores",
+      "type": "TIENDA",
+      "external_ref": null,
+      "active": true
+    }
+  ],
+  "thresholds": [
+    { "sku_id": null, "umbral_efectivo": 5 },
+    { "sku_id": "ADI-ENT22-AZU-M", "umbral_efectivo": 3 }
+  ],
+  "balances": [
+    {
+      "sku_id": "ADI-ENT22-AZU-M",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 24,
+      "reason": "Lote pequeño de camisetas de entrenamiento de talla M."
+    },
+    {
+      "sku_id": "NIK-PITCH-05",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 8,
+      "reason": "Balones recreativos talla 5; rotación menor que indumentaria."
+    },
+    {
+      "sku_id": "PUM-ULP-NEG-42",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 3,
+      "reason": "Pocos pares de chimpún talla 42; cubre alerta de stock bajo."
+    },
+    {
+      "sku_id": "ADI-RF3-GRI-38",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 12,
+      "reason": "Reserva física de calzado running, sin compromisos comerciales."
+    },
+    {
+      "sku_id": "ADI-RF3-GRI-39",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 0,
+      "reason": "Talla sin unidades para cubrir saldo cero, sin Kardex artificial."
+    },
+    {
+      "sku_id": "NIK-REV7-NEG-41",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 6,
+      "reason": "Lote reducido de running talla 41, aún por encima del umbral."
+    },
+    {
+      "sku_id": "NIK-REV7-NEG-42",
+      "location_id": "9129b578-631e-1735-8427-b683fb524380",
+      "on_hand": 2,
+      "reason": "Últimos pares de running talla 42 para alerta por SKU."
+    },
+    {
+      "sku_id": "NIK-REV7-NEG-41",
+      "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+      "on_hand": 4,
+      "reason": "Exhibición/reposición de tienda, sin sumar ubicaciones para cumplir pedidos."
+    },
+    {
+      "sku_id": "ADI-RF3-GRI-39",
+      "location_id": "aea2f0d8-e8c6-b09c-8e7a-b4a3630bc485",
+      "on_hand": 0,
+      "reason": "Talla agotada también en tienda; no inventar una ruta Retail."
+    }
+  ]
+}

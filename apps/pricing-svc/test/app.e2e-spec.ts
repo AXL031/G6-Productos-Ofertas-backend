@@ -1,9 +1,10 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { App } from 'supertest/types';
+import { App } from 'supertest/types.js';
 import { PricingSvcModule } from './../src/pricing-svc.module.js';
 import { PricingReadiness } from '../src/health/pricing-readiness.js';
+import { SignedUser } from './signed-user.js';
 
 describe('PricingSvcController (e2e)', () => {
   let app: INestApplication<App>;
@@ -70,6 +71,41 @@ describe('PricingSvcController (e2e)', () => {
       expect(response.text).not.toContain(env.DATABASE_URL);
     } finally {
       await realApp.close();
+    }
+  });
+
+  it('consulta autenticada devuelve Problem 503 con DB caída, sin SQL ni credenciales', async () => {
+    const identity = new SignedUser();
+    await identity.start();
+    const module = await Test.createTestingModule({
+      imports: [
+        PricingSvcModule.forRoot({
+          ...env,
+          AUTH_ISSUER: identity.issuer,
+          AUTH_JWKS_URL: identity.issuer + '/jwks',
+        }),
+      ],
+    }).compile();
+    const failedDbApp = module.createNestApplication();
+    try {
+      await failedDbApp.init();
+      const response = await request(failedDbApp.getHttpServer())
+        .get('/api/v1/precios/productos/fixture')
+        .set('Authorization', `Bearer ${identity.token()}`)
+        .expect(503);
+      expect(response.body).toMatchObject({
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+      });
+      expect(response.headers['content-type']).toContain(
+        'application/problem+json',
+      );
+      expect(response.text).not.toMatch(
+        /postgresql|fixture|ECONNREFUSED|select/i,
+      );
+    } finally {
+      await failedDbApp.close();
+      await identity.stop();
     }
   });
 

@@ -40,3 +40,7 @@ Issue asignado → Rama personal permanente → Implementación localizada → P
 
 - Cada desarrollador es plenamente responsable del código, commits y Pull Requests generados en su rama, incluidos los producidos por asistentes o agentes de IA.
 - Todas las pruebas deben ser ejecutadas efectivamente antes de reportar o abrir un PR. Si algún comando no fue ejecutado, debe informarse explícitamente como `NO EJECUTADO`.
+
+## H4 G1 Marketplace
+
+Para cualquier cambio en servicios consumidos por Marketplace, revisa primero [`integraciones/g1-marketplace/README.md`](integraciones/g1-marketplace/README.md), matriz y pruebas; verifica el OpenAPI y las reglas del servicio. No inventes interfaz por mocks. El cliente técnico vive en BFF G1 servidor-servidor; nunca envíes secretos al navegador. Los flags `GATEWAY_DEMO_NO_AUTH_ENABLED` / `DEMO_NO_AUTH` solo corresponden al modo demo temporal y no satisfacen H4. Registra explícitamente qué pruebas son mocks, provider, autorización real o E2E.

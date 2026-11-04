@@ -1,12 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { asc, eq } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
-import { categories, brands } from './taxonomy.schema.js';
+import { categories, brands, categorySeo } from './taxonomy.schema.js';
 import { ProblemDetailsException } from './errors/taxonomy.errors.js';
 import type { TaxonomyReadinessIndicator } from './health/readiness.port.js';
 import type {
   TaxonomyRepository,
   CategoriaRow,
+  CategoriaAdminRow,
   MarcaRow,
 } from './taxonomy.repository.js';
 
@@ -44,6 +45,28 @@ export class PostgresTaxonomyRepository
         ),
     );
     return rows.filter((row) => row.estado === 'ACTIVO');
+  }
+
+  async findCategoriaAdmin(id: string): Promise<CategoriaAdminRow | undefined> {
+    const [row] = await this.database.read((db) =>
+      db
+        .select({
+          id: categories.id,
+          nombre: categories.nombre,
+          descripcion: categories.descripcion,
+          categoria_padre_id: categories.categoria_padre_id,
+          orden: categories.orden,
+          imagen_url: categories.imagen_url,
+          estado: categories.estado,
+          version: categories.taxonomy_version,
+          slug: categorySeo.slug,
+        })
+        .from(categories)
+        .leftJoin(categorySeo, eq(categorySeo.categoria_id, categories.id))
+        .where(eq(categories.id, id))
+        .limit(1),
+    );
+    return row;
   }
 
   async findMarcasActivas(): Promise<MarcaRow[]> {

@@ -1,0 +1,36 @@
+{
+  "result": "PASS",
+  "environment": "DISPOSABLE_LOCAL_ONLY",
+  "checks": [
+    "durable consumption and identical replay",
+    "operation conflict and message collision preserve one use",
+    "concurrent last-use limit and required buyer identity",
+    "202/unconfirmed is not evidence; technical failure rolls back without result",
+    "restoration, repeated restoration, no-restore policy, no consumption and unknown reference",
+    "ambiguous fallback rejected; explicit consumption identity restores only its own use",
+    "outbox insert failure rolls back effect, receipt and inbox without ACK",
+    "continuous AMQP subscription, explicit test identity and ACK after durable commit",
+    "real broker redelivery after lost ACK does not repeat the effect",
+    "outbox survives failed publication and publishes with real broker confirms"
+  ],
+  "migrations": "official 0001–0004 unchanged",
+  "source_commit": "c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b",
+  "working_tree": "LOCAL_UNPUBLISHED",
+  "postgres_version": "17.11",
+  "images": [
+    {
+      "image": "postgres:17-alpine",
+      "digests": [
+        "postgres@sha256:b0f9560a2de083e2cc7382e75f808c7381a32852a7ec49117deedb300e552b24"
+      ]
+    },
+    {
+      "image": "rabbitmq:4.1-alpine",
+      "digests": [
+        "rabbitmq@sha256:922f70e0ed1bf985b658fe79d7c7e8f3c516bbb2309d7c285aa17b673d1ba953"
+      ]
+    }
+  ],
+  "shared_writes": false,
+  "evidence": "synthetic isolated provider; no G5/Inventory integration or homologation"
+}

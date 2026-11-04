@@ -1,0 +1,387 @@
+{
+  "captured_at": "2026-10-16T21:26:22.235Z",
+  "branch": "cueva",
+  "node": "v24.21.0",
+  "published_gateway_commit": "86030ab67f263fefee41ee6bb18578877767fb08",
+  "normative_docs_commit": "c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b",
+  "status": "PARTIAL_EXTERNAL_DEPENDENCIES_AND_BACK_GATES_PENDING",
+  "local_only": true,
+  "commit_created": false,
+  "pushed": false,
+  "gateway_modified": false,
+  "shared_dependency_manifests_modified_in_this_review": false,
+  "checks": [
+    {
+      "command": "npm test -- apps/promotions-svc --maxWorkers=1",
+      "result": "PASS",
+      "passed": 67
+    },
+    {
+      "command": "npm run test:e2e -- apps/promotions-svc --maxWorkers=1",
+      "result": "PASS",
+      "passed": 6
+    },
+    {
+      "command": "npm test -- --maxWorkers=1",
+      "result": "PASS",
+      "passed": 133,
+      "phase": "Before final probe driver-guard decoupling; focused unit checks repeated after it."
+    },
+    {
+      "command": "npm run test:e2e -- --maxWorkers=1",
+      "result": "PASS",
+      "passed": 325,
+      "not_executed_real_postgres_gateway": 4,
+      "phase": "Before final probe driver-guard decoupling."
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run lint",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run format:check",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run build:promotions-svc",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run build:all",
+      "result": "PASS"
+    },
+    {
+      "command": "node apps/promotions-svc/test/startup.smoke.mjs",
+      "result": "PASS",
+      "scope": "Compiled startup/liveness and blocked runtime activation"
+    },
+    {
+      "command": "node apps/promotions-svc/test/readiness.isolated.smoke.mjs",
+      "result": "PASS",
+      "checks": 7,
+      "scope": "Real disposable PostgreSQL TLS and RabbitMQ"
+    },
+    {
+      "command": "node apps/promotions-svc/test/coupons.isolated.smoke.mjs",
+      "result": "PASS",
+      "checks": 10,
+      "scope": "Real disposable PostgreSQL/RabbitMQ; synthetic business evidence, continuous Outbox recovery"
+    },
+    {
+      "command": "node --test scripts/seed/run.test.mjs scripts/seed/mcp/promotions/validate-draft.test.mjs scripts/seed/mcp/promotions/prepare-batch.test.mjs scripts/seed/validate-restore-plan.test.mjs",
+      "result": "PASS",
+      "passed": 31
+    },
+    {
+      "command": "node scripts/seed/mcp/promotions/validate-draft.mjs",
+      "result": "PASS",
+      "executable": false,
+      "references": "PENDING"
+    },
+    {
+      "command": "node scripts/seed/validate-restore-plan.mjs",
+      "result": "PASS",
+      "approved_restore_entries": 0,
+      "verified_hashes": 3,
+      "sql_executed": false,
+      "data_persisted": false
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS"
+    }
+  ],
+  "changes_this_review": [
+    "apps/promotions-svc/.env.example",
+    "apps/promotions-svc/CORRECCIONES-PENDIENTES.md",
+    "apps/promotions-svc/COUPON_COMMANDS.md",
+    "apps/promotions-svc/README.md",
+    "apps/promotions-svc/src/coupons/coupon-consumer.ts",
+    "apps/promotions-svc/src/coupons/coupon-outbox-pump.spec.ts",
+    "apps/promotions-svc/src/coupons/coupon-outbox-pump.ts",
+    "apps/promotions-svc/src/coupons/coupon-providers.ts",
+    "apps/promotions-svc/src/coupons/coupon-runtime.spec.ts",
+    "apps/promotions-svc/src/coupons/coupon-runtime.ts",
+    "apps/promotions-svc/src/health/promotions-dependency-probes.ts",
+    "apps/promotions-svc/src/health/promotions-readiness.service.ts",
+    "apps/promotions-svc/src/infrastructure/config/promotions-config.spec.ts",
+    "apps/promotions-svc/src/infrastructure/config/promotions-config.ts",
+    "apps/promotions-svc/src/infrastructure/logging/startup-logger.ts",
+    "apps/promotions-svc/src/promotions-svc.module.ts",
+    "apps/promotions-svc/test/app.e2e-spec.ts",
+    "apps/promotions-svc/test/coupons.isolated.smoke.mjs",
+    "apps/promotions-svc/test/evidence/coupon-runtime-corrections-2026-10-16.json",
+    "apps/promotions-svc/test/evidence/readiness-corrections-2026-10-16.json",
+    "apps/promotions-svc/test/readiness.isolated.smoke.mjs",
+    "apps/promotions-svc/test/startup.smoke.mjs",
+    "apps/promotions-svc/test/support/create-probe-certificate.py",
+    "apps/promotions-svc/test/support/environment.ts",
+    "scripts/seed/DATA_COMPLETION_REVIEW.md"
+  ],
+  "files": [
+    {
+      "path": "apps/promotions-svc/.env.example",
+      "sha256": "f550db7bd1d0f090fe0589c99940c2b14b3bcb0ea07eaf5967792079d8267b23"
+    },
+    {
+      "path": "apps/promotions-svc/CORRECCIONES-PENDIENTES.md",
+      "sha256": "38296b62d0db52c3cec6d9baa0e5291bf51afcb1655de185a6d716f488a16102"
+    },
+    {
+      "path": "apps/promotions-svc/COUPON_COMMANDS.md",
+      "sha256": "6c997f0e4012a8cfb7d38c1f8a8f0412ccf0eff76574fbfba588315ed46689d2"
+    },
+    {
+      "path": "apps/promotions-svc/README.md",
+      "sha256": "4df4ce93c0635f319d3d3df73b574727dde3cb3f0f9ba1d2abe7b115ea75175d"
+    },
+    {
+      "path": "apps/promotions-svc/dev/check-local-database.mjs",
+      "sha256": "9a404f71b46267a9b0853dd1c5312770827f13a58405e9fb23b6d47d8610866f"
+    },
+    {
+      "path": "apps/promotions-svc/dev/check-local-startup.mjs",
+      "sha256": "fb05a7abd85543205dcc2e5c5620822e66f83ff4c753977f8d3bc11c990cdd2a"
+    },
+    {
+      "path": "apps/promotions-svc/dev/start-local-broker.mjs",
+      "sha256": "b92c394ff88f29d6844be6d0b959fdf611e6dff537bf24657d5938fab04cd474"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-amqp.spec.ts",
+      "sha256": "5e2903120e485c23d025fa7cc3d875128718801951a84b39fa38963cfed83db4"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-amqp.ts",
+      "sha256": "f88e5476f7e999f2d114ba3fe1509a0425d8aacb5263fa8a3909509ebd7e41ee"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-command.spec.ts",
+      "sha256": "4818bf34fa0c5efeb9bf2de3136dd5357030d95acb4e16a7ea4ed0aeea6cbb25"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-command.ts",
+      "sha256": "c6db8ea90501f60c6912efedba7a211830f054c7af51d3dbddbd9c1f4455d9d0"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-consumer.spec.ts",
+      "sha256": "8e796ebbd18ce8d6819cf051411c1a166a6f195fbdacdc783895f8c3d883f66a"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-consumer.ts",
+      "sha256": "ff36cf1f21bd84793c6cfb74ab280d34e3c0567d0f999bdbf28ecbf19b9c0a8a"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-contract.generated.ts",
+      "sha256": "1b8ad0c11a0bf010676b22a1dcb18f3d02fb758808dce492766a33c227709596"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-outbox-pump.spec.ts",
+      "sha256": "4c8a17d5cf2ed2b7474b121fc4941160dcdc50df327e7598ae0d2bb06c247a6e"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-outbox-pump.ts",
+      "sha256": "ef641775b929af9dc7cd5cc625df4de78b0979b74048e93b1b4662d8e6ee548f"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-outbox.ts",
+      "sha256": "dfbef7c435b107faf062da2cf47ab3d5d4b8190357e7e3f592027432f39ccb9e"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-providers.ts",
+      "sha256": "6ea6e066d556662d918eac03d285761b4b844d460fe21b956ebc5c042849181c"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-runtime.spec.ts",
+      "sha256": "9f80784f38f62cba0dfeb5a91e2519ebaeb9a6a8db07612e3a49a09a32d29f64"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-runtime.ts",
+      "sha256": "70a76e2ef31db2a1528e225c1ecb6ff098e09ef7d32980dfe8b0837f0043e9ae"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/coupon-transactions.ts",
+      "sha256": "77c080ce0fb4888effaae208b53af8306c2efda01715484043b6bcd588d29759"
+    },
+    {
+      "path": "apps/promotions-svc/src/coupons/schema-validator.ts",
+      "sha256": "8cce92f391a37c78da75f8cb7a2372295d871dbbf346304842e3ad4215c5411a"
+    },
+    {
+      "path": "apps/promotions-svc/src/health/promotions-dependency-probes.ts",
+      "sha256": "5a6952f2d6ac7acd8a3aac1851aeddbc7717b5feb20b68b31a021640a3b096de"
+    },
+    {
+      "path": "apps/promotions-svc/src/health/promotions-readiness.service.spec.ts",
+      "sha256": "6837d543f221d6ab0973e733860eb234e6e7d81622630999d9ee4b8e4afdb889"
+    },
+    {
+      "path": "apps/promotions-svc/src/health/promotions-readiness.service.ts",
+      "sha256": "e49a581107ed8845c30ecc93fc7f6a11601720e9b1ee7870aba7226f20dcb3de"
+    },
+    {
+      "path": "apps/promotions-svc/src/infrastructure/config/promotions-config.spec.ts",
+      "sha256": "669ff4ac4e83de719094dd8ea550596cf2978b263826a34721b1cd6c84752854"
+    },
+    {
+      "path": "apps/promotions-svc/src/infrastructure/config/promotions-config.ts",
+      "sha256": "83cc1b2e75d1a2503790ae3058906308db011e7b0ecd4892169ee2bba511c335"
+    },
+    {
+      "path": "apps/promotions-svc/src/infrastructure/logging/startup-logger.spec.ts",
+      "sha256": "f496040ac1e98ce60c177dab3e8e4eb2d63f76b70f57c905c3169339aa934bfa"
+    },
+    {
+      "path": "apps/promotions-svc/src/infrastructure/logging/startup-logger.ts",
+      "sha256": "3763850c7fe881b5b05ec4e7918433cd4dcdb870d2cc8af7b37c3566ff62942e"
+    },
+    {
+      "path": "apps/promotions-svc/src/main.ts",
+      "sha256": "1de42191e28af41ddf5e2b2c4eab27361c323311305e5d20cbd99b105379dcc0"
+    },
+    {
+      "path": "apps/promotions-svc/src/promotions-svc.module.ts",
+      "sha256": "c3ff3fb073669460fd7dca8b3ed0529331d904a3187c84f06f386df2041f69ca"
+    },
+    {
+      "path": "apps/promotions-svc/test/app.e2e-spec.ts",
+      "sha256": "f8a6c37148fbecd0670dd360c25f1d60fd67c74f4ffbc68cc0e761748bc9b266"
+    },
+    {
+      "path": "apps/promotions-svc/test/coupons.isolated.smoke.mjs",
+      "sha256": "f69bc9527a46d571a3d1691b3a7d073c62697a8e4e923d1aa7c4e86ab48a22a7"
+    },
+    {
+      "path": "apps/promotions-svc/test/evidence/coupon-runtime-corrections-2026-10-16.json",
+      "sha256": "c245d8d7047f901ce825869f80ca28024970f684cfc7e1e795ec3ea57d87c811"
+    },
+    {
+      "path": "apps/promotions-svc/test/evidence/coupons-isolated-2026-10-16.json",
+      "sha256": "f8ebd917b510930ebba5597fcb42b52e8572cc838636bdd26de83eca36feb286"
+    },
+    {
+      "path": "apps/promotions-svc/test/evidence/local-postgres-2026-10-16.json",
+      "sha256": "9fc5a6de7654e42e515cfe17e451a40d1f3c31ac97dcb362115ee9ebe8aef250"
+    },
+    {
+      "path": "apps/promotions-svc/test/evidence/readiness-corrections-2026-10-16.json",
+      "sha256": "2ee0fe6289ae6658e31c4e4fb3b4f537357e97d434d23f58340e8acc0014f196"
+    },
+    {
+      "path": "apps/promotions-svc/test/generate-coupon-contract.mjs",
+      "sha256": "e1dc9090527e1a36d9b8fad09b93c868fcdf4503ba500b86b8f7d9befa70cc8a"
+    },
+    {
+      "path": "apps/promotions-svc/test/readiness.isolated.smoke.mjs",
+      "sha256": "7e36d19aba453324bad616f2dd1dbbfffba06557f074fff81a7219a6b605b4bd"
+    },
+    {
+      "path": "apps/promotions-svc/test/startup.smoke.mjs",
+      "sha256": "446ccac2be63902752f9e0599a1c9d6e4162c776d60886248070425ff67c4f23"
+    },
+    {
+      "path": "apps/promotions-svc/test/support/create-probe-certificate.py",
+      "sha256": "823c943a421f9b95a69420d5e3d15eb641d82c97a06d12c4f216675a2cc2ee51"
+    },
+    {
+      "path": "apps/promotions-svc/test/support/environment.ts",
+      "sha256": "2d4d0a7eadf2f420da1c52b62ee07f213768cde4644a7ad2effa61a1632ccedb"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "1f122cb5e6713128351824a214d15ae3aacdb97d32fe857e42aa6606ad460d1d"
+    },
+    {
+      "path": "package.json",
+      "sha256": "fcd72e7335ecd7156c02160810fc7f0146bef8aea16edc38902916889c257c10"
+    },
+    {
+      "path": "scripts/seed/DATA_COMPLETION_REVIEW.md",
+      "sha256": "49fb43dd37f0194dd2c0be53210386950460e3baa7d563a12cb2516ac89aae91"
+    },
+    {
+      "path": "scripts/seed/RESTORE_PLAN.md",
+      "sha256": "f87e4de38f46d473383dd7aa3fa9be86df5d975dea1f52d32e924f768053f997"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/README.md",
+      "sha256": "a49f884ff5382ede39e00e23861220284364d72a9bc3a68f3cefa70c7f163da8"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/SHA256SUMS",
+      "sha256": "3f61660d98dae43c86f1bf775acecd7cc5f539e020ecd2cb23e0b15ac6fbe549"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/baseline-2026-10-16.json",
+      "sha256": "18678439681f79095990232af6bb5e080d1c135113314c610cf296e1fb33cd4c"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/bindings.template.json",
+      "sha256": "c6b3a11da3b02ccb89b68f902bde037451fad3c9b081d55913b26a21e9f57b94"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/inka-athletics-draft.json",
+      "sha256": "3def2c7e617e79a29f034c40acaa37ac54de9be4e33a8087d99e8800dace172f"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/prepare-batch.mjs",
+      "sha256": "5b3b122c591f171428bdb4ce0db10984496ab098af75303cb5b9e2d53b282d4a"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/prepare-batch.test.mjs",
+      "sha256": "b4ed4a7f2def89898d20979a01f9899594b381d12b5fe183b5ed615364570bb2"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/test/evidence/isolated-2026-10-16.json",
+      "sha256": "6feefdc692a4dedb5f4fb0076e0004e7ac1870fdf933abf7f591bcce55945d2a"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/test/isolated.mjs",
+      "sha256": "c3946b0a3eab4121257ee425de1b49eba2639772af59e1af3c40619fbdac2862"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/test/support/bindings.mjs",
+      "sha256": "c0621d2a4c6d7bc50bc07fa9c682b18720c60c5d5563366610f932ffbf60aa02"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/trigger-body-review-2026-10-16.json",
+      "sha256": "96e20734a73211afec2cea132cface3422ca7598d91b7a023a0d86e688438ade"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/validate-draft.mjs",
+      "sha256": "f361c308a2590e552e85ae240af6a4083781f92fda1441816d153014f43e9ec2"
+    },
+    {
+      "path": "scripts/seed/mcp/promotions/validate-draft.test.mjs",
+      "sha256": "df76841b2c9b8d653ea3c126876c805af56dfc01a22b34bd7fc6e851b6c6025f"
+    },
+    {
+      "path": "scripts/seed/reconciliation-2026-10-16.md",
+      "sha256": "034551a9a7e91bbd17142f2c8814bd0e880d3288c4f3453a33f19267b0bb27cd"
+    },
+    {
+      "path": "scripts/seed/restore-plan.json",
+      "sha256": "a937b6d07133478d3a61b10cd6058018ae728335fa056f30cb92a1a6f0c2fb14"
+    },
+    {
+      "path": "scripts/seed/validate-restore-plan.mjs",
+      "sha256": "0d8c7ee0c7f125e8fe5e62ab89ea6e8ebf4b3b953cc774ba1c6e7fd11c1ba6db"
+    },
+    {
+      "path": "scripts/seed/validate-restore-plan.test.mjs",
+      "sha256": "1c24d826548a346234d8cbb866d3fe7141827b64303bd0440841f7bb4b754921"
+    }
+  ],
+  "limits": [
+    "Coupon runtime and real probes default to disabled; missing production evidence/eligibility/dispatcher/identity blocks opt-in consumer activation.",
+    "No shared database or broker connections, writes, grants, migrations, homologation or deployment in this review.",
+    "No full Drizzle persistence or projection dispatcher implemented: explicit BACK prerequisites remain pending.",
+    "DATA preparation and dry-run remain inactive/unapproved; no commercial references or prices fabricated.",
+    "Initial disposable probe test cleanup failed due to unsupported conditional quorum deletion; corrected fixture cleanup, final smoke passed.",
+    "One final validation command was initially not executed because automatic approval review hit its usage limit; retried successfully on user continuation."
+  ]
+}

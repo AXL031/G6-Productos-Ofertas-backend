@@ -32,6 +32,57 @@ afterAll(() => {
 });
 
 describe('CatalogConfig PG contract', () => {
+  it('captures restricted demo explicitly and rejects public upstreams or mixed preview', () => {
+    const env = {
+      ...validEnv(),
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      CATALOG_DEMO_GATEWAY_IPS: '10.0.0.5',
+      CATALOG_TAXONOMY_URL: 'http://taxonomy-svc:3009',
+      CATALOG_PRICING_URL: 'http://pricing-svc:3002',
+    };
+    expect(new CatalogConfig(env).readDemo.restricted).toBe(true);
+    expect(
+      new CatalogConfig({ ...env, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
+        .readDemo.restricted,
+    ).toBeUndefined();
+    expect(
+      () =>
+        new CatalogConfig({
+          ...env,
+          CATALOG_TAXONOMY_URL: 'https://public.example',
+        }),
+    ).toThrow();
+    expect(
+      () =>
+        new CatalogConfig({
+          ...env,
+          CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
+        }),
+    ).toThrow();
+  });
+  it('captures messaging and timeout configuration once and rejects malformed settings', () => {
+    const config = new CatalogConfig({
+      ...validEnv(),
+      CATALOG_PREPARATION_TIMEOUT_MS: '60000',
+    });
+    expect(config.preparation.timeoutMs).toBe(60000);
+    expect(config.amqp.connection).toBeUndefined();
+    expect(Object.isFrozen(config.preparation)).toBe(true);
+    expect(
+      () =>
+        new CatalogConfig({
+          ...validEnv(),
+          CATALOG_PREPARATION_TIMEOUT_MS: '-1',
+        }),
+    ).toThrow();
+    expect(
+      () =>
+        new CatalogConfig({
+          ...validEnv(),
+          RABBITMQ_URL: 'amqp://user:fixture@localhost/',
+        }),
+    ).toThrow();
+  });
   it.each(['session', 'direct'])(
     'accepts %s with strict TLS and typed configuration',
     (mode) => {
@@ -133,6 +184,38 @@ describe('CatalogConfig PG contract', () => {
     env.CATALOG_TAXONOMY_URL = 'http://invalid.example.test';
     expect(config.taxonomy.origin).toBe('https://taxonomy.example.test');
     expect(Object.isFrozen(config.taxonomy)).toBe(true);
+  });
+
+  it('keeps demo preview disabled by default and validates its explicit flag and private Pricing origin', () => {
+    expect(new CatalogConfig(validEnv()).marketplaceDemoPreview).toBe(false);
+    expect(
+      () =>
+        new CatalogConfig({
+          ...validEnv(),
+          CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'yes',
+        }),
+    ).toThrow('CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED');
+    expect(
+      () =>
+        new CatalogConfig({
+          ...validEnv(),
+          CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
+        }),
+    ).toThrow('CATALOG_PRICING_URL');
+    const config = new CatalogConfig({
+      ...validEnv(),
+      CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
+      CATALOG_PRICING_URL: 'http://pricing-svc:3002',
+    });
+    expect(config.marketplaceDemoPreview).toBe(true);
+    expect(config.pricingOrigin).toBe('http://pricing-svc:3002');
+    expect(
+      () =>
+        new CatalogConfig({
+          ...validEnv(),
+          CATALOG_PRICING_URL: 'https://pricing.example.test',
+        }),
+    ).toThrow('CATALOG_PRICING_URL');
   });
 
   it('rejects an unknown environment and does not echo secret values', () => {

@@ -1,0 +1,442 @@
+{
+  "version": 1,
+  "issue": 15,
+  "purpose": "REVIEW",
+  "executable": false,
+  "status": "CANDIDATES_NOT_COMMERCIALLY_APPROVED",
+  "catalog": {
+    "source": {
+      "reference": "supabase:slzglmtiyrzygpkiuthf:readonly:2026-10-24T15:23:26.449Z",
+      "sha256": "4aace51d9ecc6f5e5d46f1cdf409214474398920086f0bb58deda64ab878f6d7"
+    },
+    "products": [
+      {
+        "name": "Nike Revolution 7",
+        "state": "BORRADOR",
+        "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+        "sku_base": "NIK-REV7-BASE",
+        "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+        "category_id": "303886ae-f3f0-bc9c-145a-660979597595",
+        "has_variants": true,
+        "catalog_version": 0,
+        "active": false
+      },
+      {
+        "name": "adidas Runfalcon 3.0",
+        "state": "BORRADOR",
+        "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+        "sku_base": "ADI-RF3-BASE",
+        "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+        "category_id": "303886ae-f3f0-bc9c-145a-660979597595",
+        "has_variants": true,
+        "catalog_version": 0,
+        "active": false
+      },
+      {
+        "name": "adidas Entrada 22",
+        "state": "BORRADOR",
+        "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+        "sku_base": "ADI-ENT22-BASE",
+        "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "category_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+        "has_variants": true,
+        "catalog_version": 0,
+        "active": false
+      },
+      {
+        "name": "adidas RUNxCUSHIONED",
+        "state": "BORRADOR",
+        "brand_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+        "sku_base": "ADI-RUNX-JD9558-BASE",
+        "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "category_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+        "has_variants": true,
+        "catalog_version": 0,
+        "active": false
+      },
+      {
+        "name": "Nike Everyday Plus Cushioned",
+        "state": "BORRADOR",
+        "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+        "sku_base": "NIK-EVP-FQ0327-BASE",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "category_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+        "has_variants": true,
+        "catalog_version": 0,
+        "active": false
+      },
+      {
+        "name": "Nike Pitch",
+        "state": "BORRADOR",
+        "brand_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+        "sku_base": "NIK-PITCH-05",
+        "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+        "category_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+        "has_variants": false,
+        "catalog_version": 0,
+        "active": false
+      }
+    ],
+    "skus": [
+      {
+        "sku": "ADI-ENT22-AZU-M",
+        "state": "BORRADOR",
+        "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "ADI-RF3-GRI-38",
+        "state": "BORRADOR",
+        "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+        "variant_id": "532ffc0d-d209-2b48-6506-e94f62026e17",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "ADI-RF3-GRI-39",
+        "state": "BORRADOR",
+        "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+        "variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+        "state": "BORRADOR",
+        "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "variant_id": "629792a7-60fb-57f5-9747-f3b54cf8b553",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+        "state": "BORRADOR",
+        "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "variant_id": "b1d488a5-fba8-5fd4-90b7-b7440cd59a40",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+        "state": "BORRADOR",
+        "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "variant_id": "677f8fcc-caaf-5cc9-a060-c7756d5ab1c2",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "1c995251-cf8c-55e2-878a-ea83f9f4b351",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "e8a0b20b-a6fd-5a78-9e6b-8199f32742c2",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "bc260f04-d0c1-57d6-862a-6d7ae44c74ff",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "968ec637-15e1-549c-b8ba-da77ed375edc",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "7f8c7bf8-3086-5849-a21f-722bb13bff1c",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+        "state": "BORRADOR",
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "variant_id": "73829aef-a02c-5555-82f1-03a495d44ced",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-REV7-NEG-41",
+        "state": "BORRADOR",
+        "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+        "variant_id": "9df1c63b-f475-5ea4-fab4-cf2bb36120ae",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "sku": "NIK-REV7-NEG-42",
+        "state": "BORRADOR",
+        "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+        "variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      },
+      {
+        "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+        "sku": "NIK-PITCH-05",
+        "state": "BORRADOR",
+        "catalog_version": 0,
+        "active": false,
+        "channels": [],
+        "channel_evidence": {}
+      }
+    ]
+  },
+  "pricing": {
+    "source": {
+      "reference": "supabase:slzglmtiyrzygpkiuthf:readonly:2026-10-24T15:23:26.449Z",
+      "sha256": "4aace51d9ecc6f5e5d46f1cdf409214474398920086f0bb58deda64ab878f6d7"
+    },
+    "prices": [
+      {
+        "sku": null,
+        "amount": "69.90",
+        "currency": "PEN",
+        "price_id": "4575a954-c220-5042-a007-dcc0af2fbda2",
+        "channel_id": null,
+        "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+        "valid_from": "2026-10-17T11:34:20.018Z",
+        "valid_until": null,
+        "validity_id": "da40d40c-1b6a-5a72-a50e-2b9adce4099b",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      },
+      {
+        "sku": null,
+        "amount": "49.00",
+        "currency": "PEN",
+        "price_id": "559c7165-2f80-5808-a98d-deeca79fd2a4",
+        "channel_id": null,
+        "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "valid_from": "2026-10-17T11:34:20.018Z",
+        "valid_until": null,
+        "validity_id": "1c0ca457-d785-518e-ad25-db11f6786732",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      },
+      {
+        "sku": null,
+        "amount": "279.90",
+        "currency": "PEN",
+        "price_id": "78706bdc-ab26-f3a2-5113-390b1fe49c27",
+        "channel_id": null,
+        "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+        "valid_from": "2026-10-01T05:00:00.000Z",
+        "valid_until": null,
+        "validity_id": "e6242ecc-3705-4f7a-96d4-d527f59759a2",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      },
+      {
+        "sku": null,
+        "amount": "89.90",
+        "currency": "PEN",
+        "price_id": "bd607234-c18a-5b80-1350-afc195c1ebb1",
+        "channel_id": null,
+        "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+        "valid_from": "2026-10-01T05:00:00.000Z",
+        "valid_until": null,
+        "validity_id": "608ca059-1877-4ec4-a609-27f8a1ee8b89",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      },
+      {
+        "sku": null,
+        "amount": "79.90",
+        "currency": "PEN",
+        "price_id": "c548fff8-ac7c-27ae-1889-d48f67676ba8",
+        "channel_id": null,
+        "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "valid_from": "2026-10-01T05:00:00.000Z",
+        "valid_until": null,
+        "validity_id": "c431f40c-3bc0-46a1-a56f-87ed2b1f1561",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      },
+      {
+        "sku": null,
+        "amount": "249.90",
+        "currency": "PEN",
+        "price_id": "e5487a46-cc52-32eb-49cd-695f17246e40",
+        "channel_id": null,
+        "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+        "valid_from": "2026-10-01T05:00:00.000Z",
+        "valid_until": null,
+        "validity_id": "c673464b-d87b-44bc-a8aa-dc4bb7eb2c97",
+        "is_cancelled": false,
+        "offer_amount": null,
+        "price_version": 1
+      }
+    ]
+  },
+  "inventory": {
+    "source": {
+      "reference": "supabase:slzglmtiyrzygpkiuthf:readonly:2026-10-24T15:23:26.449Z",
+      "sha256": "4aace51d9ecc6f5e5d46f1cdf409214474398920086f0bb58deda64ab878f6d7"
+    },
+    "records": [
+      {
+        "sku": "ADI-ENT22-AZU-M",
+        "registered_locations": 2,
+        "positive_available_location": true
+      },
+      {
+        "sku": "ADI-RF3-GRI-38",
+        "registered_locations": 2,
+        "positive_available_location": true
+      },
+      {
+        "sku": "ADI-RF3-GRI-39",
+        "registered_locations": 2,
+        "positive_available_location": false
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+        "registered_locations": 0,
+        "positive_available_location": false
+      },
+      {
+        "sku": "NIK-REV7-NEG-41",
+        "registered_locations": 2,
+        "positive_available_location": true
+      },
+      {
+        "sku": "NIK-REV7-NEG-42",
+        "registered_locations": 2,
+        "positive_available_location": true
+      },
+      {
+        "sku": "NIK-PITCH-05",
+        "registered_locations": 2,
+        "positive_available_location": true
+      }
+    ]
+  },
+  "review": {
+    "reviewer": null,
+    "evidence": null
+  },
+  "campaign_scopes": [
+    {
+      "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+      "skus": [
+        "ADI-RF3-GRI-38",
+        "NIK-REV7-NEG-41",
+        "NIK-REV7-NEG-42"
+      ]
+    },
+    {
+      "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902",
+      "skus": [
+        "ADI-ENT22-AZU-M"
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "origin_product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "candidate_product_ids": [
+        "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "ff8e9b30-f939-51cd-9294-4753cdae05b8"
+      ],
+      "status": "PENDING_AVAILABILITY_AND_APPROVAL"
+    },
+    {
+      "origin_product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "candidate_product_ids": [],
+      "status": "PENDING_CATALOG_CANDIDATE"
+    }
+  ]
+}

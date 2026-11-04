@@ -6,17 +6,31 @@
 
 ## 1. Orden obligatorio de trabajo
 
-Prohibido escribir código antes de completar los pasos 1 a 5:
+Prohibido escribir código antes de completar los pasos 1 a 6:
 
 1. **LEER `AGENTS.md` COMPLETO** antes de editar cualquier archivo.
 2. **Identificar la rama actual:** debe ser tu rama personal asignada.
 3. **Leer el Issue asignado** y comprender todos sus criterios de aceptación.
 4. **Identificar microservicio, owner y archivos autorizados:** verificar matriz de ownership.
 5. **Consultar los contratos normativos correspondientes** en el repositorio de documentación.
-6. **Realizar únicamente los cambios solicitados:** sin refactors extra ni archivos fuera de scope.
-7. **Ejecutar pruebas:** pruebas enfocadas primero, luego validaciones generales.
-8. **Revisar `git diff`:** verificar cambios exactos y ausencia de whitespace errors.
-9. **Reportar resultados y bloqueos:** según el formato de reporte obligatorio.
+6. Para toda implementación o modificación del modo demo, antes de cambiar código es obligatorio leer `ops/oracle/H4-MODO-DEMO-AUTH-REVERSIBLE.md` y Backend [#144](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/144).
+7. **Realizar únicamente los cambios solicitados:** sin refactors extra ni archivos fuera de scope.
+8. **Ejecutar pruebas:** pruebas enfocadas primero, luego validaciones generales.
+9. **Revisar `git diff`:** verificar cambios exactos y ausencia de whitespace errors.
+10. **Reportar resultados y bloqueos:** según el formato de reporte obligatorio.
+
+### Lectura obligatoria para preparación Oracle
+
+Antes de modificar un microservicio, además de leer `AGENTS.md` y el Issue asignado, consulta los contratos OpenAPI, AsyncAPI y DEC-F aplicables, y estas guías de despliegue:
+
+1. `ops/oracle/GUIA_DEVTEAM.md`.
+2. `ops/oracle/CONTRATO_DESPLIEGUE.md`.
+3. `ops/oracle/servicios/<servicio>.md`.
+4. `ops/oracle/MATRIZ_DEPENDENCIAS.md`.
+5. `ops/oracle/RABBITMQ_COMPATIBILIDAD.md`, cuando el servicio use o proponga AMQP.
+6. `ops/oracle/CHECKLIST_PREDEPLOY.md`.
+
+Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas a su SHA que demuestren el cumplimiento de todos los requisitos aplicables de compilación, configuración, persistencia, mensajería, seguridad, contratos, Docker y readiness. Un bloqueo específico de AMQP no debe impedir el desarrollo independiente de funcionalidades HTTP o de persistencia dentro del alcance autorizado.
 
 ---
 
@@ -121,3 +135,7 @@ DEPENDENCIAS EXTERNAS: <owner | operación afectada | condición exacta de desbl
 CAMBIOS FUERA DEL ALCANCE: <ninguno o justificación expresa>
 ESTADO FINAL: PASS / PARTIAL / BLOCKED
 ```
+
+## G1 Marketplace H4 — documentación operativa obligatoria
+
+Antes de implementar o modificar endpoints consumidos por Marketplace, lee [`integraciones/g1-marketplace/README.md`](integraciones/g1-marketplace/README.md), su [matriz de 25 funciones](integraciones/g1-marketplace/MATRIZ_OPERACIONES_H4.md) y [plan de pruebas/evidencias](integraciones/g1-marketplace/PRUEBAS_Y_EVIDENCIAS_H4.md), el [acuerdo normativo G1–G6 de Docs PR #94](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md), la [alineación Marketplace de Docs PR #94](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ALINEACION_MARKETPLACE.md) y el OpenAPI de Docs. Esta lectura se suma, no sustituye, a SPEC, DEC-F/ADR, modelo y pruebas del servicio. Registra contrato, código, CI, despliegue, grant y E2E con SHA exacto como estados independientes. No tomes informes históricos como estado actual.

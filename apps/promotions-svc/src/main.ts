@@ -1,34 +1,25 @@
-import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import type { INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { PromotionsSvcModule } from './promotions-svc.module.js';
-
-function loadEnv(): void {
-  const envPath = resolve(process.cwd(), '.env');
-  if (existsSync(envPath) && typeof process.loadEnvFile === 'function') {
-    process.loadEnvFile(envPath);
-  }
-}
-
-function resolvePort(): number {
-  const rawPort = process.env.PROMOTIONS_SVC_PORT ?? process.env.PORT ?? '3004';
-  const port = Number(rawPort);
-  if (!Number.isInteger(port) || port < 1 || port > 65535) {
-    throw new Error(
-      '[' +
-        'promotions-svc' +
-        '] Puerto invalido: ' +
-        String(rawPort) +
-        '. Debe ser un entero entre 1 y 65535.',
-    );
-  }
-  return port;
-}
+import { PromotionsConfigService } from './infrastructure/config/promotions-config.js';
+import { PromotionsStartupLogger } from './infrastructure/logging/startup-logger.js';
 
 async function bootstrap() {
-  loadEnv();
-  const port = resolvePort();
-  const app = await NestFactory.create(PromotionsSvcModule);
-  await app.listen(port);
+  const logger = new PromotionsStartupLogger();
+  let app: INestApplication | undefined;
+  try {
+    app = await NestFactory.create(PromotionsSvcModule, {
+      logger: false,
+      abortOnError: false,
+    });
+    const config = app.get(PromotionsConfigService).settings;
+    app.enableShutdownHooks();
+    await app.listen(config.port, config.listenHost);
+    logger.started();
+  } catch (error: unknown) {
+    if (app) await app.close().catch(() => undefined);
+    logger.failed(error);
+    process.exitCode = 1;
+  }
 }
 await bootstrap();

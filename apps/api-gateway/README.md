@@ -128,17 +128,30 @@ No se cambia package.json para cargar archivos de otra aplicación.
   métodos no registrados continúan en 404. Cuando es `false`, conserva la
   validación JWT/autorización anterior sin cambios. El flag anterior
   `GATEWAY_DEMO_ANONYMOUS_ENABLED` fue retirado.
+- `G6_READ_ONLY_DEMO_ENABLED`: compatibilidad con el cambio de lectura de PR
+  #125, `false` por defecto. Si es `true`, solo permite sin JWT los seis GET
+  definidos en el allowlist de Gateway; cualquier otra operación queda en 403,
+  incluso si trae JWT. No puede coexistir con
+  `GATEWAY_DEMO_NO_AUTH_ENABLED=true`: esa configuración es contradictoria y
+  hace fallar el inicio. Para Fase A #144 se usa el flag general; este flag
+  estrecho existe únicamente para preservar explícitamente el modo de #125.
 
-El modo anónimo es una excepción temporal de demo respecto de los requisitos de
-seguridad JWT que declara el OpenAPI; el archivo OpenAPI no se modifica y esta
-excepción no implica homologación externa. Cualquier persona que alcance una
-instancia pública podrá invocar todas las operaciones contractuales accesibles,
-incluidas escrituras; CORS no limita clientes ajenos al navegador. No habilitar
-la exposición pública de escrituras hasta acreditar aislamiento del conjunto de
-datos de demo frente a datos reales compartidos, permisos mínimos de roles
-runtime, respaldo y recuperación, límites de solicitudes adecuados y revisión
-de exposición. Sin esa evidencia, mantener bloqueada la activación pública.
-Estas pruebas aisladas no acreditan dichas condiciones. Las operaciones que
+Ambos modos demo tienen además una barrera local: el peer TCP de cada solicitud
+que omite JWT debe ser loopback o una dirección privada RFC1918/IPv6 ULA. No se
+usan `X-Forwarded-For`, `X-Real-IP`, `Origin` ni headers de identidad enviados
+por el cliente para decidirlo. Esta comprobación bloquea peers públicos, pero
+no demuestra por sí sola qué operadores pueden alcanzar una red privada. Antes
+de activar el flag en cualquier runtime se requiere evidencia de que la entrada
+al Gateway está restringida a los operadores/dispositivos autorizados y que
+los upstreams no se exponen directamente; esta fase no modifica ni acredita la
+red, Caddy o el runtime de Oracle.
+
+El modo demo es una excepción temporal respecto de los requisitos JWT que
+declara OpenAPI; el contrato no se modifica y esta excepción no implica
+homologación externa. La barrera de peer privado no equivale a aislamiento de
+datos, controles de operadores o aprobación de exposición; CORS tampoco limita
+clientes que no usan navegador. Las pruebas Gateway no acreditan esas
+condiciones. Las operaciones que
 dependan de identidad de comprador no reciben una identidad inventada: requieren
 que la regla del upstream funcione sin ella o rechace la solicitud.
 
@@ -218,12 +231,15 @@ de los 5 MB de SPEC-011, rechazo 413 de 11 MiB normal/temprano, código ajeno
 rechazado y 401/403 antes de contactar al proveedor. Son fixtures sintéticos
 de transporte, sin acreditar validación de imágenes ni integración Taxonomía.
 
-Regeneración offline: descargar el OpenAPI del commit indicado, convertir YAML
-a JSON con un parser YAML y ejecutar
-`node apps/api-gateway/test/generate-routes.mjs <openapi.json>`; después aplicar
-Prettier y ejecutar pruebas. El parser se usó como herramienta temporal, sin
-añadir dependencias del proyecto. No versionar la copia YAML/JSON temporal de
-`node_modules/.cache`; el inventario generado es el artefacto de runtime.
+Actualización offline focalizada: obtener el OpenAPI oficial **0.6.0-rc.2** y
+convertir su YAML a JSON temporal con un parser YAML. Ejecutar el generador con
+el `operationId` que se desea actualizar, por ejemplo:
+`node apps/api-gateway/test/generate-routes.mjs <openapi-0.6.0-rc.2.json> verificarCantidadComercial`.
+El argumento `operationId` es obligatorio; el generador falla cerrado si falta,
+la operación no existe o `x-error-codes` está ausente o malformado. Solo actualiza
+los códigos de la operación seleccionada; no regenera el resto del registro. El
+parser se usa temporalmente, sin añadir dependencias. No versionar la copia
+YAML/JSON temporal; el inventario generado es el artefacto de runtime.
 
 ## Estado y dependencias específicas
 
@@ -248,3 +264,9 @@ en runtime y no está desplegada por este PR. Las pruebas con proveedores aislad
 código del Gateway; no acreditan integración autenticada, homologación externa,
 aislamiento de datos, mínimos privilegios, recuperación, rate limiting, CORS de
 orígenes reales o despliegue.
+
+## Marketplace H4 — estado vigente
+
+Este informe corresponde al corte histórico del 2026-10-16. No representa el estado actual de ramas, PR, runtime ni autorización. Consulta [`integraciones/g1-marketplace/`](../../integraciones/g1-marketplace/README.md) para el estado vigente por operación y el [acuerdo normativo Docs](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md). Su evidencia fechada se conserva sin reinterpretarla como evidencia de HEAD posterior.
+
+El cliente esperado es `modulo-marketplace`, audience `api-productos`, con scopes OpenAPI por operación; grant/token real requiere evidencia G7. `GATEWAY_DEMO_NO_AUTH_ENABLED` es bypass demo, separado de autenticación H4.

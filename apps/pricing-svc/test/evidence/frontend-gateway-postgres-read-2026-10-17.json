@@ -1,0 +1,41 @@
+{
+  "status": "PASS_BACKEND_READ_ONLY",
+  "backendBaseSha": "2970df90babf2c8caa1849b179b02918fc74a005",
+  "postgresVersion": "16.15",
+  "isolation": "Contenedor efímero exclusivo creado por IsolatedPostgres; rol runtime pricing_app",
+  "fixture": "Producto de prueba persistido en pricing; no es publicación comercial de Catálogo",
+  "requestPath": "/api/v1/precios/productos/0ed60c22-25b8-490f-b29d-a8abf212abad",
+  "serviceReadinessStatus": 200,
+  "gatewayReadiness": {
+    "status": "ready",
+    "dependencies": {
+      "catalog-svc": "not_configured",
+      "taxonomy-svc": "not_configured",
+      "pricing-svc": "ready",
+      "promotions-svc": "not_configured",
+      "combos-svc": "not_configured",
+      "inventory-svc": "not_configured",
+      "price-audit-svc": "not_configured",
+      "bulk-svc": "not_configured"
+    },
+    "coverage": "partial"
+  },
+  "responseStatus": 200,
+  "body": {
+    "product_id": "0ed60c22-25b8-490f-b29d-a8abf212abad",
+    "precio_regular": 99.99,
+    "precio_oferta": null,
+    "currency": "PEN",
+    "channel_id": null,
+    "valid_from": "2026-10-17T13:25:51.532Z",
+    "valid_until": null,
+    "price_version": 1
+  },
+  "persistedRegular": "99.99",
+  "demoNoAuth": true,
+  "jwtSent": false,
+  "reactConnected": false,
+  "sharedFrontendClientUsed": false,
+  "writesEnabled": false,
+  "scope": "Solo Gateway real → Pricing real → PostgreSQL aislado. No acredita E2E React ni homologación."
+}

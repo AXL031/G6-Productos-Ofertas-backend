@@ -1,6 +1,8 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
+  type LoggerService,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
@@ -9,15 +11,18 @@ import { checkServerIdentity } from 'node:tls';
 import pg, { type PoolConfig } from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
-import { esquemaTaxonomia } from './persistence/taxonomy.schema.js';
-import type { TransaccionTaxonomy } from './persistence/drizzle-taxonomy.repository.js';
-import type { TaxonomyWriteUnitOfWork } from './persistence/taxonomy-write.unit-of-work.js';
 
 export function parseDatabaseUrl(
   urlStr: string,
 ): Partial<Record<string, string>> {
   try {
     const url = new URL(urlStr);
+    if (
+      !['postgres:', 'postgresql:'].includes(url.protocol) ||
+      !url.hostname ||
+      !url.pathname.replace(/^\//, '')
+    )
+      return {};
     const result: Partial<Record<string, string>> = {};
     if (url.hostname) result.PGHOST = url.hostname;
     if (url.port) result.PGPORT = url.port;
@@ -43,6 +48,8 @@ export function readDatabaseConfig(
   env: Readonly<NodeJS.ProcessEnv>,
 ): PoolConfig {
   try {
+    if (env.DATABASE_URL?.trim() && !parseDatabaseUrl(env.DATABASE_URL).PGHOST)
+      throw new Error();
     const urlParams = env.DATABASE_URL?.trim()
       ? parseDatabaseUrl(env.DATABASE_URL)
       : {};
@@ -104,82 +111,61 @@ export function readDatabaseConfig(
   }
 }
 
-const CODIGOS_ERROR_CONEXION = new Set([
-  'ECONNREFUSED',
-  'ECONNRESET',
-  'ENOTFOUND',
-  'ETIMEDOUT',
-  'EHOSTUNREACH',
-  'EPIPE',
-  '08000',
-  '08001',
-  '08003',
-  '08004',
-  '08006',
-  '08007',
-  '57P01',
-  '57P02',
-  '57P03',
-]);
-
-function esErrorDeConexion(error: unknown, profundidad = 0): boolean {
-  if (typeof error !== 'object' || error === null || profundidad > 3) {
-    return false;
-  }
-  const dato = error as { code?: unknown; cause?: unknown };
-  if (typeof dato.code === 'string' && CODIGOS_ERROR_CONEXION.has(dato.code)) {
-    return true;
-  }
-  return dato.cause ? esErrorDeConexion(dato.cause, profundidad + 1) : false;
-}
-
 @Injectable()
-export class Database implements OnModuleDestroy, TaxonomyWriteUnitOfWork {
+export class Database implements OnModuleDestroy {
+  private logger: LoggerService = new Logger(Database.name);
   private pool?: pg.Pool;
   private db?: NodePgDatabase;
   private closed = false;
+  private env: Readonly<NodeJS.ProcessEnv> = process.env;
+
+  usarLogger(logger: LoggerService): void {
+    this.logger = logger;
+  }
 
   async read<T>(query: (db: NodePgDatabase) => Promise<T>): Promise<T> {
     try {
-      if (this.closed) throw new Error('Database cerrada');
-      this.db ??= drizzle(this.obtenerPool());
+      if (this.closed) throw new Error();
+      if (!this.pool) {
+        this.pool = new pg.Pool(readDatabaseConfig(this.env));
+        // pg emite errores de clientes idle fuera de la promesa de consulta.
+        // Nunca emitir el error del driver, SQL, parámetros ni configuración.
+        this.pool.on('error', () => {
+          this.db = undefined;
+          this.logger.error({
+            event: 'taxonomy.database.idle_connection_failed',
+            service: 'taxonomy-svc',
+            component: 'postgres',
+            state: 'unavailable',
+            reason: 'IDLE_CONNECTION_FAILURE',
+          });
+        });
+      }
+      this.db ??= drizzle(this.pool);
       return await query(this.db);
     } catch {
+      this.logger.error({
+        event: 'taxonomy.database.query_failed',
+        service: 'taxonomy-svc',
+        component: 'postgres',
+        state: 'unavailable',
+        reason: 'POSTGRES_QUERY_FAILURE',
+      });
       throw new ServiceUnavailableException(
         'Servicio temporalmente no disponible',
       );
-    }
-  }
-
-  async enTransaccion<T>(
-    operacion: (tx: TransaccionTaxonomy) => Promise<T>,
-  ): Promise<T> {
-    if (this.closed) {
-      throw new ServiceUnavailableException(
-        'Servicio temporalmente no disponible',
-      );
-    }
-    try {
-      const db = drizzle(this.obtenerPool(), { schema: esquemaTaxonomia });
-      return await db.transaction((tx) => operacion(tx));
-    } catch (error) {
-      if (esErrorDeConexion(error)) {
-        throw new ServiceUnavailableException(
-          'Servicio temporalmente no disponible',
-        );
-      }
-      throw error;
     }
   }
 
   async verifyIdentity(
-    env: Readonly<NodeJS.ProcessEnv> = process.env,
+    env: Readonly<NodeJS.ProcessEnv> = this.env,
   ): Promise<void> {
-    const urlParams = env.DATABASE_URL?.trim()
-      ? parseDatabaseUrl(env.DATABASE_URL)
+    if (!this.pool) this.env = { ...env };
+    const urlParams = this.env.DATABASE_URL?.trim()
+      ? parseDatabaseUrl(this.env.DATABASE_URL)
       : {};
     const effectiveEnv: NodeJS.ProcessEnv = {
-      ...env,
+      ...this.env,
       ...urlParams,
     };
     await this.read(async (db) => {
@@ -208,26 +194,8 @@ export class Database implements OnModuleDestroy, TaxonomyWriteUnitOfWork {
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (this.closed) return;
     this.closed = true;
     await this.pool?.end();
-  }
-
-  private obtenerPool(): pg.Pool {
-    if (this.closed) throw new Error('Database cerrada');
-    if (!this.pool) {
-      this.pool = new pg.Pool(readDatabaseConfig(process.env));
-      // pg emite errores de clientes idle fuera de la promesa de consulta.
-      // Nunca emitir el error del driver, SQL, parámetros ni configuración.
-      this.pool.on('error', () => {
-        this.db = undefined;
-        process.stderr.write(
-          JSON.stringify({
-            service: 'taxonomy-svc',
-            code: 'DATABASE_IDLE_FAILURE',
-          }) + '\n',
-        );
-      });
-    }
-    return this.pool;
   }
 }

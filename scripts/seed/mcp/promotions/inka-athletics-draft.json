@@ -1,0 +1,146 @@
+{
+  "version": 1,
+  "issue": 15,
+  "classification": "demo",
+  "business": "Inka Athletics",
+  "synthetic": true,
+  "status": "DRAFT_REFERENCE_BINDING_REQUIRED",
+  "executable": false,
+  "project": "slzglmtiyrzygpkiuthf",
+  "schema": "promotions",
+  "normative_source": {
+    "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
+    "commit": "c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b",
+    "physical_model": "datos/promotions/physical-model.md",
+    "decisions": ["DEC-F-007", "DEC-F-008", "DEC-F-009", "DEC-F-012"]
+  },
+  "load_order": [
+    "promotions",
+    "promotion_scopes",
+    "combination_policy",
+    "coupons",
+    "recommendation_rules",
+    "recommendation_items"
+  ],
+  "proposed_rows": {
+    "promotions": [
+      {
+        "id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+        "name": "Semana Running — demo Inka Athletics",
+        "discount_type": "PORCENTAJE",
+        "discount_value": "10.00",
+        "modality": "AUTOMATICA",
+        "state": "INACTIVO",
+        "valid_from": "2026-11-02T05:00:00Z",
+        "valid_until": "2026-11-09T05:00:00Z",
+        "priority": 1,
+        "enabled_channels": ["MARKETPLACE", "CHATBOT", "RETAIL"],
+        "first_activated_at": null
+      },
+      {
+        "id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902",
+        "name": "Entrena en Equipo — cupón demo Inka Athletics",
+        "discount_type": "PORCENTAJE",
+        "discount_value": "5.00",
+        "modality": "CUPON",
+        "state": "INACTIVO",
+        "valid_from": "2026-11-02T05:00:00Z",
+        "valid_until": "2026-11-16T05:00:00Z",
+        "priority": 2,
+        "enabled_channels": ["MARKETPLACE", "CHATBOT", "RETAIL"],
+        "first_activated_at": null
+      }
+    ],
+    "promotion_scopes": [],
+    "combination_policy": [
+      {
+        "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+        "pricing_offer": false,
+        "automatic_promotion": false,
+        "coupon": false
+      },
+      {
+        "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902",
+        "pricing_offer": false,
+        "automatic_promotion": false,
+        "coupon": false
+      }
+    ],
+    "coupons": [
+      {
+        "id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc903",
+        "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902",
+        "code": "INKA_ENTRENA_DEMO_2026",
+        "state": "INACTIVO",
+        "minimum_amount": null,
+        "max_global_uses": 20,
+        "max_customer_uses": 1,
+        "cancellation_policy": "RESTAURAR_EN_CANCELACION"
+      }
+    ],
+    "recommendation_rules": [],
+    "recommendation_items": []
+  },
+  "reference_requirements": [
+    {
+      "owner": "Gabriel Poma / catalog-svc / DATA #12",
+      "operation": "Alcance de Semana Running",
+      "condition": "Publicar product_id o SKU de calzado/indumentaria running vendible con versión/manifiesto y estado verificados.",
+      "status": "PENDING"
+    },
+    {
+      "owner": "Gabriel Poma / catalog-svc / DATA #12",
+      "operation": "Alcance de Entrena en Equipo",
+      "condition": "Publicar product_id o SKU de camisetas/shorts de entrenamiento vendibles con versión/manifiesto y estado verificados.",
+      "status": "PENDING"
+    },
+    {
+      "owner": "Leonardo Vera / pricing-svc / DATA #13",
+      "operation": "Coherencia económica",
+      "condition": "Publicar precios/canales/vigencias de las referencias elegidas y verificar que descuentos y no combinación mantienen precio válido.",
+      "status": "PENDING"
+    }
+  ],
+  "proposed_recommendations": [
+    {
+      "name": "Running: zapatillas y medias deportivas",
+      "recommendation_type": "CROSS_SELL",
+      "origin_type": "PRODUCTO",
+      "origin_selection": "Zapatilla running publicada por Catálogo",
+      "candidate_selection": "Medias deportivas compatibles publicadas por Catálogo",
+      "state": "INACTIVO",
+      "reason": "Complemento de uso deportivo; no sustituye ni duplica el producto de origen.",
+      "binding_status": "PENDING_CATALOG_AND_PRICING"
+    },
+    {
+      "name": "Fútbol: balón y accesorio de entrenamiento",
+      "recommendation_type": "CROSS_SELL",
+      "origin_type": "PRODUCTO",
+      "origin_selection": "Balón de fútbol publicado por Catálogo",
+      "candidate_selection": "Accesorio de entrenamiento compatible publicado por Catálogo",
+      "state": "INACTIVO",
+      "reason": "Complementa entrenamiento de fútbol con un artículo de la misma familia.",
+      "binding_status": "PENDING_CATALOG_AND_PRICING"
+    }
+  ],
+  "excluded_tables": [
+    "coupon_uses",
+    "coupon_command_receipts",
+    "catalog_projection",
+    "price_projection",
+    "stock_projection",
+    "inbox",
+    "outbox",
+    "schema_migrations"
+  ],
+  "limitations": [
+    "Los alcances pendientes impiden satisfacer los triggers de completitud: NO es un lote insertable.",
+    "No se inventaron referencias externas, stock, usos de cupón ni proyecciones.",
+    "Los porcentajes son propuestas sintéticas; su compatibilidad económica aún necesita referencias y precios publicados.",
+    "Completar referencias cambia el contenido/hash y exige revisión del lote exacto antes de un ensayo/COMMIT compartido."
+  ],
+  "approvals": {
+    "rollback_scope": null,
+    "persistent_batch_and_target": null
+  }
+}

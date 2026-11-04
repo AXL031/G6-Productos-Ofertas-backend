@@ -1,7 +1,7 @@
 import { LoggerService } from '@nestjs/common';
 
 const sensitiveKey =
-  /password|passwd|secret|token|authorization|cookie|credential|key|url|dsn/i;
+  /password|passwd|secret|token|authorization|cookie|credential|key|url|dsn|headers|payload|body|query|parameters|detail|stack|path/i;
 
 export function sanitize(
   value: unknown,
@@ -11,6 +11,8 @@ export function sanitize(
   if (depth > 6) return '[truncated]';
   if (value instanceof Error) return { name: 'Error', message: '[redacted]' };
   if (typeof value === 'string') {
+    if (/\n\s*at\s|(?:[A-Z]:\\|\/Users\/|\/home\/)/.test(value))
+      return '[redacted-stack]';
     // JSON serialized by an adapter must receive the same key redaction as objects.
     if (/^\s*[[{]/.test(value)) {
       try {

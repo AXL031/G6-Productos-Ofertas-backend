@@ -117,3 +117,7 @@ cp .env.example .env
 ## 7. Flujo de Trabajo
 
 Para colaborar en este repositorio, revisa la guía de contribución en [CONTRIBUTING.md](./CONTRIBUTING.md) y las normas en [AGENTS.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/blob/master/AGENTS.md).
+
+## Integración G1 Marketplace — Hito 4
+
+El punto obligatorio de entrada para cambios Backend relacionados con G1 es [`integraciones/g1-marketplace/README.md`](integraciones/g1-marketplace/README.md). Incluye M-01–M-09 aceptados por G6 y comunicados a G1, matriz operación/owner/estado, pruebas y evidencia. La autoridad contractual permanece en Docs [Acuerdo H4](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md) y [OpenAPI](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml). Los servicios no deben describirse como únicamente scaffolds: cada capacidad se califica por operación y por SHA, con límites documentados en su ficha.

@@ -1,0 +1,42 @@
+{
+  "status": "PARTIAL",
+  "purpose": "Diagnóstico de fallo con DB inaccesible; no acredita E2E exitoso",
+  "backendSha": "2970df90babf2c8caa1849b179b02918fc74a005",
+  "demoNoAuth": true,
+  "jwtSent": false,
+  "postgresRealAvailable": false,
+  "gatewayReadiness": {
+    "status": "not_ready",
+    "dependencies": {
+      "catalog-svc": "not_configured",
+      "taxonomy-svc": "not_configured",
+      "pricing-svc": "not_ready",
+      "promotions-svc": "not_configured",
+      "combos-svc": "not_configured",
+      "inventory-svc": "not_configured",
+      "price-audit-svc": "not_configured",
+      "bulk-svc": "not_configured"
+    },
+    "coverage": "partial"
+  },
+  "results": [
+    {
+      "service": "pricing",
+      "status": 503,
+      "body": {
+        "status": "not_ready",
+        "service": "pricing-svc"
+      }
+    },
+    {
+      "service": "gateway-to-pricing",
+      "status": 503,
+      "body": {
+        "title": "Servicio no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "db8a09db-4a08-45fb-bc73-3a63fafce709"
+      }
+    }
+  ]
+}

@@ -1,5 +1,7 @@
 # Preparación Oracle G6 para Hito 3
 
+> **Corte operativo posterior:** el estado real se inspeccionó por SSH el 2026-10-19. Consulta [ESTADO_ACTUAL.md](ESTADO_ACTUAL.md) y la [auditoría fechada](auditorias/2026-10-19_22-32-52_UTC/RESUMEN.md). Las tablas y anotaciones de fechas anteriores son antecedentes, no una lectura del runtime actual.
+
 Referencia: auditoría `G6-ORACLE-20261017T011831Z`. Rama de trabajo: `castilla`.
 
 ## Estado

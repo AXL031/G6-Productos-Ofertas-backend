@@ -1,0 +1,26 @@
+{
+  "result": "PASS",
+  "mode": "AUTHENTICATED_READ_ONLY",
+  "scope": "OWN_PROMOTIONS_SCHEMA_ONLY",
+  "tls_authorized": true,
+  "identity": {
+    "expected_login": true,
+    "expected_database": true,
+    "unprivileged_login": true,
+    "own_schema_usage": true,
+    "own_master_select": true
+  },
+  "counts": {
+    "promotions": "0",
+    "promotion_scopes": "0",
+    "combination_policy": "0",
+    "coupons": "0",
+    "recommendation_rules": "0",
+    "recommendation_items": "0"
+  },
+  "data_persisted": false,
+  "grants_changed": false,
+  "credentials_printed": false,
+  "captured_on": "2026-10-16",
+  "timezone": "America/Lima"
+}

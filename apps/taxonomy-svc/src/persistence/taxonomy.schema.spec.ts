@@ -1,23 +1,60 @@
 import { eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
+import { getTableConfig } from 'drizzle-orm/pg-core';
 import {
-  categorySeo,
-  characteristicValues,
-  characteristics,
   categorias,
+  categorySeo,
   esquemaTaxonomia,
-  inbox,
   marcas,
-  masterDeactivationOperations,
-  outbox,
-  productTypes,
-  productTypeCharacteristics,
-  runtimeSettings,
-  slugHistory,
+  operacionesBaja,
+  caracteristicas,
+  valoresCaracteristica,
+  tiposProducto,
+  asociacionesTipoCaracteristica,
 } from './taxonomy.schema.js';
 
 describe('taxonomy.schema (#35)', () => {
   const db = drizzle.mock({ schema: esquemaTaxonomia });
+
+  it('mapea las entidades oficiales y sus relaciones exclusivamente en taxonomy', () => {
+    for (const [table, name, foreignKeys] of [
+      [caracteristicas, 'characteristics', 0],
+      [valoresCaracteristica, 'characteristic_values', 1],
+      [tiposProducto, 'product_types', 0],
+      [asociacionesTipoCaracteristica, 'product_type_characteristics', 2],
+    ] as const) {
+      const config = getTableConfig(table);
+      expect(config.schema).toBe('taxonomy');
+      expect(config.name).toBe(name);
+      expect(config.foreignKeys).toHaveLength(foreignKeys);
+      for (const fk of config.foreignKeys)
+        expect(getTableConfig(fk.reference().foreignTable).schema).toBe(
+          'taxonomy',
+        );
+    }
+    expect(
+      getTableConfig(asociacionesTipoCaracteristica).columns.map((c) => c.name),
+    ).not.toContain('taxonomy_version');
+    expect(getTableConfig(tiposProducto).columns.map((c) => c.name)).toContain(
+      'schema_version',
+    );
+  });
+
+  it('mapea SEO de categoría con unicidad y FK solo al esquema propio', () => {
+    const tabla = getTableConfig(categorySeo);
+    expect(tabla.schema).toBe('taxonomy');
+    expect(tabla.name).toBe('category_seo');
+    expect(tabla.uniqueConstraints.map((item) => item.name)).toEqual(
+      expect.arrayContaining([
+        'uq_category_seo_categoria',
+        'uq_category_seo_slug',
+      ]),
+    );
+    expect(tabla.foreignKeys).toHaveLength(1);
+    expect(
+      getTableConfig(tabla.foreignKeys[0]!.reference().foreignTable).schema,
+    ).toBe('taxonomy');
+  });
 
   it('mapea taxonomy.categories con nombres snake_case', () => {
     const { sql } = db
@@ -64,102 +101,29 @@ describe('taxonomy.schema (#35)', () => {
     ]);
   });
 
-  it('mapea las doce tablas del modelo físico únicamente bajo taxonomy', () => {
-    const tablas = [
-      [runtimeSettings, 'runtime_settings'],
-      [categorias, 'categories'],
-      [marcas, 'brands'],
-      [characteristics, 'characteristics'],
-      [characteristicValues, 'characteristic_values'],
-      [productTypes, 'product_types'],
-      [productTypeCharacteristics, 'product_type_characteristics'],
-      [categorySeo, 'category_seo'],
-      [slugHistory, 'slug_history'],
-      [masterDeactivationOperations, 'master_deactivation_operations'],
-      [outbox, 'outbox'],
-      [inbox, 'inbox'],
-    ] as const;
-
-    expect(tablas).toHaveLength(12);
-    for (const [tabla, nombre] of tablas) {
-      const consulta = db.select().from(tabla).toSQL().sql;
-      expect(consulta).toContain(`"taxonomy"."${nombre}"`);
-    }
-  });
-
-  it('conserva los nombres físicos snake_case de las columnas extendidas', () => {
-    const consultas = [
-      [
-        db
-          .select({ valor: runtimeSettings.valorInteger })
-          .from(runtimeSettings)
-          .toSQL().sql,
-        'valor_integer',
-      ],
-      [
-        db
-          .select({
-            unidad: characteristics.unidadMedida,
-            version: characteristics.taxonomyVersion,
-          })
-          .from(characteristics)
-          .toSQL().sql,
-        'unidad_medida',
-      ],
-      [
-        db
-          .select({ caracteristica: characteristicValues.caracteristicaId })
-          .from(characteristicValues)
-          .toSQL().sql,
-        'caracteristica_id',
-      ],
-      [
-        db
-          .select({ version: productTypes.schemaVersion })
-          .from(productTypes)
-          .toSQL().sql,
-        'schema_version',
-      ],
-      [
-        db
-          .select({ tipo: productTypeCharacteristics.tipoProductoId })
-          .from(productTypeCharacteristics)
-          .toSQL().sql,
-        'tipo_producto_id',
-      ],
-      [
-        db
-          .select({
-            categoria: categorySeo.categoriaId,
-            titulo: categorySeo.metaTitulo,
-          })
-          .from(categorySeo)
-          .toSQL().sql,
-        'meta_titulo',
-      ],
-      [
-        db.select({ slug: slugHistory.oldSlug }).from(slugHistory).toSQL().sql,
-        'old_slug',
-      ],
-      [
-        db
-          .select({ operacion: masterDeactivationOperations.operationId })
-          .from(masterDeactivationOperations)
-          .toSQL().sql,
-        'operation_id',
-      ],
-      [
-        db.select({ mensaje: outbox.messageId }).from(outbox).toSQL().sql,
-        'message_id',
-      ],
-      [
-        db.select({ procesado: inbox.processedAt }).from(inbox).toSQL().sql,
-        'processed_at',
-      ],
-    ] as const;
-
-    for (const [consulta, columna] of consultas) {
-      expect(consulta).toContain(`"${columna}"`);
-    }
+  it('mapea la tabla histórica de operaciones sin inventar columnas', () => {
+    const tabla = getTableConfig(operacionesBaja);
+    expect(tabla.schema).toBe('taxonomy');
+    expect(tabla.name).toBe('master_deactivation_operations');
+    expect(tabla.columns.map((columna) => columna.name)).toEqual([
+      'id',
+      'operation_id',
+      'entity_type',
+      'entity_id',
+      'status',
+      'reason',
+      'correlation_id',
+      'created_at',
+      'updated_at',
+    ]);
+    expect(
+      tabla.uniqueConstraints.map((constraint) => constraint.name),
+    ).toContain('uq_mdo_operation_id');
+    expect(tabla.checks.map((constraint) => constraint.name)).toEqual(
+      expect.arrayContaining([
+        'ck_mdo_operation_id_not_nil',
+        'ck_mdo_correlation_id_not_nil',
+      ]),
+    );
   });
 });

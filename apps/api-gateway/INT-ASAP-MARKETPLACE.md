@@ -1,3 +1,6 @@
+
+> **DOCUMENTO HISTÓRICO — NO REPRESENTA EL ESTADO ACTUAL.** Este corte técnico fue redactado el 2026-10-16. Se conservan su evidencia y límites originales. Las ramas y PR avanzaron después; consulta la [matriz H4 actual](../../integraciones/g1-marketplace/MATRIZ_OPERACIONES_H4.md) y el [acuerdo normativo](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md). Ninguna conclusión histórica se extrapola al SHA actual.
+
 # INT-ASAP Marketplace — corte técnico 2026-10-16
 
 Resultado actualizado: **PARTIAL**. PostgreSQL runtime de Taxonomy y Catalog verificado con Drizzle real, TLS/CA y aislamiento. Permisos SELECT comprobados; ya no son un bloqueo. Taxonomy publica handlers con repositorio aún no configurado; Catalog todavía no publica implementación. Véase el [corte PostgreSQL e instrucciones por owner](POSTGRES-RUNTIME-2026-10-16.md), que reemplaza las observaciones anteriores de permisos. No hay PASS HTTP del MVP.
@@ -145,3 +148,5 @@ Los siguientes bloques se **añadirían** a sus respectivos cuerpos, sin borrar 
 ### #26 — bloque propuesto
 
 > **Criterios MVP revisados:** ejecutar los tres GET existentes con datos reales y repositorios PostgreSQL propios; comprobar categorías activas, búsqueda elegible/no elegible, vacío 200 y detalle por slug (simple/variantes; 404 para inexistente/no elegible). Navegación desde navegador sin sesión, registro ni JWT de comprador. BFF conserva token técnico únicamente servidor y adapta paginación/DTO; mantener pruebas positivas y negativas serviceBearer (401/403), correlación y 503 técnico sin fallback. Primera fase local con issuer firmado aislado; segunda BFF real con credenciales G7; Oracle solo con autorización. Bloqueos específicos: handlers/repositorios y gates BACK, D-CAT-05/06, provider/repositorios Nest, datos reconciliados, HTTPS/G7/G1 para la fase real. Evidencias por SHA/entorno/caso; no cerrar por tests aislados ni por existencia de YAML/PR.
+
+> **DOCUMENTO HISTÓRICO — NO REPRESENTA EL ESTADO ACTUAL.** Este snapshot es del 2026-10-16; la evidencia y estados actuales se consultan en [`integraciones/g1-marketplace/`](../../integraciones/g1-marketplace/README.md) y la matriz de operaciones. No atribuir estos SHA/estados a HEAD posteriores.

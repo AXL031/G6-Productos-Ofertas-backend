@@ -4,11 +4,13 @@ import type { INestApplication, LoggerService } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { TaxonomySvcModule } from './taxonomy-svc.module.js';
 import { Database, readDatabaseConfig, parseDatabaseUrl } from './database.js';
+import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
+import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import {
   validarEntorno,
   ConfiguracionInvalidaError,
 } from './config/environment.js';
-import type { TaxonomyEnv } from './config/environment.js';
+import type { Entorno, TaxonomyEnv } from './config/environment.js';
 import { SanitizedLogger } from './logging/sanitized-logger.js';
 
 export interface OpcionesArranque {
@@ -29,7 +31,7 @@ function cargarEnv(): void {
 }
 
 export function readHttpConfig(env: Readonly<NodeJS.ProcessEnv>) {
-  const raw = env.TAXONOMY_SVC_PORT ?? env.PORT ?? '3006';
+  const raw = env.TAXONOMY_SVC_PORT ?? env.PORT ?? '';
   const port = Number(raw);
   const host = env.TAXONOMY_SVC_HOST ?? '127.0.0.1';
   if (
@@ -37,8 +39,7 @@ export function readHttpConfig(env: Readonly<NodeJS.ProcessEnv>) {
     port < 1 ||
     port > 65535 ||
     !['127.0.0.1', '0.0.0.0', '::1', '::'].includes(host) ||
-    (env.NODE_ENV !== undefined &&
-      !['development', 'test', 'production'].includes(env.NODE_ENV))
+    !['development', 'test', 'production'].includes(env.NODE_ENV ?? '')
   ) {
     throw new Error('Configuración HTTP taxonomy inválida');
   }
@@ -57,7 +58,7 @@ export async function crearAplicacion(
   }
   const logger = new SanitizedLogger(opciones.logger);
   const app = await NestFactory.create(
-    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl }),
+    TaxonomySvcModule.forRoot({ databaseUrl: configuracion.databaseUrl, env }),
     { logger },
   );
   app.useLogger(logger);
@@ -87,20 +88,23 @@ export async function iniciarTaxonomySvc(
   readDatabaseConfig(env);
   const { port, host } = readHttpConfig(env);
   const logger = new SanitizedLogger(opciones.logger);
-  const app = await NestFactory.create(TaxonomySvcModule, {
+  const app = await NestFactory.create(TaxonomySvcModule.forRuntime(env), {
     logger,
     abortOnError: false,
   });
   app.useLogger(logger);
   try {
+    app.get(TaxonomyAmqpRuntime).configurar(env);
     await app.get(Database).verifyIdentity(env);
     app.enableShutdownHooks();
     await app.listen(port, host);
+    app.get(DeactivationRecoveryRunner).iniciar();
+    app.get(TaxonomyAmqpRuntime).iniciar();
     logger.log({ service: 'taxonomy-svc', code: 'APPLICATION_STARTED' });
     return {
       app,
       env: {
-        nodeEnv: (env.NODE_ENV as any) ?? 'development',
+        nodeEnv: env.NODE_ENV as Entorno,
         port,
         databaseUrl: rawEnv.DATABASE_URL ?? '',
       },

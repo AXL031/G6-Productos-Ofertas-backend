@@ -1,0 +1,24 @@
+{
+  "checked_at_utc": "2026-11-04T03:00:51Z",
+  "audited_head": "1ce011899c074e765e77772c049f2837c0462c4a",
+  "manufacturer_code": "JD9558",
+  "catalog_color": "Negro",
+  "commercial_color": "Black / White / Black",
+  "official_product_url": "https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html",
+  "official_page_evidence": "Página oficial: Product code JD9558; Product colour Black / White / Black; enlace de imagen principal al recurso official_image.url.",
+  "method": "GET de ambas imágenes públicas sin transformación; comparación SHA-256 de los bytes descargados. El recurso oficial está enlazado desde la página del producto. No se deduce la correspondencia solo del nombre del archivo ni del aspecto gris jaspeado.",
+  "official_image": {
+    "url": "https://assets.adidas.com/images/w_500,f_auto,q_auto/38879539a70743abb1ba48714cd3ec57_9366/RUNxCUSHIONED_Socks_1_Pair_Black_JD9558_01_01_00_standard.jpg",
+    "status": 200,
+    "bytes": 30170,
+    "sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487"
+  },
+  "stored_image": {
+    "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+    "status": 200,
+    "bytes": 30170,
+    "sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487"
+  },
+  "result": "IDENTICAL_IMAGE_BYTES_OFFICIAL_JD9558",
+  "scope": "Una fotografía compartida por tres SKU de tallas distintas; no tres inspecciones individuales. No acredita talla fotografiada, medición ni autenticidad de mercancía. Color Negro conservado; portada reincorporada solo a propuesta offline B. Cuatro portadas adicionales siguen separadas."
+}

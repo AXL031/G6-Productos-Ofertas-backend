@@ -1,0 +1,492 @@
+{
+  "version": 1,
+  "issue": 15,
+  "backend_base_sha": "0be6db48878409a4b73473a79f05f3b70a806c93",
+  "state": "IMPLEMENTADO_LOCAL / INTEGRACION_BLOQUEADA",
+  "executable": false,
+  "snapshot_sha256": "4aace51d9ecc6f5e5d46f1cdf409214474398920086f0bb58deda64ab878f6d7",
+  "bindings_sha256": "90e73037abe31c24211ca8e1c68a43edf43152ce05ebdce971da64da8fc83bf7",
+  "captured_at": "2026-10-24T15:23:26.449Z",
+  "validation": {
+    "structural": "READ_ONLY_CAPTURE_SHAPE_CHECKED",
+    "provenance": "OBSERVED_MCP_CAPTURE; LOCAL_HASH_IS_NOT_SOURCE_AUTHENTICATION",
+    "commercial_approval": "PENDING",
+    "generator": "COMMERCIAL_REVIEW_REQUIRED",
+    "seed_role_authentication": "NOT_TESTED_IN_SHARED_DATABASE",
+    "shared_writes": false,
+    "deployment": "NOT_EXECUTED",
+    "homologation": "NOT_ACCREDITED"
+  },
+  "observed": {
+    "products": 20,
+    "variants": 51,
+    "active_products": 0,
+    "prices": 20,
+    "parent_prices": 20,
+    "open_validities": 20,
+    "promotions_counts": {
+      "coupons": 0,
+      "promotions": 0,
+      "promotion_scopes": 0,
+      "combination_policy": 0,
+      "recommendation_items": 0,
+      "recommendation_rules": 0
+    }
+  },
+  "campaigns": [
+    {
+      "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+      "name": "Semana Running — demo Inka Athletics",
+      "state": "INACTIVO",
+      "valid_from": "2026-11-02T05:00:00Z",
+      "valid_until": "2026-11-09T05:00:00Z",
+      "proposed_channels": [
+        "MARKETPLACE",
+        "CHATBOT",
+        "RETAIL"
+      ],
+      "accredited_channels": [],
+      "references": [
+        {
+          "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+          "product_name": "adidas Runfalcon 3.0",
+          "product_state": "BORRADOR",
+          "sku": "ADI-RF3-GRI-38",
+          "sku_state": "BORRADOR",
+          "proposed_scope": true,
+          "price_status": "COVERED_GLOBAL_REFERENCE_ONLY",
+          "price_origin": "PRODUCTO",
+          "price": {
+            "sku": null,
+            "amount": "249.90",
+            "currency": "PEN",
+            "price_id": "e5487a46-cc52-32eb-49cd-695f17246e40",
+            "channel_id": null,
+            "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+            "valid_from": "2026-10-01T05:00:00.000Z",
+            "valid_until": null,
+            "validity_id": "c673464b-d87b-44bc-a8aa-dc4bb7eb2c97",
+            "is_cancelled": false,
+            "offer_amount": null,
+            "price_version": 1
+          },
+          "inventory": {
+            "sku": "ADI-RF3-GRI-38",
+            "registered_locations": 2,
+            "positive_available_location": true
+          },
+          "category": {
+            "id": "303886ae-f3f0-bc9c-145a-660979597595",
+            "name": "Running",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          },
+          "brand": {
+            "id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+            "name": "adidas",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          }
+        },
+        {
+          "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+          "product_name": "adidas Runfalcon 3.0",
+          "product_state": "BORRADOR",
+          "sku": "ADI-RF3-GRI-39",
+          "sku_state": "BORRADOR",
+          "proposed_scope": false,
+          "price_status": "COVERED_GLOBAL_REFERENCE_ONLY",
+          "price_origin": "PRODUCTO",
+          "price": {
+            "sku": null,
+            "amount": "249.90",
+            "currency": "PEN",
+            "price_id": "e5487a46-cc52-32eb-49cd-695f17246e40",
+            "channel_id": null,
+            "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+            "valid_from": "2026-10-01T05:00:00.000Z",
+            "valid_until": null,
+            "validity_id": "c673464b-d87b-44bc-a8aa-dc4bb7eb2c97",
+            "is_cancelled": false,
+            "offer_amount": null,
+            "price_version": 1
+          },
+          "inventory": {
+            "sku": "ADI-RF3-GRI-39",
+            "registered_locations": 2,
+            "positive_available_location": false
+          },
+          "category": {
+            "id": "303886ae-f3f0-bc9c-145a-660979597595",
+            "name": "Running",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          },
+          "brand": {
+            "id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+            "name": "adidas",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          }
+        },
+        {
+          "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+          "product_name": "Nike Revolution 7",
+          "product_state": "BORRADOR",
+          "sku": "NIK-REV7-NEG-41",
+          "sku_state": "BORRADOR",
+          "proposed_scope": true,
+          "price_status": "COVERED_GLOBAL_REFERENCE_ONLY",
+          "price_origin": "PRODUCTO",
+          "price": {
+            "sku": null,
+            "amount": "279.90",
+            "currency": "PEN",
+            "price_id": "78706bdc-ab26-f3a2-5113-390b1fe49c27",
+            "channel_id": null,
+            "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+            "valid_from": "2026-10-01T05:00:00.000Z",
+            "valid_until": null,
+            "validity_id": "e6242ecc-3705-4f7a-96d4-d527f59759a2",
+            "is_cancelled": false,
+            "offer_amount": null,
+            "price_version": 1
+          },
+          "inventory": {
+            "sku": "NIK-REV7-NEG-41",
+            "registered_locations": 2,
+            "positive_available_location": true
+          },
+          "category": {
+            "id": "303886ae-f3f0-bc9c-145a-660979597595",
+            "name": "Running",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          },
+          "brand": {
+            "id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+            "name": "Nike",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          }
+        },
+        {
+          "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+          "product_name": "Nike Revolution 7",
+          "product_state": "BORRADOR",
+          "sku": "NIK-REV7-NEG-42",
+          "sku_state": "BORRADOR",
+          "proposed_scope": true,
+          "price_status": "COVERED_GLOBAL_REFERENCE_ONLY",
+          "price_origin": "PRODUCTO",
+          "price": {
+            "sku": null,
+            "amount": "279.90",
+            "currency": "PEN",
+            "price_id": "78706bdc-ab26-f3a2-5113-390b1fe49c27",
+            "channel_id": null,
+            "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+            "valid_from": "2026-10-01T05:00:00.000Z",
+            "valid_until": null,
+            "validity_id": "e6242ecc-3705-4f7a-96d4-d527f59759a2",
+            "is_cancelled": false,
+            "offer_amount": null,
+            "price_version": 1
+          },
+          "inventory": {
+            "sku": "NIK-REV7-NEG-42",
+            "registered_locations": 2,
+            "positive_available_location": true
+          },
+          "category": {
+            "id": "303886ae-f3f0-bc9c-145a-660979597595",
+            "name": "Running",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          },
+          "brand": {
+            "id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+            "name": "Nike",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          }
+        }
+      ]
+    },
+    {
+      "promotion_id": "6d86380f-5f55-4b9f-9bc4-5e3cf2bfc902",
+      "name": "Entrena en Equipo — cupón demo Inka Athletics",
+      "state": "INACTIVO",
+      "valid_from": "2026-11-02T05:00:00Z",
+      "valid_until": "2026-11-16T05:00:00Z",
+      "proposed_channels": [
+        "MARKETPLACE",
+        "CHATBOT",
+        "RETAIL"
+      ],
+      "accredited_channels": [],
+      "references": [
+        {
+          "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+          "product_name": "adidas Entrada 22",
+          "product_state": "BORRADOR",
+          "sku": "ADI-ENT22-AZU-M",
+          "sku_state": "BORRADOR",
+          "proposed_scope": true,
+          "price_status": "COVERED_GLOBAL_REFERENCE_ONLY",
+          "price_origin": "PRODUCTO",
+          "price": {
+            "sku": null,
+            "amount": "79.90",
+            "currency": "PEN",
+            "price_id": "c548fff8-ac7c-27ae-1889-d48f67676ba8",
+            "channel_id": null,
+            "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+            "valid_from": "2026-10-01T05:00:00.000Z",
+            "valid_until": null,
+            "validity_id": "c431f40c-3bc0-46a1-a56f-87ed2b1f1561",
+            "is_cancelled": false,
+            "offer_amount": null,
+            "price_version": 1
+          },
+          "inventory": {
+            "sku": "ADI-ENT22-AZU-M",
+            "registered_locations": 2,
+            "positive_available_location": true
+          },
+          "category": {
+            "id": "69bda117-9700-d41d-9ccf-f207717068e0",
+            "name": "Entrenamiento",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          },
+          "brand": {
+            "id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+            "name": "adidas",
+            "state": "ACTIVO",
+            "taxonomy_version": 0
+          }
+        }
+      ]
+    }
+  ],
+  "recommendations": [
+    {
+      "origin_product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "candidate_product_ids": [
+        "457f749f-2aaf-56a3-9776-a95df5d24d59",
+        "ff8e9b30-f939-51cd-9294-4753cdae05b8"
+      ],
+      "status": "PENDING_AVAILABILITY_AND_APPROVAL",
+      "name": "Running: zapatillas y medias deportivas",
+      "candidates": [
+        {
+          "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+          "state": "BORRADOR",
+          "prices": [
+            {
+              "sku": null,
+              "amount": "49.00",
+              "currency": "PEN",
+              "price_id": "559c7165-2f80-5808-a98d-deeca79fd2a4",
+              "channel_id": null,
+              "product_id": "457f749f-2aaf-56a3-9776-a95df5d24d59",
+              "valid_from": "2026-10-17T11:34:20.018Z",
+              "valid_until": null,
+              "validity_id": "1c0ca457-d785-518e-ad25-db11f6786732",
+              "is_cancelled": false,
+              "offer_amount": null,
+              "price_version": 1
+            }
+          ],
+          "inventory_records": [
+            {
+              "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+              "registered_locations": 0,
+              "positive_available_location": false
+            }
+          ],
+          "availability": "NOT_ACCREDITED"
+        },
+        {
+          "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+          "state": "BORRADOR",
+          "prices": [
+            {
+              "sku": null,
+              "amount": "69.90",
+              "currency": "PEN",
+              "price_id": "4575a954-c220-5042-a007-dcc0af2fbda2",
+              "channel_id": null,
+              "product_id": "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+              "valid_from": "2026-10-17T11:34:20.018Z",
+              "valid_until": null,
+              "validity_id": "da40d40c-1b6a-5a72-a50e-2b9adce4099b",
+              "is_cancelled": false,
+              "offer_amount": null,
+              "price_version": 1
+            }
+          ],
+          "inventory_records": [
+            {
+              "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+              "registered_locations": 0,
+              "positive_available_location": false
+            },
+            {
+              "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+              "registered_locations": 0,
+              "positive_available_location": false
+            }
+          ],
+          "availability": "NOT_ACCREDITED"
+        }
+      ]
+    },
+    {
+      "origin_product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "candidate_product_ids": [],
+      "status": "PENDING_CATALOG_CANDIDATE",
+      "name": "Fútbol: balón y accesorio de entrenamiento",
+      "candidates": []
+    }
+  ],
+  "seed_privileges": [
+    {
+      "table": "promotions.combination_policy",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.coupons",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.promotion_scopes",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.promotions",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.recommendation_items",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    },
+    {
+      "table": "promotions.recommendation_rules",
+      "insert": true,
+      "select": true,
+      "update_any_column": false
+    }
+  ],
+  "locking_functions": [
+    {
+      "name": "fn_guard_coupon",
+      "definition_md5": "a9580b5f6f95e3e167c79249e246fc32",
+      "security_definer": false,
+      "contains_for_update": true
+    },
+    {
+      "name": "fn_lock_parent",
+      "definition_md5": "2f1df9bf6a73019debdd98bbdf6148ba",
+      "security_definer": false,
+      "contains_for_update": true
+    }
+  ],
+  "blockers": [
+    {
+      "code": "PUBLISHED_ACTIVE_SKU_REQUIRED",
+      "owner": "Poma",
+      "operation": "Alcances y recomendaciones",
+      "condition": "Aprobar y activar las referencias elegidas en Catálogo; recapturar estados/versiones."
+    },
+    {
+      "code": "COMMERCIAL_REVIEW_REQUIRED",
+      "owner": "Poma + Vera + Axel",
+      "operation": "Bindings del lote",
+      "condition": "Revisar referencias, selección de SKU, descuentos y fuentes exactas; registrar aprobación comercial verificable."
+    },
+    {
+      "code": "CHANNEL_EVIDENCE_REQUIRED",
+      "owner": "Poma + Vera",
+      "operation": "Elegibilidad multicanal",
+      "condition": "Acreditar canales permitidos de las referencias y resolución global/override; precio global no prueba elegibilidad de canal."
+    },
+    {
+      "code": "RECOMMENDATION_AVAILABILITY_PENDING",
+      "owner": "Taco + Poma",
+      "operation": "Running: zapatillas y medias deportivas",
+      "condition": "Registrar stock real de candidatos aprobados y acreditar disponibilidad comercial; no sumar ubicaciones ni elegir SKU automáticamente (D-REC-01/02)."
+    },
+    {
+      "code": "RECOMMENDATION_CANDIDATE_REQUIRED",
+      "owner": "Poma",
+      "operation": "Fútbol: balón y accesorio de entrenamiento",
+      "condition": "Publicar y aprobar un accesorio de entrenamiento existente y compatible; no fabricar una referencia."
+    },
+    {
+      "code": "SEED_TRIGGER_LOCK_PRIVILEGE_UNRESOLVED",
+      "owner": "Marco + revisión BD (Axel/López)",
+      "operation": "INSERT de maestros hijos con po_promotions_seed",
+      "condition": "Aprobar una solución de permisos/locking compatible con append-only y probarla con el rol restringido; no conceder UPDATE desde DATA-005."
+    },
+    {
+      "code": "BATCH_AND_TARGET_APPROVAL_REQUIRED",
+      "owner": "Marco",
+      "operation": "Carga persistente",
+      "condition": "Aprobar contenido/hash, SQL, tablas, destino y postcheck tras resolver los bloqueos comerciales y de locking."
+    }
+  ],
+  "schedule": {
+    "purpose": "FUTURE_CAMPAIGN_PREPARATION",
+    "h4_date": "2026-10-31",
+    "dates_changed": false,
+    "active_h4_demo": "PM_APPROVAL_REQUIRED_FOR_DIFFERENT_VALIDITY"
+  },
+  "limitations": [
+    "SQL/metadata reading is not authenticated HTTP integration, source-owner approval, seed-login authentication or deployment.",
+    "Campaign price coverage is checked independently from channel accreditation and product activation.",
+    "Inventory records and a positive location are observations, not a product-level availability promise or reservation.",
+    "Commercial authenticity requires recapture against the source and review; supplied hashes alone cannot prove provenance."
+  ]
+}

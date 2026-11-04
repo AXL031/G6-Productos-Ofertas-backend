@@ -1,0 +1,114 @@
+{
+  "result": "PASS",
+  "issue": 15,
+  "branch": "cueva",
+  "tested_base_sha": "83d980171dd061f0f6bc5fb065bd33676e6282e6",
+  "captured_at": "2026-10-26T15:15:26.337Z",
+  "scope": "DATA005_OFFLINE_CORRECTIONS_ONLY",
+  "normative_docs_sha": "e6a8ec28dad2d0eba8dc2f273ec9cc6891376df6",
+  "commands": [
+    {
+      "command": "node --test scripts/seed/run.test.mjs scripts/seed/mcp/promotions/validate-draft.test.mjs scripts/seed/mcp/promotions/prepare-batch.test.mjs scripts/seed/mcp/promotions/reconcile.test.mjs scripts/seed/validate-restore-plan.test.mjs",
+      "result": "PASS",
+      "passed": 50,
+      "failed": 0,
+      "skipped": 0,
+      "data005_tests": 32
+    },
+    {
+      "command": "npm test",
+      "result": "PASS",
+      "passed": 973,
+      "skipped": 17
+    },
+    {
+      "command": "npm run test:e2e",
+      "result": "PASS",
+      "passed": 390,
+      "skipped": 91
+    },
+    {
+      "command": "npm run typecheck",
+      "result": "PASS"
+    },
+    {
+      "command": "npm run lint",
+      "result": "PASS"
+    },
+    {
+      "command": "prettier --check (modified MJS and documentation only)",
+      "result": "PASS"
+    },
+    {
+      "command": "node scripts/seed/mcp/promotions/validate-draft.mjs",
+      "result": "PASS",
+      "executable": false
+    },
+    {
+      "command": "node scripts/seed/validate-restore-plan.mjs",
+      "result": "PASS",
+      "verified_hashes": 3,
+      "approved_restore_entries": 0
+    }
+  ],
+  "generator_verification": {
+    "result": "PASS",
+    "fixture": "ISOLATED_TEST; ACTIVO products / ACTIVA variants",
+    "rows_identical_to_83d9801": true,
+    "write_sql_identical": true,
+    "rollback_sql_identical_except_batch_hash_comment": true,
+    "snapshot_sql_identical": true,
+    "row_sql_sha256": "6fbf39c0c17b27b5043e84d65b3e7a6d22cfaa1147c32dc98b94cd4f9ce260d5",
+    "historical_reconciliation_unchanged": true,
+    "cli_manifest": "PASS",
+    "cli_render_rollback": "PASS",
+    "executable": false,
+    "shared_connections": 0,
+    "shared_writes": false,
+    "campaign_activation": false
+  },
+  "tooling_sha256": {
+    "prepare-batch.mjs": "27cf9d8b99b408245727199fd02527d9534cc31c079169afe6b1fe6145cc4ab7",
+    "prepare-batch.test.mjs": "b5807967d47336588523f893e0fdea4a7529a2129c0152c8e080dfcb30e3ac31",
+    "reconcile.mjs": "30d010a684b33e287313d066b383f251f9cf83ff60e04f44029dc566cccd8409",
+    "reconcile.test.mjs": "0d6d328a09ce4e9a9c4b26bea825bd86c87fecb99960bf678a119082376f93cb",
+    "test/support/bindings.mjs": "9c50a9729b553256da270f8cbe1608ec306075a8da0b1d48608b4249204fa541"
+  },
+  "preserved_files_sha256": {
+    "baseline-2026-10-16.json": "18678439681f79095990232af6bb5e080d1c135113314c610cf296e1fb33cd4c",
+    "inka-athletics-draft.json": "3def2c7e617e79a29f034c40acaa37ac54de9be4e33a8087d99e8800dace172f",
+    "trigger-body-review-2026-10-16.json": "96e20734a73211afec2cea132cface3422ca7598d91b7a023a0d86e688438ade",
+    "supabase-readonly-2026-10-24.json": "df96a04b4cb190d0facfcda6f40c75bbd35c9faef71fef7399137b6e5f1d89ed",
+    "bindings.review-2026-10-24.json": "dacb3ab3fa0efab6a6166d6799cde57b7576100b6307a956c3cf38f0f871dee3",
+    "reconciliation-2026-10-24.json": "47b03638fd5a488c3737f2f516ffccb7a3081d274d47abc4daf2779da00c654a",
+    "reconcile-readonly.sql": "cc2f2b7aaebf604017f1a6c8dbfd4af2c6b4574579891dacb1b84bda7fcbb10b"
+  },
+  "sql_renderer_source_unchanged": true,
+  "restore_manifest_compatibility": "Historical SHA256SUMS restored to three entries; tooling inventory moved to TOOLING-SHA256SUMS without changing restore code or plan.",
+  "first_attempts": {
+    "vitest": "Sandbox EPERM rename prevented test loading; outside-sandbox retries passed.",
+    "extended_regression": "UNEXPECTED_HASH_INVENTORY from preexisting 17-entry manifest; scoped inventory separation fixed it."
+  },
+  "not_executed": [
+    "DATA005 disposable PostgreSQL rerun: Docker daemon unavailable",
+    "build:all",
+    "shared authenticated HTTP integration",
+    "Supabase connections or writes",
+    "commercial activation",
+    "homologation",
+    "deployment"
+  ],
+  "general_suite_omissions": "Optional suites requiring explicit flags/environments for Bulk/PostgreSQL/AMQP/Catalog/Taxonomy/Marketplace. No omitted test is claimed PASS.",
+  "ci": "Verify final published SHA on PR #142; existing CI does not run DATA005 node:test suites.",
+  "state": {
+    "internal_corrections": "IMPLEMENTADO_LOCAL",
+    "shared_integration": "INTEGRACION_BLOQUEADA",
+    "homologation": "HOMOLOGACION_PENDIENTE",
+    "deployment": "DESPLIEGUE_NO_EJECUTADO"
+  },
+  "shared_sql_executed": false,
+  "shared_data_persisted": false,
+  "commercial_content_changed": false,
+  "campaigns_activated": false,
+  "existing_commercial_gates_preserved": true
+}

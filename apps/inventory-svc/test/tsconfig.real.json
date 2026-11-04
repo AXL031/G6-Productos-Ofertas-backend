@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.g5.json",
+  "include": ["inventory.real.integration.spec.ts"],
+  "exclude": []
+}

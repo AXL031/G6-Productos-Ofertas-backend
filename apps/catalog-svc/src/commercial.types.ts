@@ -1,14 +1,14 @@
 export type Canal = 'MARKETPLACE' | 'CHATBOT' | 'RETAIL' | 'VENTAS';
 export interface ProductQuery {
-  canal: Canal;
+  canal?: Canal;
   q?: string;
   categoriaId?: string;
   marcaId?: string;
   pagina: number;
   tamanio: number;
   estado?: 'BORRADOR' | 'ACTIVO' | 'INACTIVO';
-  precioMin?: number;
-  precioMax?: number;
+  precioMin?: string | number;
+  precioMax?: string | number;
   orden: 'NOMBRE_ASC' | 'NOMBRE_DESC';
 }
 export interface Attribute {
@@ -53,4 +53,15 @@ export interface ProductPage {
   pagina: number;
   tamanio: number;
   total: number;
+}
+
+// Demo-only extension; canonical HTTP/OpenAPI price fields remain unchanged.
+export interface DemoProduct extends ProductSummary {
+  precio_regular: number;
+  precio_oferta: number | null;
+  currency: string;
+}
+
+export interface DemoProductDetail extends DemoProduct {
+  variants: CommercialVariant[];
 }

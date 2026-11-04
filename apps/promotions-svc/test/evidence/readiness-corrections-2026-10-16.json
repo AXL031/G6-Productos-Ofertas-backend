@@ -1,0 +1,17 @@
+{
+  "result": "PASS",
+  "scope": "DISPOSABLE_LOCAL_ONLY",
+  "checks": [
+    "default-disabled probes never claim readiness",
+    "production probes execute authenticated PostgreSQL TLS SELECT and passive AMQP queue check",
+    "invalid database password is down",
+    "untrusted certificate fails; verify-full is preserved",
+    "broker authentication failure is down without private diagnostics",
+    "all probes preserve queued messages and create zero consumers",
+    "missing contractual queue stays down; probe does not create topology"
+  ],
+  "postgres_version": "17.11",
+  "shared_connections": false,
+  "shared_writes": false,
+  "integration_homologation_deployment": "NOT_EXECUTED"
+}

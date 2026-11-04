@@ -56,6 +56,28 @@ describe('PricingRepository: transacciones Drizzle', () => {
     expect(client.release).toHaveBeenCalledOnce();
   });
 
+  it('readImport limita filas y solo selecciona campos de respuesta, nunca row_input', async () => {
+    const { client, repository } = setup();
+    client.query
+      .mockResolvedValueOnce({ rows: [] })
+      .mockResolvedValueOnce({
+        rows: [
+          ['4d96e3ac-cd5b-4ce7-9b8d-e8dc3f93313b', 'QUEUED', false, 0, 0, 0],
+        ],
+      })
+      .mockResolvedValueOnce({ rows: [] });
+    await repository.readImport('4d96e3ac-cd5b-4ce7-9b8d-e8dc3f93313b');
+    const selects = client.query.mock.calls
+      .map(([query]) => (typeof query === 'string' ? query : query.text))
+      .filter((query) => query.startsWith('select'));
+    expect(selects).toHaveLength(2);
+    expect(selects[1]).toMatch(/^select "row_id", "sku", "status", "code"/);
+    expect(selects[1]).toContain('limit');
+    expect(selects.join(' ')).not.toMatch(
+      /row_input|detail|report_uri|usuario_id|created_at|updated_at/,
+    );
+  });
+
   it('un error del caso de uso produce ROLLBACK y conserva su identidad', async () => {
     const { client, repository } = setup();
     const failure = new Error('rechazo del caso de uso');
