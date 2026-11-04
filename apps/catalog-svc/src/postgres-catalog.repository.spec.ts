@@ -40,7 +40,9 @@ describe('Catalog provider SQL and projections (isolated)', () => {
           ),
         };
       if (text.includes('from "catalog"."variant_images"'))
-        return { rows: variantImageUrls.map((url) => [url]) };
+        return {
+          rows: variantImageUrls.map((url) => ['variant-fixture', url]),
+        };
       if (text.includes('SELECT url FROM catalog.product_images'))
         return { rows: productImageUrls.map((url) => ({ url })) };
       if (text.includes('SELECT product_id, url FROM catalog.product_images'))
@@ -70,8 +72,8 @@ describe('Catalog provider SQL and projections (isolated)', () => {
       if (text.includes('from "catalog"."variant_attribute_values"'))
         return {
           rows: [
-            ['c2', 'Size', 'value-M', 'M', true],
-            ['c3', 'Material', null, 'Cotton', false],
+            ['variant-fixture', 'c2', 'Size', 'value-M', 'M', true],
+            ['variant-fixture', 'c3', 'Material', null, 'Cotton', false],
           ],
         };
       return { rows: [] };

@@ -79,6 +79,7 @@ describe('Catalog JWT verification', () => {
     const payload = Buffer.from(
       JSON.stringify({
         iss: issuer,
+        aud: 'api-productos',
         sub: randomUUID(),
         tipo: 'acceso',
         roles: ['GESTOR_COMERCIAL'],
@@ -118,6 +119,22 @@ describe('Catalog JWT verification', () => {
       kind: 'user',
       roles: ['GESTOR_COMERCIAL'],
     });
+  });
+  it.each([
+    ['wrong audience', { aud: 'another-api' }],
+    ['missing audience', { aud: undefined }],
+  ])('rejects user tokens with %s', async (_name, claims) => {
+    await expect(verifier.verify(token(claims))).rejects.toBeInstanceOf(
+      CatalogTokenRejected,
+    );
+  });
+  it('accepts an audience array only when it contains api-productos', async () => {
+    await expect(
+      verifier.verify(token({ aud: ['other-api', 'api-productos'] })),
+    ).resolves.toMatchObject({ kind: 'user' });
+    await expect(
+      verifier.verify(token({ aud: ['other-api'] })),
+    ).rejects.toBeInstanceOf(CatalogTokenRejected);
   });
   it.each(['~', '=', '+', '/'])(
     'rejects non-base64url characters in a JWT signature (%s)',
@@ -258,5 +275,34 @@ describe('Catalog JWT verification', () => {
     await expect(
       guard.canActivate(context('Bearer ' + wrongClient)),
     ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+  it('requires GESTOR_COMERCIAL for user routes after verifying the audience', async () => {
+    const handler = () => undefined;
+    RequireCatalogIdentity({
+      identity: 'user',
+      roles: ['GESTOR_COMERCIAL'],
+    })({}, 'read', {
+      configurable: true,
+      enumerable: false,
+      writable: true,
+      value: handler,
+    });
+    const guard = new CatalogAuthGuard(new Reflector(), verifier);
+    const context = (authorization: string) =>
+      ({
+        getHandler: () => handler,
+        getClass: () => class Target {},
+        switchToHttp: () => ({
+          getRequest: () => ({ headers: { authorization } }),
+        }),
+      }) as never;
+    await expect(
+      guard.canActivate(context('Bearer ' + token({ roles: ['OTHER'] }))),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(
+      guard.canActivate(
+        context('Bearer ' + token({ roles: ['GESTOR_COMERCIAL'] })),
+      ),
+    ).resolves.toBe(true);
   });
 });

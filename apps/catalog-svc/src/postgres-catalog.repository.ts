@@ -215,6 +215,84 @@ export class PostgresCatalogRepository {
     return variantsGallery.rows.map((row) => row.url).filter(isDemoImageUrl);
   }
 
+  private async variantsForProduct(
+    tx: CatalogTransaction,
+    productId: string,
+    readDemo: boolean,
+    omitBlankImages = false,
+  ): Promise<CommercialVariant[]> {
+    const children = await tx
+      .select({ variant_id: variants.id, sku: variants.sku })
+      .from(variants)
+      .where(
+        and(
+          eq(variants.product_id, productId),
+          readDemo ? undefined : eq(variants.estado, 'ACTIVA'),
+        ),
+      )
+      .orderBy(asc(variants.id));
+    if (!children.length) return [];
+    const ids = children.map((child) => child.variant_id);
+    const values = await tx
+      .select({
+        variant_id: variantAttributes.variant_id,
+        caracteristica_id: variantAttributes.caracteristica_id,
+        nombre: variantAttributes.nombre_snapshot,
+        valor_id: variantAttributes.valor_id,
+        valor: variantAttributes.valor,
+        identifying: variantAttributes.es_identificador,
+      })
+      .from(variantAttributes)
+      .where(inArray(variantAttributes.variant_id, ids))
+      .orderBy(
+        asc(variantAttributes.variant_id),
+        asc(variantAttributes.caracteristica_id),
+      );
+    const gallery = await tx
+      .select({ variant_id: variantImages.variant_id, url: variantImages.url })
+      .from(variantImages)
+      .where(inArray(variantImages.variant_id, ids))
+      .orderBy(
+        asc(variantImages.variant_id),
+        asc(variantImages.posicion),
+        asc(variantImages.id),
+      );
+    const attributesByVariant = new Map<string, typeof values>();
+    for (const value of values) {
+      const group = attributesByVariant.get(value.variant_id) ?? [];
+      group.push(value);
+      attributesByVariant.set(value.variant_id, group);
+    }
+    const imagesByVariant = new Map<string, typeof gallery>();
+    for (const image of gallery) {
+      const group = imagesByVariant.get(image.variant_id) ?? [];
+      group.push(image);
+      imagesByVariant.set(image.variant_id, group);
+    }
+    return children.map((child) => {
+      const rowValues = attributesByVariant.get(child.variant_id) ?? [];
+      const rowImages = imagesByVariant.get(child.variant_id) ?? [];
+      const project = (identifying: boolean): Attribute[] =>
+        rowValues
+          .filter((value) => value.identifying === identifying)
+          .map(
+            ({
+              variant_id: _variantId,
+              identifying: _internal,
+              ...attribute
+            }) => attribute,
+          );
+      return {
+        ...child,
+        identifying_attributes: project(true),
+        non_identifying_attributes: project(false),
+        images: rowImages
+          .map((image) => image.url)
+          .filter((url) => !omitBlankImages || url.trim().length > 0),
+      };
+    });
+  }
+
   async listDemoCandidates(
     query: ProductQuery,
     maxCandidates: number,
@@ -271,44 +349,9 @@ export class PostgresCatalogRepository {
             .from(productAttributes)
             .where(eq(productAttributes.product_id, row.product_id))
             .orderBy(asc(productAttributes.caracteristica_id));
-          const children = row.tiene_variantes
-            ? await tx
-                .select({ variant_id: variants.id, sku: variants.sku })
-                .from(variants)
-                .where(eq(variants.product_id, row.product_id))
-                .orderBy(asc(variants.id))
+          const result = row.tiene_variantes
+            ? await this.variantsForProduct(tx, row.product_id, true, true)
             : [];
-          const result: CommercialVariant[] = [];
-          for (const child of children) {
-            const values = await tx
-              .select({
-                caracteristica_id: variantAttributes.caracteristica_id,
-                nombre: variantAttributes.nombre_snapshot,
-                valor_id: variantAttributes.valor_id,
-                valor: variantAttributes.valor,
-                identifying: variantAttributes.es_identificador,
-              })
-              .from(variantAttributes)
-              .where(eq(variantAttributes.variant_id, child.variant_id))
-              .orderBy(asc(variantAttributes.caracteristica_id));
-            const gallery = await tx
-              .select({ url: variantImages.url })
-              .from(variantImages)
-              .where(eq(variantImages.variant_id, child.variant_id))
-              .orderBy(asc(variantImages.posicion), asc(variantImages.id));
-            const attrs = (identifying: boolean): Attribute[] =>
-              values
-                .filter((v) => v.identifying === identifying)
-                .map(({ identifying: _internal, ...attribute }) => attribute);
-            result.push({
-              ...child,
-              identifying_attributes: attrs(true),
-              non_identifying_attributes: attrs(false),
-              images: gallery
-                .map((i) => i.url)
-                .filter((url) => url.trim().length > 0),
-            });
-          }
           return { ...row, images, attributes, variants: result };
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
@@ -548,50 +591,9 @@ export class PostgresCatalogRepository {
             .from(productAttributes)
             .where(eq(productAttributes.product_id, row.product_id))
             .orderBy(asc(productAttributes.caracteristica_id));
-          const children = row.tiene_variantes
-            ? await tx
-                .select({
-                  variant_id: variants.id,
-                  sku: variants.sku,
-                })
-                .from(variants)
-                .where(
-                  and(
-                    eq(variants.product_id, row.product_id),
-                    readDemo ? undefined : eq(variants.estado, 'ACTIVA'),
-                  ),
-                )
-                .orderBy(asc(variants.id))
+          const result = row.tiene_variantes
+            ? await this.variantsForProduct(tx, row.product_id, readDemo)
             : [];
-          const result: CommercialVariant[] = [];
-          for (const child of children) {
-            const values = await tx
-              .select({
-                caracteristica_id: variantAttributes.caracteristica_id,
-                nombre: variantAttributes.nombre_snapshot,
-                valor_id: variantAttributes.valor_id,
-                valor: variantAttributes.valor,
-                identifying: variantAttributes.es_identificador,
-              })
-              .from(variantAttributes)
-              .where(eq(variantAttributes.variant_id, child.variant_id))
-              .orderBy(asc(variantAttributes.caracteristica_id));
-            const gallery = await tx
-              .select({ url: variantImages.url })
-              .from(variantImages)
-              .where(eq(variantImages.variant_id, child.variant_id))
-              .orderBy(asc(variantImages.posicion), asc(variantImages.id));
-            const attrs = (identifying: boolean): Attribute[] =>
-              values
-                .filter((v) => v.identifying === identifying)
-                .map(({ identifying: _internal, ...attribute }) => attribute);
-            result.push({
-              ...child,
-              identifying_attributes: attrs(true),
-              non_identifying_attributes: attrs(false),
-              images: gallery.map((i) => i.url),
-            });
-          }
           return {
             ...row,
             images: images.map((i) => i.url),
@@ -637,47 +639,9 @@ export class PostgresCatalogRepository {
             .from(productAttributes)
             .where(eq(productAttributes.product_id, row.product_id))
             .orderBy(asc(productAttributes.caracteristica_id));
-          const children = row.tiene_variantes
-            ? await tx
-                .select({ variant_id: variants.id, sku: variants.sku })
-                .from(variants)
-                .where(
-                  and(
-                    eq(variants.product_id, row.product_id),
-                    readDemo ? undefined : eq(variants.estado, 'ACTIVA'),
-                  ),
-                )
-                .orderBy(asc(variants.id))
+          const commercialVariants = row.tiene_variantes
+            ? await this.variantsForProduct(tx, row.product_id, readDemo)
             : [];
-          const commercialVariants: CommercialVariant[] = [];
-          for (const child of children) {
-            const values = await tx
-              .select({
-                caracteristica_id: variantAttributes.caracteristica_id,
-                nombre: variantAttributes.nombre_snapshot,
-                valor_id: variantAttributes.valor_id,
-                valor: variantAttributes.valor,
-                identifying: variantAttributes.es_identificador,
-              })
-              .from(variantAttributes)
-              .where(eq(variantAttributes.variant_id, child.variant_id))
-              .orderBy(asc(variantAttributes.caracteristica_id));
-            const gallery = await tx
-              .select({ url: variantImages.url })
-              .from(variantImages)
-              .where(eq(variantImages.variant_id, child.variant_id))
-              .orderBy(asc(variantImages.posicion), asc(variantImages.id));
-            const project = (identifying: boolean): Attribute[] =>
-              values
-                .filter((value) => value.identifying === identifying)
-                .map(({ identifying: _internal, ...attribute }) => attribute);
-            commercialVariants.push({
-              ...child,
-              identifying_attributes: project(true),
-              non_identifying_attributes: project(false),
-              images: gallery.map((image) => image.url),
-            });
-          }
           return {
             ...row,
             images: images.map((image) => image.url),

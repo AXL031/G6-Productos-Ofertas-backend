@@ -1,6 +1,7 @@
 import {
   Inject,
   Injectable,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -10,15 +11,38 @@ import {
 import type { Attribute } from './commercial.types.js';
 import { catalogError, object } from './catalog-mutation.input.js';
 
+export const CATALOG_TAXONOMY_IDENTITY = Symbol('CATALOG_TAXONOMY_IDENTITY');
+export interface CatalogTaxonomyIdentity {
+  authorization(signal: AbortSignal): Promise<string>;
+}
+class TaxonomyResponseFailure extends Error {
+  constructor(readonly status: 400 | 422) {
+    super();
+  }
+}
+
 @Injectable()
 export class CatalogMasterClient {
   constructor(
     @Inject(CATALOG_TAXONOMY_CONFIG) private readonly config: TaxonomyConfig,
+    @Optional()
+    @Inject(CATALOG_TAXONOMY_IDENTITY)
+    private readonly identity?: CatalogTaxonomyIdentity,
   ) {}
+  private async serviceAuthorization(): Promise<string> {
+    if (!this.identity) throw new ServiceUnavailableException();
+    const authorization = await this.identity.authorization(
+      AbortSignal.timeout(5000),
+    );
+    if (!/^Bearer [^\s]+$/i.test(authorization))
+      throw new ServiceUnavailableException();
+    return authorization;
+  }
   private async get(
     path: string,
     authorization: string,
     correlationId: string,
+    invalidCode: string,
   ): Promise<unknown> {
     try {
       if (!this.config.origin) throw new Error();
@@ -34,6 +58,10 @@ export class CatalogMasterClient {
       if (response.status === 404) {
         await response.body?.cancel();
         return null;
+      }
+      if (response.status === 400 || response.status === 422) {
+        await response.body?.cancel();
+        throw new TaxonomyResponseFailure(response.status);
       }
       if (
         response.status !== 200 ||
@@ -59,7 +87,11 @@ export class CatalogMasterClient {
         await reader.cancel();
       }
       return JSON.parse(Buffer.concat(chunks).toString('utf8')) as unknown;
-    } catch {
+    } catch (error) {
+      if (error instanceof TaxonomyResponseFailure) {
+        if (error.status === 400) catalogError(400, 'VALIDACION');
+        catalogError(422, invalidCode);
+      }
       throw new ServiceUnavailableException();
     }
   }
@@ -69,9 +101,10 @@ export class CatalogMasterClient {
       marca_id: string;
       tipo_producto_id: string;
     },
-    authorization: string,
+    _authorization: string,
     correlationId: string,
   ): Promise<{ schemaVersion: number }> {
+    const authorization = await this.serviceAuthorization();
     for (const master of [
       {
         id: product.categoria_id,
@@ -90,6 +123,7 @@ export class CatalogMasterClient {
         '/api/v1/' + master.path + '/' + encodeURIComponent(master.id),
         authorization,
         correlationId,
+        master.code,
       );
       if (value === null || (object(value) && value.estado === 'INACTIVO'))
         catalogError(422, master.code);
@@ -107,6 +141,7 @@ export class CatalogMasterClient {
       '/api/v1/tipos-producto/' + encodeURIComponent(product.tipo_producto_id),
       authorization,
       correlationId,
+      'TIPO_PRODUCTO_INVALIDO',
     );
     if (type === null || (object(type) && type.estado === 'INACTIVO'))
       catalogError(422, 'TIPO_PRODUCTO_INVALIDO');
@@ -125,16 +160,18 @@ export class CatalogMasterClient {
     typeId: string,
     values: readonly Attribute[],
     required: boolean,
-    authorization: string,
+    _authorization: string,
     correlationId: string,
     expectedSchemaVersion?: number,
   ): Promise<Attribute[]> {
+    const authorization = await this.serviceAuthorization();
     const schema = await this.get(
       '/api/v1/tipos-producto/' +
         encodeURIComponent(typeId) +
         '/caracteristicas',
       authorization,
       correlationId,
+      'TIPO_PRODUCTO_INVALIDO',
     );
     if (schema === null) catalogError(422, 'TIPO_PRODUCTO_INVALIDO');
     if (
@@ -192,7 +229,13 @@ export class CatalogMasterClient {
             encodeURIComponent(value.caracteristica_id),
           authorization,
           correlationId,
+          'ATRIBUTO_IDENTIFICADOR_INVALIDO',
         ));
+      if (
+        characteristic === null ||
+        (object(characteristic) && characteristic.estado === 'INACTIVO')
+      )
+        catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
       if (
         !object(characteristic) ||
         characteristic.caracteristicaId !== value.caracteristica_id ||
@@ -218,7 +261,10 @@ export class CatalogMasterClient {
               '/valores',
             authorization,
             correlationId,
+            'ATRIBUTO_IDENTIFICADOR_INVALIDO',
           ));
+        if (options === null)
+          catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
         if (
           !Array.isArray(options) ||
           !options.every(object) ||

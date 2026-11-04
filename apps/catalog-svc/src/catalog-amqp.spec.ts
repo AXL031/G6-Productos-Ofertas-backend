@@ -201,11 +201,24 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
   });
   it('requires explicit authenticated producer mapping and the contractual vhost', () => {
     expect(readCatalogAmqpConfig({})).toBeUndefined();
+    expect(
+      readCatalogAmqpConfig({
+        CATALOG_AMQP_ENABLED: 'false',
+        RABBITMQ_URL: 'amqp://user:pass@localhost/',
+      }),
+    ).toBeUndefined();
     expect(() =>
-      readCatalogAmqpConfig({ RABBITMQ_URL: 'amqp://user:pass@localhost/' }),
+      readCatalogAmqpConfig({ CATALOG_AMQP_ENABLED: 'yes' }),
+    ).toThrow();
+    expect(() =>
+      readCatalogAmqpConfig({
+        CATALOG_AMQP_ENABLED: 'true',
+        RABBITMQ_URL: 'amqp://user:pass@localhost/',
+      }),
     ).toThrow();
     expect(
       readCatalogAmqpConfig({
+        CATALOG_AMQP_ENABLED: 'true',
         RABBITMQ_URL: 'amqp://catalog:fixture@localhost/g6-productos-ofertas',
         CATALOG_AMQP_PRODUCER_USERS: JSON.stringify({
           'pricing-svc': 'pricing',

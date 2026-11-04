@@ -14,6 +14,11 @@ import type { CommercialBrand } from './commercial.types.js';
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
+class TaxonomyResponseFailure extends Error {
+  constructor(readonly status: 400 | 422) {
+    super();
+  }
+}
 export interface TaxonomyIdentity {
   authorization?: string;
   user: boolean;
@@ -31,6 +36,7 @@ export class TaxonomyClient {
     key: string | undefined,
     correlationId?: string,
     identity?: TaxonomyIdentity,
+    invalidCode = 'VALIDACION',
   ): Promise<Record<string, unknown>[]> {
     try {
       if (!this.config.origin) throw new Error();
@@ -48,6 +54,10 @@ export class TaxonomyClient {
       if (key === undefined && response.status === 404) {
         await response.body?.cancel();
         return [];
+      }
+      if (response.status === 400 || response.status === 422) {
+        await response.body?.cancel();
+        throw new TaxonomyResponseFailure(response.status);
       }
       if (
         response.status !== 200 ||
@@ -84,7 +94,12 @@ export class TaxonomyClient {
       )
         throw new Error();
       return body[key];
-    } catch {
+    } catch (error) {
+      if (error instanceof TaxonomyResponseFailure)
+        throw new HttpException(
+          { code: error.status === 400 ? 'VALIDACION' : invalidCode },
+          error.status,
+        );
       throw new ServiceUnavailableException(
         'Servicio temporalmente no disponible',
       );
@@ -102,6 +117,7 @@ export class TaxonomyClient {
       identity?.user || identity?.restrictedDemo ? undefined : 'brands',
       correlationId,
       identity,
+      'MARCA_INVALIDA',
     );
     if (identity?.user || identity?.restrictedDemo)
       rows = rows
@@ -157,6 +173,7 @@ export class TaxonomyClient {
         undefined,
         correlationId,
         identity,
+        'CATEGORIA_INVALIDA',
       );
       if (!rows.length)
         throw new HttpException({ code: 'CATEGORIA_INVALIDA' }, 422);
@@ -177,6 +194,7 @@ export class TaxonomyClient {
       'categories',
       correlationId,
       identity,
+      'CATEGORIA_INVALIDA',
     );
     if (
       rows.some(

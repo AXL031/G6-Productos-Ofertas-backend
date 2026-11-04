@@ -47,6 +47,7 @@ export class CatalogGatewayHarness {
         iss: this.origin,
         sub: '00000000-0000-4000-8000-000000000050',
         tipo: 'acceso',
+        aud: 'api-productos',
         roles: ['GESTOR_COMERCIAL'],
         iat: now,
         exp: now + 600,

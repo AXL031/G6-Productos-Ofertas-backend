@@ -42,8 +42,12 @@ export interface CatalogAmqpSettings {
 export function readCatalogAmqpConfig(
   env: Record<string, string | undefined> = process.env,
 ): CatalogAmqpConfig | undefined {
-  if (!env.RABBITMQ_URL) return undefined;
+  const enabled = env.CATALOG_AMQP_ENABLED;
+  if (enabled === undefined || enabled === 'false') return undefined;
+  if (enabled !== 'true')
+    throw new Error('CATALOG_AMQP_ENABLED debe ser true o false.');
   try {
+    if (!env.RABBITMQ_URL) throw new Error();
     const url = new URL(env.RABBITMQ_URL);
     const users: unknown = JSON.parse(
       env.CATALOG_AMQP_PRODUCER_USERS ?? 'null',
@@ -195,10 +199,13 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   }
   private connection?: ChannelModel;
   private consumer?: Channel;
+  private consumerTag?: string;
   private publisher?: ConfirmedCatalogPublisher;
   private timer?: ReturnType<typeof setInterval>;
   private busy = false;
   private stopped = false;
+  private recoveryBlocked = false;
+  private subscribed = false;
   private deliveries = new Set<Promise<void>>();
   constructor(
     private readonly messages: CatalogMessageService,
@@ -209,15 +216,22 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     @Optional()
     private readonly telemetry: CatalogTelemetry = new CatalogTelemetry(),
   ) {}
+  get required(): boolean {
+    return this.config !== undefined;
+  }
+  get ready(): boolean {
+    return (
+      !this.required ||
+      (!this.stopped && !this.recoveryBlocked && this.subscribed)
+    );
+  }
   onModuleInit(): void {
     if (!this.config) return;
     // AsyncAPI rc.3 does not approve/provision retry/DLX. Do not acquire any
     // delivery or publish incompatible pending payloads until recovery is agreed.
     // HTTP and local transactional Outbox remain available independently.
-    if (
-      !this.settings.isolatedTestRecovery ||
-      process.env.NODE_ENV !== 'test'
-    ) {
+    if (!this.settings.isolatedTestRecovery) {
+      this.recoveryBlocked = true;
       this.log('AMQP_RECOVERY_BLOCKED');
       return;
     }
@@ -237,18 +251,26 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
           await connection.close();
           return;
         }
-        connection.on('error', () => this.log('AMQP_CONNECTION_FAILURE'));
+        connection.on('error', () => {
+          this.subscribed = false;
+          this.log('AMQP_CONNECTION_FAILURE');
+        });
         connection.on('close', () => {
           if (this.connection === connection) {
             this.connection = undefined;
             this.publisher = undefined;
             this.consumer = undefined;
+            this.consumerTag = undefined;
+            this.subscribed = false;
           }
         });
         this.connection = connection;
         try {
           const channel = await connection.createConfirmChannel();
-          channel.on('error', () => this.log('AMQP_CHANNEL_FAILURE'));
+          channel.on('error', () => {
+            this.subscribed = false;
+            this.log('AMQP_CHANNEL_FAILURE');
+          });
           channel.on('close', () => {
             void this.reset(connection);
           });
@@ -257,7 +279,10 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
             this.config.user,
           );
           this.consumer = await connection.createChannel();
-          this.consumer.on('error', () => this.log('AMQP_CONSUMER_FAILURE'));
+          this.consumer.on('error', () => {
+            this.subscribed = false;
+            this.log('AMQP_CONSUMER_FAILURE');
+          });
           this.consumer.on('close', () => {
             void this.reset(connection);
           });
@@ -265,10 +290,11 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
           const consumer = this.consumer,
             publisher = this.publisher;
           // Infrastructure owns topology. No assert, bind, purge or declare against shared brokers.
-          await consumer.consume(
+          const subscription = await consumer.consume(
             'po.catalogo.q',
             (delivery) => {
               if (!delivery) {
+                this.subscribed = false;
                 this.log('AMQP_CONSUMER_CANCELLED');
                 void this.reset(connection);
                 return;
@@ -283,6 +309,8 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
             },
             { noAck: false },
           );
+          this.consumerTag = subscription.consumerTag;
+          this.subscribed = true;
           this.log('AMQP_CONNECTED');
         } catch (error) {
           await this.reset(connection);
@@ -375,7 +403,9 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     if (this.connection === connection) {
       this.connection = undefined;
       this.consumer = undefined;
+      this.consumerTag = undefined;
       this.publisher = undefined;
+      this.subscribed = false;
     }
     await connection.close().catch(() => undefined);
   }
@@ -385,6 +415,12 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
+    if (this.consumer && this.consumerTag) {
+      const consumer = this.consumer;
+      await consumer.cancel(this.consumerTag).catch(() => undefined);
+      this.subscribed = false;
+      this.consumerTag = undefined;
+    }
     const closing = this.connection
       ? this.reset(this.connection)
       : Promise.resolve();

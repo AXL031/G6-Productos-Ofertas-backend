@@ -36,6 +36,7 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
         receive = callback;
         return { consumerTag: 'fixture' };
       }),
+      cancel: vi.fn(async () => undefined),
       ack: vi.fn(),
     });
     const publisher = Object.assign(new EventEmitter(), {
@@ -128,17 +129,14 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
   });
-  it.each([false, true])(
-    'blocks shared runtime without an approved recovery disposition (test flag: %s)',
-    async (isolated) => {
-      vi.stubEnv('NODE_ENV', isolated ? 'production' : 'test');
+  it.each(['test', 'production'])(
+    'blocks shared runtime without approved recovery conditions in %s',
+    async (environment) => {
+      vi.stubEnv('NODE_ENV', environment);
       const messages = { consume: vi.fn(), relayOne: vi.fn() };
       active = new CatalogAmqpRuntime(
         messages as unknown as CatalogMessageService,
-        {
-          connection: settings.connection,
-          ...(isolated ? { isolatedTestRecovery: true as const } : {}),
-        },
+        { connection: settings.connection },
         { record } as unknown as CatalogTelemetry,
       );
       active.onModuleInit();
@@ -150,6 +148,29 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
+  it('uses the isolated recovery adapter independently of NODE_ENV', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    const f = fixture();
+    vi.mocked(connect).mockResolvedValue(
+      f.connection as unknown as ChannelModel,
+    );
+    start();
+    await flush();
+    expect(active?.ready).toBe(true);
+    expect(f.consumer.consume).toHaveBeenCalledOnce();
+  });
+  it('cancels the active consumer and closes the connection on shutdown', async () => {
+    const f = fixture();
+    vi.mocked(connect).mockResolvedValue(
+      f.connection as unknown as ChannelModel,
+    );
+    start();
+    await flush();
+    await active!.onModuleDestroy();
+    expect(f.consumer.cancel).toHaveBeenCalledExactlyOnceWith('fixture');
+    expect(f.connection.close).toHaveBeenCalledOnce();
+    expect(active?.ready).toBe(false);
+  });
   it('reconnects after a connection failure and after server-side consumer cancellation', async () => {
     const first = fixture(),
       second = fixture();

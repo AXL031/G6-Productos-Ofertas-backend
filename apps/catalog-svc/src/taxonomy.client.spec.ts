@@ -158,4 +158,33 @@ describe('Taxonomy HTTP boundary', () => {
       message: 'Servicio temporalmente no disponible',
     });
   });
+  it.each([
+    [400, 400, 'VALIDACION'],
+    [422, 422, 'MARCA_INVALIDA'],
+  ])(
+    'maps Taxonomy HTTP %i to the Catalog contract',
+    async (remote, statusCode, code) => {
+      status = remote;
+      body = { detail: 'untrusted provider body' };
+      await expect(client.brand('b')).rejects.toMatchObject({
+        status: statusCode,
+        response: { code },
+      });
+      await expect(client.brand('b')).rejects.not.toHaveProperty(
+        'response.detail',
+      );
+    },
+  );
+  it('maps timeout and invalid JSON to a sanitized 503', async () => {
+    vi.stubGlobal('fetch', async () => Promise.reject(new Error('secret')));
+    await expect(client.brand('b')).rejects.toMatchObject({ status: 503 });
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response('{invalid', {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    await expect(client.brand('b')).rejects.toMatchObject({ status: 503 });
+  });
 });
