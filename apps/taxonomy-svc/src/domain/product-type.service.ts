@@ -82,9 +82,7 @@ export class ProductTypeService {
     });
   }
 
-  async obtenerEsquema(
-    id: string,
-  ): Promise<{
+  async obtenerEsquema(id: string): Promise<{
     tipoProducto: TipoProductoAdmin;
     caracteristicas: unknown[];
     schemaVersion: number;
