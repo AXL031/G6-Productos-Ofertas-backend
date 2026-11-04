@@ -46,7 +46,7 @@ export class TaxonomyClient {
         signal: AbortSignal.timeout(5000),
         headers: {
           ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
-          ...(identity?.authorization
+          ...(identity?.authorization && !identity.restrictedDemo
             ? { authorization: identity.authorization }
             : {}),
         },
@@ -111,15 +111,15 @@ export class TaxonomyClient {
     identity?: TaxonomyIdentity,
   ): Promise<CommercialBrand> {
     let rows = await this.get(
-      identity?.user || identity?.restrictedDemo
+      identity?.user
         ? '/api/v1/marcas/' + encodeURIComponent(id)
         : '/api/v1/marcas',
-      identity?.user || identity?.restrictedDemo ? undefined : 'brands',
+      identity?.user ? undefined : 'brands',
       correlationId,
       identity,
       'MARCA_INVALIDA',
     );
-    if (identity?.user || identity?.restrictedDemo)
+    if (identity?.user)
       rows = rows
         .map((row) => {
           if (
@@ -167,7 +167,7 @@ export class TaxonomyClient {
     correlationId?: string,
     identity?: TaxonomyIdentity,
   ): Promise<void> {
-    if (identity?.user || identity?.restrictedDemo) {
+    if (identity?.user) {
       const rows = await this.get(
         '/api/v1/categorias/' + encodeURIComponent(id),
         undefined,

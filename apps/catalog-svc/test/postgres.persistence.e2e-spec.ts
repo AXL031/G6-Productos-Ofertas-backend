@@ -70,6 +70,7 @@ import {
   outbox,
   skuIdentity,
   skuPhysicalProfiles,
+  variantImages,
 } from '../src/catalog.schema.js';
 
 const dockerAvailable =
@@ -4869,10 +4870,66 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
               valor: 'S',
             },
           ],
+          atributosNoIdentificadores: [
+            {
+              caracteristica_id: 'material',
+              nombre: 'Material',
+              valor_id: null,
+              valor: 'Cotton',
+            },
+          ],
           imagenUrl: 'https://example.test/variant',
           perfilFisico: fullProfile,
         },
         actor,
+      );
+      const inactive = await service.createVariant(
+        parent.product_id,
+        {
+          sku: '000-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'M',
+              valor: 'M',
+            },
+          ],
+          imagenUrl: 'https://example.test/inactive',
+          perfilFisico: fullProfile,
+        },
+        actor,
+      );
+      const draft = await service.createVariant(
+        parent.product_id,
+        {
+          sku: '000-' + randomUUID(),
+          atributosIdentificadores: [
+            {
+              caracteristica_id: 'size',
+              nombre: 'Size',
+              valor_id: 'L',
+              valor: 'L',
+            },
+          ],
+          imagenUrl: 'https://example.test/draft',
+          perfilFisico: { pesoKg: 1 },
+        },
+        actor,
+      );
+      await database.read((db) =>
+        db.insert(variantImages).values([
+          {
+            variant_id: child.variant_id,
+            url: 'https://example.test/variant-second',
+            posicion: 1,
+          },
+          {
+            variant_id: child.variant_id,
+            url: 'https://example.test/variant-first-extra',
+            posicion: 0,
+          },
+        ]),
       );
       await complete(parent.product_id);
       await service.state(
@@ -4882,8 +4939,72 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         undefined,
         actor,
       );
+      await service.state(
+        parent.product_id,
+        inactive.variant_id,
+        'activate',
+        undefined,
+        actor,
+      );
       await service.state(parent.product_id, undefined, 'activate', {}, actor);
-      const queries = new CatalogQueryRepository(database, {
+      await service.state(
+        parent.product_id,
+        inactive.variant_id,
+        'deactivate',
+        undefined,
+        actor,
+      );
+      let sqlSelectCount = 0;
+      const countedDatabase = {
+        read: <T>(work: (db: CatalogDatabase) => Promise<T>): Promise<T> =>
+          database.read((db) =>
+            work(
+              new Proxy(db, {
+                get(target, property, receiver) {
+                  if (property !== 'transaction') {
+                    const value = Reflect.get(target, property, receiver);
+                    return typeof value === 'function'
+                      ? value.bind(target)
+                      : value;
+                  }
+                  return (
+                    callback: (tx: CatalogTransaction) => Promise<unknown>,
+                    config?: Parameters<CatalogDatabase['transaction']>[1],
+                  ) =>
+                    target.transaction(
+                      (tx) =>
+                        callback(
+                          new Proxy(tx, {
+                            get(txTarget, txProperty, txReceiver) {
+                              if (txProperty === 'select') {
+                                return (
+                                  ...args: Parameters<
+                                    CatalogTransaction['select']
+                                  >
+                                ) => {
+                                  sqlSelectCount++;
+                                  return txTarget.select(...args);
+                                };
+                              }
+                              const value = Reflect.get(
+                                txTarget,
+                                txProperty,
+                                txReceiver,
+                              );
+                              return typeof value === 'function'
+                                ? value.bind(txTarget)
+                                : value;
+                            },
+                          }),
+                        ),
+                      config,
+                    );
+                },
+              }),
+            ),
+          ),
+      } as unknown as Database;
+      const queries = new CatalogQueryRepository(countedDatabase, {
         timeoutMs: 60000,
       });
       const physical = await queries.physicalData([
@@ -4918,14 +5039,71 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           ],
         },
       );
-      expect(
-        await queries.listVariants(parent.product_id, 1, 20, 'ACTIVA'),
-      ).toMatchObject({
-        items: [
-          { variant_id: child.variant_id, sku: child.sku, status: 'ACTIVA' },
-        ],
-        meta: { pagina: 1, tamanio: 20, total: 1, totalPaginas: 1 },
+      sqlSelectCount = 0;
+      const hydrated = await queries.listVariants(parent.product_id, 1, 20);
+      // Real SELECT builders against the isolated PostgreSQL 17 fixture (not Drizzle result doubles).
+      expect(sqlSelectCount).toBe(6);
+      expect(hydrated?.items).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            variant_id: child.variant_id,
+            sku: child.sku,
+            status: 'ACTIVA',
+            identifying_attributes: [
+              {
+                caracteristica_id: 'size',
+                nombre: 'Size',
+                valor_id: 'S',
+                valor: 'S',
+              },
+            ],
+            non_identifying_attributes: [
+              {
+                caracteristica_id: 'material',
+                nombre: 'Material',
+                valor_id: null,
+                valor: 'Cotton',
+              },
+            ],
+            images: [
+              'https://example.test/variant',
+              'https://example.test/variant-first-extra',
+              'https://example.test/variant-second',
+            ],
+            physical_profile: {
+              sku: child.sku,
+              estado: 'ACTIVO',
+              pesoKg: 1.5,
+              dimensionesCm: { largo: 10, ancho: 20, alto: 30 },
+              actualizadoEn: expect.any(String),
+            },
+          }),
+          expect.objectContaining({
+            variant_id: inactive.variant_id,
+            status: 'INACTIVA',
+            physical_profile: expect.objectContaining({ estado: 'INACTIVO' }),
+          }),
+          expect.objectContaining({
+            variant_id: draft.variant_id,
+            status: 'BORRADOR',
+            physical_profile: null,
+          }),
+        ]),
+      );
+      expect(hydrated?.items).toHaveLength(3);
+      expect(hydrated?.meta).toEqual({
+        pagina: 1,
+        tamanio: 20,
+        total: 3,
+        totalPaginas: 1,
       });
+      for (const item of hydrated?.items ?? [])
+        expect(
+          await queries.findVariant(parent.product_id, item.variant_id),
+        ).toEqual(item);
+      expect(
+        await queries.listVariants(simple.product_id, 1, 20),
+      ).toMatchObject({ items: [], meta: { total: 0, totalPaginas: 0 } });
       expect(
         await queries.findVariant(parent.product_id, child.variant_id),
       ).toMatchObject({

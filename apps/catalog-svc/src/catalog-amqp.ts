@@ -230,7 +230,10 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     // AsyncAPI rc.3 does not approve/provision retry/DLX. Do not acquire any
     // delivery or publish incompatible pending payloads until recovery is agreed.
     // HTTP and local transactional Outbox remain available independently.
-    if (!this.settings.isolatedTestRecovery) {
+    if (
+      !this.settings.isolatedTestRecovery ||
+      process.env.NODE_ENV !== 'test'
+    ) {
       this.recoveryBlocked = true;
       this.log('AMQP_RECOVERY_BLOCKED');
       return;
@@ -415,28 +418,51 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
-    if (this.consumer && this.consumerTag) {
-      const consumer = this.consumer;
-      await consumer.cancel(this.consumerTag).catch(() => undefined);
-      this.subscribed = false;
-      this.consumerTag = undefined;
-    }
-    const closing = this.connection
-      ? this.reset(this.connection)
-      : Promise.resolve();
+    const consumer = this.consumer;
+    const tag = this.consumerTag;
+    const connection = this.connection;
+    this.subscribed = false;
+    this.consumerTag = undefined;
+    let closePromise: Promise<void> | undefined;
+    const closeConnection = () =>
+      (closePromise ??= connection
+        ? this.reset(connection)
+        : Promise.resolve());
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let cancelTimer: ReturnType<typeof setTimeout> | undefined;
+    const boundedCancel =
+      consumer && tag
+        ? Promise.race([
+            Promise.resolve()
+              .then(() => consumer.cancel(tag))
+              .then(
+                () => true,
+                () => false,
+              ),
+            new Promise<false>((resolve) => {
+              cancelTimer = setTimeout(() => resolve(false), 1000);
+            }),
+          ])
+        : Promise.resolve(false);
     try {
       await Promise.race([
-        closing.then(() => Promise.allSettled(this.deliveries)),
+        (async () => {
+          const cancelled = await boundedCancel;
+          if (!cancelled) void closeConnection();
+          else await closeConnection();
+          await Promise.allSettled(this.deliveries);
+        })(),
         new Promise<void>((resolve) => {
           timer = setTimeout(() => {
             this.log('AMQP_SHUTDOWN_PENDING');
+            void closeConnection();
             resolve();
           }, 5000);
         }),
       ]);
     } finally {
       clearTimeout(timer);
+      clearTimeout(cancelTimer);
     }
   }
 }

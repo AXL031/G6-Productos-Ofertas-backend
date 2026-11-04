@@ -30,11 +30,10 @@ export class CatalogMasterClient {
     private readonly identity?: CatalogTaxonomyIdentity,
   ) {}
   private async serviceAuthorization(
-    requestAuthorization: string,
+    _requestAuthorization: string,
   ): Promise<string> {
-    // Restricted demo is an explicitly anonymous integration context. The
-    // Catalog guard represents it with an empty authorization string.
-    if (!requestAuthorization) return '';
+    // Technical Taxonomy reads stay authenticated even when the incoming
+    // restricted-demo request has no user Bearer token.
     if (!this.identity) throw new ServiceUnavailableException();
     const authorization = await this.identity.authorization(
       AbortSignal.timeout(5000),

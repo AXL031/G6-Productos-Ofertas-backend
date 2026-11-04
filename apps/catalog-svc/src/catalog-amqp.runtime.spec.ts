@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { connect, type ConsumeMessage, type ChannelModel } from 'amqplib';
-import { CatalogAmqpRuntime } from './catalog-amqp.js';
+import { CatalogAmqpRuntime, readCatalogAmqpConfig } from './catalog-amqp.js';
 import type { CatalogMessageService } from './catalog-message.service.js';
 import type { CatalogTelemetry } from './catalog-telemetry.js';
 
@@ -120,6 +120,7 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
   }
   beforeEach(() => {
     vi.useFakeTimers();
+    vi.stubEnv('NODE_ENV', 'test');
     vi.mocked(connect).mockReset();
     record.mockClear();
   });
@@ -148,8 +149,37 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
       expect(vi.getTimerCount()).toBe(0);
     },
   );
-  it('uses the isolated recovery adapter independently of NODE_ENV', async () => {
+  it('does not allow isolated recovery in production', async () => {
     vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('CATALOG_AMQP_ENABLED', 'true');
+    vi.stubEnv('RABBITMQ_URL', settings.connection.url);
+    vi.stubEnv(
+      'CATALOG_AMQP_PRODUCER_USERS',
+      JSON.stringify(settings.connection.producerUsers),
+    );
+    expect(readCatalogAmqpConfig()).toEqual(settings.connection);
+    const messages = { consume: vi.fn(), relayOne: vi.fn() };
+    active = new CatalogAmqpRuntime(
+      messages as unknown as CatalogMessageService,
+      settings,
+      { record } as unknown as CatalogTelemetry,
+    );
+    active.onModuleInit();
+    await vi.advanceTimersByTimeAsync(60000);
+    expect(connect).not.toHaveBeenCalled();
+    expect(messages.consume).not.toHaveBeenCalled();
+    expect(messages.relayOne).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    expect(record).toHaveBeenCalledWith('AMQP_RECOVERY_BLOCKED');
+  });
+  it('runs isolated recovery in test mode with valid disposable RabbitMQ config', async () => {
+    vi.stubEnv('CATALOG_AMQP_ENABLED', 'true');
+    vi.stubEnv('RABBITMQ_URL', settings.connection.url);
+    vi.stubEnv(
+      'CATALOG_AMQP_PRODUCER_USERS',
+      JSON.stringify(settings.connection.producerUsers),
+    );
+    expect(readCatalogAmqpConfig()).toEqual(settings.connection);
     const f = fixture();
     vi.mocked(connect).mockResolvedValue(
       f.connection as unknown as ChannelModel,
@@ -317,5 +347,32 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
     await vi.advanceTimersByTimeAsync(5000);
     await shutdown;
     expect(record).toHaveBeenCalledWith('AMQP_SHUTDOWN_PENDING');
+  });
+  it('closes the connection when consumer cancellation rejects', async () => {
+    const f = fixture();
+    vi.mocked(connect).mockResolvedValue(
+      f.connection as unknown as ChannelModel,
+    );
+    start();
+    await flush();
+    f.consumer.cancel.mockRejectedValueOnce(new Error('cancel failed'));
+    await active!.onModuleDestroy();
+    expect(f.connection.close).toHaveBeenCalledOnce();
+  });
+  it('bounds a consumer cancellation that never responds and closes for redelivery', async () => {
+    const f = fixture();
+    vi.mocked(connect).mockResolvedValue(
+      f.connection as unknown as ChannelModel,
+    );
+    start();
+    await flush();
+    f.consumer.cancel.mockImplementationOnce(() => new Promise(() => {}));
+    const shutdown = active!.onModuleDestroy();
+    await vi.advanceTimersByTimeAsync(1000);
+    await flush();
+    expect(f.connection.close).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(4000);
+    await shutdown;
+    expect(active?.ready).toBe(false);
   });
 });

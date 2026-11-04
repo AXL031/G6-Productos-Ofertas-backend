@@ -86,6 +86,20 @@ describe('Taxonomy HTTP boundary', () => {
       status: 422,
     });
   });
+  it('keeps restricted-demo category and brand lookups on anonymous collection routes only', async () => {
+    body = {
+      categories: [{ categoria_id: 'c', name: 'Category', status: 'ACTIVA' }],
+    };
+    await client.category('c', 'trace', { user: false, restrictedDemo: true });
+    expect(path).toBe('/api/v1/categorias');
+    expect(authorization).toBeUndefined();
+    body = {
+      brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }],
+    };
+    await client.brand('b', 'trace', { user: false, restrictedDemo: true });
+    expect(path).toBe('/api/v1/marcas');
+    expect(authorization).toBeUndefined();
+  });
   it('forwards verified service credentials and uses administrative routes for users', async () => {
     body = { brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }] };
     await client.brand('b', 'trace', {

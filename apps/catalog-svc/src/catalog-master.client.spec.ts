@@ -82,10 +82,11 @@ describe('Authoritative catalog master validation', () => {
       { ...value, valor: null, nombre: 'Authoritative Size' },
     ]);
   });
-  it('keeps the restricted-demo Taxonomy calls anonymous', async () => {
+  it('uses M2M for protected technical reads from restricted demo without forwarding an incoming token', async () => {
     identity.authorization.mockClear();
+    const authorizations: (string | null)[] = [];
     vi.stubGlobal('fetch', async (_url: URL, init: RequestInit) => {
-      expect(new Headers(init.headers).has('authorization')).toBe(false);
+      authorizations.push(new Headers(init.headers).get('authorization'));
       const path = String(_url);
       const value = path.includes('/categorias/')
         ? {
@@ -118,7 +119,27 @@ describe('Authoritative catalog master validation', () => {
         correlation,
       ),
     ).resolves.toEqual({ schemaVersion: 1 });
-    expect(identity.authorization).not.toHaveBeenCalled();
+    expect(identity.authorization).toHaveBeenCalledOnce();
+    expect(authorizations).toEqual([
+      'Bearer taxonomy-service-fixture',
+      'Bearer taxonomy-service-fixture',
+      'Bearer taxonomy-service-fixture',
+    ]);
+  });
+  it('fails safely when restricted demo needs a protected read but M2M credentials are absent', async () => {
+    const noIdentity = new CatalogMasterClient({
+      origin: 'http://127.0.0.1:9876',
+    } as never);
+    const fetcher = vi.fn();
+    vi.stubGlobal('fetch', fetcher);
+    await expect(
+      noIdentity.masters(
+        { categoria_id: 'cat', marca_id: 'brand', tipo_producto_id: 'type' },
+        '',
+        correlation,
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(fetcher).not.toHaveBeenCalled();
   });
   it('does not infer validity or use fallback data after a dependency failure', async () => {
     vi.stubGlobal(
