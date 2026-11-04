@@ -34,16 +34,18 @@ function nodeCompatible(version) {
   );
 }
 
-function run(command, args, options = {}) {
+function run(command, args, { phase = command, ...options } = {}) {
   const result = spawnSync(command, args, {
     cwd: REPO,
     encoding: 'utf8',
     windowsHide: true,
     maxBuffer: 4 * 1024 * 1024,
-    timeout: 30_000,
+    timeout: 60_000,
     ...options,
   });
-  if (result.error) throw new Error(`${command}: ${result.error.message}`);
+  if (result.error) {
+    throw new Error(`${phase}: ${command}: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     const detail = sanitizarDiagnostico(
       (
@@ -52,13 +54,13 @@ function run(command, args, options = {}) {
         `${command} exit ${result.status}`
       ).trim(),
     );
-    throw new Error(`${command} falló (${result.status}): ${detail}`);
+    throw new Error(`${phase}: ${command} falló (${result.status}): ${detail}`);
   }
   return (result.stdout ?? '').trim();
 }
 
-function docker(args, options) {
-  return run('docker', args, options);
+function docker(args, phase, timeout = 60_000) {
+  return run('docker', args, { phase, timeout });
 }
 
 function postgresUrl(port, password, caFile) {
@@ -81,7 +83,21 @@ async function main() {
     );
   }
 
-  docker(['info', '--format', '{{.ServerVersion}}']);
+  const sha = run('git', ['rev-parse', 'HEAD'], { phase: 'lectura de SHA' });
+  let phase = 'docker info';
+  let dockerVersion;
+  try {
+    dockerVersion = docker(
+      ['info', '--format', '{{.ServerVersion}}'],
+      phase,
+      90_000,
+    );
+  } catch (error) {
+    console.error(
+      `[taxonomy-gateway-e2e] evidencia: SHA=${sha}; Node=${process.versions.node}; Docker=indisponible; cleanup=no requerido (sin recursos creados); fallo en fase=${phase}`,
+    );
+    throw error;
+  }
   const harnessId = randomBytes(24).toString('hex');
   const containerName = `g6-taxonomy-gateway-${randomUUID().slice(0, 12)}`;
   const password = randomBytes(24).toString('hex');
@@ -91,6 +107,8 @@ async function main() {
   const serverKey = join(tempDirectory, 'server.key');
   let launchAttempted = false;
   let failure;
+  let cleanupResult = 'no requerido';
+  let testSummary = 'sin reporte de pruebas';
 
   try {
     const mount = `type=bind,source=${tempDirectory},target=/out`;
@@ -102,50 +120,54 @@ async function main() {
       'openssl x509 -req -in /out/server.csr -CA /out/ca.crt -CAkey /out/ca.key -CAcreateserial -out /out/server.crt -days 2 -sha256 -extfile /out/server.ext',
       'chmod 600 /out/server.key',
     ].join('; ');
-    docker([
-      'run',
-      '--rm',
-      '--mount',
-      mount,
-      IMAGE_OPENSSL,
-      'sh',
-      '-ec',
-      script,
-    ]);
+    phase = 'generación de certificados (docker run alpine/OpenSSL)';
+    docker(
+      ['run', '--rm', '--mount', mount, IMAGE_OPENSSL, 'sh', '-ec', script],
+      phase,
+      180_000,
+    );
 
+    phase = 'inicio de PostgreSQL (docker run)';
     launchAttempted = true;
-    docker([
-      'run',
-      '--detach',
-      '--name',
-      containerName,
-      '--label',
-      `${LABEL}=true`,
-      '--label',
-      `${LABEL_ID}=${harnessId}`,
-      '--publish',
-      '127.0.0.1::5432',
-      '--mount',
-      `${mount},readonly`,
-      '--env',
-      `POSTGRES_PASSWORD=${password}`,
-      '--env',
-      'POSTGRES_DB=taxonomy_test',
-      '--user',
-      '0:0',
-      '--entrypoint',
-      '/bin/sh',
-      IMAGE_POSTGRES,
-      '-ec',
-      `cp /out/server.crt /var/lib/postgresql/server.crt && cp /out/server.key /var/lib/postgresql/server.key && chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && chmod 600 /var/lib/postgresql/server.key && exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key -c g6.taxonomy_harness_id=${harnessId}`,
-    ]);
+    docker(
+      [
+        'run',
+        '--detach',
+        '--name',
+        containerName,
+        '--label',
+        `${LABEL}=true`,
+        '--label',
+        `${LABEL_ID}=${harnessId}`,
+        '--publish',
+        '127.0.0.1::5432',
+        '--mount',
+        `${mount},readonly`,
+        '--env',
+        `POSTGRES_PASSWORD=${password}`,
+        '--env',
+        'POSTGRES_DB=taxonomy_test',
+        '--user',
+        '0:0',
+        '--entrypoint',
+        '/bin/sh',
+        IMAGE_POSTGRES,
+        '-ec',
+        `cp /out/server.crt /var/lib/postgresql/server.crt && cp /out/server.key /var/lib/postgresql/server.key && chown postgres:postgres /var/lib/postgresql/server.crt /var/lib/postgresql/server.key && chmod 600 /var/lib/postgresql/server.key && exec /usr/local/bin/docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/var/lib/postgresql/server.crt -c ssl_key_file=/var/lib/postgresql/server.key -c g6.taxonomy_harness_id=${harnessId}`,
+      ],
+      phase,
+      180_000,
+    );
 
-    const portText = docker(['port', containerName, '5432/tcp']);
+    phase = 'consulta del puerto publicado';
+    const portText = docker(['port', containerName, '5432/tcp'], phase);
     const portMatch = /^127\.0\.0\.1:(\d+)$/.exec(portText);
     if (!portMatch) throw new Error('PostgreSQL no quedó limitado a loopback.');
     const port = Number(portMatch[1]);
 
     let ready = false;
+    let readinessDiagnostic = '';
+    phase = 'readiness PostgreSQL';
     for (let attempt = 0; attempt < 60; attempt++) {
       const result = spawnSync(
         'docker',
@@ -168,20 +190,31 @@ async function main() {
         ready = true;
         break;
       }
+      readinessDiagnostic = sanitizarDiagnostico(
+        result.stderr || result.stdout || result.error?.message || '',
+      );
       await pause(1000);
     }
-    if (!ready) throw new Error('PostgreSQL 17 no alcanzó readiness en 60 s.');
-    const postgresVersion = docker([
-      'exec',
-      containerName,
-      'psql',
-      '-U',
-      'postgres',
-      '-d',
-      'taxonomy_test',
-      '-Atc',
-      "SELECT current_setting('server_version')",
-    ]);
+    if (!ready) {
+      throw new Error(
+        `PostgreSQL 17 no alcanzó readiness en 60 s.${readinessDiagnostic ? ` Último diagnóstico: ${readinessDiagnostic}` : ''}`,
+      );
+    }
+    phase = 'consulta de versión PostgreSQL';
+    const postgresVersion = docker(
+      [
+        'exec',
+        containerName,
+        'psql',
+        '-U',
+        'postgres',
+        '-d',
+        'taxonomy_test',
+        '-Atc',
+        "SELECT current_setting('server_version')",
+      ],
+      phase,
+    );
 
     const vitest = resolve(REPO, 'node_modules/vitest/vitest.mjs');
     if (!existsSync(vitest)) throw new Error('Falta node_modules/vitest.');
@@ -198,6 +231,7 @@ async function main() {
       TAXONOMY_TEST_PG_CERT: serverCert,
       TAXONOMY_TEST_PG_KEY: serverKey,
     };
+    phase = 'ejecución de Vitest dedicado';
     const result = spawnSync(
       process.execPath,
       [
@@ -250,16 +284,17 @@ async function main() {
         `[taxonomy-gateway-e2e] fallas detectadas:\n${failures.join('\n')}`,
       );
     }
-    console.log(
-      `[taxonomy-gateway-e2e] ${result.status === 0 && failed === 0 && skipped === 0 ? 'PASS' : 'FAIL'}: ${passed}/${total} PASS, ${failed} FAIL, ${skipped} SKIP; PostgreSQL ${postgresVersion} real con TLS verify-full.`,
-    );
+    testSummary = `${passed}/${total} PASS, ${failed} FAIL, ${skipped} SKIP; PostgreSQL ${postgresVersion} real con TLS verify-full`;
     if (result.status !== 0 || failed > 0 || skipped > 0 || total === 0) {
       throw new Error('La matriz E2E no terminó íntegramente en PASS.');
     }
   } catch (error) {
-    failure = error;
+    failure = new Error(
+      `${phase}: ${error instanceof Error ? error.message : String(error)}`,
+    );
   } finally {
     if (launchAttempted) {
+      phase = 'acreditación y cleanup de PostgreSQL';
       const ownership = acreditarPropiedadContenedor(containerName, harnessId);
       if (ownership.ok) {
         const removal = eliminarContenedor(
@@ -270,9 +305,15 @@ async function main() {
         );
         if (!removal.ok) {
           failure ??= new Error(removal.mensaje);
+          cleanupResult = 'FAIL: eliminación rechazada/fallida';
+        } else {
+          cleanupResult = 'PASS: contenedor propio eliminado';
         }
       } else if (!ownership.ausente) {
         failure ??= new Error(ownership.mensaje);
+        cleanupResult = 'FAIL: propiedad no acreditada; no se eliminó';
+      } else {
+        cleanupResult = 'PASS: contenedor ya ausente';
       }
     }
     const tempRoot = resolve(tmpdir());
@@ -284,13 +325,18 @@ async function main() {
       resolvedTemp.includes('g6-taxonomy-gateway-')
     ) {
       rmSync(resolvedTemp, { recursive: true, force: true });
+      cleanupResult += '; directorio temporal eliminado';
     } else {
       failure ??= new Error(
         'La ruta temporal no pasó la verificación de limpieza.',
       );
+      cleanupResult += '; FAIL: directorio temporal no acreditado';
     }
   }
 
+  console.log(
+    `[taxonomy-gateway-e2e] evidencia: SHA=${sha}; Node=${process.versions.node}; Docker=${dockerVersion}; ${testSummary}; cleanup=${cleanupResult}`,
+  );
   if (failure) {
     const message =
       failure instanceof Error ? failure.message : String(failure);
@@ -300,7 +346,7 @@ async function main() {
     process.exitCode = 1;
     return;
   }
-  console.log('[taxonomy-gateway-e2e] recursos temporales limpiados.');
+  console.log(`[taxonomy-gateway-e2e] PASS: ${testSummary}; ${cleanupResult}.`);
 }
 
 main().catch((error) => {

@@ -6,6 +6,7 @@ export default defineConfig({
   test: {
     globals: true,
     root: process.cwd(),
+    sequence: { concurrent: false },
     include: ['apps/api-gateway/test/taxonomy-postgres.gateway.integration.ts'],
   },
 });

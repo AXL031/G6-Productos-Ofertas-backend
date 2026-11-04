@@ -50,7 +50,7 @@ La evidencia no contiene valores de esas variables, tokens, claves privadas ni U
 
 ## Matriz y evidencia
 
-La última ejecución local completó **10/10 pruebas PASS, 0 FAIL y 0 SKIP** con cliente HTTP, Gateway, Taxonomy y PostgreSQL real. El runner informa la versión exacta de PostgreSQL y confirma la limpieza al terminar.
+La ejecución local registrada en el SHA histórico indicado abajo completó **10/10 pruebas PASS, 0 FAIL y 0 SKIP** con cliente HTTP, Gateway, Taxonomy y PostgreSQL real. El runner informa la versión exacta de PostgreSQL y confirma la limpieza al terminar.
 
 | Caso                                                              | Resultado observado                                                                                       |
 | ----------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
@@ -68,15 +68,15 @@ La última ejecución local completó **10/10 pruebas PASS, 0 FAIL y 0 SKIP** co
 | Tabla temporalmente indisponible                                  | `503` genérico sin SQL, nombre de tabla, credencial ni JWT                                                |
 | Taxonomy detenida                                                 | `503` desde Gateway sin error de socket ni credenciales filtrados                                         |
 
-El JSON completo de Vitest se crea dentro del directorio temporal y se elimina al terminar; la salida conservada muestra únicamente conteos y diagnósticos saneados.
+El JSON completo de Vitest se crea dentro del directorio temporal y se elimina al terminar; la salida conservada muestra SHA, versiones de runtime, conteos, fase del fallo y estado de cleanup, sin secretos. Cada caso reinicia sus filas deterministas y la suite es secuencial; el caso que cierra Taxonomy queda al final para que no afecte casos posteriores.
 
-**SHA probado:** `d0ae90296a4454a49105e65e3f8552284cbbaced` (`castilla`). Después de crear ese commit se repitió el harness: 10/10 PASS, 0 FAIL, 0 SKIP con PostgreSQL `17.11`, y limpieza confirmada. Este registro se añade en un commit documental posterior. La prueba local no acredita CI, despliegue ni homologación.
+**Evidencia histórica:** `d0ae90296a4454a49105e65e3f8552284cbbaced` (`castilla`): 10/10 PASS, 0 FAIL, 0 SKIP con PostgreSQL `17.11` y cleanup confirmado. Esta evidencia no acredita el HEAD posterior `d756d0a88ece298095d72461ad24b63db27dc0f1`; la nueva ejecución se registrará junto al SHA exacto en el PR. Una prueba local no acredita CI, despliegue ni homologación.
 
 ## Contratos y discrepancias
 
-Contrato contrastado: OpenAPI de `Taller-SW-Web/G6-Productos-Ofertas-docs` en `origin/master` SHA `80f208978c2c703e2b2d62064112365e7b9e1677`, versión `0.6.0-rc.3`. `GET /tipos-producto` usa seguridad `userBearer`, `$ref` al parámetro `Tamanio` (máximo `200`) y esquema `TipoProductoAdmin.estado` basado en `EstadoEntidad` (`ACTIVO`, `INACTIVO`). El código de Taxonomy también admite y devuelve `PENDING_DEACTIVATION`; la prueba lo observa en PostgreSQL y HTTP. No se cambió OpenAPI.
+Contrato contrastado: OpenAPI de `Taller-SW-Web/G6-Productos-Ofertas-docs` en `origin/master` SHA `80f208978c2c703e2b2d62064112365e7b9e1677`, versión `0.6.0-rc.3`. La operación `GET /tipos-producto` declara los esquemas `userBearer` y `serviceBearer`, `$ref` al parámetro `Tamanio` (máximo `200`) y esquema `TipoProductoAdmin.estado` basado en `EstadoEntidad` (`ACTIVO`, `INACTIVO`). El Gateway actualmente declara solo `userBearer`, por lo que existe una discrepancia contractual en el esquema de seguridad de la operación. El código de Taxonomy también admite y devuelve `PENDING_DEACTIVATION`; la prueba lo observa en PostgreSQL y HTTP. No se cambió OpenAPI.
 
-Taxonomy marca el GET con `AllowTaxonomyServiceRead()` y su guard admite la identidad de servicio `modulo-productos` con `catalogo:leer`; la ruta Gateway/OpenAPI de esta operación registra solo `userBearer`. El harness usa el camino humano autorizado y no amplía la allowlist.
+Taxonomy marca el GET con `AllowTaxonomyServiceRead()` y su guard admite la identidad de servicio `modulo-productos` con `catalogo:leer`; el Gateway solo declara `userBearer` aunque OpenAPI también documenta `serviceBearer`. El harness prueba la ruta humana ya autorizada; no amplía la allowlist ni habilita service bearer en Gateway.
 
 La discrepancia “OpenAPI máximo 100 frente a backend 200” **no aplica a esta operación** en el contrato actual: `/tipos-producto` referencia `Tamanio`, cuyo máximo es 200, coincidente con el controlador. La prueba confirma que `tamanio=101` funciona y `tamanio=201` produce `400`. El máximo 100 presente en otros endpoints no se extrapola a este.
 

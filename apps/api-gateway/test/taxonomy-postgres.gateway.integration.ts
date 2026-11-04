@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { channel } from 'node:diagnostics_channel';
 import { NestFactory } from '@nestjs/core';
 import { Pool } from 'pg';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { Server } from 'node:https';
 import type { INestApplication, LoggerService } from '@nestjs/common';
 import { ApiGatewayModule } from '../src/api-gateway.module.js';
@@ -209,17 +209,6 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     issuerUrl = `https://127.0.0.1:${issuerAddress.port}/issuer`;
     jwksUrl = `https://127.0.0.1:${issuerAddress.port}/jwks`;
 
-    await admin.query(
-      `INSERT INTO taxonomy.product_types (id, nombre, estado) VALUES
-        ('11111111-1111-4111-8111-111111111111', 'A Activo', 'ACTIVO'),
-        ('22222222-2222-4222-8222-222222222222', 'B Inactivo', 'INACTIVO'),
-        ('33333333-3333-4333-8333-333333333333', 'C Pendiente', 'PENDING_DEACTIVATION')`,
-    );
-    const persisted = await admin.query(
-      'SELECT id::text, nombre, estado FROM taxonomy.product_types ORDER BY nombre',
-    );
-    expect(persisted.rows).toHaveLength(3);
-
     const taxonomyPort = await puertoDisponible();
     const taxonomyEnvironment: Record<string, string> = {
       NODE_ENV: 'test',
@@ -295,6 +284,21 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     gatewayUrl = `http://127.0.0.1:${getPort(gateway)}`;
     undiciCreate.subscribe(observeRequest);
   }, 120_000);
+
+  beforeEach(async () => {
+    outgoing = [];
+    await admin!.query('DELETE FROM taxonomy.product_types');
+    await admin!.query(
+      `INSERT INTO taxonomy.product_types (id, nombre, estado) VALUES
+        ('11111111-1111-4111-8111-111111111111', 'A Activo', 'ACTIVO'),
+        ('22222222-2222-4222-8222-222222222222', 'B Inactivo', 'INACTIVO'),
+        ('33333333-3333-4333-8333-333333333333', 'C Pendiente', 'PENDING_DEACTIVATION')`,
+    );
+    const persisted = await admin!.query(
+      'SELECT id::text FROM taxonomy.product_types ORDER BY nombre',
+    );
+    expect(persisted.rows).toHaveLength(3);
+  });
 
   afterAll(async () => {
     undiciCreate.unsubscribe(observeRequest);
@@ -435,12 +439,6 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
       'SELECT count(*)::int AS total FROM taxonomy.product_types',
     );
     expect(persisted.rows[0].total).toBe(0);
-    await admin!.query(
-      `INSERT INTO taxonomy.product_types (id, nombre, estado) VALUES
-        ('11111111-1111-4111-8111-111111111111', 'A Activo', 'ACTIVO'),
-        ('22222222-2222-4222-8222-222222222222', 'B Inactivo', 'INACTIVO'),
-        ('33333333-3333-4333-8333-333333333333', 'C Pendiente', 'PENDING_DEACTIVATION')`,
-    );
   });
 
   it('pagina PostgreSQL y verifica el máximo contractual de 200', async () => {
