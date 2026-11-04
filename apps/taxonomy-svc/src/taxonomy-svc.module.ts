@@ -5,6 +5,7 @@ import { ReadinessController } from './health/readiness.controller.js';
 import { TAXONOMY_READINESS } from './health/readiness.port.js';
 import { proveedorDeRepositorio } from './persistence/persistence.providers.js';
 import { TaxonomyController } from './taxonomy.controller.js';
+import { TaxonomyAdminQueryController } from './taxonomy-admin-query.controller.js';
 import { TaxonomySvcController } from './taxonomy-svc.controller.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
 import { TAXONOMY_REPOSITORY } from './taxonomy.repository.js';
@@ -49,6 +50,7 @@ export interface OpcionesModuloTaxonomy {
     TaxonomyController,
     TaxonomyWriteController,
     TaxonomyMastersController,
+    TaxonomyAdminQueryController,
     ReadinessController,
   ],
   providers: [
