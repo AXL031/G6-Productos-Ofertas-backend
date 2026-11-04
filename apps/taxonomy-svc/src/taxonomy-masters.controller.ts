@@ -265,6 +265,24 @@ export class TaxonomyMastersController {
     validarId(id);
     return this.solicitar({ tipo: 'PRODUCT_TYPE', id }, correlationId);
   }
+
+  @Post('tipos-producto/:tipoProductoId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(200)
+  async reactivarTipoProducto(
+    @Param('tipoProductoId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    validarId(id);
+    if (correlationId !== undefined && !esUuid(correlationId))
+      throw ProblemDetailsException.validacion('X-Correlation-Id inválido.');
+    const result = await this.tipos.reactivar(id);
+    if (result === 'NO_ENCONTRADO')
+      throw problema(404, 'TIPO_PRODUCTO_NO_ENCONTRADO');
+    if (result === 'BAJA_EN_PROCESO')
+      throw problema(409, 'BAJA_MAESTRA_EN_PROCESO');
+    return result;
+  }
   @Post('caracteristicas/:caracteristicaId/valores/:valorId/desactivar')
   @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(202)

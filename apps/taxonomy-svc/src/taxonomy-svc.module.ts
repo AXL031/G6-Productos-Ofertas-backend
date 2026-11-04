@@ -27,6 +27,7 @@ import { MasterDeactivationRequestService } from './domain/master-deactivation-r
 import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
 import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
 import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
+import { MasterAdminQueryService } from './domain/master-admin-query.service.js';
 import {
   TAXONOMY_SECURITY_CONFIG,
   TaxonomyAuthGuard,
@@ -61,6 +62,7 @@ export interface OpcionesModuloTaxonomy {
     DeactivationRecoveryRunner,
     TaxonomyAmqpRuntime,
     TaxonomyMessageStore,
+    MasterAdminQueryService,
     TaxonomyAuthGuard,
     TaxonomyUserGuard,
     TaxonomyCommercialGuard,

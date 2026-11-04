@@ -23,6 +23,10 @@ import {
   BrandWriteService,
   type EntradaMarca,
 } from './domain/brand-write.service.js';
+import {
+  MasterDeactivationRequestService,
+  type SolicitudMaestra,
+} from './domain/master-deactivation-request.service.js';
 import { validarLogo } from './domain/brand-logo.js';
 import { esPaisIso } from './domain/iso-country.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
@@ -36,6 +40,7 @@ export class TaxonomyWriteController {
     private readonly crearCategorias: CategoryCreateService,
     private readonly marcas: BrandWriteService,
     private readonly actualizarCategorias: CategoryUpdateService,
+    private readonly bajas: MasterDeactivationRequestService,
   ) {}
 
   @Patch('categorias/:categoriaId')
@@ -408,6 +413,65 @@ export class TaxonomyWriteController {
         'La baja maestra está en proceso.',
       );
     return result.marca;
+  }
+
+  @Post('categorias/:categoriaId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(202)
+  async solicitarDesactivacionCategoria(
+    @Param('categoriaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    if (!esUuid(id) || (correlationId !== undefined && !esUuid(correlationId)))
+      throw ProblemDetailsException.validacion('Identificador inválido.');
+    return this.solicitarBaja(
+      { tipo: 'CATEGORY', id },
+      correlationId,
+      'CATEGORIA_NO_ENCONTRADA',
+    );
+  }
+
+  @Post('marcas/:marcaId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(202)
+  async solicitarDesactivacionMarca(
+    @Param('marcaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    if (!esUuid(id) || (correlationId !== undefined && !esUuid(correlationId)))
+      throw ProblemDetailsException.validacion('Identificador inválido.');
+    return this.solicitarBaja(
+      { tipo: 'BRAND', id },
+      correlationId,
+      'MARCA_NO_ENCONTRADA',
+    );
+  }
+
+  private async solicitarBaja(
+    solicitud: SolicitudMaestra,
+    correlationId: string | undefined,
+    codigoNoEncontrado: 'CATEGORIA_NO_ENCONTRADA' | 'MARCA_NO_ENCONTRADA',
+  ) {
+    const resultado = await this.bajas.solicitar(solicitud, correlationId);
+    if (resultado.estado === 'NO_ENCONTRADA')
+      throw new ProblemDetailsException({
+        type: `/errores/${codigoNoEncontrado.toLowerCase().replace(/_/g, '-')}`,
+        title: 'Recurso no encontrado',
+        status: 404,
+        code: codigoNoEncontrado,
+      });
+    if (resultado.estado === 'CONFLICTO')
+      throw new ProblemDetailsException({
+        type: '/errores/baja-maestra-en-proceso',
+        title: 'Baja maestra en proceso',
+        status: 409,
+        code: 'BAJA_MAESTRA_EN_PROCESO',
+      });
+    return {
+      operation_id: resultado.operation_id,
+      correlation_id: resultado.correlation_id,
+      status: resultado.status,
+    };
   }
 
   @Post('categorias/:categoriaId/reactivar')

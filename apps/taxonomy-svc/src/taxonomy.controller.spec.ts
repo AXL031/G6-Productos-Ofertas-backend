@@ -860,7 +860,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url + '/desconocido')
-        .expect(path === 'categorias' ? 401 : 404);
+        .expect(401);
     },
   );
   it.each([

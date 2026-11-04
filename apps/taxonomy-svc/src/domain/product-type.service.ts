@@ -128,4 +128,30 @@ export class ProductTypeService {
       }),
     );
   }
+
+  async reactivar(
+    id: string,
+  ): Promise<'NO_ENCONTRADO' | 'BAJA_EN_PROCESO' | TipoProductoAdmin> {
+    if (!esUuid(id)) return 'NO_ENCONTRADO';
+    return this.database.read((db) =>
+      db.transaction(async (tx) => {
+        const actual =
+          await tx.execute(sql`SELECT id, nombre, estado, schema_version
+        FROM taxonomy.product_types WHERE id = ${id}::uuid FOR UPDATE`);
+        const row = actual.rows[0];
+        if (!row) return 'NO_ENCONTRADO' as const;
+        if (row.estado === 'PENDING_DEACTIVATION')
+          return 'BAJA_EN_PROCESO' as const;
+        if (row.estado === 'INACTIVO') {
+          const updated = await tx.execute(sql`UPDATE taxonomy.product_types
+          SET estado = 'ACTIVO', taxonomy_version = taxonomy_version + 1, updated_at = statement_timestamp()
+          WHERE id = ${id}::uuid AND estado = 'INACTIVO'
+          RETURNING id, nombre, estado, schema_version`);
+          if (!updated.rows[0]) throw new Error('CAMBIO_CONCURRENTE');
+          return mapear(updated.rows[0]);
+        }
+        return mapear(row);
+      }),
+    );
+  }
 }

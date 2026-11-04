@@ -12,6 +12,7 @@ import {
   TaxonomyUserGuard,
 } from './taxonomy-auth.js';
 import { TaxonomySvcService } from './taxonomy-svc.service.js';
+import { MasterAdminQueryService } from './domain/master-admin-query.service.js';
 
 describe('GET /api/v1/categorias/:categoriaId administrativo', () => {
   let app: INestApplication<App>;
@@ -49,6 +50,15 @@ describe('GET /api/v1/categorias/:categoriaId administrativo', () => {
         TaxonomyCommercialGuard,
         { provide: TaxonomyTokenVerifier, useValue: { verify } },
         { provide: TAXONOMY_REPOSITORY, useValue: repository },
+        {
+          provide: MasterAdminQueryService,
+          useValue: {
+            arbol: vi.fn(),
+            categoriasAdmin: vi.fn(),
+            marca: vi.fn(),
+            marcasAdmin: vi.fn(),
+          },
+        },
       ],
     }).compile();
     app = module.createNestApplication();
