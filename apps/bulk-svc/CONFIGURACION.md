@@ -8,7 +8,6 @@
 | `BULK_SVC_PORT` | Puerto HTTP; tiene prioridad sobre `PORT`. |
 | `PORT` | Puerto alternativo y valor compatible con Compose (`3008`). |
 | `BULK_SVC_HOST` | Opcional. Solo admite `127.0.0.1` o `0.0.0.0`. |
-| `BULK_CATALOG_COMMAND_V2_ENABLED` | Opcional; solo admite `true` o `false`. Por defecto `false`. Habilita la emisión de `catalog.bulk.upsert.requested` schema v2 para ACTUALIZACION de variantes mediante `rows[].sku_variante`. Mantener desactivada hasta contar con Catalog compatible y prueba conjunta satisfactoria. |
 | `DATABASE_URL` | Opcional para conservar el smoke de liveness de CI. Si se define, debe ser una URL PostgreSQL válida y segura. |
 | `PGSSLMODE` | Opcional si `DATABASE_URL` ya contiene `sslmode`; ambos valores deben coincidir. PostgreSQL remoto exige `verify-full`. |
 | `PGSSLROOTCERT` | CA PostgreSQL opcional para conexiones no productivas con confianza configurada y requerida para PostgreSQL remoto en production. Debe ser un archivo PEM legible. |
@@ -65,3 +64,13 @@ Esta etapa no implementa endpoints comerciales de importación/exportación, par
 ## RabbitMQ Bulk (#93)
 
 El transporte está deshabilitado por defecto. Solo `BULK_AMQP_ENABLED=true` junto con `BULK_AMQP_URL` lo activa; la URL no debe registrarse en logs. El runtime utiliza exchanges y la cola existentes, sin declarar ni modificar recursos. El Outbox conserva los mensajes pendientes ante fallo/confirmación ausente o publicación sin ruta. Retry/DLX compartido no está configurado ni aprobado; las pruebas usan RabbitMQ aislado y desechable.
+
+### Recuperación y readiness
+
+Una publicación confirmada pero sin ruta permanece pendiente; el relay la vuelve a comprobar con backoff y no la marca publicada hasta recibir confirmación enrutable. El consumidor conserva ACK posterior a la persistencia Inbox; ante fallo técnico cierra su canal para reencolar la entrega y reconecta con backoff. No se agrega retry/DLX al broker.
+
+`/health/readiness` reporta `DATABASE_NOT_CONFIGURED`, `DATABASE_UNAVAILABLE`, `AMQP_NOT_CONFIGURED`, `AMQP_DISABLED`, `AMQP_TEMPORARY_UNAVAILABLE` o `AMQP_TOPOLOGY_BLOCKED`; devuelve ready con AMQP omitido solo para el peer IP autorizado por `GATEWAY_DEMO_NO_AUTH_ENABLED=true` y `BULK_DEMO_GATEWAY_IPS`. En producción normal, AMQP y ambos workers deben estar listos.
+
+### Discrepancia contractual de reanudación
+
+OpenAPI permite `409 IDEMPOTENCY_CONFLICT` y `503 SERVICIO_NO_DISPONIBLE` para `POST .../reanudar`, pero no define un código para transición no permitida ni para reconciliación sin protocolo homologado. El endpoint no recibe identidad nueva de intento; por tanto, no informa `IDEMPOTENCY_CONFLICT` cuando rechaza un requeue. Mantiene el estado durable y responde `503 SERVICIO_NO_DISPONIBLE` con detalle `BLOQUEADO_ESPECÍFICO` para reconciliación sin protocolo; una transición no elegible también usa 503 por la limitación actual del contrato. El bloqueo contractual se resuelve cuando OpenAPI defina la respuesta para transición no permitida y estado bloqueado. Publicaciones Outbox pendientes se recuperan automáticamente y no requieren requeue.

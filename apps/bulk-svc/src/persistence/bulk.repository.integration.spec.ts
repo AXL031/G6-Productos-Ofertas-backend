@@ -321,6 +321,13 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
           has_default: column.hasDefault,
         })),
       )
+      .concat({
+        table_name: 'file_manifests',
+        column_name: 'metadata',
+        udt_name: 'jsonb',
+        is_nullable: 'NO',
+        has_default: true,
+      })
       .sort((a, b) =>
         `${a.table_name}.${a.column_name}`.localeCompare(
           `${b.table_name}.${b.column_name}`,
@@ -490,15 +497,31 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
         exportId: randomUUID(),
         format: 'CSV',
       });
+      const snapshot = {
+        requestedAt: job.createdAt.toISOString(),
+        catalogObservedAt: job.createdAt.toISOString(),
+        pricingObservedAt: job.createdAt.toISOString(),
+        inventoryObservedAt: job.createdAt.toISOString(),
+        catalogVersion: 'catalog-v1',
+        pricingVersion: 'pricing-v1',
+        inventoryVersion: 'inventory-v1',
+      };
+      const ref = (fence: string, extension = 'csv') =>
+        `supabase://bulk-private-test/exports/${job.exportId}/${fence}/${randomUUID()}.${extension}`;
       const before = await pool.query(
         "SELECT count(*)::int AS count FROM bulk.file_manifests WHERE role = 'RESULTADO_EXPORTACION'",
       );
       await expect(
-        repository.completeExportJob(job.exportId, {
-          format: 'CSV',
-          contentRef: `supabase://bulk-private-test/exports/${randomUUID()}.csv`,
-        }),
-      ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+        repository.completeExportJob(
+          job.exportId,
+          {
+            format: 'CSV',
+            contentRef: ref('0'),
+          },
+          'not-claimed',
+          snapshot,
+        ),
+      ).resolves.toBeNull();
       expect(
         (await repository.findExportJobByExportId(job.exportId))?.status,
       ).toBe('QUEUED');
@@ -506,10 +529,15 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       expect(claimed?.job.status).toBe('PROCESSING');
 
       await expect(
-        repository.completeExportJob(job.exportId, {
-          format: 'XLSX',
-          contentRef: `supabase://bulk-private-test/exports/${randomUUID()}.xlsx`,
-        }),
+        repository.completeExportJob(
+          job.exportId,
+          {
+            format: 'XLSX',
+            contentRef: ref(claimed!.fence, 'xlsx'),
+          },
+          claimed!.fence,
+          snapshot,
+        ),
       ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
       for (const contentRef of [
         `test://${randomUUID()}`,
@@ -519,10 +547,15 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
         'supabase://bulk-private-test/exports/../outside.csv',
       ]) {
         await expect(
-          repository.completeExportJob(job.exportId, {
-            format: 'CSV',
-            contentRef,
-          }),
+          repository.completeExportJob(
+            job.exportId,
+            {
+              format: 'CSV',
+              contentRef,
+            },
+            claimed!.fence,
+            snapshot,
+          ),
         ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
       }
 
@@ -539,15 +572,20 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       );
       expect(noPartialManifest.rows[0]?.count).toBe(before.rows[0]?.count);
 
-      const contentRef = `supabase://bulk-private-test/exports/${randomUUID()}.csv`;
-      const done = await repository.completeExportJob(job.exportId, {
-        format: 'CSV',
-        contentRef,
-      });
-      expect(done.status).toBe('COMPLETED');
-      expect(done.completedAt).toBeInstanceOf(Date);
+      const contentRef = ref(claimed!.fence);
+      const done = await repository.completeExportJob(
+        job.exportId,
+        {
+          format: 'CSV',
+          contentRef,
+        },
+        claimed!.fence,
+        snapshot,
+      );
+      expect(done?.status).toBe('COMPLETED');
+      expect(done?.completedAt).toBeInstanceOf(Date);
       expect(
-        await repository.findFileManifest(done.outputFileId!),
+        await repository.findFileManifest(done!.outputFileId!),
       ).toMatchObject({
         role: 'RESULTADO_EXPORTACION',
         format: 'CSV',
@@ -573,7 +611,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     const processing = await repository.claimQueuedExportJob(job.exportId);
     expect(processing?.job.status).toBe('PROCESSING');
     expect(await repository.claimQueuedExportJob(job.exportId)).toBeNull();
-    expect(
+    await expect(
       repository.transitionExportJob(
         job.exportId,
         ['QUEUED'],
@@ -589,6 +627,72 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     expect(
       await repository.failProcessingExportJob(job.exportId, processing!.fence),
     ).toBeNull();
+  });
+
+  it('fences two PostgreSQL workers so only the current claim publishes a manifest', async () => {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    const workerA = new BulkPersistenceRepository(database);
+    const workerB = new BulkPersistenceRepository(database);
+    const exportId = randomUUID();
+    try {
+      const created = await workerA.createExportJob({
+        exportId,
+        format: 'CSV',
+      });
+      const first = await workerA.claimQueuedExportJob(exportId);
+      expect(first).not.toBeNull();
+      await workerB.requeueStaleProcessingExports(new Date(Date.now() + 1_000));
+      const second = await workerB.claimQueuedExportJob(exportId);
+      expect(second).not.toBeNull();
+      expect(second!.fence).not.toBe(first!.fence);
+
+      const snapshot = {
+        requestedAt: created.createdAt.toISOString(),
+        catalogObservedAt: created.createdAt.toISOString(),
+        pricingObservedAt: created.createdAt.toISOString(),
+        inventoryObservedAt: created.createdAt.toISOString(),
+        catalogVersion: 'catalog-v1',
+        pricingVersion: 'pricing-v1',
+        inventoryVersion: 'inventory-v1',
+      };
+      const ref = (fence: string) =>
+        `supabase://bulk-private-test/exports/${exportId}/${fence}/${randomUUID()}.csv`;
+      const stale = await workerA.completeExportJob(
+        exportId,
+        { format: 'CSV', contentRef: ref(first!.fence) },
+        first!.fence,
+        snapshot,
+      );
+      expect(stale).toBeNull();
+      expect(
+        await pool.query(
+          `SELECT count(*)::int AS count FROM bulk.file_manifests
+           WHERE content_ref LIKE $1`,
+          [`%/${exportId}/%`],
+        ),
+      ).toMatchObject({ rows: [{ count: 0 }] });
+
+      const completed = await workerB.completeExportJob(
+        exportId,
+        { format: 'CSV', contentRef: ref(second!.fence) },
+        second!.fence,
+        snapshot,
+      );
+      expect(completed?.status).toBe('COMPLETED');
+      expect(completed?.outputFileId).toBeTruthy();
+      const manifest = await workerB.findFileManifest(completed!.outputFileId!);
+      expect(manifest?.metadata).toMatchObject({
+        export_id: exportId,
+        requested_at: created.createdAt.toISOString(),
+        catalog_version: 'catalog-v1',
+        pricing_version: 'pricing-v1',
+        inventory_version: 'inventory-v1',
+      });
+    } finally {
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
   });
 
   it('retries a transient PostgreSQL failure during an export claim', async () => {
@@ -1030,7 +1134,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     });
   });
 
-  it('requeues a partially failed batch under lock while preserving confirmed domains', async () => {
+  it('rejects requeue without a new domain attempt and preserves the durable failure', async () => {
     const created = await importBatch([
       { rowId: randomUUID(), requiredDomains: ['CATALOGO', 'PRICING'] },
       { rowId: randomUUID(), requiredDomains: ['CATALOGO'] },
@@ -1055,32 +1159,37 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       status: 'COMPLETED',
       steps: [{ domain: 'CATALOGO', status: 'COMPLETED' }],
     });
-    const requeued = await repository.requeueBatch(created.batch.batchId);
-    expect(requeued).toMatchObject({
-      status: 'QUEUED',
+    await expect(
+      repository.requeueBatch(created.batch.batchId),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
+    expect(
+      await repository.findBatchByBatchId(created.batch.batchId),
+    ).toMatchObject({
+      status: 'COMPLETED',
       completedRows: 1,
-      failedRows: 0,
+      failedRows: 1,
+      needsReconciliation: true,
     });
     expect(
       (await repository.listBatchRows(created.batch.batchId)).find(
         (row) => row.rowId === failed,
       ),
     ).toMatchObject({
-      status: 'PENDING',
+      status: 'FAILED',
       appliedDomains: ['CATALOGO'],
-      needsReconciliation: false,
+      needsReconciliation: true,
     });
     expect(
       await repository.listRowSteps(created.batch.batchId, failed!),
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ domain: 'CATALOGO', status: 'COMPLETED' }),
-        expect.objectContaining({ domain: 'PRICING', status: 'PENDING' }),
+        expect.objectContaining({ domain: 'PRICING', status: 'FAILED' }),
       ]),
     );
     await expect(
       repository.requeueBatch(created.batch.batchId),
-    ).rejects.toMatchObject({ code: 'CHECK_VIOLATION' });
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
   });
 
   it('replays an identical normalized batch intent and conflicts on changed intent', async () => {
@@ -1299,7 +1408,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     });
   });
 
-  it('retries a failed durable operation after requeue and ignores its delayed duplicate', async () => {
+  it('rejects retry without a new domain protocol and preserves the failed receipt', async () => {
     const rowId = randomUUID();
     const batchId = randomUUID();
     const correlationId = randomUUID();
@@ -1352,36 +1461,40 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       errorDetail: 'retryable',
     };
     await repository.recordDomainResult(rejected);
-    await repository.requeueBatch(batchId);
+    await expect(repository.requeueBatch(batchId)).rejects.toMatchObject({
+      code: 'NOT_CONFIGURED',
+    });
     expect(await repository.recordDomainResult(rejected)).toMatchObject({
       processed: false,
       result: 'FAILED',
     });
     expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
-      status: 'QUEUED',
-      failedRows: 0,
-    });
-    const retried = await repository.recordDomainResult({
-      ...rejected,
-      messageId: randomUUID(),
-      causationId: 'inventory-request-attempt-2',
-      eventName: 'inventory.sku.initialization.completed',
       status: 'COMPLETED',
-      errorCode: null,
-      errorDetail: null,
+      failedRows: 1,
+      needsReconciliation: true,
     });
-    expect(retried).toMatchObject({
-      processed: true,
-      result: 'DOMAIN_COMPLETED',
-    });
+    await expect(
+      repository.recordDomainResult({
+        ...rejected,
+        operationId: randomUUID(),
+        messageId: randomUUID(),
+        causationId: 'inventory-request-attempt-2',
+        eventName: 'inventory.sku.initialization.completed',
+        status: 'COMPLETED',
+        errorCode: null,
+        errorDetail: null,
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_TRANSITION' });
     expect(await repository.findBatchByBatchId(batchId)).toMatchObject({
       status: 'COMPLETED',
-      completedRows: 1,
-      failedRows: 0,
+      completedRows: 0,
+      failedRows: 1,
+      needsReconciliation: true,
     });
     expect((await repository.listBatchRows(batchId))[0]).toMatchObject({
-      status: 'COMPLETED',
-      appliedDomains: ['CATALOGO', 'INVENTARIO'],
+      status: 'FAILED',
+      appliedDomains: ['CATALOGO'],
+      needsReconciliation: true,
     });
   });
 
@@ -1623,25 +1736,15 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       appliedDomains: ['CATALOGO'],
       needsReconciliation: true,
     });
-    await repository.requeueBatch(created.batch.batchId);
-    await repository.updateWorkflowState({
-      batchId: created.batch.batchId,
-      rowId,
-      status: 'PROCESSING',
-      steps: [{ domain: 'PRICING', status: 'PROCESSING' }],
-    });
+    await expect(
+      repository.requeueBatch(created.batch.batchId),
+    ).rejects.toMatchObject({ code: 'NOT_CONFIGURED' });
     expect(
       (await repository.listBatchRows(created.batch.batchId))[0],
     ).toMatchObject({
-      status: 'PROCESSING',
+      status: 'FAILED',
       appliedDomains: ['CATALOGO'],
-      needsReconciliation: false,
-    });
-    await repository.updateWorkflowState({
-      batchId: created.batch.batchId,
-      rowId,
-      status: 'COMPLETED',
-      steps: [{ domain: 'PRICING', status: 'COMPLETED' }],
+      needsReconciliation: true,
     });
     await expect(
       repository.updateWorkflowState({
@@ -1654,8 +1757,10 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     expect(
       (await repository.listBatchRows(created.batch.batchId))[0],
     ).toMatchObject({
-      status: 'COMPLETED',
-      appliedDomains: ['CATALOGO', 'PRICING'],
+      status: 'FAILED',
+      appliedDomains: ['CATALOGO'],
+      failedDomain: 'PRICING',
+      needsReconciliation: true,
     });
   });
 

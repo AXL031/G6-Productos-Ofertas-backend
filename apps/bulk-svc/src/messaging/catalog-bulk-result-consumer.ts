@@ -3,6 +3,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
@@ -16,10 +17,45 @@ import { BulkPersistenceRepository } from '../persistence/bulk.repository.js';
 import { BULK_AMQP_URL } from './bulk-rabbitmq.js';
 
 const QUEUE = 'po.masivos.q';
+export type CatalogResultConsumerState =
+  'NOT_CONFIGURED' | 'CONNECTING' | 'READY' | 'RECOVERING' | 'TOPOLOGY_BLOCKED';
 const RESULT_ROUTES = new Set([
   'catalog.bulk.upsert.completed',
   'catalog.bulk.upsert.rejected',
 ]);
+const OTHER_BULK_ROUTES = new Map<
+  string,
+  { producer: string; kind: 'event' | 'result' }
+>([
+  [
+    'inventory.bulk.stock.adjust.completed',
+    { producer: 'inventory-svc', kind: 'result' },
+  ],
+  [
+    'inventory.bulk.stock.adjust.rejected',
+    { producer: 'inventory-svc', kind: 'result' },
+  ],
+  [
+    'pricing.bulk.price.apply.completed',
+    { producer: 'pricing-svc', kind: 'result' },
+  ],
+  [
+    'pricing.bulk.price.apply.rejected',
+    { producer: 'pricing-svc', kind: 'result' },
+  ],
+  ['inventory.stock.adjusted', { producer: 'inventory-svc', kind: 'event' }],
+]);
+export const BULK_CONTRACT_RESULT_DISPATCHER = Symbol(
+  'BULK_CONTRACT_RESULT_DISPATCHER',
+);
+export interface BulkContractResultDispatcher {
+  dispatch(input: {
+    eventName: string;
+    messageId: string;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  }): Promise<void>;
+}
 const uuid =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -128,6 +164,40 @@ function validateEnvelope(value: unknown, message: ConsumeMessage): Envelope {
   return value as Envelope;
 }
 
+function validateOtherContractEnvelope(
+  value: unknown,
+  message: ConsumeMessage,
+): value is Record<string, unknown> {
+  if (!record(value)) return false;
+  const route = OTHER_BULK_ROUTES.get(message.fields.routingKey);
+  if (!route || !record(value.data)) return false;
+  const operationId = value.operation_id;
+  const causationId = value.causation_id;
+  const exchange = route.kind === 'event' ? 'po.eventos.x' : 'po.resultados.x';
+  return (
+    typeof value.message_id === 'string' &&
+    value.message_id.length > 0 &&
+    value.message_id === message.properties.messageId &&
+    Number.isInteger(value.schema_version) &&
+    Number(value.schema_version) >= 1 &&
+    typeof value.occurred_at === 'string' &&
+    Number.isFinite(Date.parse(value.occurred_at)) &&
+    typeof value.correlation_id === 'string' &&
+    value.correlation_id.length > 0 &&
+    value.correlation_id === message.properties.correlationId &&
+    (causationId === null ||
+      (typeof causationId === 'string' && causationId.length > 0)) &&
+    (operationId === null ||
+      (typeof operationId === 'string' && uuid.test(operationId))) &&
+    value.producer === route.producer &&
+    value.kind === route.kind &&
+    value.name === message.fields.routingKey &&
+    message.properties.type === message.fields.routingKey &&
+    message.properties.contentType === 'application/json' &&
+    message.fields.exchange === exchange
+  );
+}
+
 @Injectable()
 export class CatalogBulkResultConsumer
   implements OnModuleInit, OnModuleDestroy
@@ -138,43 +208,61 @@ export class CatalogBulkResultConsumer
   private consumerTag: string | null = null;
   private stopping = false;
   private paused = false;
+  private failureCount = 0;
+  private state: CatalogResultConsumerState = 'NOT_CONFIGURED';
   private active: Promise<void> | null = null;
   private processingTail: Promise<void> = Promise.resolve();
   private reconnectTimer: NodeJS.Timeout | null = null;
+  private replayTimer: NodeJS.Timeout | null = null;
+  private replaying = false;
 
   constructor(
     private readonly repository: BulkPersistenceRepository,
     @Inject(BULK_AMQP_URL) private readonly amqpUrl: string | null,
+    @Optional()
+    @Inject(BULK_CONTRACT_RESULT_DISPATCHER)
+    private readonly contractResultDispatcher: BulkContractResultDispatcher | null = null,
   ) {}
 
   async onModuleInit(): Promise<void> {
     if (!this.amqpUrl) return;
-    this.reconnectTimer = setInterval(() => {
-      if (!this.stopping && !this.paused && !this.channel)
-        void this.connectConsumer();
-    }, 5000);
-    this.reconnectTimer.unref();
     await this.connectConsumer();
+  }
+
+  getOperationalState(): CatalogResultConsumerState {
+    return this.state;
   }
 
   private async connectConsumer(): Promise<void> {
     if (!this.amqpUrl || this.stopping || this.paused || this.channel) return;
+    this.state = 'CONNECTING';
     try {
-      this.connection = await amqp.connect(this.amqpUrl);
-      this.connection.on('error', () => undefined);
-      this.connection.on('close', () => {
+      const connection = await amqp.connect(this.amqpUrl);
+      this.connection = connection;
+      connection.on('error', () => undefined);
+      connection.on('close', () => {
+        if (this.connection !== connection) return;
         this.channel = null;
         this.connection = null;
+        this.consumerTag = null;
+        if (!this.stopping) this.scheduleReconnect();
       });
-      this.channel = await this.connection.createChannel();
-      await this.channel.prefetch(20);
-      const result = await this.channel.consume(
+      const channel = await connection.createChannel();
+      this.channel = channel;
+      channel.on('close', () => {
+        if (this.channel !== channel) return;
+        this.channel = null;
+        this.consumerTag = null;
+        if (!this.stopping) this.scheduleReconnect();
+      });
+      await channel.prefetch(20);
+      const result = await channel.consume(
         QUEUE,
         (message) => {
           if (!message || this.stopping || this.paused) return;
-          this.processingTail = this.processingTail.then(() =>
-            this.handle(message),
-          );
+          this.processingTail = this.processingTail
+            .then(() => this.handle(message, channel))
+            .catch(() => this.recoverTransport(channel));
           this.active = this.processingTail.finally(() => {
             this.active = null;
           });
@@ -182,45 +270,67 @@ export class CatalogBulkResultConsumer
         { noAck: false },
       );
       this.consumerTag = result.consumerTag;
-    } catch {
+      this.failureCount = 0;
+      this.state = 'READY';
+      void this.replayPendingContractResults();
+    } catch (error) {
+      this.state = isTopologyFailure(error) ? 'TOPOLOGY_BLOCKED' : 'RECOVERING';
+      this.failureCount = Math.min(this.failureCount + 1, 8);
       this.logger.warn(
-        'Consumidor Catalog no disponible; AMQP Bulk permanece pausado.',
+        'Consumidor Catalog no disponible; se reintentará con backoff.',
       );
       await this.closeTransport();
+      this.scheduleReconnect();
     }
   }
 
-  private async handle(message: ConsumeMessage): Promise<void> {
-    const channel = this.channel;
-    if (!channel) return;
+  private async handle(
+    message: ConsumeMessage,
+    channel: Channel,
+  ): Promise<void> {
+    if (this.channel !== channel) return;
+    let decoded: unknown;
+    try {
+      decoded = JSON.parse(message.content.toString('utf8')) as unknown;
+    } catch {
+      await this.persistInvalidAndAck(message, channel, 'INVALID_JSON');
+      return;
+    }
+
+    if (OTHER_BULK_ROUTES.has(message.fields.routingKey)) {
+      if (!validateOtherContractEnvelope(decoded, message)) {
+        await this.persistInvalidAndAck(
+          message,
+          channel,
+          'INVALID_CONTRACT_ENVELOPE',
+        );
+        return;
+      }
+      const pending = decoded as Record<string, unknown>;
+      try {
+        await this.repository.persistPendingContractResult({
+          messageId: String(pending.message_id),
+          eventName: String(pending.name),
+          correlationId: String(pending.correlation_id),
+          payload: pending,
+        });
+        this.ackIfCurrent(channel, message);
+        void this.replayPendingContractResults();
+      } catch {
+        await this.recoverTransport(channel);
+      }
+      return;
+    }
+
     let envelope: Envelope;
     try {
-      envelope = validateEnvelope(
-        JSON.parse(message.content.toString('utf8')) as unknown,
-        message,
-      );
+      envelope = validateEnvelope(decoded, message);
     } catch {
-      const transportId = message.properties.messageId;
-      if (!transportId) return this.pause();
-      const digest = createHash('sha256').update(message.content).digest('hex');
-      try {
-        await this.repository.processInboxOnce(
-          {
-            messageId: transportId,
-            handler: 'bulk.catalog.invalid-result',
-            eventName: message.fields.routingKey,
-            correlationId: message.properties.correlationId ?? null,
-            payload: {
-              disposition: 'INVALID_CATALOG_RESULT',
-              content_sha256: digest,
-            },
-          },
-          async () => 'DURABLY_REJECTED',
-        );
-        channel.ack(message);
-      } catch {
-        this.pause();
-      }
+      await this.persistInvalidAndAck(
+        message,
+        channel,
+        'INVALID_CATALOG_RESULT',
+      );
       return;
     }
 
@@ -235,27 +345,21 @@ export class CatalogBulkResultConsumer
           correlationId: envelope.correlation_id,
           payload: envelope as unknown as Record<string, unknown>,
         });
-        channel.ack(message);
+        this.ackIfCurrent(channel, message);
         return;
       } catch (error) {
         if (error instanceof BulkDomainError) {
           try {
-            await this.repository.processInboxOnce(
-              {
-                messageId: envelope.message_id,
-                handler: 'bulk.catalog.invalid-result',
-                eventName: envelope.name,
-                correlationId: envelope.correlation_id,
-                payload: {
-                  disposition: 'INVALID_CATALOG_RESULT',
-                  error_code: error.code,
-                },
-              },
-              async () => 'DURABLY_REJECTED',
-            );
-            channel.ack(message);
+            await this.repository.persistPendingContractResult({
+              messageId: envelope.message_id,
+              eventName: envelope.name,
+              correlationId: envelope.correlation_id,
+              payload: envelope as unknown as Record<string, unknown>,
+            });
+            this.ackIfCurrent(channel, message);
+            void this.replayPendingContractResults();
           } catch {
-            this.pause();
+            await this.recoverTransport(channel);
           }
           return;
         }
@@ -266,18 +370,121 @@ export class CatalogBulkResultConsumer
       }
     }
     this.logger.warn(
-      'Consumidor Catalog pausado tras fallos técnicos; la entrega queda sin ACK.',
+      'Consumidor Catalog recuperará el transporte tras fallos técnicos; la entrega queda sin ACK.',
     );
-    await this.pause();
+    await this.recoverTransport(channel);
   }
 
-  private async pause(): Promise<void> {
-    if (this.paused) return;
+  private async persistInvalidAndAck(
+    message: ConsumeMessage,
+    channel: Channel,
+    disposition: string,
+  ): Promise<void> {
+    const transportId = message.properties.messageId;
+    if (!transportId) return this.recoverTransport(channel);
+    const digest = createHash('sha256').update(message.content).digest('hex');
+    try {
+      await this.repository.processInboxOnce(
+        {
+          messageId: transportId,
+          handler: 'bulk.catalog.invalid-result',
+          eventName: message.fields.routingKey,
+          correlationId: message.properties.correlationId ?? null,
+          payload: { disposition, content_sha256: digest },
+        },
+        async () => 'DURABLY_REJECTED',
+      );
+      this.ackIfCurrent(channel, message);
+    } catch {
+      await this.recoverTransport(channel);
+    }
+  }
+
+  private ackIfCurrent(channel: Channel, message: ConsumeMessage): void {
+    if (this.channel === channel) channel.ack(message);
+  }
+
+  async replayPendingContractResults(): Promise<void> {
+    if (this.replaying || this.stopping) return;
+    this.replaying = true;
+    let hasPending = false;
+    try {
+      const pending = await this.repository.listPendingContractResults(100);
+      hasPending = pending.length > 0;
+      for (const item of pending) {
+        try {
+          if (RESULT_ROUTES.has(item.eventName)) {
+            const envelope = item.payload as unknown as Envelope;
+            await this.repository.recordCatalogBulkResult({
+              messageId: envelope.message_id,
+              operationId: envelope.operation_id,
+              causationId: envelope.causation_id,
+              eventName: envelope.name as
+                | 'catalog.bulk.upsert.completed'
+                | 'catalog.bulk.upsert.rejected',
+              correlationId: envelope.correlation_id,
+              payload: item.payload,
+            });
+          } else if (this.contractResultDispatcher) {
+            await this.contractResultDispatcher.dispatch(item);
+          } else {
+            continue;
+          }
+          await this.repository.markContractResultReplayed(item);
+        } catch {
+          // Pending replay remains durable until its owner or dependency recovers.
+        }
+      }
+    } catch {
+      this.logger.warn('No se pudo consultar el Inbox pendiente de replay.');
+      hasPending = true;
+    } finally {
+      this.replaying = false;
+      if (hasPending) this.scheduleReplay();
+    }
+  }
+
+  private scheduleReplay(): void {
+    if (this.stopping || this.replayTimer) return;
+    this.replayTimer = setTimeout(() => {
+      this.replayTimer = null;
+      void this.replayPendingContractResults();
+    }, 30_000);
+    this.replayTimer.unref();
+  }
+
+  private async recoverTransport(expectedChannel?: Channel): Promise<void> {
+    if (this.stopping) return;
+    if (expectedChannel && this.channel !== expectedChannel) return;
+    if (this.paused) {
+      this.scheduleReconnect();
+      return;
+    }
     this.paused = true;
+    this.state = 'RECOVERING';
     if (this.channel && this.consumerTag) {
       await this.channel.cancel(this.consumerTag).catch(() => undefined);
       this.consumerTag = null;
     }
+    await this.closeTransport();
+    this.failureCount = Math.min(this.failureCount + 1, 8);
+    this.scheduleReconnect();
+  }
+
+  private scheduleReconnect(): void {
+    if (this.stopping || this.reconnectTimer) return;
+    this.paused = true;
+    const delay = Math.min(
+      30_000,
+      250 * 2 ** Math.max(0, this.failureCount - 1),
+    );
+    this.state = this.state === 'TOPOLOGY_BLOCKED' ? this.state : 'RECOVERING';
+    this.reconnectTimer = setTimeout(() => {
+      this.reconnectTimer = null;
+      this.paused = false;
+      void this.connectConsumer();
+    }, delay);
+    this.reconnectTimer.unref();
   }
 
   private async closeTransport(): Promise<void> {
@@ -291,9 +498,28 @@ export class CatalogBulkResultConsumer
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
-    if (this.reconnectTimer) clearInterval(this.reconnectTimer);
-    await this.pause();
+    if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+    this.reconnectTimer = null;
+    if (this.replayTimer) clearTimeout(this.replayTimer);
+    this.replayTimer = null;
+    this.paused = true;
+    if (this.channel && this.consumerTag)
+      await this.channel.cancel(this.consumerTag).catch(() => undefined);
     await this.processingTail.catch(() => undefined);
     await this.closeTransport();
+    this.state = 'NOT_CONFIGURED';
   }
+}
+
+function isTopologyFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = Reflect.get(error, 'code');
+  const message = Reflect.get(error, 'message');
+  return (
+    code === 403 ||
+    code === 404 ||
+    code === 406 ||
+    (typeof message === 'string' &&
+      /ACCESS_REFUSED|NOT_FOUND|PRECONDITION_FAILED/.test(message))
+  );
 }

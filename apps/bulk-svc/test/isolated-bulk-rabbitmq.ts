@@ -69,6 +69,9 @@ export class IsolatedBulkRabbitmq {
     await this.adminChannel.assertExchange('po.resultados.x', 'topic', {
       durable: true,
     });
+    await this.adminChannel.assertExchange('po.eventos.x', 'topic', {
+      durable: true,
+    });
     await this.adminChannel.assertQueue('po.catalogo.q', { durable: true });
     await this.adminChannel.bindQueue(
       'po.catalogo.q',
@@ -85,6 +88,22 @@ export class IsolatedBulkRabbitmq {
       'po.masivos.q',
       'po.resultados.x',
       'catalog.bulk.upsert.rejected',
+    );
+    for (const routingKey of [
+      'inventory.bulk.stock.adjust.completed',
+      'inventory.bulk.stock.adjust.rejected',
+      'pricing.bulk.price.apply.completed',
+      'pricing.bulk.price.apply.rejected',
+    ])
+      await this.adminChannel.bindQueue(
+        'po.masivos.q',
+        'po.resultados.x',
+        routingKey,
+      );
+    await this.adminChannel.bindQueue(
+      'po.masivos.q',
+      'po.eventos.x',
+      'inventory.stock.adjusted',
     );
   }
 
@@ -155,9 +174,12 @@ export class IsolatedBulkRabbitmq {
         name: string;
         message_id: string;
         correlation_id: string;
+        kind?: string;
       };
+      const exchange =
+        envelope.kind === 'event' ? 'po.eventos.x' : 'po.resultados.x';
       channel.publish(
-        'po.resultados.x',
+        exchange,
         envelope.name,
         Buffer.from(JSON.stringify(body)),
         {
@@ -173,6 +195,18 @@ export class IsolatedBulkRabbitmq {
     } finally {
       await channel.close();
     }
+  }
+
+  async queueDepth(): Promise<number> {
+    return (await this.adminChannel!.checkQueue('po.masivos.q')).messageCount;
+  }
+
+  async bindCatalogCommand(routingKey: string): Promise<void> {
+    await this.adminChannel!.bindQueue(
+      'po.catalogo.q',
+      'po.comandos.x',
+      routingKey,
+    );
   }
 
   async suspend(): Promise<void> {

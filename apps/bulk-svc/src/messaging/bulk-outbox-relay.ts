@@ -14,6 +14,8 @@ import { BulkPersistenceRepository } from '../persistence/bulk.repository.js';
 import { BULK_AMQP_URL, bulkAmqpUserId } from './bulk-rabbitmq.js';
 
 const EXCHANGE = 'po.comandos.x';
+export type BulkMessagingState =
+  'NOT_CONFIGURED' | 'CONNECTING' | 'READY' | 'RECOVERING' | 'TOPOLOGY_BLOCKED';
 
 @Injectable()
 export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
@@ -25,7 +27,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
   private stopping = false;
   private failureCount = 0;
   private retryAfter = 0;
-  private paused = false;
+  private state: BulkMessagingState = 'NOT_CONFIGURED';
   private activeFlush: Promise<void> | null = null;
   private readonly returned = new Set<string>();
 
@@ -36,6 +38,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
 
   onModuleInit(): void {
     if (!this.amqpUrl) return;
+    this.state = 'CONNECTING';
     this.timer = setInterval(() => {
       this.activeFlush = this.flush().finally(() => {
         this.activeFlush = null;
@@ -47,12 +50,15 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  getOperationalState(): BulkMessagingState {
+    return this.state;
+  }
+
   async flush(): Promise<void> {
     if (
       !this.amqpUrl ||
       this.running ||
       this.stopping ||
-      this.paused ||
       Date.now() < this.retryAfter
     )
       return;
@@ -82,9 +88,12 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
             attempts: item.attempts + 1,
             lastError: 'PUBLICATION_UNROUTED',
           });
-          this.paused = true;
+          this.failureCount = Math.min(this.failureCount + 1, 8);
+          this.retryAfter =
+            Date.now() + Math.min(30_000, 250 * 2 ** (this.failureCount - 1));
+          this.state = 'TOPOLOGY_BLOCKED';
           this.logger.warn(
-            'Relay Outbox pausado por una publicación confirmada sin ruta; el comando permanece pendiente.',
+            'Publicación Outbox sin ruta; el comando permanece pendiente y se volverá a comprobar la topología con backoff.',
           );
           return;
         }
@@ -95,10 +104,12 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
       }
       this.failureCount = 0;
       this.retryAfter = 0;
-    } catch {
+      this.state = 'READY';
+    } catch (error) {
       this.failureCount = Math.min(this.failureCount + 1, 8);
       const backoffMs = Math.min(30_000, 250 * 2 ** (this.failureCount - 1));
       this.retryAfter = Date.now() + backoffMs;
+      this.state = isTopologyFailure(error) ? 'TOPOLOGY_BLOCKED' : 'RECOVERING';
       this.logger.warn(
         'Relay Outbox indisponible; los comandos permanecen pendientes y se reintentará con backoff limitado.',
       );
@@ -111,12 +122,28 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
   private async getChannel(): Promise<ConfirmChannel> {
     if (this.channel) return this.channel;
     const connection = await amqp.connect(this.amqpUrl!);
-    connection.on('error', () => void this.closeTransport());
+    connection.on('error', () => {
+      if (!this.stopping) this.state = 'RECOVERING';
+      void this.closeTransport();
+    });
     connection.on('close', () => {
       this.connection = null;
       this.channel = null;
+      if (!this.stopping) this.state = 'RECOVERING';
     });
-    const channel = await connection.createConfirmChannel();
+    let channel: ConfirmChannel;
+    try {
+      const openedChannel = await connection.createConfirmChannel();
+      await openedChannel.checkExchange(EXCHANGE);
+      channel = openedChannel;
+    } catch (error) {
+      await connection.close().catch(() => undefined);
+      throw error;
+    }
+    channel.on('close', () => {
+      this.channel = null;
+      if (!this.stopping) this.state = 'RECOVERING';
+    });
     channel.on('return', (message: Message) => {
       if (message.properties.messageId)
         this.returned.add(message.properties.messageId);
@@ -137,8 +164,22 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    this.state = 'NOT_CONFIGURED';
     if (this.timer) clearInterval(this.timer);
     await this.activeFlush?.catch(() => undefined);
     await this.closeTransport();
   }
+}
+
+function isTopologyFailure(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = Reflect.get(error, 'code');
+  const message = Reflect.get(error, 'message');
+  return (
+    code === 403 ||
+    code === 404 ||
+    code === 406 ||
+    (typeof message === 'string' &&
+      /ACCESS_REFUSED|NOT_FOUND|PRECONDITION_FAILED/.test(message))
+  );
 }
