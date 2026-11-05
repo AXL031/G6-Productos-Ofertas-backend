@@ -7,6 +7,7 @@ name: Integración continua (CI)
   pull_request:
     branches:
     - master
+    - correccion/inventory-cierre-integral-marco
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -151,6 +152,13 @@ jobs:
       with:
         name: artefactos-compilados
         path: dist/
+    - name: Obtener migraciones oficiales fijadas de Inventory
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
     - name: Configurar Node.js para las comprobaciones de arranque
       uses: actions/setup-node@v4
       with:
@@ -222,6 +230,10 @@ jobs:
           [[ -n "$service" && "$service" != \#* ]] || continue
           [[ "$enabled" == true ]] || continue
           case "$service" in
+            inventory-svc)
+              printf 'INVENTORY: omitido del bucle sin dependencias; lo valida el smoke especializado PostgreSQL/TLS.\n'
+              continue
+              ;;
             catalog-svc|taxonomy-svc)
               printf 'NO EJECUTADO: %s requiere configuración PostgreSQL runtime ausente en CI.\n' "$service"
               continue
@@ -316,15 +328,10 @@ jobs:
           printf 'CORRECTO: Dockerfile.service %s escuchó en %s/%s y su healthcheck quedó saludable.\n' "$service" "$port_env" "$port"
         done < ops/oracle/services.psv
 
-    - name: Probar salud de Inventory en contenedor
-      run: "set -euo pipefail\ntrap 'docker rm --force inventory-svc-ci >/dev/null 2>&1 || true' EXIT\ndocker run\
-        \ --detach --name inventory-svc-ci --publish 127.0.0.1::3005 inventory-svc:ci\nport=\"$(docker port inventory-svc-ci\
-        \ 3005/tcp | awk -F: '{print $NF}')\"\nresponse=''\nfor attempt in {1..30}; do\n  if response=\"$(curl --fail\
-        \ --silent \"http://127.0.0.1:${port}/health\")\"; then\n    break\n  fi\n  sleep 2\ndone\nnode -e '\n \
-        \ const payload = JSON.parse(process.argv[1]);\n  if (payload.status !== \"ok\" || payload.service !== \"\
-        inventory-svc\") {\n    console.error(\"Respuesta de salud inesperada de inventory-svc:\", payload);\n    process.exit(1);\n\
-        \  }\n  console.log(\"inventory-svc salud del proceso correcta; esto no verifica readiness de Supabase.\");\n\
-        ' \"$response\"\n"
+    - name: Probar Inventory en contenedor con PostgreSQL TLS desechable
+      env:
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+      run: bash scripts/ci/inventory-container-smoke.sh
     - name: Rechazar arranques sin configuración PostgreSQL
       run: node scripts/ci/invalid-startup.mjs
     - name: Probar Marketplace con PostgreSQL TLS desechable
