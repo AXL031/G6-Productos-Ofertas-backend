@@ -93,6 +93,30 @@ describe('Contractual catalog mutation validation', () => {
       }),
     );
   });
+  it('accepts HTTPS image URLs and rejects executable schemes or embedded credentials', () => {
+    const valid = 'https://images.example.test/product.webp';
+    expect(
+      parseMutation(
+        { imagenes: [{ url: valid, principal: true }] },
+        'updateProduct',
+      ),
+    ).toMatchObject({ imagenes: [{ url: valid, principal: true }] });
+    for (const url of [
+      'javascript:alert(1)',
+      'data:image/svg+xml,<svg/>',
+      'file:///etc/passwd',
+      'https://user:password@images.example.test/product.webp',
+    ]) {
+      expect(() =>
+        parseMutation({ imagenes: [{ url }] }, 'updateProduct'),
+      ).toThrowError(
+        expect.objectContaining({
+          status: 400,
+          response: { code: 'VALIDACION' },
+        }),
+      );
+    }
+  });
   it.each([undefined, null, '', 123, [], {}])(
     'requires an explicit variant SKU: %j',
     (sku) => {

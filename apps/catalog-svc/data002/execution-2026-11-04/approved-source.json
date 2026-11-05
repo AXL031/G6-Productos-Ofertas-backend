@@ -1,0 +1,19 @@
+{
+  "ref": "5abfffc9b86306df87d19695817aa678588e0341",
+  "verified_hashes": 52,
+  "script_hashes": {
+    "images-preflight.sql": "51386427c84abe6752f7916ddbaf34d01f77b7b2f611fcce06610841262cd81a",
+    "images-apply-proposed.sql": "aefd0fbcc24bc5a7194e51361caf6cb18a597019920fafa266614208c9690c97",
+    "images-postcheck.sql": "7f99327449801414e01a90b4cc4540c31282f77a96fbb06aa10b4d061ed7f9b8",
+    "covers-preflight.sql": "5dd2b46ee37df601fa144244aa310058fd46231910cfc2145f4d3cdbfeb8784c",
+    "covers-apply-proposed.sql": "45629b349b8ff025e0fd493def8eba4135c2c3edb6d3c7090ad59b1ab558e4ba",
+    "covers-postcheck.sql": "a04300c198396478ca1a090b7bd03a810d931b8026ade53106528be340e033eb",
+    "profiles-preflight.sql": "31732aa3919356a338a1a14c2e2ec50afd60ed189082ec91e7696c7130664bbc",
+    "profiles-apply-proposed.sql": "85751031c58bf5e4b15b4f74a4311336620840a778946d38b7d3747c65252734",
+    "profiles-postcheck.sql": "5ad772536cd043f28a96fbddfb1e9368de16f8f4763a2cdffd407aa2ecf87f75"
+  },
+  "project": "slzglmtiyrzygpkiuthf",
+  "exception": "ACADEMIC_LOGISTIC_EXCEPTION_APPROVED",
+  "authorization": "Instrucción del usuario en esta sesión y documento adjunto 91f653a6-f772-4607-af45-06f38609c014/Texto pegado.txt; no se atribuye a un comentario de Marco inexistente.",
+  "launcher": "Supabase connector: cada SQL original completo en una sola llamada/conexión, con SET ROLE po_catalog_owner explícito. Credencial local psql no permite ese SET ROLE; no se cambian privilegios. DDL C/D requieren migrate.py y conexión autorizada separada."
+}

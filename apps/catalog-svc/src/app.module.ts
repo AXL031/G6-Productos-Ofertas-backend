@@ -27,7 +27,10 @@ import {
   CatalogMutationService,
 } from './catalog-mutation.service.js';
 import { approvedCatalogProductPolicy } from './catalog-product.policy.js';
-import { CatalogMasterClient } from './catalog-master.client.js';
+import {
+  CATALOG_TAXONOMY_IDENTITY,
+  CatalogMasterClient,
+} from './catalog-master.client.js';
 import { CatalogTelemetry } from './catalog-telemetry.js';
 import {
   CATALOG_READ_DEMO,
@@ -103,6 +106,7 @@ import { BarcodeService } from './barcode.service.js';
     CatalogBulkService,
     { provide: CATALOG_BULK_HANDLER, useExisting: CatalogBulkService },
     CatalogBulkIdentity,
+    { provide: CATALOG_TAXONOMY_IDENTITY, useExisting: CatalogBulkIdentity },
     CatalogTelemetry,
     CatalogAmqpRuntime,
     {

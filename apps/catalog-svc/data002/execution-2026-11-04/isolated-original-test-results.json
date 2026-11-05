@@ -1,0 +1,9 @@
+{
+  "command": "node --test apps/catalog-svc/data002/isolated.test.mjs",
+  "environment": "PostgreSQL 17 local desechable, DATA002_PG_BIN configurado; sin Supabase",
+  "tests": 25,
+  "pass": 25,
+  "fail": 0,
+  "skipped": 0,
+  "duration_ms": 50947.6171
+}

@@ -205,3 +205,134 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
     ).rejects.toMatchObject({ status: 503 });
   });
 });
+
+describe('Catalog variant hydration query bounds', () => {
+  it.each([0, 1, 24, 100, 200])(
+    'preserves the complete variant projection with %i variants using a fixed SELECT count',
+    async (count) => {
+      const ids = Array.from(
+        { length: count },
+        (_, index) => 'variant-' + String(index + 1).padStart(4, '0'),
+      );
+      const sku = (index: number) =>
+        'SKU-' + String(index + 1).padStart(4, '0');
+      const updatedAt = new Date('2026-11-03T10:00:00.000Z');
+      const variantRows = ids.map((variant_id, index) => ({
+        variant_id,
+        sku: sku(index),
+        status: 'ACTIVA' as const,
+        catalog_version: 3n,
+      }));
+      const attributes = ids.flatMap((variant_id, index) => [
+        {
+          variant_id,
+          caracteristica_id: 'color',
+          nombre: 'Color',
+          valor_id: 'blue',
+          valor: 'Blue',
+          identifying: true,
+        },
+        {
+          variant_id,
+          caracteristica_id: 'material',
+          nombre: 'Material',
+          valor_id: null,
+          valor: 'Cotton ' + index,
+          identifying: false,
+        },
+      ]);
+      const images = ids.flatMap((variant_id, index) => [
+        { variant_id, url: 'https://images.example.test/' + index + '-a.webp' },
+        { variant_id, url: 'https://images.example.test/' + index + '-b.webp' },
+      ]);
+      const profiles = ids.map((variantId) => ({
+        variantId,
+        weight: '1.25',
+        length: '10',
+        width: '20',
+        height: '30',
+        updatedAt,
+      }));
+      const results: unknown[] = [
+        [{ id: 'product' }],
+        [{ total: count }],
+        variantRows,
+        attributes,
+        images,
+        profiles,
+      ];
+      const select = vi.fn(() => {
+        const result = results.shift();
+        const query = {
+          from: () => query,
+          where: () => query,
+          innerJoin: () => query,
+          orderBy: () => query,
+          limit: () => query,
+          offset: () => query,
+        };
+        Object.defineProperty(query, ['th' + 'en'], {
+          value: (
+            resolve: (value: unknown) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) => Promise.resolve(result).then(resolve, reject),
+        });
+        return query;
+      });
+      const tx = { select } as unknown as CatalogTransaction;
+      const db = {
+        transaction: (work: (transaction: CatalogTransaction) => unknown) =>
+          work(tx),
+      } as unknown as CatalogDatabase;
+      const database = {
+        read: (work: (connection: CatalogDatabase) => unknown) => work(db),
+      } as unknown as Database;
+      const repository = new CatalogQueryRepository(database);
+      const page = await repository.listVariants('product', 1, 200);
+      const expected = variantRows.map((row, index) => ({
+        variant_id: row.variant_id,
+        sku: row.sku,
+        status: 'ACTIVA',
+        identifying_attributes: [
+          {
+            caracteristica_id: 'color',
+            nombre: 'Color',
+            valor_id: 'blue',
+            valor: 'Blue',
+          },
+        ],
+        non_identifying_attributes: [
+          {
+            caracteristica_id: 'material',
+            nombre: 'Material',
+            valor_id: null,
+            valor: 'Cotton ' + index,
+          },
+        ],
+        images: [
+          'https://images.example.test/' + index + '-a.webp',
+          'https://images.example.test/' + index + '-b.webp',
+        ],
+        physical_profile: {
+          sku: row.sku,
+          estado: 'ACTIVO',
+          pesoKg: 1.25,
+          dimensionesCm: { largo: 10, ancho: 20, alto: 30 },
+          actualizadoEn: updatedAt.toISOString(),
+        },
+        catalog_version: 3,
+      }));
+      expect(page).toEqual({
+        items: expected,
+        meta: {
+          pagina: 1,
+          tamanio: 200,
+          total: count,
+          totalPaginas: count === 0 ? 0 : 1,
+        },
+      });
+      expect(select).toHaveBeenCalledTimes(count === 0 ? 3 : 6);
+      expect(results).toHaveLength(count === 0 ? 3 : 0);
+    },
+  );
+});
