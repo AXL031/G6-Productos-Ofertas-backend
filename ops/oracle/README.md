@@ -9,6 +9,7 @@
 | Estado de la VM (corte 19-oct-2026) | [`ESTADO_ACTUAL.md`](ESTADO_ACTUAL.md) |
 | Preparar un servicio desde desarrollo | [`GUIA_DEVTEAM.md`](GUIA_DEVTEAM.md) |
 | Política única de demo H4 y autenticación reversible | [H4-MODO-DEMO-AUTH-REVERSIBLE.md](H4-MODO-DEMO-AUTH-REVERSIBLE.md) |
+| Seguridad progresiva (`PUBLIC_READ_ONLY`, `SIMULATED_AUTH`, `G7_AUTHENTICATED`) | La política H4 enlazada arriba; `G6_SECURITY_MODE` sigue siendo propuesta documental, no runtime |
 | Requisitos comunes para build y runtime | [`CONTRATO_DESPLIEGUE.md`](CONTRATO_DESPLIEGUE.md) |
 | Brechas específicas por servicio | [`servicios/`](servicios/) |
 | Estado comparado por servicio y propuesta de gate CI | [`ESTADO_SERVICIOS.md`](ESTADO_SERVICIOS.md) |
