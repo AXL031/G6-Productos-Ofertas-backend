@@ -1406,7 +1406,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       'offline_sale_reconciliations',
     ];
 
-    it('materializa las 15 tablas del modelo solo dentro del schema inventory', async () => {
+    it('materializa las 17 tablas del modelo solo dentro del schema inventory', async () => {
       const res = await database.query<{ tablename: string }>(
         `SELECT tablename FROM pg_tables WHERE schemaname = 'inventory'`,
       );
