@@ -1,0 +1,53 @@
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+[DryRun] Se crearía:
+  Resource Group : rg-g6-productos-azure (eastus)
+  VM             : vm-g6-backend (Standard_B1s, Ubuntu2404, StandardSSD_LRS 30GB)
+  FQDN HTTPS     : https://g6-po-0e863c9d.eastus.cloudapp.azure.com
+  Puertos NSG    : 22, 80, 443 (puertos 3000-3008 cerrados al exterior)
+DryRun verifica SKU/cuotas; no confirma gratuidad, precio, saldo ni aprobación de despliegue.
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+==========================================================
+VM creada exitosamente en Azure for Students
+FQDN para Caddy HTTPS : g6-po-460a3b35.eastus.cloudapp.azure.com
+SSH                   : ssh -i ~/.ssh/g6_cueva azureuser@g6-po-460a3b35.eastus.cloudapp.azure.com
+==========================================================
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+Usando Azure CLI: Mock-AzureCli
+Suscripción destino: Azure for Students (student-fixture)
+Verificando disponibilidad del tamaño 'Standard_B1s' en 'eastus' (cuidando límites de Azure for Students)...
+Cuota cores: 0/10; requiere 1 vCPU adicionales.
+Cuota standardBSFamily: 0/10; requiere 1 vCPU adicionales.
+PASS: 9 offline provisioning scenarios; no Azure resources contacted.

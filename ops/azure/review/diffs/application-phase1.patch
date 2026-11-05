@@ -1,0 +1,2389 @@
+diff --git a/apps/api-gateway/PHASE1-REVIEW.md b/apps/api-gateway/PHASE1-REVIEW.md
+new file mode 100644
+index 0000000..b18194b
+--- /dev/null
++++ b/apps/api-gateway/PHASE1-REVIEW.md
+@@ -0,0 +1,111 @@
++# Fase 1 — entrega para auditoría
++
++## Alcance y base
++
++Rama `cueva`, fork AXL031. Base oficial actualizada:
++`15941b6fa3e6f00e595995abca4b328da65ff73f`; merge local de actualización:
++`eb148527b97d5076ebd0beeb73a01d3d4a2d5f33`.
++El encargo transversal recibido el 05/11/2026 autoriza implementación en Gateway,
++Catalog, Taxonomy y preparación Azure; seguimiento normativo Backend #144.
++No autoriza merge al Backend principal ni despliegue público. Los cambios de Oracle
++incorporados por el merge pertenecen a master; esta implementación no edita `ops/oracle/`.
++
++Fuentes consultadas: Docs `a7778ec1a22811c1213a94ef096ab905911342cc`, OpenAPI
++`0.6.0-rc.3` (blob `6ff062c563d381d4bcf7976f223590b400ace4ec`), AsyncAPI
++`0.6.0-rc.4`, política progresiva/matriz de seguridad, SPEC-003/008/011,
++DEC-F-001/006/011/012 y trazabilidad, acuerdos internos y Marketplace Docs PR #94.
++No se alteran contratos, migraciones históricas ni grants.
++
++La matriz documental consultada contiene cero `PUBLICA_APROBADA`. Las cinco filas
++siguientes son el alcance preparado y probado para revisión del encargo. No se
++declara su publicación, homologación externa ni cambio unilateral de ese registro.
++
++## Cinco candidatas exactas
++
++| Servicio | operationId | Método/ruta |
++|---|---|---|
++| Taxonomy | listarCategorias | GET /api/v1/categorias |
++| Taxonomy | listarMarcas | GET /api/v1/marcas |
++| Catalog | listarProductos | GET /api/v1/productos |
++| Catalog | obtenerProducto | GET /api/v1/productos/{productoId} |
++| Catalog | obtenerProductoPorSlug | GET /api/v1/productos/por-slug/{slug} |
++
++Gateway verifica servicio, método, ruta y operationId exactos. Ampliaciones requieren
++contrato y revisión de cada lectura; no basta su verbo/prefijo. Taxonomy solo admite
++sus listas comerciales: detalles y consultas administrativas permanecen autenticados.
++Catalog conserva padre activo, variantes activas, elegibilidad antes de contar/paginar
++y 404 comercial para no elegibles. Fase 1 no activa `catalogDemoRead`, preview,
++borradores ni visibilidad administrativa.
++
++Las lecturas no generan comandos, reservas o identidades. La suite compara datos
++persistidos e Inbox/Outbox antes/después. Filtros monetarios mantienen su dependencia
++real de Pricing e identidad técnica; no fabrican precios ni páginas parciales. Pricing
++no forma parte de la nueva prueba conjunta de cinco consultas.
++
++## Configuración para revisión, sin activación remota
++
++Los tres procesos usan `G6_SECURITY_MODE=PUBLIC_READ_ONLY`. Listas por proceso:
++
++```dotenv
++# Gateway
++GATEWAY_PUBLIC_OPERATION_IDS=listarCategorias,listarMarcas,listarProductos,obtenerProducto,obtenerProductoPorSlug
++# Catalog
++CATALOG_PUBLIC_OPERATION_IDS=listarProductos,obtenerProducto,obtenerProductoPorSlug
++# Taxonomy
++TAXONOMY_PUBLIC_OPERATION_IDS=listarCategorias,listarMarcas
++```
++
++Las listas son vacías por defecto y cada frontera aplica autorización independiente.
++No se hereda `G6_PUBLIC_OPERATION_IDS`. Mantener ausentes/false los flags legacy
++`GATEWAY_DEMO_NO_AUTH_ENABLED`, `G6_READ_ONLY_DEMO_ENABLED`,
++`ALLOW_DEMO_UNAUTHENTICATED` y `CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED`.
++Un selector explícito combinado con bypass heredado falla al arrancar. La
++compatibilidad legacy permanece solo para configuraciones antiguas sin selector;
++no debe utilizarse para publicar Fase 1.
++
++Rutas no públicas conservan JWT normal, incluidas escrituras autorizadas. Un
++Authorization suministrado se valida también en rutas públicas: JWT inválido o
++insuficiente no se convierte en acceso anónimo. No se exige IP privada al visitante
++público; la comprobación de peer se limita a los bypasses legacy.
++
++Catalog anónimo usa listas comerciales de Taxonomy sin JWT para validar filtros y
++enriquecer detalles por ID/slug. No abre detalles privados ni fabrica un principal.
++Si falta la aprobación/configuración de Taxonomy, Catalog falla cerrado con 503.
++Con JWT mantiene propagación y autorización existentes. Las mutaciones mantienen
++su identidad técnica original para consultar maestros.
++
++## Reversión a autenticación normal
++
++1. Cambiar los tres procesos a `G6_SECURITY_MODE=G7_AUTHENTICATED`.
++2. Vaciar listas públicas y mantener apagados los flags legacy.
++3. Configurar issuer/discovery/JWKS y permisos reales G7; reiniciar/redeployar.
++4. Repetir 401 anónimo, positivos JWT y negativos de autorización.
++
++No cambia código. La suite reinicia servidores reales con ambas configuraciones
++sobre el mismo PostgreSQL. Usa issuer/JWKS HTTPS y firmas RS256 de fixtures locales:
++prueba camino criptográfico y reversión, no integración ni grant G7 auténtico.
++`SIMULATED_AUTH` rechaza configuración al arrancar en los tres componentes mientras
++su implementación siga pendiente de homologación.
++
++## Reproducción
++
++```bash
++npm test -- apps/api-gateway apps/catalog-svc apps/taxonomy-svc
++npm run test:e2e -- apps/api-gateway/test/public-read-only.e2e-spec.ts --reporter=verbose
++npm run typecheck
++npm run lint
++npm run build:api-gateway
++npm run build:catalog-svc
++npm run build:taxonomy-svc
++```
++
++La suite conjunta exige Docker y OpenSSL; no se omite silenciosamente. Crea su
++propio PostgreSQL 17, TLS verify-full, roles limitados y datos adversariales; retira
++solo su contenedor etiquetado y directorio temporal. No lee credenciales DB
++compartidas ni admite URLs externas. Sus migraciones/seeds solo afectan a esa base
++recién creada. Fixture Taxonomy congelado del blob oficial:
++`3db51993e6c06ecfcbc2e93f6757f848a78987f4`.
++En Windows se puede indicar `G6_TEST_OPENSSL` y, para Azure, `G6_TEST_BASH`.
++
++Implementación/pruebas locales, CI, homologación, grants, artefactos oficiales y
++despliegue se acreditan separadamente. Azure y costos: `ops/azure/README.md`.
+diff --git a/apps/api-gateway/src/routing/gateway-identity.ts b/apps/api-gateway/src/routing/gateway-identity.ts
+index e69e38a..f5915bf 100644
+--- a/apps/api-gateway/src/routing/gateway-identity.ts
++++ b/apps/api-gateway/src/routing/gateway-identity.ts
+@@ -5,0 +6 @@ import { readLimitedResponse } from './bounded-response.js';
++import { isEligiblePublicRead } from './gateway-public-reads.js';
+@@ -155,0 +157,9 @@ export class GatewayIdentity {
++    if (this.settings.securityMode === 'SIMULATED_AUTH')
++      throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
++    if (
++      authorization === undefined &&
++      this.settings.securityMode === 'PUBLIC_READ_ONLY' &&
++      isEligiblePublicRead(route) &&
++      this.settings.publicOperations.includes(route.operationId)
++    )
++      return;
+@@ -217,0 +228,6 @@ export function isDemoBypassRoute(
++  if (
++    settings.securityMode === 'PUBLIC_READ_ONLY' ||
++    settings.securityMode === 'SIMULATED_AUTH'
++  )
++    return false;
++  if (settings.demoNoAuthEnabled) return true;
+@@ -219,4 +235,3 @@ export function isDemoBypassRoute(
+-    settings.demoNoAuthEnabled ||
+-    (settings.readOnlyDemoEnabled === true &&
+-      route.method === 'GET' &&
+-      readOnlyDemoOperations.has(route.operationId))
++    settings.readOnlyDemoEnabled === true &&
++    route.method === 'GET' &&
++    readOnlyDemoOperations.has(route.operationId)
+diff --git a/apps/api-gateway/src/routing/gateway-public-reads.spec.ts b/apps/api-gateway/src/routing/gateway-public-reads.spec.ts
+new file mode 100644
+index 0000000..94c1c8a
+--- /dev/null
++++ b/apps/api-gateway/src/routing/gateway-public-reads.spec.ts
+@@ -0,0 +1,98 @@
++import { readGatewaySettings } from './gateway-settings.js';
++import { CONTRACT_ROUTES } from './contract-routes.js';
++import { isEligiblePublicRead } from './gateway-public-reads.js';
++import { isDemoBypassRoute } from './gateway-identity.js';
++import { createSignedIdentity } from '../../test/support/signed-identity.js';
++
++describe('Phase 1 exact operation policy and JWT coexistence', () => {
++  it('permits only the five reviewed candidates, with exact service, method and route', () => {
++    expect(
++      CONTRACT_ROUTES.filter(isEligiblePublicRead)
++        .map((r) => r.operationId)
++        .sort(),
++    ).toEqual([
++      'listarCategorias',
++      'listarMarcas',
++      'listarProductos',
++      'obtenerProducto',
++      'obtenerProductoPorSlug',
++    ]);
++    const route = CONTRACT_ROUTES[0];
++    for (const changed of [
++      { ...route, method: 'POST' },
++      { ...route, path: '/api/v1/other' },
++      { ...route, service: 'inventory-svc' },
++    ])
++      expect(isEligiblePublicRead(changed)).toBe(false);
++    for (const operation of [
++      'obtenerPreparacionProducto',
++      'listarCategoriasAdmin',
++      'obtenerPrecioBaseProducto',
++      'crearProducto',
++    ])
++      expect(() =>
++        readGatewaySettings({
++          G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++          GATEWAY_PUBLIC_OPERATION_IDS: operation,
++        }),
++      ).toThrow();
++  });
++  it('rejects legacy bypasses with any explicit phase, regardless of the runtime environment', () => {
++    for (const mode of [
++      'PUBLIC_READ_ONLY',
++      'G7_AUTHENTICATED',
++      'SIMULATED_AUTH',
++    ])
++      for (const flag of [
++        'GATEWAY_DEMO_NO_AUTH_ENABLED',
++        'G6_READ_ONLY_DEMO_ENABLED',
++      ])
++        expect(() =>
++          readGatewaySettings({
++            G6_SECURITY_MODE: mode,
++            NODE_ENV: 'production',
++            [flag]: 'true',
++          }),
++        ).toThrow();
++    const settings = readGatewaySettings({
++      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++      G6_READ_ONLY_DEMO_ENABLED: 'false',
++      GATEWAY_PUBLIC_OPERATION_IDS: 'listarProductos',
++    });
++    expect(
++      isDemoBypassRoute(CONTRACT_ROUTES[0], {
++        ...settings,
++        demoNoAuthEnabled: true,
++      }),
++    ).toBe(false);
++  });
++  it('keeps JWT permissions on non-public reads and writes, and validates supplied JWTs on public reads', async () => {
++    const settings = readGatewaySettings({
++      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++      GATEWAY_PUBLIC_OPERATION_IDS: 'listarProductos',
++    });
++    const signed = createSignedIdentity(settings);
++    const human =
++      'Bearer ' +
++      signed.token({
++        tipo: 'acceso',
++        sub: '00000000-0000-4000-8000-000000000001',
++        roles: ['GESTOR_COMERCIAL'],
++      });
++    for (const operation of ['crearProducto', 'obtenerPreparacionProducto']) {
++      const route = CONTRACT_ROUTES.find((r) => r.operationId === operation)!;
++      await expect(
++        signed.identity.authorize(route, human),
++      ).resolves.toBeUndefined();
++      await expect(
++        signed.identity.authorize(route, undefined),
++      ).rejects.toMatchObject({ status: 401 });
++    }
++    await expect(
++      signed.identity.authorize(CONTRACT_ROUTES[0], undefined),
++    ).resolves.toBeUndefined();
++    await expect(
++      signed.identity.authorize(CONTRACT_ROUTES[0], 'Bearer invalid'),
++    ).rejects.toMatchObject({ status: 401 });
++  });
++});
+diff --git a/apps/api-gateway/src/routing/gateway-public-reads.ts b/apps/api-gateway/src/routing/gateway-public-reads.ts
+new file mode 100644
+index 0000000..feca24f
+--- /dev/null
++++ b/apps/api-gateway/src/routing/gateway-public-reads.ts
+@@ -0,0 +1,29 @@
++import type { ContractRoute } from './contract-route.js';
++
++/** Candidates authorized for implementation in the Phase 1 assignment.
++ * Runtime lists remain empty until the operator explicitly enables reviewed rows.
++ * Additions require an exact contract route and a separate public-read review.
++ */
++const publicReadRoutes = [
++  ['catalog-svc', 'listarProductos', '/api/v1/productos'],
++  ['catalog-svc', 'obtenerProducto', '/api/v1/productos/{productoId}'],
++  [
++    'catalog-svc',
++    'obtenerProductoPorSlug',
++    '/api/v1/productos/por-slug/{slug}',
++  ],
++  ['taxonomy-svc', 'listarCategorias', '/api/v1/categorias'],
++  ['taxonomy-svc', 'listarMarcas', '/api/v1/marcas'],
++] as const;
++
++export function isEligiblePublicRead(route: ContractRoute): boolean {
++  return (
++    route.method === 'GET' &&
++    publicReadRoutes.some(
++      ([service, operationId, path]) =>
++        route.service === service &&
++        route.operationId === operationId &&
++        route.path === path,
++    )
++  );
++}
+diff --git a/apps/api-gateway/src/routing/gateway-read-demo.spec.ts b/apps/api-gateway/src/routing/gateway-read-demo.spec.ts
+index 788a981..be056be 100644
+--- a/apps/api-gateway/src/routing/gateway-read-demo.spec.ts
++++ b/apps/api-gateway/src/routing/gateway-read-demo.spec.ts
+@@ -44,0 +45,71 @@ describe('G6 read-only demo Gateway boundary', () => {
++  it('supports reversible G6_SECURITY_MODE without automatically activating any public operations', async () => {
++    expect(readGatewaySettings({}).securityMode).toBe('G7_AUTHENTICATED');
++    expect(() =>
++      readGatewaySettings({ G6_SECURITY_MODE: 'INVALID_MODE' }),
++    ).toThrow('Invalid Gateway configuration');
++    expect(() =>
++      readGatewaySettings({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        GATEWAY_PUBLIC_OPERATION_IDS: 'crearProducto',
++      }),
++    ).toThrow('Invalid Gateway configuration');
++
++    // Requisito #3: sin GATEWAY_PUBLIC_OPERATION_IDS explícito, PUBLIC_READ_ONLY
++    // mantiene 0 operaciones públicas activadas automáticamente.
++    const emptyPhase1Settings = readGatewaySettings({
++      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++    });
++    expect(emptyPhase1Settings.publicOperations).toEqual([]);
++    const emptyPhase1Identity = new GatewayIdentity(emptyPhase1Settings);
++    for (const route of CONTRACT_ROUTES) {
++      await expect(
++        emptyPhase1Identity.authorize(route, undefined),
++      ).rejects.toMatchObject(
++        route.security.length
++          ? { status: 401, code: 'TOKEN_INVALIDO' }
++          : { status: 403, code: 'SCOPE_INSUFICIENTE' },
++      );
++    }
++
++    // Solo las operaciones GET explícitamente declaradas en GATEWAY_PUBLIC_OPERATION_IDS se habilitan
++    const phase1Identity = new GatewayIdentity(
++      readGatewaySettings({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        GATEWAY_PUBLIC_OPERATION_IDS:
++          'listarProductos,obtenerProductoPorSlug,listarCategorias,listarMarcas',
++      }),
++    );
++    const listarProductos = CONTRACT_ROUTES.find(
++      (r) => r.operationId === 'listarProductos',
++    )!;
++    const obtenerProducto = CONTRACT_ROUTES.find(
++      (r) => r.operationId === 'obtenerProducto',
++    )!;
++    const crearProducto = CONTRACT_ROUTES.find(
++      (r) => r.operationId === 'crearProducto',
++    )!;
++    await expect(
++      phase1Identity.authorize(listarProductos, undefined),
++    ).resolves.toBeUndefined();
++    await expect(
++      phase1Identity.authorize(obtenerProducto, undefined),
++    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
++    await expect(
++      phase1Identity.authorize(crearProducto, undefined),
++    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
++
++    expect(() =>
++      readGatewaySettings({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
++    ).toThrow();
++    // Phase 3 restores the original authentication requirement.
++    for (const mode of ['G7_AUTHENTICATED'] as const) {
++      const strictIdentity = new GatewayIdentity(
++        readGatewaySettings({
++          G6_SECURITY_MODE: mode,
++        }),
++      );
++      await expect(
++        strictIdentity.authorize(listarProductos, undefined),
++      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
++    }
++  });
+diff --git a/apps/api-gateway/src/routing/gateway-settings.ts b/apps/api-gateway/src/routing/gateway-settings.ts
+index c1f0cdc..2412bc1 100644
+--- a/apps/api-gateway/src/routing/gateway-settings.ts
++++ b/apps/api-gateway/src/routing/gateway-settings.ts
+@@ -1,0 +2 @@ import { CONTRACT_ROUTES } from './contract-routes.js';
++import { isEligiblePublicRead } from './gateway-public-reads.js';
+@@ -6,0 +8,2 @@ export const GATEWAY_SETTINGS = Symbol('GATEWAY_SETTINGS');
++export type GatewaySecurityMode =
++  'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+@@ -17,0 +21 @@ export interface GatewaySettings {
++  readonly securityMode?: GatewaySecurityMode;
+@@ -95,0 +100,13 @@ export function readGatewaySettings(
++    if (
++      env.G6_SECURITY_MODE !== undefined &&
++      !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
++    )
++      throw new Error();
++    const securityMode: GatewaySecurityMode =
++      (env.G6_SECURITY_MODE as GatewaySecurityMode | undefined) ??
++      'G7_AUTHENTICATED';
++    if (
++      env.G6_SECURITY_MODE !== undefined &&
++      (demoNoAuthEnabled === 'true' || readOnlyDemoEnabled === 'true')
++    )
++      throw new Error();
+@@ -114,0 +132 @@ export function readGatewaySettings(
++      .map((id) => id.trim())
+@@ -117,5 +135,8 @@ export function readGatewaySettings(
+-      publicOperations.some(
+-        (id) =>
+-          !CONTRACT_ROUTES.some(
+-            (r) => r.operationId === id && r.security.length === 0,
+-          ),
++      publicOperations.some((id) =>
++        securityMode === 'PUBLIC_READ_ONLY'
++          ? !CONTRACT_ROUTES.some(
++              (r) => r.operationId === id && isEligiblePublicRead(r),
++            )
++          : !CONTRACT_ROUTES.some(
++              (r) => r.operationId === id && r.security.length === 0,
++            ),
+@@ -134,0 +156 @@ export function readGatewaySettings(
++      securityMode,
+diff --git a/apps/api-gateway/test/fixtures/phase1-taxonomy-0001.sql b/apps/api-gateway/test/fixtures/phase1-taxonomy-0001.sql
+new file mode 100644
+index 0000000..3db5199
+--- /dev/null
++++ b/apps/api-gateway/test/fixtures/phase1-taxonomy-0001.sql
+@@ -0,0 +1,548 @@
++-- taxonomy-svc / Persistencia de Taxonomía y Atributos (FLOW-008 a FLOW-012). PostgreSQL >= 15.
++-- Fuentes y decisiones: ../physical-model.md y ../logical-model.md.
++-- Ejecutar como po_taxonomy_owner, aprovisionado por bd/deploy/bootstrap.sql.
++-- taxonomy_app: login runtime aprovisionado por bd/deploy/bootstrap.sql, SIN membresía owner.
++-- Sin BEGIN/COMMIT: bd/deploy/migrate.py administra la transacción y el cálculo de checksum.
++
++DO $guard$
++BEGIN
++    IF current_user <> 'po_taxonomy_owner' OR
++       NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'taxonomy'
++                   AND pg_get_userbyid(nspowner) = current_user) THEN
++        RAISE EXCEPTION 'Ejecutar con po_taxonomy_owner sobre su schema taxonomy';
++    END IF;
++    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxonomy_app') THEN
++        RAISE EXCEPTION 'Infraestructura debe provisionar taxonomy_app antes de migrar';
++    END IF;
++    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'taxonomy_app'
++               AND (rolsuper OR rolcreatedb OR rolcreaterole OR rolbypassrls)) OR
++       pg_has_role('taxonomy_app', 'po_taxonomy_owner', 'MEMBER') THEN
++        RAISE EXCEPTION 'taxonomy_app no debe tener privilegios owner/administrador';
++    END IF;
++END
++$guard$;
++
++REVOKE ALL ON SCHEMA taxonomy FROM PUBLIC;
++GRANT USAGE ON SCHEMA taxonomy TO taxonomy_app;
++ALTER DEFAULT PRIVILEGES IN SCHEMA taxonomy REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;
++
++-- 1. Tipos enumerados locales al schema
++CREATE TYPE taxonomy.estado_entidad AS ENUM (
++    'ACTIVO',
++    'INACTIVO',
++    'PENDING_DEACTIVATION'
++);
++
++CREATE TYPE taxonomy.tipo_caracteristica AS ENUM (
++    'TEXTO',
++    'NUMERO',
++    'LISTA'
++);
++
++CREATE TYPE taxonomy.tipo_entidad_maestra AS ENUM (
++    'CATEGORY',
++    'BRAND',
++    'CHARACTERISTIC',
++    'CHARACTERISTIC_VALUE',
++    'PRODUCT_TYPE',
++    'PRODUCT_TYPE_CHARACTERISTIC'
++);
++
++CREATE TYPE taxonomy.estado_operacion_baja AS ENUM (
++    'REQUESTED',
++    'IN_PROGRESS',
++    'COMPLETED',
++    'REJECTED',
++    'FAILED'
++);
++
++-- 2. Funciones de triggers
++CREATE OR REPLACE FUNCTION taxonomy.fn_set_updated_at()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    NEW.updated_at = now();
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_prevent_characteristic_type_change()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF OLD.tipo <> NEW.tipo THEN
++        RAISE EXCEPTION 'El tipo de característica (%) es inmutable y no puede modificarse a %',
++            OLD.tipo, NEW.tipo;
++    END IF;
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_enforce_category_parent_rules()
++RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE
++    v_parent record;
++    v_cycle_found boolean;
++    v_active_children integer;
++BEGIN
++    IF NEW.categoria_padre_id IS NULL THEN
++        IF NEW.nivel <> 1 THEN
++            RAISE EXCEPTION 'Una categoria raiz debe tener nivel 1';
++        END IF;
++    ELSE
++        IF NEW.categoria_padre_id = NEW.id THEN
++            RAISE EXCEPTION 'Una categoria no puede ser padre de si misma';
++        END IF;
++
++        SELECT * INTO v_parent
++        FROM taxonomy.categories
++        WHERE id = NEW.categoria_padre_id
++        FOR KEY SHARE;
++
++        IF NOT FOUND THEN
++            RETURN NEW;
++        END IF;
++        IF v_parent.estado <> 'ACTIVO' THEN
++            RAISE EXCEPTION 'La categoria padre % debe estar ACTIVA', NEW.categoria_padre_id;
++        END IF;
++        IF v_parent.nivel <> 1 THEN
++            RAISE EXCEPTION 'La categoria padre % debe ser de nivel 1', NEW.categoria_padre_id;
++        END IF;
++        IF NEW.nivel <> 2 THEN
++            RAISE EXCEPTION 'Una subcategoria con padre debe tener nivel 2';
++        END IF;
++
++        WITH RECURSIVE ancestors(id, categoria_padre_id) AS (
++            SELECT id, categoria_padre_id
++            FROM taxonomy.categories
++            WHERE id = NEW.categoria_padre_id
++            UNION ALL
++            SELECT c.id, c.categoria_padre_id
++            FROM taxonomy.categories c
++            JOIN ancestors a ON c.id = a.categoria_padre_id
++        )
++        SELECT EXISTS (SELECT 1 FROM ancestors WHERE id = NEW.id)
++        INTO v_cycle_found;
++
++        IF v_cycle_found THEN
++            RAISE EXCEPTION 'La jerarquia de categorias no puede formar ciclos';
++        END IF;
++    END IF;
++
++    IF TG_OP = 'UPDATE' THEN
++        IF OLD.estado = 'ACTIVO' AND NEW.estado <> 'ACTIVO' THEN
++            SELECT count(*) INTO v_active_children
++            FROM taxonomy.categories
++            WHERE categoria_padre_id = NEW.id
++              AND estado = 'ACTIVO';
++            IF v_active_children > 0 THEN
++                RAISE EXCEPTION 'No se puede desactivar una categoria padre con subcategorias activas';
++            END IF;
++        END IF;
++    END IF;
++
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_enforce_characteristic_value_rules()
++RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE
++    v_tipo taxonomy.tipo_caracteristica;
++    v_activos integer;
++BEGIN
++    SELECT tipo INTO v_tipo
++    FROM taxonomy.characteristics
++    WHERE id = NEW.caracteristica_id
++    FOR UPDATE;
++    IF v_tipo <> 'LISTA' THEN
++        RAISE EXCEPTION 'Solo las características de tipo LISTA pueden tener valores predefinidos. Tipo actual: %', v_tipo;
++    END IF;
++
++    IF NEW.estado = 'ACTIVO' THEN
++        SELECT count(*) INTO v_activos
++        FROM taxonomy.characteristic_values
++        WHERE caracteristica_id = NEW.caracteristica_id
++          AND estado = 'ACTIVO'
++          AND id <> coalesce(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid);
++        IF v_activos >= 50 THEN
++            RAISE EXCEPTION 'Límite alcanzado: una característica no puede tener más de 50 valores activos';
++        END IF;
++    END IF;
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_track_slug_history()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    IF OLD.slug <> NEW.slug THEN
++        INSERT INTO taxonomy.slug_history (categoria_id, old_slug, new_slug, changed_at)
++        VALUES (NEW.categoria_id, OLD.slug, NEW.slug, now());
++    END IF;
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_prevent_slug_history_mutation()
++RETURNS trigger LANGUAGE plpgsql AS $$
++BEGIN
++    RAISE EXCEPTION 'taxonomy.slug_history es append-only; no admite UPDATE ni DELETE';
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_bump_product_type_schema_version()
++RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE
++    v_tipo_producto_id uuid;
++BEGIN
++    IF TG_OP = 'DELETE' THEN
++        v_tipo_producto_id := OLD.tipo_producto_id;
++    ELSE
++        v_tipo_producto_id := NEW.tipo_producto_id;
++    END IF;
++
++    UPDATE taxonomy.product_types
++    SET schema_version = schema_version + 1,
++        updated_at = now()
++    WHERE id = v_tipo_producto_id;
++
++    IF TG_OP = 'DELETE' THEN
++        RETURN OLD;
++    END IF;
++    RETURN NEW;
++END;
++$$;
++
++CREATE OR REPLACE FUNCTION taxonomy.fn_enforce_product_type_attribute_limit()
++RETURNS trigger LANGUAGE plpgsql AS $$
++DECLARE
++    v_limit integer;
++    v_active integer;
++BEGIN
++    IF NEW.estado <> 'ACTIVO' THEN
++        RETURN NEW;
++    END IF;
++
++    SELECT valor_integer INTO v_limit
++    FROM taxonomy.runtime_settings
++    WHERE clave = 'MAX_PRODUCT_TYPE_ATTRIBUTES'
++    FOR UPDATE;
++
++    IF v_limit IS NULL OR v_limit < 1 THEN
++        RAISE EXCEPTION 'Configuracion MAX_PRODUCT_TYPE_ATTRIBUTES invalida';
++    END IF;
++
++    SELECT count(*) INTO v_active
++    FROM taxonomy.product_type_characteristics
++    WHERE tipo_producto_id = NEW.tipo_producto_id
++      AND estado = 'ACTIVO'
++      AND id <> coalesce(NEW.id, '00000000-0000-0000-0000-000000000000'::uuid);
++
++    IF v_active >= v_limit THEN
++        RAISE EXCEPTION 'Limite alcanzado: un tipo de producto no puede tener mas de % caracteristicas activas', v_limit;
++    END IF;
++
++    RETURN NEW;
++END;
++$$;
++
++-- 3. Tablas de dominio
++CREATE TABLE taxonomy.runtime_settings (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    clave text NOT NULL,
++    valor_integer integer NOT NULL,
++    descripcion text NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_runtime_settings PRIMARY KEY (id),
++    CONSTRAINT uq_runtime_settings_clave UNIQUE (clave),
++    CONSTRAINT ck_runtime_settings_clave_not_empty CHECK (length(trim(clave)) > 0),
++    CONSTRAINT ck_runtime_settings_valor_positivo CHECK (valor_integer > 0)
++);
++
++INSERT INTO taxonomy.runtime_settings (clave, valor_integer, descripcion)
++VALUES (
++    'MAX_PRODUCT_TYPE_ATTRIBUTES',
++    20,
++    'Limite configurable inicial de atributos activos por tipo de producto definido por SPEC-010'
++);
++
++CREATE TABLE taxonomy.categories (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    nombre text NOT NULL,
++    descripcion text NULL,
++    categoria_padre_id uuid NULL,
++    nivel smallint NOT NULL DEFAULT 1,
++    orden integer NOT NULL DEFAULT 0,
++    imagen_url text NULL,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_categories PRIMARY KEY (id),
++    CONSTRAINT fk_categories_categoria_padre FOREIGN KEY (categoria_padre_id)
++        REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
++    CONSTRAINT ck_categories_nombre_not_empty CHECK (length(trim(nombre)) > 0),
++    CONSTRAINT ck_categories_nivel CHECK (nivel IN (1, 2)),
++    CONSTRAINT ck_categories_orden CHECK (orden >= 0),
++    CONSTRAINT ck_categories_version CHECK (taxonomy_version >= 0),
++    CONSTRAINT ck_categories_no_self_parent CHECK (categoria_padre_id <> id),
++    CONSTRAINT ck_categories_padre_nivel CHECK (
++        (categoria_padre_id IS NULL AND nivel = 1) OR
++        (categoria_padre_id IS NOT NULL AND nivel = 2)
++    )
++);
++
++CREATE TABLE taxonomy.brands (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    nombre text NOT NULL,
++    nombre_normalizado text GENERATED ALWAYS AS (lower(regexp_replace(btrim(nombre), '[[:space:]]+', ' ', 'g'))) STORED,
++    descripcion text NULL,
++    logo_url text NULL,
++    pais_origen_iso char(2) NULL,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_brands PRIMARY KEY (id),
++    CONSTRAINT uq_brands_nombre_normalizado UNIQUE (nombre_normalizado),
++    CONSTRAINT ck_brands_nombre_not_empty CHECK (length(trim(nombre)) > 0),
++    CONSTRAINT ck_brands_nombre_normalizado_not_empty CHECK (length(trim(nombre_normalizado)) > 0),
++    CONSTRAINT ck_brands_pais_iso CHECK (pais_origen_iso IS NULL OR pais_origen_iso ~ '^[A-Z]{2}$'),
++    CONSTRAINT ck_brands_version CHECK (taxonomy_version >= 0)
++);
++
++CREATE TABLE taxonomy.characteristics (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    nombre text NOT NULL,
++    tipo taxonomy.tipo_caracteristica NOT NULL,
++    unidad_medida text NULL,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_characteristics PRIMARY KEY (id),
++    CONSTRAINT uq_characteristics_nombre UNIQUE (nombre),
++    CONSTRAINT ck_characteristics_nombre_not_empty CHECK (length(trim(nombre)) > 0),
++    CONSTRAINT ck_characteristics_unidad_medida CHECK (
++        (tipo = 'NUMERO' AND unidad_medida IS NOT NULL AND length(trim(unidad_medida)) > 0) OR
++        (tipo <> 'NUMERO' AND unidad_medida IS NULL)
++    ),
++    CONSTRAINT ck_characteristics_version CHECK (taxonomy_version >= 0)
++);
++
++CREATE TABLE taxonomy.characteristic_values (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    caracteristica_id uuid NOT NULL,
++    nombre text NOT NULL,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_characteristic_values PRIMARY KEY (id),
++    CONSTRAINT fk_characteristic_values_caracteristica FOREIGN KEY (caracteristica_id)
++        REFERENCES taxonomy.characteristics(id) ON DELETE RESTRICT,
++    CONSTRAINT uq_characteristic_values_nombre UNIQUE (caracteristica_id, nombre),
++    CONSTRAINT ck_characteristic_values_nombre_not_empty CHECK (length(trim(nombre)) > 0),
++    CONSTRAINT ck_characteristic_values_version CHECK (taxonomy_version >= 0)
++);
++
++CREATE TABLE taxonomy.product_types (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    nombre text NOT NULL,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    schema_version bigint NOT NULL DEFAULT 1,
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_product_types PRIMARY KEY (id),
++    CONSTRAINT uq_product_types_nombre UNIQUE (nombre),
++    CONSTRAINT ck_product_types_nombre_not_empty CHECK (length(trim(nombre)) > 0),
++    CONSTRAINT ck_product_types_schema_version CHECK (schema_version >= 1),
++    CONSTRAINT ck_product_types_version CHECK (taxonomy_version >= 0)
++);
++
++CREATE TABLE taxonomy.product_type_characteristics (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    tipo_producto_id uuid NOT NULL,
++    caracteristica_id uuid NOT NULL,
++    obligatoria boolean NOT NULL DEFAULT false,
++    estado taxonomy.estado_entidad NOT NULL DEFAULT 'ACTIVO',
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_product_type_characteristics PRIMARY KEY (id),
++    CONSTRAINT fk_ptc_tipo_producto FOREIGN KEY (tipo_producto_id)
++        REFERENCES taxonomy.product_types(id) ON DELETE RESTRICT,
++    CONSTRAINT fk_ptc_caracteristica FOREIGN KEY (caracteristica_id)
++        REFERENCES taxonomy.characteristics(id) ON DELETE RESTRICT,
++    CONSTRAINT uq_ptc_tipo_caracteristica UNIQUE (tipo_producto_id, caracteristica_id)
++);
++
++CREATE TABLE taxonomy.category_seo (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    categoria_id uuid NOT NULL,
++    slug text NOT NULL,
++    meta_titulo text NULL,
++    meta_descripcion text NULL,
++    taxonomy_version bigint NOT NULL DEFAULT 0,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_category_seo PRIMARY KEY (id),
++    CONSTRAINT fk_category_seo_categoria FOREIGN KEY (categoria_id)
++        REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
++    CONSTRAINT uq_category_seo_categoria UNIQUE (categoria_id),
++    CONSTRAINT uq_category_seo_slug UNIQUE (slug),
++    CONSTRAINT ck_category_seo_slug_format CHECK (slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'),
++    CONSTRAINT ck_category_seo_version CHECK (taxonomy_version >= 0)
++);
++
++CREATE TABLE taxonomy.slug_history (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    categoria_id uuid NOT NULL,
++    old_slug text NOT NULL,
++    new_slug text NOT NULL,
++    changed_at timestamptz NOT NULL DEFAULT now(),
++    created_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_slug_history PRIMARY KEY (id),
++    CONSTRAINT fk_slug_history_categoria FOREIGN KEY (categoria_id)
++        REFERENCES taxonomy.categories(id) ON DELETE RESTRICT,
++    CONSTRAINT ck_slug_history_distinct CHECK (old_slug <> new_slug)
++);
++
++CREATE TABLE taxonomy.master_deactivation_operations (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    operation_id uuid NOT NULL,
++    entity_type taxonomy.tipo_entidad_maestra NOT NULL,
++    entity_id uuid NOT NULL,
++    status taxonomy.estado_operacion_baja NOT NULL DEFAULT 'REQUESTED',
++    reason text NULL,
++    correlation_id uuid NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    updated_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_master_deactivation_operations PRIMARY KEY (id),
++    CONSTRAINT uq_mdo_operation_id UNIQUE (operation_id),
++    CONSTRAINT ck_mdo_operation_id_not_nil CHECK (operation_id <> '00000000-0000-0000-0000-000000000000'::uuid),
++    CONSTRAINT ck_mdo_correlation_id_not_nil CHECK (correlation_id <> '00000000-0000-0000-0000-000000000000'::uuid)
++);
++
++CREATE TABLE taxonomy.outbox (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    message_id uuid NOT NULL DEFAULT gen_random_uuid(),
++    event_name text NOT NULL,
++    kind text NOT NULL,
++    schema_version integer NOT NULL DEFAULT 1,
++    correlation_id uuid NOT NULL,
++    causation_id uuid NULL,
++    operation_id uuid NULL,
++    occurred_at timestamptz NOT NULL,
++    payload jsonb NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    published_at timestamptz NULL,
++    attempts integer NOT NULL DEFAULT 0,
++    last_error text NULL,
++    CONSTRAINT pk_outbox PRIMARY KEY (id),
++    CONSTRAINT uq_outbox_message_id UNIQUE (message_id),
++    CONSTRAINT ck_outbox_kind CHECK (kind IN ('command', 'event', 'result')),
++    CONSTRAINT ck_outbox_schema_version CHECK (schema_version >= 1),
++    CONSTRAINT ck_outbox_attempts CHECK (attempts >= 0)
++);
++
++CREATE TABLE taxonomy.inbox (
++    id uuid NOT NULL DEFAULT gen_random_uuid(),
++    message_id uuid NOT NULL,
++    handler text NOT NULL,
++    event_name text NOT NULL,
++    correlation_id uuid NULL,
++    payload jsonb NOT NULL,
++    processed_at timestamptz NOT NULL DEFAULT now(),
++    result text NOT NULL,
++    created_at timestamptz NOT NULL DEFAULT now(),
++    CONSTRAINT pk_inbox PRIMARY KEY (id),
++    CONSTRAINT uq_inbox_message_handler UNIQUE (message_id, handler),
++    CONSTRAINT ck_inbox_handler_not_empty CHECK (length(trim(handler)) > 0),
++    CONSTRAINT ck_inbox_result CHECK (result IN ('PROCESSED', 'IGNORED', 'FAILED'))
++);
++
++-- 4. Disparadores (Triggers)
++CREATE TRIGGER trg_runtime_settings_updated_at
++    BEFORE UPDATE ON taxonomy.runtime_settings
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_categories_updated_at
++    BEFORE UPDATE ON taxonomy.categories
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_categories_parent_rules
++    BEFORE INSERT OR UPDATE OF categoria_padre_id, nivel, estado ON taxonomy.categories
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_enforce_category_parent_rules();
++
++CREATE TRIGGER trg_brands_updated_at
++    BEFORE UPDATE ON taxonomy.brands
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_characteristics_updated_at
++    BEFORE UPDATE ON taxonomy.characteristics
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_characteristics_prevent_type_change
++    BEFORE UPDATE OF tipo ON taxonomy.characteristics
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_prevent_characteristic_type_change();
++
++CREATE TRIGGER trg_characteristic_values_updated_at
++    BEFORE UPDATE ON taxonomy.characteristic_values
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_characteristic_values_rules
++    BEFORE INSERT OR UPDATE ON taxonomy.characteristic_values
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_enforce_characteristic_value_rules();
++
++CREATE TRIGGER trg_product_types_updated_at
++    BEFORE UPDATE ON taxonomy.product_types
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_ptc_updated_at
++    BEFORE UPDATE ON taxonomy.product_type_characteristics
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_ptc_attribute_limit
++    BEFORE INSERT OR UPDATE OF tipo_producto_id, caracteristica_id, estado ON taxonomy.product_type_characteristics
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_enforce_product_type_attribute_limit();
++
++CREATE TRIGGER trg_ptc_bump_schema_version
++    AFTER INSERT OR UPDATE OF obligatoria, estado OR DELETE ON taxonomy.product_type_characteristics
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_bump_product_type_schema_version();
++
++CREATE TRIGGER trg_category_seo_updated_at
++    BEFORE UPDATE ON taxonomy.category_seo
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++CREATE TRIGGER trg_category_seo_track_slug
++    AFTER UPDATE OF slug ON taxonomy.category_seo
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_track_slug_history();
++
++CREATE TRIGGER trg_slug_history_append_only
++    BEFORE UPDATE OR DELETE ON taxonomy.slug_history
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_prevent_slug_history_mutation();
++
++CREATE TRIGGER trg_mdo_updated_at
++    BEFORE UPDATE ON taxonomy.master_deactivation_operations
++    FOR EACH ROW EXECUTE FUNCTION taxonomy.fn_set_updated_at();
++
++-- 5. Índices de optimización y claves foráneas
++CREATE INDEX ix_categories_padre_id ON taxonomy.categories(categoria_padre_id);
++CREATE INDEX ix_characteristic_values_caracteristica_id ON taxonomy.characteristic_values(caracteristica_id);
++CREATE INDEX ix_ptc_tipo_producto_id ON taxonomy.product_type_characteristics(tipo_producto_id);
++CREATE INDEX ix_ptc_caracteristica_id ON taxonomy.product_type_characteristics(caracteristica_id);
++CREATE INDEX ix_category_seo_categoria_id ON taxonomy.category_seo(categoria_id);
++CREATE INDEX ix_slug_history_categoria_id ON taxonomy.slug_history(categoria_id);
++
++CREATE INDEX ix_slug_history_old_slug ON taxonomy.slug_history(old_slug);
++CREATE INDEX ix_outbox_pending ON taxonomy.outbox(published_at, occurred_at) WHERE published_at IS NULL;
++CREATE INDEX ix_inbox_message_handler ON taxonomy.inbox(message_id, handler);
++CREATE INDEX ix_mdo_entity ON taxonomy.master_deactivation_operations(entity_type, entity_id);
++
++-- 6. Permisos para runtime
++GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA taxonomy TO taxonomy_app;
++REVOKE UPDATE, DELETE ON taxonomy.slug_history FROM taxonomy_app;
++ALTER DEFAULT PRIVILEGES FOR ROLE po_taxonomy_owner IN SCHEMA taxonomy
++    GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO taxonomy_app;
++GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA taxonomy TO taxonomy_app;
+diff --git a/apps/api-gateway/test/public-read-only.e2e-spec.ts b/apps/api-gateway/test/public-read-only.e2e-spec.ts
+new file mode 100644
+index 0000000..e9ae718
+--- /dev/null
++++ b/apps/api-gateway/test/public-read-only.e2e-spec.ts
+@@ -0,0 +1,387 @@
++import { Test } from '@nestjs/testing';
++import type { INestApplication } from '@nestjs/common';
++import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
++import { readFileSync } from 'node:fs';
++import { createServer, type Server } from 'node:https';
++import { once } from 'node:events';
++import { getCACertificates, setDefaultCACertificates } from 'node:tls';
++import request from 'supertest';
++import { ApiGatewayModule } from '../src/api-gateway.module.js';
++import {
++  GATEWAY_SETTINGS,
++  readGatewaySettings,
++} from '../src/routing/gateway-settings.js';
++import { AppModule as CatalogModule } from '../../catalog-svc/src/app.module.js';
++import { CatalogConfig } from '../../catalog-svc/src/config.js';
++import { Database as CatalogDatabase } from '../../catalog-svc/src/database.js';
++import { TaxonomySvcModule } from '../../taxonomy-svc/src/taxonomy-svc.module.js';
++import { Database as TaxonomyDatabase } from '../../taxonomy-svc/src/database.js';
++import { Phase1Postgres } from './support/phase1-postgres.js';
++
++const id = (n: number) =>
++  '00000000-0000-4000-8000-' + String(n).padStart(12, '0');
++const operations =
++  'listarProductos,obtenerProducto,obtenerProductoPorSlug,listarCategorias,listarMarcas';
++const paths = [
++  '/api/v1/categorias',
++  '/api/v1/marcas',
++  '/api/v1/productos?canal=MARKETPLACE',
++  `/api/v1/productos/${id(10)}?canal=MARKETPLACE`,
++  '/api/v1/productos/por-slug/visible?canal=MARKETPLACE',
++];
++
++/** Real HTTP Gateway -> Catalog -> Taxonomy, real PostgreSQL/TLS and real JWT
++ * verification. Only the issuer is a cryptographic test fixture, never real G7.
++ * Fails rather than silently skipping when Docker/OpenSSL are unavailable.
++ */
++describe('Phase 1 real three-service integration on disposable PostgreSQL', () => {
++  const postgres = new Phase1Postgres();
++  const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
++  const originalCa = getCACertificates('default');
++  let issuerServer: Server;
++  let issuer = '';
++  let taxonomy: INestApplication | undefined;
++  let catalog: INestApplication | undefined;
++  let gateway: INestApplication | undefined;
++  let persistedBefore = '';
++  const snapshot = () =>
++    postgres.sql(`SELECT jsonb_build_array(
++    (SELECT md5(jsonb_agg(to_jsonb(p) ORDER BY id)::text) FROM catalog.products p),
++    (SELECT md5(jsonb_agg(to_jsonb(v) ORDER BY id)::text) FROM catalog.variants v),
++    (SELECT md5(jsonb_agg(to_jsonb(c) ORDER BY id)::text) FROM taxonomy.categories c),
++    (SELECT md5(jsonb_agg(to_jsonb(b) ORDER BY id)::text) FROM taxonomy.brands b),
++    (SELECT count(*) FROM catalog.outbox), (SELECT count(*) FROM taxonomy.outbox),
++    (SELECT count(*) FROM catalog.inbox), (SELECT count(*) FROM taxonomy.inbox));`);
++
++  function token(
++    claims: Record<string, unknown> = {},
++    invalidSignature = false,
++  ) {
++    const now = Math.floor(Date.now() / 1000);
++    const header = Buffer.from(
++      JSON.stringify({ alg: 'RS256', kid: 'phase1-fixture' }),
++    ).toString('base64url');
++    const payload = Buffer.from(
++      JSON.stringify({
++        iss: issuer,
++        sub: 'modulo-marketplace',
++        tipo: 'servicio',
++        aud: 'api-productos',
++        scope: 'catalogo:leer',
++        iat: now,
++        exp: now + 600,
++        jti: randomUUID(),
++        ...claims,
++      }),
++    ).toString('base64url');
++    const key = invalidSignature
++      ? generateKeyPairSync('rsa', { modulusLength: 2048 }).privateKey
++      : keys.privateKey;
++    const body = header + '.' + payload;
++    return (
++      body +
++      '.' +
++      sign('RSA-SHA256', Buffer.from(body), key).toString('base64url')
++    );
++  }
++
++  async function closeServices() {
++    await gateway?.close();
++    gateway = undefined;
++    await catalog?.close();
++    catalog = undefined;
++    await taxonomy?.close();
++    taxonomy = undefined;
++  }
++
++  async function restart(
++    mode: 'PUBLIC_READ_ONLY' | 'G7_AUTHENTICATED',
++    enabled = true,
++    taxonomyEnabled = enabled,
++    gatewayEnabled = enabled,
++  ) {
++    await closeServices();
++    const security = {
++      SECURITY_ISSUER: issuer,
++      SECURITY_DISCOVERY_URL: issuer + '/discovery',
++      SECURITY_JWKS_URL: issuer + '/jwks',
++    };
++    const taxEnv = {
++      ...postgres.env('taxonomy'),
++      ...security,
++      G6_SECURITY_MODE: mode,
++      TAXONOMY_PUBLIC_OPERATION_IDS:
++        mode === 'PUBLIC_READ_ONLY' && taxonomyEnabled
++          ? 'listarCategorias,listarMarcas'
++          : '',
++    };
++    const taxModule = await Test.createTestingModule({
++      imports: [TaxonomySvcModule.forRuntime(taxEnv)],
++    }).compile();
++    taxonomy = taxModule.createNestApplication({ logger: false });
++    await taxonomy.get(TaxonomyDatabase).verifyIdentity(taxEnv);
++    await taxonomy.listen(0, '127.0.0.1');
++    const config = new CatalogConfig({
++      ...postgres.env('catalog'),
++      ...security,
++      CATALOG_SVC_PORT: '3001',
++      CATALOG_TAXONOMY_URL: await taxonomy.getUrl(),
++      G6_SECURITY_MODE: mode,
++      CATALOG_PUBLIC_OPERATION_IDS:
++        mode === 'PUBLIC_READ_ONLY' && enabled
++          ? 'listarProductos,obtenerProducto,obtenerProductoPorSlug'
++          : '',
++    });
++    const catModule = await Test.createTestingModule({
++      imports: [CatalogModule.forRoot(config)],
++    }).compile();
++    catalog = catModule.createNestApplication({ logger: false });
++    await catalog.get(CatalogDatabase).verifyIdentity();
++    await catalog.listen(0, '127.0.0.1');
++    const settings = readGatewaySettings({
++      G6_SECURITY_MODE: mode,
++      AUTH_ISSUER: issuer,
++      AUTH_JWKS_URL: issuer + '/jwks',
++      GATEWAY_CATALOG_SVC_URL: await catalog.getUrl(),
++      GATEWAY_TAXONOMY_SVC_URL: await taxonomy.getUrl(),
++      GATEWAY_PUBLIC_OPERATION_IDS:
++        mode === 'PUBLIC_READ_ONLY' && gatewayEnabled ? operations : '',
++    });
++    const gwModule = await Test.createTestingModule({
++      imports: [ApiGatewayModule],
++    })
++      .overrideProvider(GATEWAY_SETTINGS)
++      .useValue(settings)
++      .compile();
++    gateway = gwModule.createNestApplication({
++      logger: false,
++      bodyParser: false,
++    });
++    await gateway.listen(0, '127.0.0.1');
++  }
++
++  beforeAll(async () => {
++    await postgres.start();
++    // Adversarial visibility fixtures, not an activation-flow test. Triggers are
++    // suspended only for these inserts in the newly created disposable database.
++    postgres.sql(`SET session_replication_role=replica;
++      INSERT INTO taxonomy.categories(id,nombre,estado) VALUES ('${id(1)}','Visible category','ACTIVO'),('${id(2)}','Hidden category','INACTIVO');
++      INSERT INTO taxonomy.brands(id,nombre,estado) VALUES ('${id(3)}','Visible brand','ACTIVO'),('${id(4)}','Hidden brand','INACTIVO');
++      INSERT INTO catalog.products(id,nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes,estado) VALUES
++        ('${id(10)}','A visible','Public product','${id(1)}','type','${id(3)}','SIMPLE','visible',false,'ACTIVO'),
++        ('${id(11)}','B draft','Private draft','${id(1)}','type','${id(3)}','DRAFT','draft',false,'BORRADOR'),
++        ('${id(12)}','C inactive','Private inactive','${id(1)}','type','${id(3)}','INACTIVE','inactive',false,'INACTIVO'),
++        ('${id(13)}','D empty parent','No active variants','${id(1)}','type','${id(3)}','EMPTY','empty',true,'ACTIVO'),
++        ('${id(14)}','E parent','Has active variant','${id(1)}','type','${id(3)}','PARENT','parent',true,'ACTIVO');
++      INSERT INTO catalog.variants(id,product_id,sku,identifying_key,estado) VALUES
++        ('${id(20)}','${id(14)}','ACTIVE-VARIANT','{"size":"M"}','ACTIVA'),
++        ('${id(21)}','${id(14)}','HIDDEN-VARIANT','{"size":"L"}','INACTIVA');
++      RESET session_replication_role;`);
++    persistedBefore = snapshot();
++    setDefaultCACertificates([
++      ...originalCa,
++      readFileSync(postgres.certificate, 'utf8'),
++    ]);
++    issuerServer = createServer(
++      {
++        key: readFileSync(postgres.key),
++        cert: readFileSync(postgres.certificate),
++      },
++      (req, res) => {
++        res.setHeader('content-type', 'application/json');
++        if (req.url === '/issuer/jwks')
++          res.end(
++            JSON.stringify({
++              keys: [
++                {
++                  ...keys.publicKey.export({ format: 'jwk' }),
++                  kid: 'phase1-fixture',
++                  use: 'sig',
++                  alg: 'RS256',
++                },
++              ],
++            }),
++          );
++        else if (req.url === '/issuer/discovery')
++          res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
++        else {
++          res.statusCode = 404;
++          res.end('{}');
++        }
++      },
++    );
++    issuerServer.listen(0, '127.0.0.1');
++    await once(issuerServer, 'listening');
++    const address = issuerServer.address();
++    if (!address || typeof address === 'string')
++      throw new Error('No local issuer port');
++    issuer = `https://localhost:${address.port}/issuer`;
++  }, 90000);
++
++  afterAll(async () => {
++    await closeServices();
++    if (issuerServer)
++      await new Promise<void>((resolve) => issuerServer.close(() => resolve()));
++    setDefaultCACertificates(originalCa);
++    await postgres.close();
++  }, 30000);
++
++  it('keeps every operation protected when all runtime lists are empty', async () => {
++    await restart('PUBLIC_READ_ONLY', false);
++    for (const path of paths)
++      await request(gateway!.getHttpServer()).get(path).expect(401);
++  });
++
++  it('serves the five exact public reads and real Catalog ID/slug -> Taxonomy enrichment', async () => {
++    await restart('PUBLIC_READ_ONLY');
++    for (const path of paths) {
++      const response = await request(gateway!.getHttpServer())
++        .get(path)
++        .expect(200);
++      if (path.includes('/productos/'))
++        expect(response.body.marca.name).toBe('Visible brand');
++    }
++    const category = await request(gateway!.getHttpServer())
++      .get(paths[0])
++      .expect(200);
++    expect(
++      category.body.categories.map(
++        (row: { categoria_id: string }) => row.categoria_id,
++      ),
++    ).toEqual([id(1)]);
++    const brands = await request(gateway!.getHttpServer())
++      .get(paths[1])
++      .expect(200);
++    expect(
++      brands.body.brands.map((row: { marca_id: string }) => row.marca_id),
++    ).toEqual([id(3)]);
++    await request(gateway!.getHttpServer())
++      .get(paths[2] + `&categoriaId=${id(1)}&marcaId=${id(3)}`)
++      .expect(200);
++  });
++
++  it('applies eligibility before count/page, hides drafts/inactive/empty parents and inactive variants', async () => {
++    const page = await request(gateway!.getHttpServer())
++      .get(paths[2] + '&tamanio=1')
++      .expect(200);
++    expect(page.body.total).toBe(2);
++    expect(page.body.items).toHaveLength(1);
++    expect(page.body.items[0].product_id).toBe(id(10));
++    for (const [productId, slug] of [
++      [11, 'draft'],
++      [12, 'inactive'],
++      [13, 'empty'],
++    ] as const) {
++      for (const path of [
++        `/api/v1/productos/${id(productId)}?canal=MARKETPLACE`,
++        `/api/v1/productos/por-slug/${slug}?canal=MARKETPLACE`,
++      ])
++        await request(gateway!.getHttpServer()).get(path).expect(404);
++    }
++    const parent = await request(gateway!.getHttpServer())
++      .get('/api/v1/productos/por-slug/parent?canal=MARKETPLACE')
++      .expect(200);
++    expect(parent.body.variants.map((row: { sku: string }) => row.sku)).toEqual(
++      ['ACTIVE-VARIANT'],
++    );
++    await request(gateway!.getHttpServer())
++      .get(paths[2] + '&estado=BORRADOR')
++      .expect(403);
++  });
++
++  it('denies anonymous writes, private/admin reads and preserves valid JWT authorization in Phase 1', async () => {
++    for (const path of [
++      `/api/v1/productos/${id(10)}/preparacion`,
++      '/api/v1/marcas/administracion',
++    ])
++      await request(gateway!.getHttpServer()).get(path).expect(401);
++    await request(gateway!.getHttpServer())
++      .get('/api/v1/productos/skus/SIMPLE/contexto')
++      .expect(404);
++    await request(catalog!.getHttpServer())
++      .get('/api/v1/productos/skus/SIMPLE/contexto')
++      .expect(401);
++    for (const path of [
++      '/api/v1/productos',
++      '/api/v1/categorias',
++      '/api/v1/marcas',
++    ])
++      await request(gateway!.getHttpServer()).post(path).send({}).expect(401);
++    const human = token({
++      tipo: 'acceso',
++      sub: id(90),
++      roles: ['GESTOR_COMERCIAL'],
++    });
++    await request(gateway!.getHttpServer())
++      .get(`/api/v1/categorias/${id(1)}`)
++      .set('Authorization', 'Bearer ' + human)
++      .expect(200);
++    await request(gateway!.getHttpServer())
++      .get(`/api/v1/productos/${id(10)}/variantes`)
++      .set('Authorization', 'Bearer ' + human)
++      .expect(200);
++    // A valid authenticated mutation reaches normal validation, rather than a mode-wide 403.
++    await request(gateway!.getHttpServer())
++      .post('/api/v1/categorias')
++      .set('Authorization', 'Bearer ' + human)
++      .send({})
++      .expect(400);
++  });
++
++  it('never falls back to anonymous access for invalid, expired, wrong-issuer/audience/signature or underprivileged JWTs', async () => {
++    const cases: Array<[string, number]> = [
++      ['invalid', 401],
++      [token({ exp: 1 }), 401],
++      [token({ iss: issuer + '-wrong' }), 401],
++      [token({ aud: 'wrong-api' }), 401],
++      [token({}, true), 401],
++      [token({ scope: 'wrong:scope' }), 403],
++      [token({ sub: 'unapproved-client' }), 403],
++      [token({ tipo: 'acceso', sub: id(90), roles: ['LECTOR_EXTERNO'] }), 403],
++    ];
++    for (const [jwt, status] of cases) {
++      for (const [app, path] of [
++        [gateway!, paths[3]],
++        [catalog!, paths[4]],
++        [taxonomy!, paths[0]],
++      ] as const) {
++        await request(app.getHttpServer())
++          .get(path)
++          .set('Authorization', 'Bearer ' + jwt)
++          .expect(status);
++      }
++    }
++  });
++
++  it('fails closed if Taxonomy public approval is absent, without opening its private detail routes', async () => {
++    await restart('PUBLIC_READ_ONLY', true, false);
++    for (const path of [paths[3], paths[4]])
++      await request(gateway!.getHttpServer()).get(path).expect(503);
++    await request(taxonomy!.getHttpServer())
++      .get(`/api/v1/marcas/${id(3)}`)
++      .expect(401);
++  });
++
++  it('requires independent Gateway approval even when both providers are public', async () => {
++    await restart('PUBLIC_READ_ONLY', true, true, false);
++    for (const path of paths)
++      await request(gateway!.getHttpServer()).get(path).expect(401);
++    await request(catalog!.getHttpServer()).get(paths[3]).expect(200);
++  });
++
++  it('restores the five original JWT contracts by configuration/restart, with no application edits', async () => {
++    await restart('G7_AUTHENTICATED');
++    for (const path of paths) {
++      await request(gateway!.getHttpServer()).get(path).expect(401);
++      await request(gateway!.getHttpServer())
++        .get(path)
++        .set('Authorization', 'Bearer ' + token())
++        .expect(200);
++    }
++    await request(catalog!.getHttpServer()).get(paths[3]).expect(401);
++    await request(taxonomy!.getHttpServer()).get(paths[0]).expect(401);
++  });
++  it('leaves persisted business rows and Inbox/Outbox unchanged after the read and rejection scenarios', () => {
++    expect(snapshot()).toBe(persistedBefore);
++  });
++});
+diff --git a/apps/api-gateway/test/support/phase1-postgres.ts b/apps/api-gateway/test/support/phase1-postgres.ts
+new file mode 100644
+index 0000000..16b486c
+--- /dev/null
++++ b/apps/api-gateway/test/support/phase1-postgres.ts
+@@ -0,0 +1,173 @@
++import { spawnSync } from 'node:child_process';
++import { randomUUID } from 'node:crypto';
++import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { isAbsolute, join, relative, resolve } from 'node:path';
++import { setTimeout as pause } from 'node:timers/promises';
++
++/** Always creates its own database. No supplied URL or shared environment is read. */
++export class Phase1Postgres {
++  readonly name = 'g6-phase1-' + randomUUID();
++  readonly password = randomUUID();
++  directory = '';
++  certificate = '';
++  key = '';
++  port = '';
++  private created = false;
++
++  private command(bin: string, args: string[], input?: string): string {
++    const result = spawnSync(bin, args, {
++      input,
++      encoding: 'utf8',
++      timeout: 60000,
++      windowsHide: true,
++    });
++    if (result.error || result.status !== 0)
++      throw new Error(
++        `Isolated Phase 1 ${args[0]} failed: ${String(result.stderr).replaceAll(this.password, '[redacted]').slice(-1500)}`,
++      );
++    return result.stdout.trim();
++  }
++
++  sql(query: string): string {
++    if (!this.created) throw new Error('Isolated PostgreSQL was not created');
++    return this.command(
++      'docker',
++      [
++        'exec',
++        '-i',
++        this.name,
++        'psql',
++        '-U',
++        'postgres',
++        '-v',
++        'ON_ERROR_STOP=1',
++        '-At',
++      ],
++      query,
++    );
++  }
++
++  async start(): Promise<void> {
++    this.directory = mkdtempSync(join(tmpdir(), 'g6-phase1-'));
++    this.certificate = join(this.directory, 'server.crt');
++    this.key = join(this.directory, 'server.key');
++    const openssl =
++      process.env.G6_TEST_OPENSSL ??
++      [
++        join(
++          process.env.LOCALAPPDATA ?? '',
++          'Programs/Git/usr/bin/openssl.exe',
++        ),
++        'C:/Program Files/Git/usr/bin/openssl.exe',
++      ].find(existsSync) ??
++      'openssl';
++    this.command(openssl, [
++      'req',
++      '-x509',
++      '-newkey',
++      'rsa:2048',
++      '-nodes',
++      '-days',
++      '1',
++      '-subj',
++      '/CN=localhost',
++      '-addext',
++      'subjectAltName=DNS:localhost,IP:127.0.0.1',
++      '-keyout',
++      this.key,
++      '-out',
++      this.certificate,
++    ]);
++    this.command('docker', [
++      'run',
++      '--detach',
++      '--name',
++      this.name,
++      '--label',
++      'g6.phase1.session=' + this.name,
++      '--publish',
++      '127.0.0.1::5432',
++      '--env',
++      'POSTGRES_PASSWORD=' + this.password,
++      '--volume',
++      this.directory + ':/certs:ro',
++      '--entrypoint',
++      'sh',
++      'postgres:17-alpine',
++      '-c',
++      'cp /certs/server.key /tmp/server.key && chown postgres:postgres /tmp/server.key && chmod 600 /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/tmp/server.key',
++    ]);
++    this.created = true;
++    const deadline = Date.now() + 30000;
++    for (;;) {
++      const ready =
++        spawnSync(
++          'docker',
++          ['exec', this.name, 'pg_isready', '-U', 'postgres'],
++          { windowsHide: true, timeout: 3000, stdio: 'ignore' },
++        ).status === 0;
++      if (ready) break;
++      if (Date.now() >= deadline)
++        throw new Error('Isolated PostgreSQL startup timed out');
++      await pause(200);
++    }
++    const mapping = this.command('docker', ['port', this.name, '5432/tcp']);
++    const port = /^127\.0\.0\.1:(\d+)$/.exec(mapping)?.[1];
++    if (!port) throw new Error('PostgreSQL must only publish to loopback');
++    this.port = port;
++    this.sql(`CREATE ROLE po_catalog_owner NOLOGIN;
++      CREATE ROLE catalog_app LOGIN PASSWORD '${this.password}';
++      CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner;
++      CREATE ROLE po_taxonomy_owner NOLOGIN;
++      CREATE ROLE taxonomy_app LOGIN PASSWORD '${this.password}';
++      CREATE SCHEMA taxonomy AUTHORIZATION po_taxonomy_owner;
++      SET ROLE po_catalog_owner;
++      ${readFileSync(resolve('apps/catalog-svc/test/fixtures/0001_create_catalog.sql'), 'utf8')}
++      ${readFileSync(resolve('apps/catalog-svc/migrations/0002_create_sku_barcodes.sql'), 'utf8')}
++      ${readFileSync(resolve('apps/catalog-svc/migrations/0003_product_publication_history.sql'), 'utf8')}
++      RESET ROLE; SET ROLE po_taxonomy_owner;
++      ${readFileSync(resolve('apps/api-gateway/test/fixtures/phase1-taxonomy-0001.sql'), 'utf8')}
++      RESET ROLE;`);
++    // Frozen official taxonomy migration: Docs a7778ec1, Git blob
++    // 3db51993e6c06ecfcbc2e93f6757f848a78987f4. Only the disposable DB is migrated.
++  }
++
++  env(service: 'catalog' | 'taxonomy'): NodeJS.ProcessEnv {
++    return {
++      NODE_ENV: 'test',
++      PGHOST: 'localhost',
++      G6_CONNECT_HOST: '127.0.0.1',
++      PGPORT: this.port,
++      PGDATABASE: 'postgres',
++      PGUSER: service + '_app',
++      PGPASSWORD: this.password,
++      PGSSLMODE: 'verify-full',
++      PGSSLROOTCERT: this.certificate,
++      G6_DATABASE_SCHEMA: service,
++      G6_EXPECTED_ROLE: service + '_app',
++      G6_CONNECTION_MODE: 'direct',
++    };
++  }
++
++  async close(): Promise<void> {
++    if (this.created) {
++      const label = this.command('docker', [
++        'inspect',
++        '--format',
++        '{{index .Config.Labels "g6.phase1.session"}}',
++        this.name,
++      ]);
++      if (label !== this.name)
++        throw new Error('Refusing to remove a foreign container');
++      this.command('docker', ['rm', '--force', '--volumes', this.name]);
++      this.created = false;
++    }
++    if (this.directory) {
++      const inside = relative(tmpdir(), this.directory);
++      if (!inside || inside.startsWith('..') || isAbsolute(inside))
++        throw new Error('Unsafe temporary path');
++      rmSync(this.directory, { recursive: true, force: true });
++    }
++  }
++}
+diff --git a/apps/catalog-svc/src/catalog-auth.ts b/apps/catalog-svc/src/catalog-auth.ts
+index 583fb01..940ffac 100644
+--- a/apps/catalog-svc/src/catalog-auth.ts
++++ b/apps/catalog-svc/src/catalog-auth.ts
+@@ -380,0 +381,6 @@ export class CatalogTokenVerifier {
++const CATALOG_PUBLIC_OPERATION_BY_HANDLER: Readonly<Record<string, string>> = {
++  list: 'listarProductos',
++  detail: 'obtenerProductoPorSlug',
++  product: 'obtenerProducto',
++};
++
+@@ -406,0 +413,21 @@ export class CatalogAuthGuard implements CanActivate {
++    if (this.readDemo.securityMode === 'SIMULATED_AUTH')
++      throw new ServiceUnavailableException({ code: 'SERVICIO_NO_DISPONIBLE' });
++    const handlerOp =
++      CATALOG_PUBLIC_OPERATION_BY_HANDLER[context.getHandler().name];
++    const publicController =
++      context.getClass().name ===
++      (handlerOp === 'obtenerProducto'
++        ? 'CatalogQueryController'
++        : 'CommercialController');
++    if (
++      this.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
++      request.headers.authorization === undefined &&
++      request.method === 'GET' &&
++      policy.demoRead &&
++      publicController &&
++      handlerOp &&
++      this.readDemo.publicOperations?.includes(handlerOp)
++    ) {
++      // Public authorization never enables the legacy draft/administrative path.
++      return true;
++    }
+diff --git a/apps/catalog-svc/src/catalog-public-reads.spec.ts b/apps/catalog-svc/src/catalog-public-reads.spec.ts
+new file mode 100644
+index 0000000..f03ebe4
+--- /dev/null
++++ b/apps/catalog-svc/src/catalog-public-reads.spec.ts
+@@ -0,0 +1,55 @@
++import { readCatalogReadDemo } from './catalog-read-demo.js';
++
++describe('Public-read authorization never selects Catalog demo data', () => {
++  it('keeps legacy data expansion disabled even when all three public candidates are enabled', () => {
++    expect(
++      readCatalogReadDemo({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        G6_READ_ONLY_DEMO_ENABLED: 'false',
++        CATALOG_PUBLIC_OPERATION_IDS:
++          'listarProductos,obtenerProducto,obtenerProductoPorSlug',
++      }),
++    ).toMatchObject({
++      enabled: false,
++      securityMode: 'PUBLIC_READ_ONLY',
++      publicOperations: [
++        'listarProductos',
++        'obtenerProducto',
++        'obtenerProductoPorSlug',
++      ],
++    });
++  });
++  it('rejects legacy/public mixing, noncommercial operations and unapproved simulated auth', () => {
++    for (const flag of [
++      'G6_READ_ONLY_DEMO_ENABLED',
++      'GATEWAY_DEMO_NO_AUTH_ENABLED',
++      'CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED',
++    ])
++      expect(() =>
++        readCatalogReadDemo({
++          G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++          [flag]: 'true',
++        }),
++      ).toThrow();
++    for (const operation of [
++      'obtenerPreparacionProducto',
++      'obtenerContextoSku',
++      'crearProducto',
++    ])
++      expect(() =>
++        readCatalogReadDemo({
++          G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++          CATALOG_PUBLIC_OPERATION_IDS: operation,
++        }),
++      ).toThrow();
++    expect(() =>
++      readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
++    ).toThrow();
++    expect(
++      readCatalogReadDemo({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        G6_PUBLIC_OPERATION_IDS: 'listarProductos',
++      }).publicOperations,
++    ).toEqual([]);
++  });
++});
+diff --git a/apps/catalog-svc/src/catalog-read-demo.spec.ts b/apps/catalog-svc/src/catalog-read-demo.spec.ts
+index 8bbf3c2..1879db4 100644
+--- a/apps/catalog-svc/src/catalog-read-demo.spec.ts
++++ b/apps/catalog-svc/src/catalog-read-demo.spec.ts
+@@ -2,0 +3,2 @@ import type { INestApplication } from '@nestjs/common';
++import { createServer } from 'node:http';
++import { once } from 'node:events';
+@@ -9,0 +12,8 @@ import {
++import {
++  CATALOG_SECURITY_CONFIG,
++  readCatalogSecurityConfig,
++} from './catalog-auth.js';
++import {
++  CATALOG_TAXONOMY_CONFIG,
++  readTaxonomyConfig,
++} from './taxonomy-config.js';
+@@ -11,0 +22 @@ import { TaxonomyClient } from './taxonomy.client.js';
++import { createJwtFixture } from '../test/support/jwt-fixture.js';
+@@ -48 +59 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
+-  it('is opt-in and rejects invalid flags', () => {
++  it('is opt-in, rejects invalid flags, and never activates public operations automatically in PUBLIC_READ_ONLY', () => {
+@@ -52,0 +64,30 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
++    // Requisito #3: sin CATALOG_PUBLIC_OPERATION_IDS explícito, PUBLIC_READ_ONLY mantiene enabled: false y 0 operaciones
++    expect(
++      readCatalogReadDemo({ G6_SECURITY_MODE: 'PUBLIC_READ_ONLY' }),
++    ).toEqual({
++      enabled: false,
++      securityMode: 'PUBLIC_READ_ONLY',
++      publicOperations: [],
++    });
++    expect(
++      readCatalogReadDemo({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        CATALOG_PUBLIC_OPERATION_IDS: 'listarProductos',
++      }),
++    ).toEqual({
++      enabled: false,
++      securityMode: 'PUBLIC_READ_ONLY',
++      publicOperations: ['listarProductos'],
++    });
++    expect(() =>
++      readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
++    ).toThrow();
++    expect(
++      readCatalogReadDemo({ G6_SECURITY_MODE: 'G7_AUTHENTICATED' }),
++    ).toMatchObject({ enabled: false, securityMode: 'G7_AUTHENTICATED' });
++    expect(() =>
++      readCatalogReadDemo({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        CATALOG_PUBLIC_OPERATION_IDS: 'crearProducto',
++      }),
++    ).toThrow();
+@@ -55,0 +97,3 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
++    expect(() =>
++      readCatalogReadDemo({ G6_SECURITY_MODE: 'INVALID' }),
++    ).toThrow();
+@@ -110,0 +155,264 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
++
++describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin integración G7)', () => {
++  const BRAND_ID = '380d9fe0-0290-580a-95e6-6bcd378b9b92';
++  const observedTaxonomyCalls: Array<{
++    url: string;
++    authorization?: string;
++  }> = [];
++
++  it('verifica listas explícitas, propagación HTTP y rotación de emisor local en el camino JWT', async () => {
++    const simulatedIssuer = createJwtFixture({
++      kid: 'sim-key-1',
++    });
++    const g7Issuer = createJwtFixture({
++      kid: 'g7-key-1',
++    });
++    const simServer = await simulatedIssuer.listenLocalOnly('127.0.0.1', 0);
++    const g7Server = await g7Issuer.listenLocalOnly('127.0.0.1', 0);
++
++    let taxonomyPhase: 'PUBLIC_READ_ONLY' | 'AUTHENTICATED' =
++      'PUBLIC_READ_ONLY';
++    const taxonomyHttp = createServer((req, res) => {
++      observedTaxonomyCalls.push({
++        url: req.url ?? '',
++        authorization: req.headers.authorization,
++      });
++      res.setHeader('content-type', 'application/json');
++      if (taxonomyPhase === 'AUTHENTICATED' && !req.headers.authorization) {
++        res.statusCode = 401;
++        res.end(JSON.stringify({ code: 'TOKEN_INVALIDO' }));
++        return;
++      }
++      if (req.url === '/api/v1/marcas') {
++        res.statusCode = 200;
++        res.end(
++          JSON.stringify({
++            brands: [
++              {
++                marca_id: BRAND_ID,
++                name: 'Marathon',
++                status: 'ACTIVA',
++                description: null,
++                logo_url: null,
++                country_code: 'EC',
++              },
++            ],
++          }),
++        );
++        return;
++      }
++      if (req.url === `/api/v1/marcas/${BRAND_ID}`) {
++        res.statusCode = 200;
++        res.end(
++          JSON.stringify({
++            marcaId: BRAND_ID,
++            nombre: 'Marathon',
++            estado: 'ACTIVO',
++            version: 1,
++            descripcion: null,
++            logoUrl: null,
++            paisOrigenIso: 'EC',
++          }),
++        );
++        return;
++      }
++      res.statusCode = 404;
++      res.end('{}');
++    });
++    taxonomyHttp.listen(0, '127.0.0.1');
++    await once(taxonomyHttp, 'listening');
++    const taxAddr = taxonomyHttp.address();
++    if (!taxAddr || typeof taxAddr === 'string') throw new Error();
++    const taxonomyOrigin = `http://127.0.0.1:${taxAddr.port}`;
++
++    const repoFixture = {
++      listCandidates: vi.fn(async () => ({
++        items: [],
++        pagina: 1,
++        tamanio: 20,
++        total: 0,
++      })),
++      findCandidateBySlug: vi.fn(async () => ({
++        product_id: 'prod-1',
++        slug: 'zapatilla-marathon',
++        name: 'Zapatilla Marathon',
++        description: 'Calzado deportivo',
++        categoria_id: 'cat-1',
++        tipo_producto_id: 'type-1',
++        marca_id: BRAND_ID,
++        tiene_variantes: false,
++        sku_base: 'SKU-1',
++        images: [],
++        attributes: [],
++        variants: [],
++      })),
++      findCandidateByProductId: vi.fn(async () => null),
++    };
++
++    async function bootCatalog(env: Record<string, string | undefined>) {
++      const mod = await Test.createTestingModule({ imports: [AppModule] })
++        .overrideProvider(CATALOG_READ_DEMO)
++        .useValue(readCatalogReadDemo(env))
++        .overrideProvider(CATALOG_SECURITY_CONFIG)
++        .useValue(readCatalogSecurityConfig(env))
++        .overrideProvider(CATALOG_TAXONOMY_CONFIG)
++        .useValue(readTaxonomyConfig({ CATALOG_TAXONOMY_URL: taxonomyOrigin }))
++        .overrideProvider(PostgresCatalogRepository)
++        .useValue(repoFixture)
++        .compile();
++      const instance = mod.createNestApplication({ logger: false });
++      await instance.init();
++      return instance;
++    }
++
++    try {
++      // 1) Fase 1 con lista vacía: 0 operaciones públicas automáticas
++      const appPhase1Empty = await bootCatalog({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++      });
++      await request(appPhase1Empty.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .expect(401);
++      await request(appPhase1Empty.getHttpServer())
++        .post('/api/v1/productos')
++        .send({})
++        .expect(401);
++      await appPhase1Empty.close();
++
++      // 2) Fase 1 con lista explícita (obtenerProductoPorSlug): lectura pública aprobada + Catalog->Taxonomy sin JWT
++      observedTaxonomyCalls.length = 0;
++      taxonomyPhase = 'PUBLIC_READ_ONLY';
++      const appPhase1Explicit = await bootCatalog({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        CATALOG_PUBLIC_OPERATION_IDS: 'obtenerProductoPorSlug',
++      });
++      await request(appPhase1Explicit.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .expect(200);
++      expect(observedTaxonomyCalls).toEqual([
++        { url: '/api/v1/marcas', authorization: undefined },
++      ]);
++      expect(repoFixture.findCandidateBySlug).toHaveBeenCalledWith(
++        'zapatilla-marathon',
++        'MARKETPLACE',
++      );
++      await request(appPhase1Explicit.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', 'Bearer invalid')
++        .expect(401);
++      // Operación GET no incluida en CATALOG_PUBLIC_OPERATION_IDS (listarProductos) sigue protegida (401)
++      await request(appPhase1Explicit.getHttpServer())
++        .get('/api/v1/productos?canal=MARKETPLACE')
++        .expect(401);
++      // Anonymous writes retain their ordinary authentication requirement.
++      await request(appPhase1Explicit.getHttpServer())
++        .post('/api/v1/productos')
++        .send({})
++        .expect(401);
++      await appPhase1Explicit.close();
++
++      // SIMULATED_AUTH is deliberately unavailable. Cryptographic fixtures below
++      // exercise the existing JWT path, not an approved Phase 2 or real G7 grant.
++      expect(() =>
++        readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
++      ).toThrow();
++      taxonomyPhase = 'AUTHENTICATED';
++      const appPhase2 = await bootCatalog({
++        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
++        SECURITY_ISSUER: simServer.issuer,
++        SECURITY_DISCOVERY_URL: simServer.discoveryUrl,
++        SECURITY_JWKS_URL: simServer.jwksUrl,
++      });
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .expect(401);
++
++      const m2mToken = simulatedIssuer.mintProfile({
++        issuer: simServer.issuer,
++        profile: 'm2m-marketplace',
++      });
++      observedTaxonomyCalls.length = 0;
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${m2mToken}`)
++        .expect(200);
++      // Con token de servicio, Catalog invoca GET /api/v1/marcas propagando el Bearer token
++      expect(observedTaxonomyCalls).toEqual([
++        { url: '/api/v1/marcas', authorization: `Bearer ${m2mToken}` },
++      ]);
++
++      const gestorToken = simulatedIssuer.mintProfile({
++        issuer: simServer.issuer,
++        profile: 'user-gestor',
++      });
++      observedTaxonomyCalls.length = 0;
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${gestorToken}`)
++        .expect(200);
++      // Con token de usuario GESTOR_COMERCIAL, Catalog invoca GET /api/v1/marcas/{id} propagando el Bearer token
++      expect(observedTaxonomyCalls).toEqual([
++        {
++          url: `/api/v1/marcas/${BRAND_ID}`,
++          authorization: `Bearer ${gestorToken}`,
++        },
++      ]);
++
++      // Insufficient scopes/roles and expired signed fixture tokens.
++      const invalidScopeToken = simulatedIssuer.mintProfile({
++        issuer: simServer.issuer,
++        profile: 'invalid-scope',
++      });
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${invalidScopeToken}`)
++        .expect(403);
++
++      const noRoleToken = simulatedIssuer.mintProfile({
++        issuer: simServer.issuer,
++        profile: 'user-sin-rol',
++      });
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${noRoleToken}`)
++        .expect(403);
++
++      const expiredToken = simulatedIssuer.mintProfile({
++        issuer: simServer.issuer,
++        profile: 'expired',
++      });
++      await request(appPhase2.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${expiredToken}`)
++        .expect(401);
++
++      await appPhase2.close();
++
++      // Changing the configured trust rejects tokens from the previous fixture issuer.
++      const appPhase3G7 = await bootCatalog({
++        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
++        SECURITY_ISSUER: g7Server.issuer,
++        SECURITY_DISCOVERY_URL: g7Server.discoveryUrl,
++        SECURITY_JWKS_URL: g7Server.jwksUrl,
++      });
++      await request(appPhase3G7.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${m2mToken}`)
++        .expect(401);
++
++      const g7M2mToken = g7Issuer.mintProfile({
++        issuer: g7Server.issuer,
++        profile: 'm2m-marketplace',
++      });
++      await request(appPhase3G7.getHttpServer())
++        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
++        .set('Authorization', `Bearer ${g7M2mToken}`)
++        .expect(200);
++      await appPhase3G7.close();
++    } finally {
++      await simServer.close();
++      await g7Server.close();
++      await new Promise<void>((r) => taxonomyHttp.close(() => r()));
++    }
++  });
++});
+diff --git a/apps/catalog-svc/src/catalog-read-demo.ts b/apps/catalog-svc/src/catalog-read-demo.ts
+index 57cf297..d5211eb 100644
+--- a/apps/catalog-svc/src/catalog-read-demo.ts
++++ b/apps/catalog-svc/src/catalog-read-demo.ts
+@@ -8,0 +9,2 @@ export const CATALOG_MARKETPLACE_PREVIEW = Symbol(
++export type CatalogSecurityMode =
++  'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+@@ -12,0 +15,2 @@ export interface CatalogReadDemo {
++  readonly securityMode?: CatalogSecurityMode;
++  readonly publicOperations?: readonly string[];
+@@ -14,0 +19,6 @@ export interface CatalogReadDemo {
++const CATALOG_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
++  'listarProductos',
++  'obtenerProductoPorSlug',
++  'obtenerProducto',
++]);
++
+@@ -32,0 +43,22 @@ export function readCatalogReadDemo(
++  const securityModeRaw = env.G6_SECURITY_MODE;
++  if (
++    securityModeRaw !== undefined &&
++    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(securityModeRaw)
++  ) {
++    throw new Error(
++      'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY o G7_AUTHENTICATED; SIMULATED_AUTH no está homologado.',
++    );
++  }
++  const securityMode =
++    (securityModeRaw as CatalogSecurityMode | undefined) ?? 'G7_AUTHENTICATED';
++  const publicOperations = (env.CATALOG_PUBLIC_OPERATION_IDS ?? '')
++    .split(',')
++    .map((id) => id.trim())
++    .filter(Boolean);
++  if (
++    publicOperations.some((id) => !CATALOG_ELIGIBLE_PUBLIC_OPERATIONS.has(id))
++  ) {
++    throw new Error(
++      'CATALOG_PUBLIC_OPERATION_IDS contiene una operación no elegible para lectura pública.',
++    );
++  }
+@@ -39 +71,24 @@ export function readCatalogReadDemo(
+-  if (mode === 'false') return Object.freeze({ enabled: flag === 'true' });
++  if (
++    securityModeRaw !== undefined &&
++    (mode === 'true' ||
++      flag === 'true' ||
++      env.CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED === 'true')
++  ) {
++    throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
++  }
++  if (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length > 0) {
++    throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
++  }
++  if (securityModeRaw === 'PUBLIC_READ_ONLY') {
++    // Phase 1 never activates an automatic list of public operations.
++    return Object.freeze({
++      enabled: false,
++      securityMode,
++      publicOperations: Object.freeze(publicOperations),
++    });
++  }
++  if (mode === 'false')
++    return Object.freeze({
++      enabled: flag === 'true',
++      securityMode,
++    });
+@@ -63,0 +119 @@ export function readCatalogReadDemo(
++    securityMode,
+diff --git a/apps/catalog-svc/test/support/jwt-fixture.ts b/apps/catalog-svc/test/support/jwt-fixture.ts
+new file mode 100644
+index 0000000..c0e9b7d
+--- /dev/null
++++ b/apps/catalog-svc/test/support/jwt-fixture.ts
+@@ -0,0 +1,82 @@
++import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
++import { createServer } from 'node:http';
++import { once } from 'node:events';
++
++/** Local cryptographic fixtures only: not a token service or a Phase 2 implementation. */
++export function createJwtFixture({ kid }: { kid: string }) {
++  const { publicKey, privateKey } = generateKeyPairSync('rsa', {
++    modulusLength: 2048,
++  });
++  const jwk = {
++    ...publicKey.export({ format: 'jwk' }),
++    kid,
++    alg: 'RS256',
++    use: 'sig',
++  };
++  return {
++    async listenLocalOnly(host: '127.0.0.1', port: number) {
++      let issuer = '';
++      const server = createServer((req, res) => {
++        res.setHeader('content-type', 'application/json');
++        if (req.url === '/discovery')
++          res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
++        else if (req.url === '/jwks') res.end(JSON.stringify({ keys: [jwk] }));
++        else {
++          res.statusCode = 404;
++          res.end('{}');
++        }
++      });
++      server.listen(port, host);
++      await once(server, 'listening');
++      const address = server.address();
++      if (!address || typeof address === 'string')
++        throw new Error('Missing fixture port');
++      issuer = `http://127.0.0.1:${address.port}`;
++      return {
++        issuer,
++        discoveryUrl: issuer + '/discovery',
++        jwksUrl: issuer + '/jwks',
++        close: () =>
++          new Promise<void>((resolve) => server.close(() => resolve())),
++      };
++    },
++    mintProfile({ issuer, profile }: { issuer: string; profile: string }) {
++      const now = Math.floor(Date.now() / 1000);
++      const user = profile.startsWith('user-');
++      const header = Buffer.from(
++        JSON.stringify({ alg: 'RS256', kid }),
++      ).toString('base64url');
++      const payload = Buffer.from(
++        JSON.stringify({
++          iss: issuer,
++          aud: 'api-productos',
++          sub: user
++            ? '11111111-2222-4333-8444-555555555555'
++            : 'modulo-marketplace',
++          tipo: user ? 'acceso' : 'servicio',
++          ...(user
++            ? {
++                roles: [
++                  profile === 'user-gestor'
++                    ? 'GESTOR_COMERCIAL'
++                    : 'LECTOR_EXTERNO',
++                ],
++              }
++            : {
++                scope:
++                  profile === 'invalid-scope' ? 'sin:permiso' : 'catalogo:leer',
++              }),
++          iat: profile === 'expired' ? now - 7200 : now - 5,
++          exp: profile === 'expired' ? now - 3600 : now + 600,
++          jti: randomUUID(),
++        }),
++      ).toString('base64url');
++      const body = header + '.' + payload;
++      return (
++        body +
++        '.' +
++        sign('RSA-SHA256', Buffer.from(body), privateKey).toString('base64url')
++      );
++    },
++  };
++}
+diff --git a/apps/taxonomy-svc/src/taxonomy-auth.ts b/apps/taxonomy-svc/src/taxonomy-auth.ts
+index 337be3c..3a06d49 100644
+--- a/apps/taxonomy-svc/src/taxonomy-auth.ts
++++ b/apps/taxonomy-svc/src/taxonomy-auth.ts
+@@ -4,0 +5 @@ import {
++  Optional,
+@@ -16,0 +18,13 @@ export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
++export const TAXONOMY_PUBLIC_READ_CONFIG = Symbol(
++  'TAXONOMY_PUBLIC_READ_CONFIG',
++);
++export type TaxonomySecurityMode =
++  'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
++export interface TaxonomyPublicReadConfig {
++  readonly securityMode: TaxonomySecurityMode;
++  readonly publicOperations: readonly string[];
++}
++const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
++  'listarCategorias',
++  'listarMarcas',
++]);
+@@ -25,0 +40,29 @@ export const RequireTaxonomyCommercialUser = () =>
++export function readTaxonomyPublicReadConfig(
++  env: Readonly<NodeJS.ProcessEnv> = process.env,
++): TaxonomyPublicReadConfig {
++  const mode = env.G6_SECURITY_MODE;
++  if (
++    mode !== undefined &&
++    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(mode)
++  ) {
++    throw new Error('Configuración de demo Taxonomy inválida');
++  }
++  const securityMode: TaxonomySecurityMode =
++    (mode as TaxonomySecurityMode | undefined) ?? 'G7_AUTHENTICATED';
++  const publicOperations = (env.TAXONOMY_PUBLIC_OPERATION_IDS ?? '')
++    .split(',')
++    .map((id) => id.trim())
++    .filter(Boolean);
++  if (
++    publicOperations.some((id) => !TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS.has(id))
++  ) {
++    throw new Error('Configuración de demo Taxonomy inválida');
++  }
++  if (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length > 0) {
++    throw new Error('Configuración de demo Taxonomy inválida');
++  }
++  return Object.freeze({
++    securityMode,
++    publicOperations: Object.freeze(publicOperations),
++  });
++}
+@@ -28,0 +72 @@ export function readTaxonomyDemoConfig(
++  readTaxonomyPublicReadConfig(env);
+@@ -33 +77,2 @@ export function readTaxonomyDemoConfig(
+-    !['test', 'development'].includes(env.NODE_ENV ?? '')
++    !['test', 'development'].includes(env.NODE_ENV ?? '') ||
++    env.G6_SECURITY_MODE !== undefined
+@@ -379,0 +425,11 @@ export class TaxonomyTokenVerifier {
++function isApprovedPublicTaxonomyOperation(
++  handlerName: string | undefined,
++  config: TaxonomyPublicReadConfig | undefined,
++): boolean {
++  if (!handlerName || config?.securityMode !== 'PUBLIC_READ_ONLY') return false;
++  return (
++    TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS.has(handlerName) &&
++    config.publicOperations.includes(handlerName)
++  );
++}
++
+@@ -382 +438,6 @@ export class TaxonomyUserGuard implements CanActivate {
+-  constructor(private readonly verifier: TaxonomyTokenVerifier) {}
++  constructor(
++    private readonly verifier: TaxonomyTokenVerifier,
++    @Optional()
++    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
++    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
++  ) {}
+@@ -386,0 +448,2 @@ export class TaxonomyUserGuard implements CanActivate {
++    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
++      throw new ServiceUnavailableException();
+@@ -448,0 +512,3 @@ export class TaxonomyAuthGuard implements CanActivate {
++    @Optional()
++    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
++    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
+@@ -454 +520,3 @@ export class TaxonomyAuthGuard implements CanActivate {
+-    const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
++    const peer = request.socket?.remoteAddress?.replace(/^::ffff:/, '');
++    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
++      throw new ServiceUnavailableException();
+@@ -463,0 +532,15 @@ export class TaxonomyAuthGuard implements CanActivate {
++    const handlerName =
++      context.getHandler?.()?.name ||
++      (request.path === '/api/v1/categorias'
++        ? 'listarCategorias'
++        : request.path === '/api/v1/marcas'
++          ? 'listarMarcas'
++          : undefined);
++    if (
++      authorization === undefined &&
++      request.method === 'GET' &&
++      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
++      isApprovedPublicTaxonomyOperation(handlerName, this.publicReadConfig)
++    ) {
++      return true;
++    }
+diff --git a/apps/taxonomy-svc/src/taxonomy-public-reads.spec.ts b/apps/taxonomy-svc/src/taxonomy-public-reads.spec.ts
+new file mode 100644
+index 0000000..46e2ad1
+--- /dev/null
++++ b/apps/taxonomy-svc/src/taxonomy-public-reads.spec.ts
+@@ -0,0 +1,49 @@
++import {
++  readTaxonomyPublicReadConfig,
++  readTaxonomyDemoConfig,
++} from './taxonomy-auth.js';
++
++describe('Taxonomy public-read configuration boundary', () => {
++  it('only admits the two commercial lists; administrative/internal candidates fail at startup', () => {
++    for (const operation of [
++      'obtenerMarca',
++      'obtenerMarcaAdmin',
++      'obtenerCategoria',
++      'listarMarcasAdmin',
++      'obtenerArbolCategorias',
++      'listarTiposProducto',
++      'obtenerCaracteristica',
++    ])
++      expect(() =>
++        readTaxonomyPublicReadConfig({
++          G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++          TAXONOMY_PUBLIC_OPERATION_IDS: operation,
++        }),
++      ).toThrow();
++    expect(
++      readTaxonomyPublicReadConfig({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        TAXONOMY_PUBLIC_OPERATION_IDS: 'listarCategorias,listarMarcas',
++      }).publicOperations,
++    ).toHaveLength(2);
++  });
++  it('rejects simulated auth and legacy bypasses with an explicit selector', () => {
++    expect(() =>
++      readTaxonomyPublicReadConfig({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
++    ).toThrow();
++    for (const mode of ['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'])
++      expect(() =>
++        readTaxonomyDemoConfig({
++          NODE_ENV: 'test',
++          G6_SECURITY_MODE: mode,
++          ALLOW_DEMO_UNAUTHENTICATED: 'true',
++        }),
++      ).toThrow();
++    expect(
++      readTaxonomyPublicReadConfig({
++        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++        G6_PUBLIC_OPERATION_IDS: 'listarCategorias',
++      }).publicOperations,
++    ).toEqual([]);
++  });
++});
+diff --git a/apps/taxonomy-svc/src/taxonomy-svc.module.ts b/apps/taxonomy-svc/src/taxonomy-svc.module.ts
+index 5eef212..0d6b150 100644
+--- a/apps/taxonomy-svc/src/taxonomy-svc.module.ts
++++ b/apps/taxonomy-svc/src/taxonomy-svc.module.ts
+@@ -39,0 +40 @@ import {
++  TAXONOMY_PUBLIC_READ_CONFIG,
+@@ -40,0 +42 @@ import {
++  readTaxonomyPublicReadConfig,
+@@ -88,0 +91,4 @@ export interface OpcionesModuloTaxonomy {
++    {
++      provide: TAXONOMY_PUBLIC_READ_CONFIG,
++      useFactory: () => readTaxonomyPublicReadConfig(process.env),
++    },
+@@ -108,0 +115,4 @@ export class TaxonomySvcModule {
++        {
++          provide: TAXONOMY_PUBLIC_READ_CONFIG,
++          useValue: readTaxonomyPublicReadConfig(env),
++        },
+@@ -130,0 +141,4 @@ export class TaxonomySvcModule {
++          {
++            provide: TAXONOMY_PUBLIC_READ_CONFIG,
++            useValue: readTaxonomyPublicReadConfig(opciones.env ?? process.env),
++          },
+@@ -149,0 +164,4 @@ export class TaxonomySvcModule {
++        {
++          provide: TAXONOMY_PUBLIC_READ_CONFIG,
++          useValue: readTaxonomyPublicReadConfig(opciones.env ?? process.env),
++        },
+diff --git a/apps/taxonomy-svc/src/taxonomy.controller.spec.ts b/apps/taxonomy-svc/src/taxonomy.controller.spec.ts
+index 14af287..68f0da7 100644
+--- a/apps/taxonomy-svc/src/taxonomy.controller.spec.ts
++++ b/apps/taxonomy-svc/src/taxonomy.controller.spec.ts
+@@ -18,0 +19 @@ import {
++  readTaxonomyPublicReadConfig,
+@@ -71,0 +73,92 @@ describe('configuración de Seguridad de Taxonomy', () => {
++  it('no activa operaciones públicas automáticamente en PUBLIC_READ_ONLY ni concede acceso por IP privada', async () => {
++    // Requisito #3: sin TAXONOMY_PUBLIC_OPERATION_IDS, hay 0 operaciones públicas
++    const emptyPhase1 = readTaxonomyPublicReadConfig({
++      NODE_ENV: 'production',
++      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++    });
++    expect(emptyPhase1).toEqual({
++      securityMode: 'PUBLIC_READ_ONLY',
++      publicOperations: [],
++    });
++
++    // Requisito #4: provenir de una IP privada (ej. 172.18.0.4 o 10.0.0.5) NO concede acceso
++    const guardSinOperaciones = new TaxonomyAuthGuard(
++      {} as TaxonomyTokenVerifier,
++      false,
++      emptyPhase1,
++    );
++    for (const remoteAddress of [
++      '172.18.0.4',
++      '10.0.0.5',
++      '192.168.1.10',
++      '127.0.0.1',
++    ]) {
++      const ctx = {
++        getHandler: () => ({ name: 'listarCategorias' }),
++        switchToHttp: () => ({
++          getRequest: () => ({
++            headers: {},
++            method: 'GET',
++            path: '/api/v1/categorias',
++            socket: { remoteAddress },
++          }),
++        }),
++      } as unknown as import('@nestjs/common').ExecutionContext;
++      await expect(guardSinOperaciones.canActivate(ctx)).rejects.toMatchObject({
++        status: 401,
++      });
++    }
++
++    // Incluso con ALLOW_DEMO_UNAUTHENTICATED=true en test, una IP privada RFC1918 es rechazada
++    const guardLoopbackOnly = new TaxonomyAuthGuard(
++      {} as TaxonomyTokenVerifier,
++      true,
++    );
++    const privatePeerCtx = {
++      getHandler: () => ({ name: 'listarCategorias' }),
++      switchToHttp: () => ({
++        getRequest: () => ({
++          headers: {},
++          method: 'GET',
++          path: '/api/v1/categorias',
++          socket: { remoteAddress: '172.18.0.4' },
++        }),
++      }),
++    } as unknown as import('@nestjs/common').ExecutionContext;
++    await expect(
++      guardLoopbackOnly.canActivate(privatePeerCtx),
++    ).rejects.toMatchObject({
++      status: 401,
++    });
++
++    // Solo cuando la operación está explícitamente en TAXONOMY_PUBLIC_OPERATION_IDS en PUBLIC_READ_ONLY
++    const explicitPhase1 = readTaxonomyPublicReadConfig({
++      NODE_ENV: 'production',
++      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
++      TAXONOMY_PUBLIC_OPERATION_IDS: 'listarCategorias',
++    });
++    const guardExplicito = new TaxonomyAuthGuard(
++      {} as TaxonomyTokenVerifier,
++      false,
++      explicitPhase1,
++    );
++    await expect(guardExplicito.canActivate(privatePeerCtx)).resolves.toBe(
++      true,
++    );
++    const unapprovedOpCtx = {
++      getHandler: () => ({ name: 'listarMarcas' }),
++      switchToHttp: () => ({
++        getRequest: () => ({
++          headers: {},
++          method: 'GET',
++          path: '/api/v1/marcas',
++          socket: { remoteAddress: '172.18.0.4' },
++        }),
++      }),
++    } as unknown as import('@nestjs/common').ExecutionContext;
++    await expect(
++      guardExplicito.canActivate(unapprovedOpCtx),
++    ).rejects.toMatchObject({
++      status: 401,
++    });
++  });

@@ -1,0 +1,56 @@
+[
+  {
+    "productName": "Virtual Machines Basv2 Series",
+    "skuName": "B2ats v2",
+    "meterName": "B2ats v2",
+    "retailPrice": 0.0132,
+    "unitOfMeasure": "1 Hour",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  },
+  {
+    "productName": "Standard SSD Managed Disks",
+    "skuName": "E4 LRS",
+    "meterName": "E4 LRS Disk",
+    "retailPrice": 3.36,
+    "unitOfMeasure": "1/Month",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  },
+  {
+    "productName": "Standard SSD Managed Disks",
+    "skuName": "E4 LRS",
+    "meterName": "E4 LRS Disk Operations",
+    "retailPrice": 0.0028,
+    "unitOfMeasure": "10K",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  },
+  {
+    "productName": "Standard SSD Managed Disks",
+    "skuName": "E4 LRS",
+    "meterName": "E4 LRS Disk Mount",
+    "retailPrice": 0.364,
+    "unitOfMeasure": "1/Month",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  },
+  {
+    "productName": "IP Addresses",
+    "skuName": "Standard",
+    "meterName": "Standard IPv4 Static Public IP",
+    "retailPrice": 0.005,
+    "unitOfMeasure": "1 Hour",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  },
+  {
+    "productName": "IP Addresses",
+    "skuName": "Standard",
+    "meterName": "Standard IPv4 Static Public IP",
+    "retailPrice": 0.005,
+    "unitOfMeasure": "1 Hour",
+    "currencyCode": "USD",
+    "armRegionName": "chilecentral"
+  }
+]

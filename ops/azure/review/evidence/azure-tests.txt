@@ -1,0 +1,18 @@
+✔ local development issuer never binds publicly or emits privileged/unauthenticated tokens (96.3262ms)
+✔ deploys the exact approved digest and revision (2378.2327ms)
+✔ keeps the old container on digestMismatch (1276.0552ms)
+✔ keeps the old container on revisionMismatch (1388.0986ms)
+✔ keeps the old container on pullFailure (1014.0056ms)
+✔ actually attempts and restores the old digest on unhealthy (3601.9064ms)
+✔ actually attempts and restores the old digest on notReady (4568.5878ms)
+✔ actually attempts and restores the old digest on startFailure (2351.2666ms)
+✔ removes a failed first deployment without claiming a previous version (3498.3795ms)
+✔ rejects tag-only, unsupported service, missing digest and shell injection before any Docker change (933.0105ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21125.4911

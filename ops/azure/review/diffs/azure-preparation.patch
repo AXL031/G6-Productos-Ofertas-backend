@@ -1,0 +1,1627 @@
+diff --git a/ops/azure/Caddyfile b/ops/azure/Caddyfile
+new file mode 100644
+index 0000000..2be9371
+--- /dev/null
++++ b/ops/azure/Caddyfile
+@@ -0,0 +1,39 @@
++{
++	admin off
++}
++
++{$G6_PUBLIC_DOMAIN:localhost} {
++	request_body {
++		max_size 10MB
++	}
++
++	header {
++		X-Content-Type-Options "nosniff"
++		X-Frame-Options "DENY"
++		Referrer-Policy "no-referrer"
++		-Server
++	}
++
++	handle /health {
++		reverse_proxy g6-api-gateway:3000 {
++			transport http {
++				dial_timeout 3s
++				response_header_timeout 5s
++			}
++		}
++	}
++
++	handle /api/v1/* {
++		reverse_proxy g6-api-gateway:3000 {
++			transport http {
++				dial_timeout 3s
++				response_header_timeout 15s
++			}
++		}
++	}
++
++	handle {
++		header Content-Type "application/problem+json; charset=utf-8"
++		respond `{"type":"about:blank","title":"Not Found","status":404,"code":"RUTA_NO_PUBLICADA"}` 404
++	}
++}
+diff --git a/ops/azure/README.md b/ops/azure/README.md
+new file mode 100644
+index 0000000..c88fe9a
+--- /dev/null
++++ b/ops/azure/README.md
+@@ -0,0 +1,69 @@
++# Azure alternativo: Gateway, Catalog y Taxonomy
++
++La aplicación tiene una única implementación en `apps/`, válida para Oracle y Azure. Este directorio adapta infraestructura; no modifica `ops/oracle/`, los contratos ni la base compartida.
++
++## Artefactos de release
++
++Oracle y Azure deben consumir las imágenes oficiales aprobadas de `ghcr.io/taller-sw-web/g6-productos-ofertas-backend/<servicio>`. Azure despliega `@sha256:<digest>` y verifica `RepoDigests` y `org.opencontainers.image.revision` (etiqueta publicada por el CD oficial). Rechaza tags solos, imágenes del fork y cambios de registro por variable de entorno.
++
++Después de revisión y publicación oficial, preparar `release.psv` con los mismos artefactos aprobados para Oracle:
++
++```text
++# Aprobación: enlace verificable a revisión/release.
++taxonomy-svc|<SHA oficial de 40 caracteres>|sha256:<digest aprobado de 64 caracteres>
++catalog-svc|<SHA oficial de 40 caracteres>|sha256:<digest aprobado de 64 caracteres>
++api-gateway|<SHA oficial de 40 caracteres>|sha256:<digest aprobado de 64 caracteres>
++```
++
++El ejemplo contiene marcadores inválidos intencionadamente. El script valida el manifiesto completo antes del primer cambio; no verifica por sí mismo una aprobación humana.
++
++```bash
++# Solo después de autorización de release y configuración runtime completa:
++sudo bash ops/azure/deploy-official-three.sh /ruta/privada/release.psv
++```
++
++Imágenes públicas: stdin vacío. Paquetes privados: usuario y token GHCR como dos líneas por stdin desde el mecanismo de secretos del operador, sin argumentos ni logs. El Docker config temporal privado se elimina al terminar.
++
++`build-and-deploy-three.sh` conserva su nombre, pero ahora solo construye imágenes locales bajo `g6-local-development`. Exige HEAD coincidente y checkout limpio. No publica ni despliega y sus imágenes no son releases.
++
++## Aprovisionamiento y costo pendiente
++
++Cuotas y precios requieren evidencia fechada por suscripción; no se infieren del código. No se aprovisionaron recursos durante el trabajo. Antes de crear, comprobar oferta activa, antigüedad, crédito restante, región, SKU, cuotas regionales/de familia, disco, IP y transferencia. Un SKU disponible no demuestra gratuidad; swap no acredita capacidad para tres servicios. El build de release ocurre en CI.
++
++```powershell
++pwsh ./ops/azure/provision-azure-vm.ps1 -SubscriptionId '<id>' -Location '<región permitida>' -VmSize '<SKU cotizado>' -DryRun
++```
++
++`DryRun` consulta la suscripción exacta, SKU y cuotas sin crear recursos ni cambiar la suscripción predeterminada. No selecciona otro SKU automáticamente. Todos los comandos llevan `--subscription` explícito.
++
++Para crear exige además `-CostReviewPath`, JSON con revisión de menos de 24 horas. Campos obligatorios: `subscriptionId`, `location`, `vmSize`, `storageSku=StandardSSD_LRS`, `osDiskSizeGiB=30`, `reviewedAt` (UTC ISO), `reviewedBy`, `quoteUrl`, `offerVerified=true`, `monthlyUsd` y `budgetUsd` numéricos. Cotizar VM + disco + IP + red; total no negativo y dentro del presupuesto positivo aprobado. El archivo registra una revisión; no concede autorización arquitectónica.
++
++Fuentes: [Azure for Students](https://azure.microsoft.com/en-us/free/students/), [discos](https://azure.microsoft.com/en-us/pricing/details/managed-disks/), [estados/facturación](https://learn.microsoft.com/en-us/azure/virtual-machines/states-billing). `az vm deallocate` detiene cómputo, pero discos/red pueden seguir cobrando. No identificar Standard SSD con promociones de otro SKU ni prometer costo cero.
++
++## Host y runtime
++
++Tras autorización de aprovisionamiento, instalar desde el checkout revisado:
++
++```bash
++sudo bash ops/azure/bootstrap-vm.sh --domain '<label>.<region>.cloudapp.azure.com' --ca-file /ruta/ca.crt
++```
++
++Conserva HTTPS/Caddy, `g6-edge` (Caddy/Gateway), `g6-http` (Gateway/servicios), aliases, puertos de aplicación en loopback y CA PostgreSQL de solo lectura. Bridge permite salida a dependencias; privada no significa `internal: true`. Completar variables JWT, roles y credenciales DB; si se usan mutaciones/filtros monetarios, también las credenciales técnicas de Catalog. Bootstrap no ejecuta migraciones ni seeds.
++
++Default: `G6_SECURITY_MODE=G7_AUTHENTICATED`, listas vacías y flags legacy desactivados. `SIMULATED_AUTH` falla al arrancar mientras no esté homologado. El emisor local existente no se instala ni se publica. Configuración y reversión de las cinco consultas: [revisión de Fase 1](../../apps/api-gateway/PHASE1-REVIEW.md). No activar acceso público antes de revisión y autorización individual.
++
++## Gates, recuperación y evidencia
++
++El ejecutor conserva `flock`, validación de miembros/aliases de `g6-http`, secretos temporales y estado por servicio. Exige Docker healthy y liveness. Catalog y Taxonomy también requieren JSON de readiness con servicio/estado correctos; Gateway usa el bundle de readiness de su Compose oficial.
++
++Ante fallo restaura el digest anterior y verifica salud/readiness. Un primer arranque fallido retira solo el contenedor recién creado. La recuperación es por servicio, no una transacción distribuida de los tres despliegues. Una instancia anterior basada en tags requiere un plan revisado de transición: el ejecutor rechaza actualizarla sin referencia anterior fijada por digest.
++
++```bash
++node --test ops/azure/tests/*.test.mjs
++pwsh ./ops/azure/tests/provision.test.ps1
++sudo bash ops/azure/test-rollback-and-phases.sh
++```
++
++Las pruebas Node del ejecutor simulan Docker/HTTP y comprueban intento de nueva imagen, restauración del estado simulado, fallo de readiness, digest/revisión incorrectos y primer despliegue. No acreditan rollback en VM. El smoke de VM es de solo lectura; no construye ni despliega una imagen rota.
++
++Docker/Compose real, pull del registro oficial, TLS público, rollback de VM, CI del SHA y cuota/costo reales requieren evidencia independiente antes de `READY_FOR_DEPLOY`.
+diff --git a/ops/azure/bootstrap-vm.sh b/ops/azure/bootstrap-vm.sh
+new file mode 100644
+index 0000000..ed21da7
+--- /dev/null
++++ b/ops/azure/bootstrap-vm.sh
+@@ -0,0 +1,178 @@
++#!/usr/bin/env bash
++set -Eeuo pipefail
++
++# Prepara una VM Ubuntu 24.04 LTS en Azure con la misma topología de referencia de Oracle:
++# - 2 GiB de swap (protección de memoria para tamaños B1s/B2s de Azure for Students)
++# - Docker Engine + Compose v2
++# - Redes privadas g6-edge y g6-http
++# - Certificado CA de Supabase en /etc/g6-postgres/supabase-server-root.crt (0444)
++# - Registro y ejecutor en /usr/local/lib/g6-productos-ofertas/
++# - Plantillas Compose en /opt/g6-productos-ofertas/
++# - Caddy con HTTPS; no instala ni publica un emisor simulado
++
++readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
++DOMAIN=""
++CA_FILE=""
++
++while [[ $# -gt 0 ]]; do
++  case "$1" in
++    --domain)
++      DOMAIN="${2:-}"
++      shift 2
++      ;;
++    --ca-file)
++      CA_FILE="${2:-}"
++      shift 2
++      ;;
++    *)
++      printf 'Uso: %s --domain <fqdn> --ca-file <ruta-ca.crt>\n' "$0" >&2
++      exit 1
++      ;;
++  esac
++done
++
++[[ $EUID -eq 0 ]] || { printf 'Ejecutar con sudo/root.\n' >&2; exit 1; }
++[[ -n "$DOMAIN" ]] || { printf 'Falta --domain <fqdn>.\n' >&2; exit 1; }
++[[ -n "$CA_FILE" && -f "$CA_FILE" ]] || { printf 'Falta --ca-file válido (%s).\n' "$CA_FILE" >&2; exit 1; }
++
++grep -q 'BEGIN CERTIFICATE' "$CA_FILE" || { printf 'El archivo CA no contiene un certificado PEM válido.\n' >&2; exit 1; }
++[[ "$DOMAIN" =~ ^[a-z0-9][a-z0-9.-]+[a-z0-9]$ ]] || { printf 'Dominio inválido.\n' >&2; exit 1; }
++
++echo "[1/7] Verificando archivo swap de 2 GiB para Azure for Students..."
++if ! swapon --show | grep -q '/swapfile'; then
++  if [[ ! -f /swapfile ]]; then
++    fallocate -l 2G /swapfile || dd if=/dev/zero of=/swapfile bs=1M count=2048
++    chmod 600 /swapfile
++    mkswap /swapfile
++  fi
++  swapon /swapfile
++  grep -q '/swapfile' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab
++fi
++
++echo "[2/7] Verificando Docker Engine y Compose..."
++if ! command -v jq >/dev/null || ! command -v curl >/dev/null; then
++  apt-get update -y
++  apt-get install -y jq curl
++fi
++if ! command -v docker >/dev/null 2>&1; then
++  apt-get update -y
++  apt-get install -y ca-certificates curl gnupg lsb-release jq
++  install -m 0755 -d /etc/apt/keyrings
++  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
++  chmod a+r /etc/apt/keyrings/docker.gpg
++  echo \
++    "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
++    $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
++  apt-get update -y
++  apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
++  systemctl enable --now docker
++fi
++
++echo "[3/7] Creando redes Docker privadas g6-edge y g6-http..."
++if ! docker network inspect g6-edge >/dev/null 2>&1; then
++  docker network create --driver bridge g6-edge
++fi
++if ! docker network inspect g6-http >/dev/null 2>&1; then
++  docker network create --driver bridge g6-http
++fi
++
++echo "[4/7] Instalando CA de Supabase PostgreSQL en /etc/g6-postgres/supabase-server-root.crt..."
++install --directory --owner root --group root --mode 0755 /etc/g6-postgres
++install --owner root --group root --mode 0444 "$CA_FILE" /etc/g6-postgres/supabase-server-root.crt
++
++echo "[5/7] Instalando registro v2, ejecutor v4 y plantillas Compose..."
++install --directory --owner root --group root --mode 0755 /etc/g6-productos-ofertas
++cat > /etc/g6-productos-ofertas/azure.conf <<EOF
++G6_PUBLIC_DOMAIN=${DOMAIN}
++EOF
++chmod 0644 /etc/g6-productos-ofertas/azure.conf
++
++install --directory --owner root --group root --mode 0755 /usr/local/lib/g6-productos-ofertas
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/oracle/service-registry.sh" /usr/local/lib/g6-productos-ofertas/service-registry.sh
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/oracle/services.psv" /usr/local/lib/g6-productos-ofertas/services.psv
++install --owner root --group root --mode 0755 "${REPO_ROOT}/ops/azure/deploy-g6-service.sh" /usr/local/lib/g6-productos-ofertas/deploy-g6-service
++
++install --directory --owner root --group root --mode 0755 /opt/g6-productos-ofertas/shared
++install --directory --owner root --group root --mode 0755 /opt/g6-productos-ofertas/api-gateway
++install --directory --owner root --group root --mode 0755 /opt/g6-productos-ofertas/caddy
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/oracle/docker-compose.service.yml" /opt/g6-productos-ofertas/shared/docker-compose.service.yml
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/oracle/docker-compose.service.http.yml" /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/oracle/docker-compose.gateway.yml" /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/azure/docker-compose.caddy.yml" /opt/g6-productos-ofertas/caddy/docker-compose.caddy.yml
++
++/usr/local/lib/g6-productos-ofertas/deploy-g6-service --version
++
++echo "[6/7] Preparando directorios de runtime privado (/etc/g6-*) y estado (/var/lib/g6-productos-ofertas/*)..."
++for svc in api-gateway catalog-svc taxonomy-svc; do
++  install --directory --owner root --group root --mode 0750 "/etc/g6-${svc}"
++  install --directory --owner root --group root --mode 0700 "/var/lib/g6-productos-ofertas/${svc}"
++done
++
++if [[ ! -f /etc/g6-api-gateway/runtime.env ]]; then
++  cat > /etc/g6-api-gateway/runtime.env <<'EOF'
++API_GATEWAY_PORT=3000
++GATEWAY_TIMEOUT_MS=5000
++GATEWAY_CATALOG_SVC_URL=http://catalog-svc:3001
++GATEWAY_CATALOG_SVC_READINESS_PATH=/health/ready
++GATEWAY_TAXONOMY_SVC_URL=http://taxonomy-svc:3006
++GATEWAY_TAXONOMY_SVC_READINESS_PATH=/health/ready
++G6_SECURITY_MODE=G7_AUTHENTICATED
++GATEWAY_DEMO_NO_AUTH_ENABLED=false
++G6_READ_ONLY_DEMO_ENABLED=false
++GATEWAY_PUBLIC_OPERATION_IDS=
++AUTH_ISSUER=
++AUTH_JWKS_URL=
++EOF
++  chmod 0640 /etc/g6-api-gateway/runtime.env
++fi
++
++if [[ ! -f /etc/g6-taxonomy-svc/runtime.env ]]; then
++  cat > /etc/g6-taxonomy-svc/runtime.env <<'EOF'
++# Completar con el host/password reales de Supabase para taxonomy_dev_login
++DATABASE_URL=postgresql://taxonomy_dev_login:REEMPLAZAR_PASSWORD@db.slzglmtiyrzygpkiuthf.supabase.co:5432/postgres?sslmode=verify-full&sslrootcert=/run/g6-certs/supabase-server-root.crt&currentSchema=taxonomy
++G6_EXPECTED_ROLE=taxonomy_dev_login
++G6_CONNECTION_MODE=direct
++G6_SECURITY_MODE=G7_AUTHENTICATED
++TAXONOMY_PUBLIC_OPERATION_IDS=
++SECURITY_ISSUER=
++SECURITY_DISCOVERY_URL=
++SECURITY_JWKS_URL=
++EOF
++  chmod 0640 /etc/g6-taxonomy-svc/runtime.env
++fi
++
++if [[ ! -f /etc/g6-catalog-svc/runtime.env ]]; then
++  cat > /etc/g6-catalog-svc/runtime.env <<'EOF'
++# Completar con el host/password reales de Supabase para catalog_dev_login
++PGHOST=db.slzglmtiyrzygpkiuthf.supabase.co
++PGPORT=5432
++PGDATABASE=postgres
++PGUSER=catalog_dev_login
++PGPASSWORD=REEMPLAZAR_PASSWORD
++PGSSLMODE=verify-full
++PGSSLROOTCERT=/run/g6-certs/supabase-server-root.crt
++G6_DATABASE_SCHEMA=catalog
++G6_EXPECTED_ROLE=catalog_dev_login
++G6_CONNECTION_MODE=direct
++CATALOG_TAXONOMY_URL=http://taxonomy-svc:3006
++CATALOG_AMQP_ENABLED=false
++G6_SECURITY_MODE=G7_AUTHENTICATED
++CATALOG_PUBLIC_OPERATION_IDS=
++G6_READ_ONLY_DEMO_ENABLED=false
++GATEWAY_DEMO_NO_AUTH_ENABLED=false
++CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED=false
++SECURITY_ISSUER=
++SECURITY_DISCOVERY_URL=
++SECURITY_JWKS_URL=
++EOF
++  chmod 0640 /etc/g6-catalog-svc/runtime.env
++fi
++
++echo "[7/7] Configurando Caddy HTTPS..."
++install --directory --owner root --group root --mode 0755 /etc/g6-caddy
++install --owner root --group root --mode 0644 "${REPO_ROOT}/ops/azure/Caddyfile" /etc/g6-caddy/Caddyfile
++
++env G6_PUBLIC_DOMAIN="$DOMAIN" \
++  docker compose --file /opt/g6-productos-ofertas/caddy/docker-compose.caddy.yml --project-name g6-caddy up -d
++
++echo "Bootstrap completado. Dominio HTTPS configurado en Caddy: https://${DOMAIN}"
+diff --git a/ops/azure/build-and-deploy-three.sh b/ops/azure/build-and-deploy-three.sh
+new file mode 100644
+index 0000000..be55cf7
+--- /dev/null
++++ b/ops/azure/build-and-deploy-three.sh
+@@ -0,0 +1,32 @@
++#!/usr/bin/env bash
++set -Eeuo pipefail
++
++# Development builds only. Releases use deploy-official-three.sh and the
++# approved official digests, never a build from this fork.
++
++readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
++cd "$REPO_ROOT"
++
++readonly REGISTRY_PREFIX='g6-local-development'
++readonly IMAGE_SHA="${1:-$(git rev-parse HEAD)}"
++
++[[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || {
++  printf 'SHA inválido: %s (se requiere SHA Git de 40 caracteres)\n' "$IMAGE_SHA" >&2
++  exit 1
++}
++
++[[ "$IMAGE_SHA" == "$(git rev-parse HEAD)" && -z "$(git status --porcelain)" ]] || {
++  printf 'El SHA debe coincidir con HEAD y el checkout debe estar limpio.\n' >&2
++  exit 1
++}
++
++for svc in taxonomy-svc catalog-svc api-gateway; do
++  image_tag="${REGISTRY_PREFIX}/${svc}:${IMAGE_SHA}"
++  echo "=== [BUILD] Construyendo ${image_tag} ==="
++  docker build \
++    --file Dockerfile.service \
++    --build-arg "SERVICE_NAME=${svc}" \
++    --label "org.opencontainers.image.revision=${IMAGE_SHA}" \
++    --tag "$image_tag" \
++    .
++done
+diff --git a/ops/azure/demo-jwt-issuer.d.ts b/ops/azure/demo-jwt-issuer.d.ts
+new file mode 100644
+index 0000000..edfe236
+--- /dev/null
++++ b/ops/azure/demo-jwt-issuer.d.ts
+@@ -0,0 +1,34 @@
++export interface DemoClientConfig {
++  readonly clientSecret: string;
++  readonly allowedScopes: readonly string[];
++}
++
++export interface DemoIssuerOptions {
++  readonly kid?: string;
++  readonly adminSecret: string;
++  readonly privateKeyPem?: string;
++  readonly clients?: Readonly<Record<string, DemoClientConfig>>;
++}
++
++export interface DemoIssuerServer {
++  readonly origin: string;
++  readonly issuer: string;
++  readonly discoveryUrl: string;
++  readonly jwksUrl: string;
++  readonly tokenUrl: string;
++  close(): Promise<void>;
++}
++
++export interface DemoIssuer {
++  readonly kid: string;
++  readonly publicJwk: Readonly<Record<string, unknown>>;
++  exportPrivateKeyPem(): string | Buffer;
++  mintProfile(options: {
++    readonly issuer: string;
++    readonly profile: string;
++    readonly secret: string;
++  }): string;
++  listenLocalOnly(host?: string, port?: number): Promise<DemoIssuerServer>;
++}
++
++export function createDemoIssuer(options: DemoIssuerOptions): DemoIssuer;
+diff --git a/ops/azure/demo-jwt-issuer.mjs b/ops/azure/demo-jwt-issuer.mjs
+new file mode 100644
+index 0000000..c332aea
+--- /dev/null
++++ b/ops/azure/demo-jwt-issuer.mjs
+@@ -0,0 +1,402 @@
++#!/usr/bin/env node
++/**
++ * Emisor OIDC/JWKS simulado aislado para pruebas de Fase 2 (SIMULATED_AUTH).
++ *
++ * Garantías de seguridad (Requisito #5 de revisión):
++ * 1. Prohibido exponer en Internet o enlazar en 0.0.0.0: el servidor HTTP interno
++ *    solo acepta bind en loopback (127.0.0.1 / ::1).
++ * 2. Prohibido emitir tokens privilegiados (ej. GESTOR_COMERCIAL o M2M) de forma
++ *    pública o sin autorización:
++ *    - No existe ningún endpoint HTTP para emitir tokens humanos (tipo=acceso / GESTOR_COMERCIAL).
++ *    - El endpoint M2M `POST /api/v1/auth/token` exige `grant_type=client_credentials`,
++ *      `client_id` registrado y `client_secret` (>= 16 caracteres) verificado con
++ *      `timingSafeEqual`, y restringe `scope` a la lista autorizada por cliente.
++ *    - La función CLI/programática `mintProfile` exige `adminSecret` (>= 16 caracteres)
++ *      verificado con `timingSafeEqual`.
++ * 3. El JWKS publicado contiene exclusivamente parámetros públicos RSA (`kty`, `use`,
++ *    `alg`, `kid`, `n`, `e`), verificando la ausencia de componentes privados (`d`, `p`, `q`).
++ */
++
++import {
++  createPrivateKey,
++  createPublicKey,
++  generateKeyPairSync,
++  randomUUID,
++  sign,
++  timingSafeEqual,
++} from 'node:crypto';
++import { createServer } from 'node:http';
++import { once } from 'node:events';
++import { chmodSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
++import { join, resolve } from 'node:path';
++import { pathToFileURL } from 'node:url';
++
++function base64urlJson(obj) {
++  return Buffer.from(JSON.stringify(obj), 'utf8').toString('base64url');
++}
++
++function safeSecretEquals(expected, actual) {
++  if (
++    typeof expected !== 'string' ||
++    typeof actual !== 'string' ||
++    expected.length < 16
++  ) {
++    return false;
++  }
++  const a = Buffer.from(expected, 'utf8');
++  const b = Buffer.from(actual, 'utf8');
++  if (a.length !== b.length) return false;
++  return timingSafeEqual(a, b);
++}
++
++export function createDemoIssuer(options = {}) {
++  const kid = options.kid ?? 'g6-demo-rs256-k1';
++  const adminSecret = options.adminSecret;
++  if (typeof adminSecret !== 'string' || adminSecret.trim().length < 16) {
++    throw new Error(
++      'DEMO_ISSUER_CONFIG_INVALID: adminSecret (>= 16 caracteres) es obligatorio para inicializar el emisor simulado.',
++    );
++  }
++
++  const { publicKey, privateKey } = options.privateKeyPem
++    ? {
++        privateKey: createPrivateKey(options.privateKeyPem),
++        publicKey: createPublicKey(createPrivateKey(options.privateKeyPem)),
++      }
++    : generateKeyPairSync('rsa', { modulusLength: 2048 });
++
++  const exportedJwk = publicKey.export({ format: 'jwk' });
++  const publicJwk = Object.freeze({
++    kty: 'RSA',
++    use: 'sig',
++    alg: 'RS256',
++    kid,
++    n: exportedJwk.n,
++    e: exportedJwk.e,
++  });
++
++  const registeredClients = new Map(
++    Object.entries(options.clients ?? {}).map(([clientId, cfg]) => {
++      if (
++        !cfg ||
++        typeof cfg.clientSecret !== 'string' ||
++        cfg.clientSecret.length < 16 ||
++        !Array.isArray(cfg.allowedScopes)
++      ) {
++        throw new Error(
++          `DEMO_ISSUER_CONFIG_INVALID: configuración inválida para cliente ${clientId}`,
++        );
++      }
++      return [
++        clientId,
++        {
++          clientSecret: cfg.clientSecret,
++          allowedScopes: Object.freeze([...cfg.allowedScopes]),
++        },
++      ];
++    }),
++  );
++
++  function signClaims(claims) {
++    const header = { alg: 'RS256', typ: 'JWT', kid };
++    const signingInput = `${base64urlJson(header)}.${base64urlJson(claims)}`;
++    const signature = sign(
++      'RSA-SHA256',
++      Buffer.from(signingInput),
++      privateKey,
++    ).toString('base64url');
++    return `${signingInput}.${signature}`;
++  }
++
++  function mintProfile({ issuer, profile, secret }) {
++    if (!safeSecretEquals(adminSecret, secret)) {
++      throw new Error(
++        'UNAUTHORIZED_MINT: se requiere secreto administrativo válido para emitir tokens de prueba.',
++      );
++    }
++    if (!issuer) throw new Error('ISSUER_REQUIRED');
++    const normalizedIssuer = issuer.replace(/\/+$/, '');
++    const now = Math.floor(Date.now() / 1000);
++    switch (profile) {
++      case 'm2m-marketplace':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: 'modulo-marketplace',
++          aud: 'api-productos',
++          tipo: 'servicio',
++          scope: 'catalogo:leer',
++          iat: now - 5,
++          exp: now + 3600,
++          jti: randomUUID(),
++        });
++      case 'm2m-productos':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: 'modulo-productos',
++          aud: 'api-productos',
++          tipo: 'servicio',
++          scope: 'catalogo:leer',
++          iat: now - 5,
++          exp: now + 3600,
++          jti: randomUUID(),
++        });
++      case 'user-gestor':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: '11111111-2222-4333-8444-555555555555',
++          aud: 'api-productos',
++          tipo: 'acceso',
++          roles: ['GESTOR_COMERCIAL'],
++          iat: now - 5,
++          exp: now + 3600,
++          jti: randomUUID(),
++        });
++      case 'user-sin-rol':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: '22222222-2222-4333-8444-555555555555',
++          aud: 'api-productos',
++          tipo: 'acceso',
++          roles: ['LECTOR_EXTERNO'],
++          iat: now - 5,
++          exp: now + 3600,
++          jti: randomUUID(),
++        });
++      case 'invalid-scope':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: 'modulo-marketplace',
++          aud: 'api-productos',
++          tipo: 'servicio',
++          scope: 'sin:permiso',
++          iat: now - 5,
++          exp: now + 3600,
++          jti: randomUUID(),
++        });
++      case 'expired':
++        return signClaims({
++          iss: normalizedIssuer,
++          sub: 'modulo-marketplace',
++          aud: 'api-productos',
++          tipo: 'servicio',
++          scope: 'catalogo:leer',
++          iat: now - 7200,
++          exp: now - 3600,
++          jti: randomUUID(),
++        });
++      default:
++        throw new Error(`UNKNOWN_PROFILE: ${profile}`);
++    }
++  }
++
++  async function listenLocalOnly(host = '127.0.0.1', port = 0) {
++    if (!['127.0.0.1', '::1'].includes(host)) {
++      throw new Error(
++        'PUBLIC_BIND_FORBIDDEN: el emisor simulado solo puede escuchar en loopback (127.0.0.1 o ::1).',
++      );
++    }
++    let origin = '';
++    const server = createServer((req, res) => {
++      res.setHeader('content-type', 'application/json; charset=utf-8');
++      res.setHeader('cache-control', 'max-age=60');
++      if (req.method === 'GET' && req.url === '/.well-known/openid-configuration') {
++        res.statusCode = 200;
++        res.end(
++          JSON.stringify({
++            issuer: `${origin}/api/v1/auth`,
++            jwks_uri: `${origin}/.well-known/jwks.json`,
++            id_token_signing_alg_values_supported: ['RS256'],
++          }),
++        );
++        return;
++      }
++      if (req.method === 'GET' && req.url === '/.well-known/jwks.json') {
++        res.statusCode = 200;
++        res.end(JSON.stringify({ keys: [publicJwk] }));
++        return;
++      }
++      if (req.method === 'POST' && req.url === '/api/v1/auth/token') {
++        const chunks = [];
++        let length = 0;
++        req.on('data', (chunk) => {
++          length += chunk.length;
++          if (length <= 4096) chunks.push(chunk);
++        });
++        req.on('end', () => {
++          if (length > 4096) {
++            res.statusCode = 400;
++            res.end(JSON.stringify({ code: 'VALIDACION' }));
++            return;
++          }
++          const params = new URLSearchParams(
++            Buffer.concat(chunks).toString('utf8'),
++          );
++          const grantType = params.get('grant_type');
++          const clientId = params.get('client_id') ?? '';
++          const clientSecret = params.get('client_secret') ?? '';
++          const scope = params.get('scope') ?? '';
++          // Prohibido solicitar tokens humanos (acceso/roles) por el endpoint de token
++          if (
++            grantType !== 'client_credentials' ||
++            params.has('roles') ||
++            params.get('tipo') === 'acceso'
++          ) {
++            res.statusCode = 403;
++            res.end(JSON.stringify({ code: 'SCOPE_INSUFICIENTE' }));
++            return;
++          }
++          const client = registeredClients.get(clientId);
++          if (!client || !safeSecretEquals(client.clientSecret, clientSecret)) {
++            res.statusCode = 401;
++            res.end(JSON.stringify({ code: 'TOKEN_INVALIDO' }));
++            return;
++          }
++          const requestedScopes = scope.split(/\s+/).filter(Boolean);
++          if (
++            requestedScopes.length === 0 ||
++            requestedScopes.some((s) => !client.allowedScopes.includes(s))
++          ) {
++            res.statusCode = 403;
++            res.end(JSON.stringify({ code: 'SCOPE_INSUFICIENTE' }));
++            return;
++          }
++          const now = Math.floor(Date.now() / 1000);
++          const accessToken = signClaims({
++            iss: `${origin}/api/v1/auth`,
++            sub: clientId,
++            aud: 'api-productos',
++            tipo: 'servicio',
++            scope: requestedScopes.join(' '),
++            iat: now,
++            exp: now + 300,
++            jti: randomUUID(),
++          });
++          res.statusCode = 200;
++          res.end(
++            JSON.stringify({
++              accessToken,
++              tokenType: 'Bearer',
++              expiresIn: 300,
++              scopes: requestedScopes,
++            }),
++          );
++        });
++        return;
++      }
++      res.statusCode = 404;
++      res.end(JSON.stringify({ code: 'NO_ENCONTRADO' }));
++    });
++
++    server.listen(port, host);
++    await once(server, 'listening');
++    const addr = server.address();
++    if (!addr || typeof addr === 'string') throw new Error('LISTEN_FAILED');
++    origin = `http://${host === '::1' ? '[::1]' : host}:${addr.port}`;
++    return {
++      origin,
++      issuer: `${origin}/api/v1/auth`,
++      discoveryUrl: `${origin}/.well-known/openid-configuration`,
++      jwksUrl: `${origin}/.well-known/jwks.json`,
++      tokenUrl: `${origin}/api/v1/auth/token`,
++      close: () => new Promise((resolveClose) => server.close(() => resolveClose())),
++    };
++  }
++
++  return {
++    kid,
++    publicJwk,
++    exportPrivateKeyPem: () =>
++      privateKey.export({ type: 'pkcs8', format: 'pem' }),
++    mintProfile,
++    listenLocalOnly,
++  };
++}
++
++function parseArgs(argv) {
++  const args = { _: [] };
++  for (let i = 0; i < argv.length; i++) {
++    const token = argv[i];
++    if (token.startsWith('--')) {
++      args[token.slice(2)] = argv[i + 1];
++      i++;
++    } else {
++      args._.push(token);
++    }
++  }
++  return args;
++}
++
++const isMain =
++  process.argv[1] &&
++  import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
++
++if (isMain) {
++  const args = parseArgs(process.argv.slice(2));
++  const command = args._[0];
++  const adminSecret =
++    args['admin-secret'] ?? process.env.DEMO_ISSUER_ADMIN_SECRET ?? '';
++
++  if (command === 'init') {
++    const issuer = args.issuer;
++    const outDir = resolve(args['out-dir'] ?? './.demo-oidc');
++    const keyFile = resolve(args['key-file'] ?? './.demo-oidc/private.pem');
++    if (!issuer) {
++      console.error(
++        'Uso: demo-jwt-issuer.mjs init --issuer <url> --admin-secret <secreto>=16chars [--out-dir ...] [--key-file ...]',
++      );
++      process.exit(1);
++    }
++    const demo = createDemoIssuer({ adminSecret });
++    const wellKnownDir = join(outDir, '.well-known');
++    mkdirSync(wellKnownDir, { recursive: true });
++    writeFileSync(keyFile, demo.exportPrivateKeyPem(), { mode: 0o600 });
++    chmodSync(keyFile, 0o600);
++    const normalizedIssuer = issuer.replace(/\/+$/, '');
++    const jwksUri = `${normalizedIssuer}/.well-known/jwks.json`;
++    writeFileSync(
++      join(wellKnownDir, 'openid-configuration'),
++      JSON.stringify(
++        {
++          issuer: normalizedIssuer,
++          jwks_uri: jwksUri,
++          id_token_signing_alg_values_supported: ['RS256'],
++        },
++        null,
++        2,
++      ) + '\n',
++    );
++    writeFileSync(
++      join(wellKnownDir, 'jwks.json'),
++      JSON.stringify({ keys: [demo.publicJwk] }, null, 2) + '\n',
++    );
++    console.log(
++      JSON.stringify(
++        {
++          status: 'initialized',
++          issuer: normalizedIssuer,
++          discoveryUrl: `${normalizedIssuer}/.well-known/openid-configuration`,
++          jwksUrl: jwksUri,
++        },
++        null,
++        2,
++      ),
++    );
++    process.exit(0);
++  }
++
++  if (command === 'mint') {
++    const issuer = args.issuer ?? '';
++    const keyFile = resolve(args['key-file'] ?? './.demo-oidc/private.pem');
++    const profile = args.profile ?? 'm2m-marketplace';
++    const demo = createDemoIssuer({
++      adminSecret,
++      privateKeyPem: readFileSync(keyFile, 'utf8'),
++    });
++    const jwt = demo.mintProfile({ issuer, profile, secret: adminSecret });
++    process.stdout.write(`${jwt}\n`);
++    process.exit(0);
++  }
++
++  console.error('Comandos soportados: init | mint');
++  process.exit(1);
++}
+diff --git a/ops/azure/deploy-g6-service.sh b/ops/azure/deploy-g6-service.sh
+new file mode 100644
+index 0000000..5234893
+--- /dev/null
++++ b/ops/azure/deploy-g6-service.sh
+@@ -0,0 +1,291 @@
++#!/usr/bin/env bash
++set -Eeuo pipefail
++
++readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
++# shellcheck source=../oracle/service-registry.sh
++source "${SCRIPT_DIR}/service-registry.sh"
++
++if [[ -f /etc/g6-productos-ofertas/azure.conf ]]; then
++  # shellcheck disable=SC1091
++  source /etc/g6-productos-ofertas/azure.conf
++fi
++
++readonly G6_DEPLOY_EXECUTOR_VERSION=5
++readonly G6_SUPPORTED_SERVICE_REGISTRY_VERSION=2
++readonly G6_HTTP_GENERIC_OVERLAY="/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml"
++readonly G6_HTTP_INVENTORY_OVERLAY="/opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml"
++readonly G6_REGISTRY_PREFIX='ghcr.io/taller-sw-web/g6-productos-ofertas-backend'
++
++fail() {
++  printf 'G6 deployment: %s\n' "$1" >&2
++  exit 1
++}
++G6_SERVICE_REGISTRY_VERSION="$(g6_service_registry_version)" || fail 'versión del registro ausente o inválida'
++readonly G6_SERVICE_REGISTRY_VERSION
++
++if [[ "${1:-}" == --version && $# == 1 && -z "${SSH_ORIGINAL_COMMAND:-}" ]]; then
++  [[ "$G6_SERVICE_REGISTRY_VERSION" == "$G6_SUPPORTED_SERVICE_REGISTRY_VERSION" ]] ||
++    fail 'versiones incompatibles de ejecutor y registro'
++  printf 'ejecutor=%s registro=%s\n' "$G6_DEPLOY_EXECUTOR_VERSION" "$G6_SERVICE_REGISTRY_VERSION"
++  exit 0
++fi
++[[ $# == 0 ]] || fail 'argumentos locales no autorizados'
++[[ "$G6_SERVICE_REGISTRY_VERSION" == "$G6_SUPPORTED_SERVICE_REGISTRY_VERSION" ]] ||
++  fail 'versiones incompatibles de ejecutor y registro'
++
++readonly GENERIC_DEPLOY_RE='^service-deploy (api-gateway|catalog-svc|taxonomy-svc) ([0-9a-f]{40}) (sha256:[0-9a-f]{64})$'
++SERVICE_NAME=''
++IMAGE_SHA=''
++
++if [[ "${SSH_ORIGINAL_COMMAND:-}" =~ $GENERIC_DEPLOY_RE ]]; then
++  SERVICE_NAME="${BASH_REMATCH[1]}"
++  IMAGE_SHA="${BASH_REMATCH[2]}"
++  IMAGE_DIGEST="${BASH_REMATCH[3]}"
++else
++  fail 'comando remoto no autorizado'
++fi
++
++g6_service_config "$SERVICE_NAME" || fail 'servicio no autorizado'
++[[ "$G6_SERVICE_ENABLED" == true ]] || fail 'servicio registrado pero no habilitado para despliegue'
++[[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'SHA inválido'
++
++readonly REGISTRY_IMAGE="${G6_REGISTRY_PREFIX}/${G6_SERVICE_IMAGE_NAME}"
++readonly NEW_IMAGE="${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
++command -v jq >/dev/null 2>&1 || fail 'jq requerido para verificar readiness'
++command -v timeout >/dev/null 2>&1 || fail 'timeout requerido para acotar verificaciones'
++
++GHCR_USERNAME=''
++GHCR_TOKEN=''
++# Empty stdin supports public official images or credentials already absent.
++# Credentials, when supplied, only live in the private temporary Docker config.
++IFS= read -r GHCR_USERNAME || true
++IFS= read -r GHCR_TOKEN || true
++[[ -z "$GHCR_USERNAME" && -z "$GHCR_TOKEN" || -n "$GHCR_USERNAME" && -n "$GHCR_TOKEN" ]] || fail 'credenciales GHCR incompletas'
++
++g6_http_member_expected_alias() {
++  local requested_container="$1" service enabled project compose_unit
++  local member_kind
++  while IFS='|' read -r service enabled _ _ _ _ _ _ project compose_unit _ _ _; do
++    [[ -n "$service" && "$service" != \#* ]] || continue
++    if [[ "$enabled" == true && "g6-${service}" == "$requested_container" ]]; then
++      member_kind=other
++      [[ "$compose_unit" == service && "$service" != inventory-svc ]] && member_kind=generic
++      printf '%s|%s|%s|%s\n' "$service" "$member_kind" "$project" "$compose_unit"
++      return 0
++    fi
++  done < "$G6_SERVICE_REGISTRY"
++  return 1
++}
++
++g6_validate_http_network() {
++  local target_alias="$1" target_container="$2" contract members member aliases alias previous member_metadata expected_alias member_kind expected_project expected_compose_unit identity actual_project actual_compose_unit alias_found
++  local driver scope internal attachable ingress config_only ipam_driver ipam_configs options_count
++  local -A seen_aliases=()
++  local -A generic_members=()
++
++  contract="$(docker network inspect --format \
++    '{{.Driver}}|{{.Scope}}|{{.Internal}}|{{.Attachable}}|{{.Ingress}}|{{.ConfigOnly}}|{{.IPAM.Driver}}|{{len .IPAM.Config}}|{{len .Options}}' \
++    g6-http 2>/dev/null)" || fail 'no se pudo inspeccionar g6-http; no se descargó ni cambió el servicio'
++  IFS='|' read -r driver scope internal attachable ingress config_only ipam_driver ipam_configs options_count <<< "$contract"
++  [[ "$driver" == bridge && "$scope" == local && "$internal" == false &&
++    "$attachable" == false && "$ingress" == false && "$config_only" == false &&
++    "$ipam_driver" == default && "$ipam_configs" =~ ^[1-9][0-9]*$ && "$options_count" == 0 ]] ||
++    fail 'g6-http no coincide con bridge local, no-internal y configuración IPAM predeterminada; no se descargó ni cambió el servicio'
++
++  members="$(docker network inspect --format \
++    '{{range $id, $container := .Containers}}{{$container.Name}}{{"\n"}}{{end}}' \
++    g6-http 2>/dev/null)" || fail 'no se pudieron inspeccionar los miembros de g6-http; no se descargó ni cambió el servicio'
++  while IFS= read -r member; do
++    [[ -n "$member" ]] || continue
++    member_metadata="$(g6_http_member_expected_alias "$member")" ||
++      fail "g6-http contiene un miembro no habilitado: ${member}; no se descargó ni cambió el servicio"
++    IFS='|' read -r expected_alias member_kind expected_project expected_compose_unit <<< "$member_metadata"
++    generic_members["$member"]="$member_kind"
++    identity="$(docker inspect --format \
++      '{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project"}}' \
++      "$member" 2>/dev/null)" || fail "no se pudo identificar el proyecto Compose de ${member}; no se descargó ni cambió el servicio"
++    IFS='|' read -r actual_compose_unit actual_project <<< "$identity"
++    [[ "$actual_compose_unit" == "$expected_compose_unit" && "$actual_project" == "$expected_project" ]] ||
++      fail "g6-http contiene un miembro ajeno al proyecto Compose registrado: ${member}; no se descargó ni cambió el servicio"
++    alias_found=false
++    aliases="$(docker inspect --format \
++      '{{range $name, $network := .NetworkSettings.Networks}}{{if eq $name "g6-http"}}{{range $network.Aliases}}{{.}}{{"\n"}}{{end}}{{end}}{{end}}' \
++      "$member" 2>/dev/null)" || fail "no se pudieron validar aliases del miembro ${member}; no se descargó ni cambió el servicio"
++    while IFS= read -r alias; do
++      [[ -n "$alias" ]] || continue
++      [[ "$alias" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,127}$ ]] ||
++        fail "g6-http contiene un alias no reconocido en ${member}; no se descargó ni cambió el servicio"
++      [[ "$alias" != "$expected_alias" ]] || alias_found=true
++      previous="${seen_aliases[$alias]:-}"
++      if [[ -n "$previous" && "$previous" != "$member" ]]; then
++        [[ "$alias" == service && "$member_kind" == generic && "${generic_members[$previous]:-other}" == generic ]] ||
++          fail "g6-http tiene el alias ${alias} duplicado entre ${previous} y ${member}; no se descargó ni cambió el servicio"
++      fi
++      seen_aliases["$alias"]="$member"
++      if [[ "$alias" == "$target_alias" && "$member" != "$target_container" ]]; then
++        fail "el alias ${target_alias} de g6-http ya pertenece a ${member}; no se descargó ni cambió el servicio"
++      fi
++    done <<< "$aliases"
++    [[ "$alias_found" == true ]] ||
++      fail "g6-http no contiene el alias canónico ${expected_alias} para ${member}; no se descargó ni cambió el servicio"
++  done <<< "$members"
++}
++
++if [[ "$SERVICE_NAME" == inventory-svc ]]; then
++  readonly RUNTIME_ENV_FILE="$G6_SERVICE_ENV_FILE"
++  [[ -f "$G6_SERVICE_COMPOSE_FILE" ]] || fail "no existe ${G6_SERVICE_COMPOSE_FILE}"
++  [[ -r "$RUNTIME_ENV_FILE" ]] || fail "no se puede leer ${RUNTIME_ENV_FILE}"
++  grep -Eq "^[[:space:]]*DATABASE_URL[[:space:]]*=[[:space:]]*('[^']+'|\"[^\"]+\"|[^[:space:]#'\"]+)" "$RUNTIME_ENV_FILE" ||
++    fail "DATABASE_URL no está definido en ${RUNTIME_ENV_FILE}"
++  if [[ -e "$G6_HTTP_INVENTORY_OVERLAY" ]]; then
++    [[ -f "$G6_HTTP_INVENTORY_OVERLAY" && -r "$G6_HTTP_INVENTORY_OVERLAY" ]] ||
++      fail 'la configuración opcional g6-http de Inventory no es un archivo legible'
++    g6_validate_http_network "$G6_SERVICE_IMAGE_NAME" "$G6_SERVICE_CONTAINER"
++  fi
++else
++  [[ -f "$G6_SERVICE_COMPOSE_FILE" ]] || fail "no existe ${G6_SERVICE_COMPOSE_FILE}"
++  [[ -f "$G6_SERVICE_ENV_FILE" && -r "$G6_SERVICE_ENV_FILE" ]] ||
++    fail "no se puede leer la configuración privada ${G6_SERVICE_ENV_FILE}"
++  if [[ -e "$G6_HTTP_GENERIC_OVERLAY" ]]; then
++    [[ -f "$G6_HTTP_GENERIC_OVERLAY" && -r "$G6_HTTP_GENERIC_OVERLAY" ]] ||
++      fail 'la configuración opcional g6-http no es un archivo legible'
++    g6_validate_http_network "$G6_SERVICE_IMAGE_NAME" "$G6_SERVICE_CONTAINER"
++  fi
++fi
++
++mkdir -p "$G6_SERVICE_STATE_DIR"
++chmod 700 "$G6_SERVICE_STATE_DIR"
++command -v flock >/dev/null 2>&1 || fail 'flock no está disponible; no se puede garantizar exclusión por servicio'
++exec {SERVICE_LOCK_FD}>"${G6_SERVICE_STATE_DIR}/deploy.lock" ||
++  fail 'no se pudo abrir el bloqueo del servicio'
++flock -w 600 "$SERVICE_LOCK_FD" || fail 'tiempo de espera agotado para el bloqueo del servicio'
++readonly ACTIVE_FILE="${G6_SERVICE_STATE_DIR}/active-image"
++readonly PREVIOUS_FILE="${G6_SERVICE_STATE_DIR}/previous-image"
++readonly CURRENT_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null || true)"
++if [[ -n "$CURRENT_IMAGE" ]]; then
++  readonly CURRENT_PREFIX="${REGISTRY_IMAGE}@sha256:"
++  [[ "$CURRENT_IMAGE" == "$CURRENT_PREFIX"* ]] ||
++    fail 'la imagen actual no pertenece al servicio registrado; se conserva sin cambios'
++  readonly CURRENT_DIGEST="${CURRENT_IMAGE#"$CURRENT_PREFIX"}"
++  [[ "$CURRENT_DIGEST" =~ ^[0-9a-f]{64}$ ]] ||
++    fail 'la imagen anterior debe estar fijada por digest oficial; se conserva sin cambios'
++fi
++
++export DOCKER_CONFIG
++DOCKER_CONFIG="$(mktemp -d)"
++trap 'rm -rf "$DOCKER_CONFIG"' EXIT
++if [[ -n "$GHCR_TOKEN" ]]; then
++  printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
++  unset GHCR_TOKEN
++fi
++
++compose() {
++  local image="$1"
++  shift
++  if [[ "$SERVICE_NAME" == inventory-svc ]]; then
++    local -a compose_files=(--file "$G6_SERVICE_COMPOSE_FILE")
++    [[ ! -f "$G6_HTTP_INVENTORY_OVERLAY" ]] || compose_files+=(--file "$G6_HTTP_INVENTORY_OVERLAY")
++    env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
++      DOCKER_CONFIG="$DOCKER_CONFIG" INVENTORY_IMAGE="$image" \
++      docker compose "${compose_files[@]}" --project-name "$G6_SERVICE_COMPOSE_PROJECT" "$@" "$G6_SERVICE_COMPOSE_UNIT"
++  else
++    local -a compose_files=(--file "$G6_SERVICE_COMPOSE_FILE")
++    [[ ! -f "$G6_HTTP_GENERIC_OVERLAY" ]] || compose_files+=(--file "$G6_HTTP_GENERIC_OVERLAY")
++    env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
++      DOCKER_CONFIG="$DOCKER_CONFIG" G6_SERVICE_IMAGE="$image" \
++      G6_SERVICE_PORT="$G6_SERVICE_PORT" G6_SERVICE_PORT_ENV="$G6_SERVICE_PORT_ENV" \
++      G6_SERVICE_CONTAINER="$G6_SERVICE_CONTAINER" G6_SERVICE_IMAGE_NAME="$G6_SERVICE_IMAGE_NAME" \
++      G6_SERVICE_ENV_FILE="$G6_SERVICE_ENV_FILE" \
++      docker compose "${compose_files[@]}" --project-name "$G6_SERVICE_COMPOSE_PROJECT" "$@" "$G6_SERVICE_COMPOSE_UNIT"
++  fi
++}
++
++container_matches_image_and_is_healthy() {
++  local expected_image="$1"
++  local actual_image health_status
++  actual_image="$(timeout 2 docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
++  [[ "$actual_image" == "$expected_image" ]] || return 1
++  health_status="$(timeout 2 docker inspect --format '{{.State.Health.Status}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
++  [[ "$health_status" == healthy ]]
++}
++
++service_is_healthy() {
++  local expected_image="$1"
++  container_matches_image_and_is_healthy "$expected_image" &&
++    curl --fail --silent --max-time 2 "http://127.0.0.1:${G6_SERVICE_PORT}/health" >/dev/null || return 1
++  if [[ "$SERVICE_NAME" == catalog-svc || "$SERVICE_NAME" == taxonomy-svc ]]; then
++    local response
++    response="$(curl --fail --silent --max-time 2 "http://127.0.0.1:${G6_SERVICE_PORT}/health/ready")" || return 1
++    if [[ "$SERVICE_NAME" == catalog-svc ]]; then
++      jq -e '.service == "catalog-svc" and .status == "ready"' <<< "$response" >/dev/null
++    else
++      jq -e '.service == "taxonomy-svc" and .status == "ready"' <<< "$response" >/dev/null
++    fi
++  fi
++}
++
++if [[ -n "$CURRENT_IMAGE" ]]; then
++  printf '%s\n' "$CURRENT_IMAGE" > "${PREVIOUS_FILE}.tmp"
++  mv "${PREVIOUS_FILE}.tmp" "$PREVIOUS_FILE"
++fi
++
++if ! compose "$NEW_IMAGE" pull; then
++  fail 'pull de la nueva imagen falló; la instancia actual sigue activa'
++fi
++docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$NEW_IMAGE" |
++  grep -Fxq "$NEW_IMAGE" || fail 'el digest descargado no coincide con el aprobado; no se cambió el servicio'
++# A digest alone is not a release approval. The reviewed manifest binds it to
++# a source revision; official application images must carry that OCI label.
++actual_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$NEW_IMAGE")"
++[[ "$actual_revision" == "$IMAGE_SHA" ]] || fail 'la revisión OCI no coincide con el SHA aprobado'
++
++if ! compose "$NEW_IMAGE" up --detach --no-deps; then
++  if [[ -n "$CURRENT_IMAGE" ]] && compose "$CURRENT_IMAGE" up --detach --no-deps; then
++    for attempt in {1..30}; do
++      if service_is_healthy "$CURRENT_IMAGE"; then
++        printf '%s\n' "$CURRENT_IMAGE" > "${ACTIVE_FILE}.tmp"
++        mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
++        fail "arranque de nueva imagen falló; restaurada ${CURRENT_IMAGE}"
++      fi
++      sleep 2
++    done
++  fi
++  if [[ -z "$CURRENT_IMAGE" ]]; then
++    compose "$NEW_IMAGE" rm --stop --force
++  fi
++  fail 'arranque de la nueva imagen falló y el rollback no pudo verificarse'
++fi
++
++healthy=false
++for attempt in {1..30}; do
++  if service_is_healthy "$NEW_IMAGE"; then
++    healthy=true
++    break
++  fi
++  sleep 2
++done
++
++if [[ "$healthy" != true ]]; then
++  printf 'G6 deployment: health check falló para %s; iniciando rollback\n' "$NEW_IMAGE" >&2
++  if [[ -n "$CURRENT_IMAGE" ]]; then
++    if compose "$CURRENT_IMAGE" up --detach --no-deps; then
++      for attempt in {1..30}; do
++        if service_is_healthy "$CURRENT_IMAGE"; then
++          printf '%s\n' "$CURRENT_IMAGE" > "${ACTIVE_FILE}.tmp"
++          mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
++          fail "nueva imagen no saludable; restaurada ${CURRENT_IMAGE}"
++        fi
++        sleep 2
++      done
++    fi
++    fail "health check falló y el rollback a ${CURRENT_IMAGE} no se pudo verificar"
++  fi
++  compose "$NEW_IMAGE" rm --stop --force
++  rm -f "$ACTIVE_FILE"
++  fail 'health check falló; no había una versión anterior que restaurar'
++fi
++
++printf '%s\n' "$NEW_IMAGE" > "${ACTIVE_FILE}.tmp"
++mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
++printf '%s\n' "$IMAGE_SHA" > "${G6_SERVICE_STATE_DIR}/active-sha"
++printf 'G6 deployment: %s activo %s; anterior registrado en %s\n' "$SERVICE_NAME" "$NEW_IMAGE" "$PREVIOUS_FILE"
+diff --git a/ops/azure/deploy-official-three.sh b/ops/azure/deploy-official-three.sh
+new file mode 100644
+index 0000000..6abbd7b
+--- /dev/null
++++ b/ops/azure/deploy-official-three.sh
+@@ -0,0 +1,27 @@
++#!/usr/bin/env bash
++set -Eeuo pipefail
++# Input is a release manifest reviewed by architecture, not a release approval.
++# service|source-SHA|sha256:digest. No tags, URLs, shell syntax or fork images.
++[[ $EUID -eq 0 ]] || { printf 'Ejecutar con sudo/root.\n' >&2; exit 1; }
++[[ $# == 1 && -f "$1" ]] || { printf 'Uso: %s <release.psv revisado>\n' "$0" >&2; exit 1; }
++declare -A shas=() digests=()
++while IFS='|' read -r service sha digest extra || [[ -n "${service:-}" ]]; do
++  [[ -n "$service" && "$service" != \#* ]] || continue
++  [[ "$service" =~ ^(taxonomy-svc|catalog-svc|api-gateway)$ &&
++     "$sha" =~ ^[0-9a-f]{40}$ && "$digest" =~ ^sha256:[0-9a-f]{64}$ &&
++     -z "$extra" && -z "${shas[$service]:-}" ]] || { printf 'Manifiesto inválido.\n' >&2; exit 1; }
++  shas[$service]="$sha"
++  digests[$service]="$digest"
++done < "$1"
++[[ ${#shas[@]} == 3 ]] || { printf 'El manifiesto debe contener exactamente los tres servicios.\n' >&2; exit 1; }
++username='' token=''
++if [[ ! -t 0 ]]; then
++  IFS= read -r username || true
++  IFS= read -r token || true
++fi
++for service in taxonomy-svc catalog-svc api-gateway; do
++  printf '%s\n%s\n' "$username" "$token" |
++    env SSH_ORIGINAL_COMMAND="service-deploy ${service} ${shas[$service]} ${digests[$service]}" \
++      /usr/local/lib/g6-productos-ofertas/deploy-g6-service
++done
++unset token
+diff --git a/ops/azure/docker-compose.caddy.yml b/ops/azure/docker-compose.caddy.yml
+new file mode 100644
+index 0000000..efe22bd
+--- /dev/null
++++ b/ops/azure/docker-compose.caddy.yml
+@@ -0,0 +1,28 @@
++services:
++  caddy:
++    image: caddy:2.11.6-alpine
++    container_name: g6-caddy
++    restart: unless-stopped
++    environment:
++      - G6_PUBLIC_DOMAIN=${G6_PUBLIC_DOMAIN:?G6_PUBLIC_DOMAIN es obligatorio}
++    ports:
++      - '80:80'
++      - '443:443'
++      - '443:443/udp'
++    volumes:
++      - /etc/g6-caddy/Caddyfile:/etc/caddy/Caddyfile:ro
++      - g6_caddy_data:/data
++      - g6_caddy_config:/config
++    networks:
++      g6-edge:
++        aliases:
++          - g6-caddy
++
++volumes:
++  g6_caddy_data:
++  g6_caddy_config:
++
++networks:
++  g6-edge:
++    external: true
++    name: g6-edge
+diff --git a/ops/azure/provision-azure-vm.ps1 b/ops/azure/provision-azure-vm.ps1
+new file mode 100644
+index 0000000..eed8c43
+--- /dev/null
++++ b/ops/azure/provision-azure-vm.ps1
+@@ -0,0 +1,146 @@
++[CmdletBinding()]
++param(
++  [Parameter(Mandatory = $true)][string]$SubscriptionId,
++  [string]$ResourceGroupName = 'rg-g6-productos-azure',
++  [string]$VmName = 'vm-g6-backend',
++  [string]$Location = 'eastus',
++  [string]$VmSize = 'Standard_B1s',
++  [string]$AdminUsername = 'azureuser',
++  [string]$SshPublicKeyPath = "$env:USERPROFILE\.ssh\g6_cueva.pub",
++  [string]$DnsLabel = ('g6-po-' + ([guid]::NewGuid().ToString('N').Substring(0, 8))),
++  [string]$CostReviewPath,
++  [switch]$DryRun
++)
++
++$ErrorActionPreference = 'Stop'
++
++function Resolve-AzCli {
++  $cmd = Get-Command az -ErrorAction SilentlyContinue
++  if ($cmd) { return $cmd.Source }
++  $candidates = @(
++    "C:\Program Files\Microsoft SDKs\Azure\CLI2\wbin\az.cmd",
++    "C:\Program Files (x86)\Microsoft SDKs\Azure\CLI2\wbin\az.cmd",
++    "$env:LOCALAPPDATA\Programs\Azure CLI\wbin\az.cmd"
++  )
++  foreach ($candidate in $candidates) {
++    if (Test-Path $candidate) { return $candidate }
++  }
++  throw "No se encontró Azure CLI ('az'). Puedes instalarlo con: winget install -e --id Microsoft.AzureCLI --source winget"
++}
++
++$az = Resolve-AzCli
++Write-Host "Usando Azure CLI: $az"
++
++if (-not (Test-Path $SshPublicKeyPath)) {
++  throw "No se encontró la clave pública SSH en: $SshPublicKeyPath"
++}
++
++$accountArgs = @('account', 'show', '--output', 'json')
++$accountArgs += @('--subscription', $SubscriptionId)
++$account = (& $az @accountArgs) | ConvertFrom-Json
++if ($LASTEXITCODE -ne 0 -or $account.state -ne 'Enabled') {
++  throw "La suscripción de Azure no está activa o requiere 'az login'."
++}
++
++if ($account.id -ne $SubscriptionId) { throw 'La suscripción devuelta no coincide con la solicitada.' }
++Write-Host "Suscripción destino: $($account.name) ($($account.id))"
++Write-Host "Verificando disponibilidad del tamaño '$VmSize' en '$Location' (cuidando límites de Azure for Students)..."
++
++$skus = (& $az vm list-skus --subscription $SubscriptionId --location $Location --size $VmSize --resource-type virtualMachines --output json) | ConvertFrom-Json
++if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar la disponibilidad del SKU.' }
++$availableSku = $skus | Where-Object { $_.name -eq $VmSize -and ($_.restrictions.Count -eq 0) } | Select-Object -First 1
++if (-not $availableSku) {
++  throw "El tamaño $VmSize no está disponible en $Location. Selecciona y cotiza otro SKU; no se cambia automáticamente."
++}
++$usages = (& $az vm list-usage --subscription $SubscriptionId --location $Location --output json) | ConvertFrom-Json
++if ($LASTEXITCODE -ne 0) { throw 'No se pudieron consultar cuotas.' }
++$vcpus = [int](($availableSku.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value)
++if ($vcpus -lt 1 -or -not $availableSku.family) { throw 'No se pudo determinar la familia/vCPU del SKU.' }
++foreach ($quotaName in @('cores', $availableSku.family)) {
++  $quota = $usages | Where-Object { $_.name.value -ieq $quotaName } | Select-Object -First 1
++  if (-not $quota -or ($quota.limit - $quota.currentValue) -lt $vcpus) { throw "Cuota insuficiente/no verificable: $quotaName" }
++  Write-Host "Cuota ${quotaName}: $($quota.currentValue)/$($quota.limit); requiere $vcpus vCPU adicionales."
++}
++
++$fqdn = "${DnsLabel}.${Location}.cloudapp.azure.com"
++
++if ($DryRun) {
++  Write-Host "[DryRun] Se crearía:"
++  Write-Host "  Resource Group : $ResourceGroupName ($Location)"
++  Write-Host "  VM             : $VmName ($VmSize, Ubuntu2404, StandardSSD_LRS 30GB)"
++  Write-Host "  FQDN HTTPS     : https://$fqdn"
++  Write-Host "  Puertos NSG    : 22, 80, 443 (puertos 3000-3008 cerrados al exterior)"
++  Write-Warning 'DryRun verifica SKU/cuotas; no confirma gratuidad, precio, saldo ni aprobación de despliegue.'
++  return
++}
++
++if (-not $CostReviewPath -or -not (Test-Path -LiteralPath $CostReviewPath)) {
++  throw 'Antes de crear recursos se requiere -CostReviewPath con la cotización real y revisión de la oferta estudiantil (ver README).'
++}
++$review = Get-Content -LiteralPath $CostReviewPath -Raw | ConvertFrom-Json
++$reviewDate = if ($review.reviewedAt -is [DateTime]) {
++  [DateTimeOffset]::new($review.reviewedAt)
++} else {
++  [DateTimeOffset]::Parse($review.reviewedAt, [Globalization.CultureInfo]::InvariantCulture)
++}
++if ($review.subscriptionId -ne $SubscriptionId -or $review.location -ne $Location -or
++    $review.vmSize -ne $VmSize -or $review.storageSku -ne 'StandardSSD_LRS' -or
++    $review.osDiskSizeGiB -ne 30 -or $review.offerVerified -isnot [bool] -or -not $review.offerVerified -or
++    -not $review.quoteUrl -or -not $review.reviewedBy -or
++    $review.monthlyUsd -isnot [ValueType] -or $review.budgetUsd -isnot [ValueType] -or
++    $review.monthlyUsd -is [bool] -or $review.budgetUsd -is [bool] -or
++    -not [double]::IsFinite([double]$review.monthlyUsd) -or -not [double]::IsFinite([double]$review.budgetUsd) -or
++    $review.monthlyUsd -lt 0 -or $review.budgetUsd -le 0 -or $review.monthlyUsd -gt $review.budgetUsd -or
++    $reviewDate -gt [DateTimeOffset]::UtcNow -or $reviewDate -lt [DateTimeOffset]::UtcNow.AddDays(-1)) {
++  throw 'La revisión de costo no coincide con el plan, excede presupuesto o tiene más de 24 horas.'
++}
++
++& $az group create --subscription $SubscriptionId --name $ResourceGroupName --location $Location --output none
++if ($LASTEXITCODE -ne 0) { throw "Error al crear el Resource Group $ResourceGroupName" }
++
++$nsgName = "${VmName}-nsg"
++& $az network nsg create --subscription $SubscriptionId --resource-group $ResourceGroupName --name $nsgName --location $Location --output none
++if ($LASTEXITCODE -ne 0) { throw 'Error al crear NSG.' }
++
++foreach ($rule in @(
++  @{ Name = 'Allow-SSH'; Port = 22; Priority = 1000 },
++  @{ Name = 'Allow-HTTP'; Port = 80; Priority = 1010 },
++  @{ Name = 'Allow-HTTPS'; Port = 443; Priority = 1020 }
++)) {
++  & $az network nsg rule create `
++    --subscription $SubscriptionId `
++    --resource-group $ResourceGroupName `
++    --nsg-name $nsgName `
++    --name $rule.Name `
++    --priority $rule.Priority `
++    --access Allow `
++    --protocol Tcp `
++    --direction Inbound `
++    --destination-port-ranges $rule.Port `
++    --output none
++  if ($LASTEXITCODE -ne 0) { throw "Error al crear regla NSG: $($rule.Name)" }
++}
++
++& $az vm create `
++  --subscription $SubscriptionId `
++  --resource-group $ResourceGroupName `
++  --name $VmName `
++  --location $Location `
++  --image Ubuntu2404 `
++  --size $VmSize `
++  --admin-username $AdminUsername `
++  --ssh-key-values $SshPublicKeyPath `
++  --nsg $nsgName `
++  --public-ip-sku Standard `
++  --public-ip-address-dns-name $DnsLabel `
++  --storage-sku StandardSSD_LRS `
++  --os-disk-size-gb 30 `
++  --output json
++
++if ($LASTEXITCODE -ne 0) { throw "Error al aprovisionar la VM $VmName" }
++
++Write-Host "=========================================================="
++Write-Host "VM creada exitosamente en Azure for Students"
++Write-Host "FQDN para Caddy HTTPS : $fqdn"
++Write-Host "SSH                   : ssh -i ~/.ssh/g6_cueva ${AdminUsername}@${fqdn}"
++Write-Host "=========================================================="
+diff --git a/ops/azure/test-rollback-and-phases.sh b/ops/azure/test-rollback-and-phases.sh
+new file mode 100644
+index 0000000..0d3da80
+--- /dev/null
++++ b/ops/azure/test-rollback-and-phases.sh
+@@ -0,0 +1,77 @@
++#!/usr/bin/env bash
++set -Eeuo pipefail
++
++# Verifica en la VM de Azure:
++# 1. Liveness (/health) y Readiness (/health/ready + readiness.js) con PostgreSQL real
++# 2. Aislamiento de red (g6-edge y g6-http, loopback 127.0.0.1)
++# 3. HTTPS público vía Caddy
++# Este script es de solo lectura. El ensayo destructivo de rollback se realiza
++# en infraestructura desechable, nunca implícitamente contra la VM.
++
++[[ $EUID -eq 0 ]] || { printf 'Ejecutar con sudo/root.\n' >&2; exit 1; }
++
++if [[ -f /etc/g6-productos-ofertas/azure.conf ]]; then
++  # shellcheck disable=SC1091
++  source /etc/g6-productos-ofertas/azure.conf
++fi
++
++readonly DOMAIN="${G6_PUBLIC_DOMAIN:-localhost}"
++
++echo "================================================================"
++echo "1. Verificando Liveness y Readiness en Loopback (127.0.0.1)"
++echo "================================================================"
++for port in 3000 3001 3006; do
++  printf 'Liveness 127.0.0.1:%s/health -> ' "$port"
++  curl --fail --silent --show-error "http://127.0.0.1:${port}/health"
++  echo ""
++done
++
++printf 'Readiness taxonomy-svc (127.0.0.1:3006/health/ready) -> '
++curl --fail --silent --show-error http://127.0.0.1:3006/health/ready
++echo ""
++
++printf 'Readiness catalog-svc (127.0.0.1:3001/health/ready) -> '
++curl --fail --silent --show-error http://127.0.0.1:3001/health/ready
++echo ""
++
++printf 'Readiness api-gateway (bundle readiness.js) -> '
++docker exec g6-api-gateway node dist/apps/api-gateway/readiness.js
++
++echo "================================================================"
++echo "2. Verificando Redes Privadas (g6-edge y g6-http)"
++echo "================================================================"
++echo "Miembros de g6-edge (esperado: solo g6-caddy y g6-api-gateway):"
++docker network inspect --format '{{range .Containers}}{{.Name}} {{end}}' g6-edge
++echo ""
++echo "Miembros de g6-http (esperado: g6-api-gateway, g6-catalog-svc, g6-taxonomy-svc):"
++docker network inspect --format '{{range .Containers}}{{.Name}} {{end}}' g6-http
++echo ""
++edge_members="$(docker network inspect --format '{{range .Containers}}{{println .Name}}{{end}}' g6-edge | sed '/^$/d' | sort)"
++http_members="$(docker network inspect --format '{{range .Containers}}{{println .Name}}{{end}}' g6-http | sed '/^$/d' | sort)"
++[[ "$edge_members" == $'g6-api-gateway\ng6-caddy' &&
++   "$http_members" == $'g6-api-gateway\ng6-catalog-svc\ng6-taxonomy-svc' ]] || {
++  printf 'Membresía Docker inesperada; requiere revisión.\n' >&2; exit 1;
++}
++for service in api-gateway catalog-svc taxonomy-svc; do
++  bindings="$(docker port "g6-${service}")"
++  [[ -n "$bindings" ]] && ! grep -Ev '^[0-9]+/tcp -> 127\.0\.0\.1:[0-9]+$' <<< "$bindings" || {
++    printf 'Publicación de puerto inesperada en %s.\n' "$service" >&2; exit 1;
++  }
++done
++
++echo "================================================================"
++echo "3. Verificando HTTPS Público a través de Caddy (${DOMAIN})"
++echo "================================================================"
++if [[ "$DOMAIN" != "localhost" ]]; then
++  curl --fail --silent --show-error "https://${DOMAIN}/health"
++  echo ""
++fi
++
++for service in taxonomy-svc catalog-svc api-gateway; do
++  image="$(docker inspect --format '{{.Config.Image}}' "g6-${service}")"
++  [[ "$image" =~ ^ghcr.io/taller-sw-web/g6-productos-ofertas-backend/${service}@sha256:[0-9a-f]{64}$ ]] || {
++    printf 'Imagen no fijada a digest oficial: %s\n' "$service" >&2; exit 1;
++  }
++done
++echo 'PASS: health/readiness y referencias oficiales verificadas.'
++echo 'NO EJECUTADO: rollback remoto ni autenticación funcional. Ejecutar ensayos aislados y adjuntar evidencia independiente.'
+diff --git a/ops/azure/tests/demo-jwt-issuer.test.mjs b/ops/azure/tests/demo-jwt-issuer.test.mjs
+new file mode 100644
+index 0000000..11b363b
+--- /dev/null
++++ b/ops/azure/tests/demo-jwt-issuer.test.mjs
+@@ -0,0 +1,33 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createDemoIssuer } from '../demo-jwt-issuer.mjs';
++
++test('local development issuer never binds publicly or emits privileged/unauthenticated tokens', async () => {
++  const adminSecret = 'fixture-admin-secret-2026';
++  const clientSecret = 'fixture-client-secret-2026';
++  assert.throws(() => createDemoIssuer({ adminSecret: 'short' }), /DEMO_ISSUER_CONFIG_INVALID/);
++  const demo = createDemoIssuer({ adminSecret, clients: {
++    'modulo-productos': { clientSecret, allowedScopes: ['catalogo:leer'] },
++  } });
++  for (const privateField of ['d', 'p', 'q']) assert.equal(privateField in demo.publicJwk, false);
++  await assert.rejects(demo.listenLocalOnly('0.0.0.0', 0), /PUBLIC_BIND_FORBIDDEN/);
++  assert.throws(() => demo.mintProfile({ issuer: 'http://localhost', profile: 'user-gestor', secret: 'wrong' }), /UNAUTHORIZED_MINT/);
++  const server = await demo.listenLocalOnly('127.0.0.1', 0);
++  try {
++    for (const [overrides, status] of [
++      [{ client_secret: 'wrong' }, 401], [{ roles: 'GESTOR_COMERCIAL' }, 403],
++      [{ tipo: 'acceso' }, 403], [{ scope: 'other:scope' }, 403], [{}, 200],
++    ]) {
++      const response = await fetch(server.tokenUrl, { method: 'POST', body: new URLSearchParams({
++        grant_type: 'client_credentials', client_id: 'modulo-productos', client_secret: clientSecret,
++        scope: 'catalogo:leer', ...overrides,
++      }) });
++      assert.equal(response.status, status);
++      const body = await response.json();
++      if (status === 200) {
++        assert.equal(body.tokenType, 'Bearer');
++        assert.deepEqual(body.scopes, ['catalogo:leer']);
++      }
++    }
++  } finally { await server.close(); }
++});
+diff --git a/ops/azure/tests/deploy.test.mjs b/ops/azure/tests/deploy.test.mjs
+new file mode 100644
+index 0000000..c9278f2
+--- /dev/null
++++ b/ops/azure/tests/deploy.test.mjs
+@@ -0,0 +1,102 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { spawnSync } from 'node:child_process';
++import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
++import { tmpdir } from 'node:os';
++import { join, resolve, relative, isAbsolute } from 'node:path';
++
++const repo = resolve('.');
++const bash = process.env.G6_TEST_BASH ?? (process.platform === 'win32'
++  ? join(process.env.LOCALAPPDATA ?? '', 'Programs/Git/bin/bash.exe') : 'bash');
++const posix = path => path.replaceAll('\\', '/').replace(/^([A-Za-z]):\//, (_, drive) => '/' + drive.toLowerCase() + '/');
++const quote = value => "'" + value.replaceAll("'", "'\\''") + "'";
++const sha = 'a'.repeat(40), digest = 'sha256:' + 'b'.repeat(64), oldDigest = 'sha256:' + 'c'.repeat(64);
++const registry = 'ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc';
++const next = registry + '@' + digest, old = registry + '@' + oldDigest;
++
++// This is a command/state simulation of the actual executor, not a VM deployment
++// or proof of registry connectivity. No Docker/SSH/Azure command is run here.
++function run(scenario = {}, command = `service-deploy catalog-svc ${sha} ${digest}`) {
++  const root = mkdtempSync(join(tmpdir(), 'g6-azure-executor-'));
++  const unix = posix(root);
++  try {
++    const paths = ['bin', 'etc/g6-catalog-svc', 'opt/g6-productos-ofertas/shared', 'var/lib/g6-productos-ofertas/catalog-svc'];
++    for (const path of paths) mkdirSync(join(root, path), { recursive: true });
++    const rewrite = source => source.replaceAll('\r\n', '\n').replaceAll('/etc/', unix + '/etc/').replaceAll('/opt/', unix + '/opt/').replaceAll('/var/lib/', unix + '/var/lib/');
++    for (const name of ['service-registry.sh', 'services.psv'])
++      writeFileSync(join(root, name), rewrite(readFileSync(join(repo, 'ops/oracle', name), 'utf8')));
++    let engine = rewrite(readFileSync(join(repo, 'ops/azure/deploy-g6-service.sh'), 'utf8'));
++    engine = engine.replaceAll('PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin', 'PATH=' + unix + '/bin:/usr/bin:/bin');
++    // Three immediate polls test both branches; production keeps its 30 bounded polls.
++    engine = engine.replaceAll('{1..30}', '{1..3}');
++    writeFileSync(join(root, 'deploy.sh'), engine);
++    writeFileSync(join(root, 'etc/g6-catalog-svc/runtime.env'), 'FIXTURE_ONLY=true\n');
++    writeFileSync(join(root, 'opt/g6-productos-ofertas/shared/docker-compose.service.yml'), 'services: {}\n');
++    writeFileSync(join(root, 'opt/g6-productos-ofertas/shared/docker-compose.service.http.yml'), 'services: {}\n');
++    const state = { ...scenario, active: scenario.firstDeploy ? null : old, events: [], sha, next };
++    writeFileSync(join(root, 'state.json'), JSON.stringify(state));
++    const stateFile = join(root, 'var/lib/g6-productos-ofertas/catalog-svc/active-image');
++    if (state.active) writeFileSync(stateFile, state.active + '\n');
++    writeFileSync(join(root, 'mock.mjs'), `
++      import { readFileSync, writeFileSync } from 'node:fs';
++      const file=${JSON.stringify(join(root, 'state.json'))};
++      const s=JSON.parse(readFileSync(file,'utf8')), args=process.argv.slice(3), tool=process.argv[2];
++      const save=()=>writeFileSync(file,JSON.stringify(s));
++      if(tool==='jq') { const body=JSON.parse(readFileSync(0,'utf8')); process.exit(body.status==='ready' && body.service==='catalog-svc'?0:1); }
++      if(tool==='curl') { if(args.at(-1).endsWith('/health/ready')) { if(s.notReady && s.active===s.next) process.exit(22); console.log(JSON.stringify({status:'ready',service:'catalog-svc'})); } process.exit(0); }
++      if(args[0]==='network') { console.log(args.includes('--format') && args[3].includes('.Driver')?'bridge|local|false|false|false|false|default|1|0':''); process.exit(0); }
++      if(args[0]==='image') { const format=args[3]; console.log(format.includes('RepoDigests')?(s.digestMismatch?'wrong-digest':s.next):(s.revisionMismatch?'wrong-revision':s.sha)); process.exit(0); }
++      if(args[0]==='inspect') { if(!s.active) process.exit(1); console.log(args[2].includes('Config.Image')?s.active:(s.unhealthy && s.active===s.next?'unhealthy':'healthy')); process.exit(0); }
++      if(args[0]==='compose') {
++        if(args.includes('pull')) { s.events.push('pull'); save(); process.exit(s.pullFailure?1:0); }
++        if(args.includes('up')) { s.active=process.env.G6_SERVICE_IMAGE; s.events.push('up:'+s.active); save(); process.exit(s.startFailure && s.active===s.next?1:0); }
++        if(args.includes('rm')) { s.active=null; s.events.push('remove'); save(); process.exit(0); }
++      }
++      process.exit(99);
++    `);
++    for (const tool of ['docker', 'curl', 'jq'])
++      writeFileSync(join(root, 'bin', tool), '#!/usr/bin/env bash\nexec ' + quote(posix(process.execPath)) + ' ' + quote(join(root, 'mock.mjs').replaceAll('\\', '/')) + ' ' + tool + ' "$@"\n', { mode: 0o755 });
++    for (const tool of ['flock', 'sleep']) writeFileSync(join(root, 'bin', tool), '#!/usr/bin/env bash\nexit 0\n', { mode: 0o755 });
++    writeFileSync(join(root, 'bin/timeout'), '#!/usr/bin/env bash\nshift\nexec "$@"\n', { mode: 0o755 });
++    const result = spawnSync(bash, ['-c', 'export PATH=' + quote(unix + '/bin') + ':"$PATH"; exec bash ' + quote(posix(join(root, 'deploy.sh')))], { env: {
++      ...process.env,
++      SSH_ORIGINAL_COMMAND: command, MSYS_NO_PATHCONV: '1',
++    }, input: '', encoding: 'utf8', timeout: 20000, windowsHide: true });
++    if (result.error) throw result.error;
++    return { code: result.status, log: result.stdout + result.stderr,
++      state: JSON.parse(readFileSync(join(root, 'state.json'), 'utf8')),
++      active: existsSync(stateFile) ? readFileSync(stateFile, 'utf8').trim() : null };
++  } finally {
++    const inside = relative(tmpdir(), root);
++    assert(inside && !inside.startsWith('..') && !isAbsolute(inside));
++    rmSync(root, { recursive: true, force: true });
++  }
++}
++
++test('deploys the exact approved digest and revision', () => {
++  const result = run(); assert.equal(result.code, 0, result.log);
++  assert.equal(result.active, next); assert.equal(result.state.active, next);
++});
++for (const scenario of ['digestMismatch', 'revisionMismatch', 'pullFailure'])
++  test('keeps the old container on ' + scenario, () => {
++    const result = run({ [scenario]: true }); assert.notEqual(result.code, 0);
++    assert.equal(result.state.active, old); assert(!result.state.events.some(x => x.startsWith('up:')));
++  });
++for (const scenario of ['unhealthy', 'notReady', 'startFailure'])
++  test('actually attempts and restores the old digest on ' + scenario, () => {
++    const result = run({ [scenario]: true }); assert.notEqual(result.code, 0, result.log);
++    assert.deepEqual(result.state.events.filter(x => x.startsWith('up:')), ['up:' + next, 'up:' + old]);
++    assert.equal(result.state.active, old); assert.equal(result.active, old);
++    assert.match(result.log, /restaurada/);
++  });
++test('removes a failed first deployment without claiming a previous version', () => {
++  const result = run({ firstDeploy: true, notReady: true }); assert.notEqual(result.code, 0, result.log);
++  assert.equal(result.state.active, null); assert.equal(result.active, null);
++  assert.deepEqual(result.state.events, ['pull', 'up:' + next, 'remove']);
++});
++test('rejects tag-only, unsupported service, missing digest and shell injection before any Docker change', () => {
++  for (const command of [`service-deploy catalog-svc ${sha}`, `service-deploy inventory-svc ${sha} ${digest}`,
++    `service-deploy catalog-svc ${sha} latest`, `service-deploy catalog-svc ${sha} ${digest};echo bad`]) {
++    const result = run({}, command); assert.notEqual(result.code, 0); assert.deepEqual(result.state.events, []);
++  }
++});
+diff --git a/ops/azure/tests/provision.test.ps1 b/ops/azure/tests/provision.test.ps1
+new file mode 100644
+index 0000000..428b56a
+--- /dev/null
++++ b/ops/azure/tests/provision.test.ps1
+@@ -0,0 +1,85 @@
++$ErrorActionPreference = 'Stop'
++# Offline execution of the actual script with only the CLI resolver substituted.
++# Mock-AzureCli never calls az or creates cloud resources.
++$source = Get-Content -LiteralPath (Join-Path $PSScriptRoot '../provision-azure-vm.ps1') -Raw
++$source = $source.Replace('$az = Resolve-AzCli', '$az = ''Mock-AzureCli''')
++$runner = [scriptblock]::Create($source)
++$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('g6-azure-preflight-' + [guid]::NewGuid().ToString('N'))
++New-Item -ItemType Directory -Path $testRoot | Out-Null
++$key = Join-Path $testRoot 'fixture.pub'
++$reviewPath = Join-Path $testRoot 'review.json'
++Set-Content -LiteralPath $key -Value 'ssh-ed25519 fixture-only'
++$script:calls = @()
++$script:restrictedSku = $false
++$script:quotaLimit = 10
++$script:failNsg = $false
++
++function Mock-AzureCli {
++  $script:calls += ,@($args)
++  $global:LASTEXITCODE = 0
++  if ($args[0] -eq 'account') { return '{"id":"student-fixture","name":"Azure for Students","state":"Enabled"}' }
++  if ($args[0] -eq 'vm' -and $args[1] -eq 'list-skus') {
++    $restrictions = if ($script:restrictedSku) { @(@{ reasonCode = 'NotAvailableForSubscription' }) } else { @() }
++    return ConvertTo-Json -Depth 5 -InputObject @(@{ name = 'Standard_B1s'; family = 'standardBSFamily'; restrictions = $restrictions; capabilities = @(@{ name = 'vCPUs'; value = '1' }) })
++  }
++  if ($args[0] -eq 'vm' -and $args[1] -eq 'list-usage') {
++    return ConvertTo-Json -Depth 4 -InputObject @(
++      @{ name = @{ value = 'cores' }; limit = $script:quotaLimit; currentValue = 0 },
++      @{ name = @{ value = 'standardBSFamily' }; limit = $script:quotaLimit; currentValue = 0 })
++  }
++  if ($script:failNsg -and $args[0] -eq 'network' -and $args[2] -eq 'create') { $global:LASTEXITCODE = 1 }
++}
++function Assert-That([bool]$condition, [string]$message) {
++  if (-not $condition) { throw "FAIL: $message" }
++}
++function Assert-Throws([scriptblock]$action, [string]$message) {
++  $threw = $false
++  try { & $action } catch { $threw = $true }
++  Assert-That $threw $message
++}
++function Has-Creation { return @($script:calls | Where-Object { $_ -contains 'create' }).Count -gt 0 }
++$common = @{ SubscriptionId = 'student-fixture'; SshPublicKeyPath = $key }
++try {
++  & $runner @common -DryRun
++  Assert-That (-not (Has-Creation)) 'DryRun must never create resources'
++  Assert-That ($script:calls.Count -eq 3) 'DryRun must verify account, SKU and quotas'
++  $script:calls = @()
++  Assert-Throws { & $runner @common } 'cost review must precede creation'
++  Assert-That (-not (Has-Creation)) 'missing cost review must not create resources'
++  $script:calls = @(); $script:restrictedSku = $true
++  Assert-Throws { & $runner @common -DryRun } 'unavailable SKU must fail without a fallback'
++  Assert-That (-not (Has-Creation)) 'unavailable SKU must not create resources'
++  $script:restrictedSku = $false; $script:quotaLimit = 0; $script:calls = @()
++  Assert-Throws { & $runner @common -DryRun } 'insufficient quota must fail'
++  $script:quotaLimit = 10
++  $review = @{ subscriptionId = 'student-fixture'; location = 'eastus'; vmSize = 'Standard_B1s';
++    storageSku = 'StandardSSD_LRS'; osDiskSizeGiB = 30; reviewedAt = [DateTimeOffset]::UtcNow.ToString('o');
++    offerVerified = $true; quoteUrl = 'https://azure.microsoft.com/fixture-only'; reviewedBy = 'fixture'; monthlyUsd = 10; budgetUsd = 15 }
++  $review | ConvertTo-Json | Set-Content -LiteralPath $reviewPath
++  $script:calls = @()
++  & $runner @common -CostReviewPath $reviewPath
++  Assert-That (Has-Creation) 'valid reviewed plan should reach the mocked creation calls'
++  foreach ($call in $script:calls) {
++    $index = [Array]::IndexOf($call, '--subscription')
++    Assert-That ($index -ge 0 -and $call[$index + 1] -eq 'student-fixture') 'every CLI call must target the requested subscription'
++  }
++  foreach ($field in @('monthlyUsd', 'subscriptionId', 'reviewedAt')) {
++    $changed = $review.Clone()
++    $changed[$field] = switch ($field) { 'monthlyUsd' { 100 }; 'subscriptionId' { 'another-subscription' }; 'reviewedAt' { [DateTimeOffset]::UtcNow.AddDays(-2).ToString('o') } }
++    $changed | ConvertTo-Json | Set-Content -LiteralPath $reviewPath
++    $script:calls = @()
++    Assert-Throws { & $runner @common -CostReviewPath $reviewPath } "invalid review field $field must fail"
++    Assert-That (-not (Has-Creation)) 'invalid cost review must not create resources'
++  }
++  $review | ConvertTo-Json | Set-Content -LiteralPath $reviewPath
++  $script:calls = @(); $script:failNsg = $true
++  Assert-Throws { & $runner @common -CostReviewPath $reviewPath } 'NSG failure must stop before VM creation'
++  Assert-That (@($script:calls | Where-Object { $_[0] -eq 'vm' -and $_[1] -eq 'create' }).Count -eq 0) 'VM must not follow NSG failure'
++  Write-Output 'PASS: 9 offline provisioning scenarios; no Azure resources contacted.'
++  $global:LASTEXITCODE = 0
++} finally {
++  $resolvedTestRoot = [IO.Path]::GetFullPath($testRoot)
++  $resolvedTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
++  if (-not $resolvedTestRoot.StartsWith($resolvedTempRoot, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe test cleanup path' }
++  Remove-Item -LiteralPath $resolvedTestRoot -Recurse -Force
++}

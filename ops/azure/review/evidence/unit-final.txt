@@ -1,0 +1,298 @@
+The plugin "vite-tsconfig-paths" is detected. Vite now supports tsconfig paths resolution natively via the resolve.tsconfigPaths option. You can remove the plugin and set resolve.tsconfigPaths: true in your Vite config instead.
+
+ RUN  v4.1.11 <workspace>
+
+·························································································································································stdout | apps/promotions-svc/src/infrastructure/http/recommendations.performance.spec.ts > Recommendation HTTP latency with multiple variants > resolves six products with four variants each within the existing 2500 ms deadline
+{"scenario":"6x4, 100ms per HTTP call","elapsed":1128.1625,"calls":31,"peak":4}
+
+·····················································································································································································[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [NestFactory] Starting Nest application...
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [InstanceLoader] TaxonomySvcModule dependencies initialized
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] TaxonomySvcController {/}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/health, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] TaxonomyController {/api/v1}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] TaxonomyWriteController {/api/v1}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas/:marcaId, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas/:marcaId/reactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId/desactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas/:marcaId/desactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId/reactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] TaxonomyMastersController {/api/v1}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/taxonomia/operaciones/:operationId, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/desactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/reactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/valores, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/valores, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/valores/:valorId, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/valores/:valorId/reactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/desactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/reactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/caracteristicas/:caracteristicaId/valores/:valorId/desactivar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/tipos-producto/:tipoProductoId/caracteristicas/:caracteristicaId/desasociar, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] TaxonomyAdminQueryController {/api/v1}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/arbol, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/administracion, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas/administracion, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/marcas/:marcaId, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] ReadinessController {/health}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/health/readiness, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/health/ready, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RoutesResolver] CategorySeoController {/api/v1}:
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/seo/categorias/slug/resolver, POST} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/seo/:slug, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/seo/resoluciones/:slugAnterior, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId/seo, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId/seo, PATCH} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [RouterExplorer] Mapped {/api/v1/categorias/:categoriaId/seo/historial, GET} route
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG [NestApplication] Nest application successfully started
+[Nest] 7180  - 05/11/2026, 2:12:19 p. m.     LOG Object(2) {
+  service: 'taxonomy-svc',
+  code: 'APPLICATION_STARTED'
+}
+·······················································{"timestamp":"2026-11-05T19:12:22.321Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":4},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.328Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":4},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.329Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.330Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":16},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.335Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.338Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":2},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.339Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.339Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":5},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.341Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.343Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.343Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.343Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":3},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.344Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.346Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.346Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.346Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":3},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.347Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.349Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.349Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.349Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":2},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.351Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.353Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.353Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.353Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":3},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.356Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.357Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.357Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.358Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":3},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.359Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.360Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.361Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.361Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":2},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.362Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.363Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.364Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.365Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.366Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.366Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.367Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.368Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.368Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.369Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.370Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.370Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.370Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.371Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.371Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.371Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.371Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.372Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.372Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.372Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.373Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.373Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.374Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.374Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.374Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.374Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.375Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.375Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.375Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.376Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.376Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.376Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.376Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.377Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.377Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.377Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.378Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.378Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.378Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.378Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.379Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.379Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.379Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.380Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.380Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.380Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.380Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.381Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.381Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.381Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.382Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.383Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.383Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.384Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.384Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.384Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.385Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.385Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.385Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.386Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.386Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.386Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.387Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.387Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.387Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.387Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.388Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.388Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.388Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.388Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.389Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.389Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.389Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.390Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.390Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.398Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.398Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.398Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.400Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":false,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.401Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.403Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.403Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":false,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.403Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":false,"durationMs":3},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.404Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.404Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:29.404Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_LIST_TOTAL","success":false,"durationMs":7000},"context":[]}
+{"timestamp":"2026-11-05T19:12:29.404Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_PRICING","success":false,"durationMs":7000},"context":[]}
+···········{"timestamp":"2026-11-05T19:12:22.415Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.416Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.417Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:22.419Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":2},"context":[]}
+[Nest] 34276  - 05/11/2026, 2:12:26 p. m.   ERROR [InventoryWorkersService] Object(2) {
+  event: 'inventory.worker.expiration_failed',
+  error: 'DB interrumpida'
+}
+···················································································································································································{"timestamp":"2026-11-05T19:12:29.314Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":1},"context":[]}
+{"timestamp":"2026-11-05T19:12:29.317Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":2},"context":[]}
+{"timestamp":"2026-11-05T19:12:29.318Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_CANDIDATES_SQL","success":true,"durationMs":0},"context":[]}
+{"timestamp":"2026-11-05T19:12:29.319Z","level":"info","service":"catalog-svc","environment":"runtime","message":{"code":"CATALOG_LIST_STAGE","stage":"DEMO_ENRICHMENT_SQL","success":true,"durationMs":0},"context":[]}
+[Nest] 19292  - 05/11/2026, 2:12:34 p. m.   ERROR [Database] Object(5) {
+  event: 'taxonomy.database.query_failed',
+  service: 'taxonomy-svc',
+  component: 'postgres',
+  state: 'unavailable',
+  reason: 'POSTGRES_QUERY_FAILURE'
+}
+[Nest] 19292  - 05/11/2026, 2:12:34 p. m.   ERROR [Database] Object(5) {
+  event: 'taxonomy.database.query_failed',
+  service: 'taxonomy-svc',
+  component: 'postgres',
+  state: 'unavailable',
+  reason: 'POSTGRES_QUERY_FAILURE'
+}
+········································································································································································································[Nest] 33140  - 05/11/2026, 2:12:35 p. m.    WARN [DatabaseService] PostgreSQL no está configurado; readiness permanecerá no listo.
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(3) {
+  event: 'inventory.database.initialization_failed',
+  reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+  errorCode: 'CONFIGURATION_OR_TLS_ERROR'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(3) {
+  event: 'inventory.database.initialization_failed',
+  reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+  errorCode: 'CONFIGURATION_OR_TLS_ERROR'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(3) {
+  event: 'inventory.database.initialization_failed',
+  reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+  errorCode: 'CONFIGURATION_OR_TLS_ERROR'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(3) {
+  event: 'inventory.database.initialization_failed',
+  reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+  errorCode: 'CONFIGURATION_OR_TLS_ERROR'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(3) {
+  event: 'inventory.database.initialization_failed',
+  reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+  errorCode: 'CONFIGURATION_OR_TLS_ERROR'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.     LOG [DatabaseService] Conexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.     LOG [DatabaseService] Conexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Object(2) {
+  event: 'inventory.database.pool_error',
+  error: 'idle connection closed'
+}
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.     LOG [DatabaseService] Conexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.     LOG [DatabaseService] Conexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).
+[Nest] 33140  - 05/11/2026, 2:12:35 p. m.   ERROR [DatabaseService] Error durante ROLLBACK de transacción PG
+fallo simulado de rollback
+···················································································[Nest] 12492  - 05/11/2026, 2:12:39 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:39 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:40 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:41 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:43 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:47 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:55 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:13:11 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:13:41 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:14:11 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 12492  - 05/11/2026, 2:12:39 p. m.    WARN [BulkExportService] No se pudo recuperar la cola de exportaciones; se reintentará.
+[Nest] 17472  - 05/11/2026, 2:12:41 p. m.   ERROR [InventoryConsumerService] Object(4) {
+  event: 'inventory.consumer.paused_without_ack',
+  correlation_id: undefined,
+  reason: 'DEPENDENCY_OR_PROCESSING_FAILED',
+  error: 'ECONNRESET'
+}
+[Nest] 17472  - 05/11/2026, 2:12:41 p. m.   ERROR [InventoryConsumerService] Object(4) {
+  event: 'inventory.consumer.paused_without_ack',
+  correlation_id: undefined,
+  reason: 'BLOCKED_CONTRACT',
+  error: 'BLOCKED_CONTRACT'
+}
+[Nest] 17472  - 05/11/2026, 2:12:41 p. m.   ERROR [InventoryConsumerService] Object(4) {
+  event: 'inventory.consumer.paused_without_ack',
+  correlation_id: undefined,
+  reason: 'DEPENDENCY_OR_PROCESSING_FAILED',
+  error: 'DB no disponible'
+}
+[Nest] 28096  - 05/11/2026, 2:12:51 p. m.   ERROR [OutboxPublisherService] Fallo al publicar evento outbox timeout (inventory.stock.changed): Tiempo de espera agotado. Se conserva PENDING.
+[Nest] 28096  - 05/11/2026, 2:12:48 p. m.   ERROR [OutboxPublisherService] Fallo al publicar evento outbox outbox-test-fail (inventory.reservation.rejected): Connection refused by RabbitMQ broker (ECONNREFUSED). Se conserva PENDING.
+[Nest] 28096  - 05/11/2026, 2:12:48 p. m.   ERROR [OutboxPublisherService] Fallo al publicar evento outbox outbox-unroutable (inventory.unroutable.event): Mensaje devuelto por el broker: sin cola enlazada para exchange y routingKey (basic.return). Se conserva PENDING.
+[Nest] 28096  - 05/11/2026, 2:12:48 p. m.   ERROR [OutboxPublisherService] Fallo al persistir PUBLISHED para evento outbox outbox-fail-after-confirm: Database disk error during markAsPublished. Se conserva PENDING.
+······················································································································································································································································································································································································································································································································································································································[Nest] 20112  - 05/11/2026, 2:12:55 p. m.    WARN [ReservationExpirationService] Error al consultar reservas vencidas para expiración: DB no disponible
+[Nest] 13048  - 05/11/2026, 2:13:14 p. m.   ERROR [DeactivationRecoveryRunner] Object(5) {
+  event: 'taxonomy.deactivation.recovery_failed',
+  service: 'taxonomy-svc',
+  component: 'deactivation_recovery',
+  state: 'failed',
+  reason: 'PERSISTENCE_OR_CONFIGURATION_FAILURE'
+}
+······················································································································································································································································································································································································································································································[Nest] 35920  - 05/11/2026, 2:13:15 p. m.    WARN [BulkReadinessService] La comprobación de PostgreSQL no está disponible.
+[Nest] 35920  - 05/11/2026, 2:13:15 p. m.    WARN [BulkReadinessService] La comprobación de PostgreSQL no está disponible.
+[Nest] 35920  - 05/11/2026, 2:13:15 p. m.    WARN [BulkReadinessService] La comprobación de PostgreSQL no está disponible.
+[Nest] 35920  - 05/11/2026, 2:13:15 p. m.    WARN [BulkReadinessService] La comprobación de PostgreSQL no está disponible.
+··················································································································································································································································································································------------------------------------------------------------------
+
+ Test Files  188 passed | 2 skipped (190)
+      Tests  2236 passed | 66 skipped (2302)
+   Start at  14:11:36
+   Duration  112.88s (transform 8.47s, setup 0ms, import 141.91s, tests 31.85s, environment 25ms)

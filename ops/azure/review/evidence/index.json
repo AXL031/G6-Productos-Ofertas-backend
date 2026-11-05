@@ -1,0 +1,67 @@
+{
+  "codeCommit": "a51eb22f9704ac56eaad21a4b9ebd2c5729abd8e",
+  "baseCommit": "15941b6fa3e6f00e595995abca4b328da65ff73f",
+  "environment": "Windows; Node 24.21.0; PostgreSQL 17 desechable con TLS; fixtures JWT locales, no G7 real",
+  "results": {
+    "unit": {
+      "passed": 2236,
+      "skipped": 66
+    },
+    "e2e": {
+      "passed": 907,
+      "skipped": 86
+    },
+    "azureExecutor": {
+      "passed": 10,
+      "mode": "command simulation and local issuer"
+    },
+    "azurePreflight": {
+      "passed": 9,
+      "mode": "offline CLI simulation"
+    }
+  },
+  "scopeTrees": {
+    "apps/api-gateway": "c2798e140a4dcf7942492eeb16fa40880252414e",
+    "apps/catalog-svc": "1e6d5c80311900b4c7df40fc29ce7e8afac9d715",
+    "apps/taxonomy-svc": "008f07a3ad6650cd448293ed15920bf5bb5091af"
+  },
+  "disclaimer": "Validaciones locales preparadas antes de commit; CI del SHA, artefactos oficiales, aprobación por operación, integración G7 y despliegue son estados independientes.",
+  "files": [
+    {
+      "path": "evidence/unit-final.txt",
+      "sha256": "eab97bb259797e327bb6d12e9cf9b68e9b2af7ff0ce3e3c75501e271b3da663e",
+      "sourceSha256": "ec635c10ab445df1035f03c3989c61e7d599679f8f9b87682e254c720694286c"
+    },
+    {
+      "path": "evidence/services-e2e-final.txt",
+      "sha256": "70ab0d17181dff50a33baa6491799a7be4ff55f5e52f49e8627c130ca6908666",
+      "sourceSha256": "a9626ff100f7dc4972c02b694203d57296e0d29150c28ce90cbac34b3e750657"
+    },
+    {
+      "path": "evidence/azure-preflight-tests.txt",
+      "sha256": "b9c46eba57701af612c49813bbb27536aa5ed69ae11b7a14ba04fcf70500b2a2",
+      "sourceSha256": "79777b66afb23409816c239ca9ab73a5303ab1329b969dfc10ca0bc80ac0bc06"
+    },
+    {
+      "path": "evidence/azure-chile-retail-prices.json",
+      "sha256": "0439e1dfbdde7b18f831f96d77fed2a63608058011cce947ccaf5a0001784101",
+      "sourceSha256": "f83347f8941c2c2a06392b5050b14b262aee877dc1c29ef2f5c2e89bea831e22"
+    },
+    {
+      "path": "diffs/application-phase1.patch",
+      "sha256": "ba8141922bcfcbe38e54107273ff445e151e89a15e1d8bfb22c095c502881357",
+      "sourceSha256": "d2f4d8c2d5b4400ab28ba7edde1882101f6183943c862263c1757d3d5144c9b7",
+      "transformation": "git diff --binary --unified=0 baseCommit codeCommit; apply with --unidiff-zero"
+    },
+    {
+      "path": "diffs/azure-preparation.patch",
+      "sha256": "b230df52890a6d17f1902af2f87feebd1ea302bfb3a7f0b50baa1bb2ae1cff55",
+      "sourceSha256": "b230df52890a6d17f1902af2f87feebd1ea302bfb3a7f0b50baa1bb2ae1cff55",
+      "transformation": "git diff --binary --unified=0 baseCommit codeCommit; apply with --unidiff-zero"
+    },
+    {
+      "path": "evidence/azure-tests.txt",
+      "sha256": "67f67425492419b2bda2512dd915c5694cd3b7a9f879a4bbbd7d0cf50e42ff05"
+    }
+  ]
+}
