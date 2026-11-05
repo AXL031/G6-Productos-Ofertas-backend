@@ -168,6 +168,10 @@ jobs:
       run: npm ci
     - name: Construir la imagen de Inventory
       run: docker build --file Dockerfile.inventory-svc --tag inventory-svc:ci .
+    - name: Simular despliegue Oracle y validar aliases Docker reales (obligatorio)
+      env:
+        G6_REQUIRE_DOCKER_RUNTIME: 'true'
+      run: bash ops/oracle/tests/deploy-g6-service.test.sh
     - name: Validar el registro cerrado de servicios Oracle
       run: "set -euo pipefail\nfor file in ops/oracle/service-registry.sh ops/oracle/deploy-g6-service.sh ops/oracle/deploy-inventory-svc.sh\
         \ ops/oracle/build-service.sh ops/oracle/select-cd-services.sh ops/oracle/validate-cd-source.sh ops/oracle/github-deployment-api.sh\
@@ -358,11 +362,11 @@ jobs:
   oracle:
     name: Verificar infraestructura Oracle
     runs-on: ubuntu-latest
+    needs:
+    - contenedores
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
-    - name: Simular despliegue Oracle, aislamiento y recuperación
-      run: bash ops/oracle/tests/deploy-g6-service.test.sh
     - name: Probar selección y recuperación de GitHub Deployments
       run: bash ops/oracle/tests/select-cd-services.test.sh
     - name: Probar el ciclo de GitHub Deployments con API simulada
