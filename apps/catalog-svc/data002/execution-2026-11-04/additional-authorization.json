@@ -1,0 +1,14 @@
+{
+  "authorization": "Respuesta explícita del usuario en la sesión: Sí, autorizar los 14 INSERT adicionales",
+  "scope": {
+    "product_images": 4,
+    "product_identifying_characteristics": 8,
+    "product_attribute_values": 2
+  },
+  "pitch": {
+    "talla": "5",
+    "color_family": "Blanco"
+  },
+  "status": "AUTHORIZED",
+  "migrations_excluded": true
+}

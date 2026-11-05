@@ -70,6 +70,16 @@ export interface CatalogProductCreationPolicy {
 }
 type Action = 'activate' | 'deactivate' | 'reactivate';
 type Actor = { authorization: string; correlationId: string };
+function transitionVersion(version: bigint): number {
+  if (version < 1n || version > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new ServiceUnavailableException();
+  return Number(version);
+}
+function transitionTimestamp(value: Date): string {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime()))
+    throw new ServiceUnavailableException();
+  return value.toISOString();
+}
 @Injectable()
 export class CatalogMutationService {
   constructor(
@@ -792,10 +802,12 @@ export class CatalogMutationService {
         }
         let parentState = aggregate.estado;
         if (child) {
-          await tx
+          const [updatedChild] = await tx
             .update(variants)
             .set({ estado: action === 'deactivate' ? 'INACTIVA' : 'ACTIVA' })
-            .where(eq(variants.id, child.id));
+            .where(eq(variants.id, child.id))
+            .returning();
+          if (!updatedChild) throw new ServiceUnavailableException();
           if (action === 'deactivate') {
             await this.emit(
               tx,
@@ -803,8 +815,9 @@ export class CatalogMutationService {
                 'catalog.sku.deactivated',
                 {
                   product_id: aggregate.id,
-                  variant_id: child.id,
                   sku: child.sku,
+                  sku_version: transitionVersion(updatedChild.catalog_version),
+                  changed_at: transitionTimestamp(updatedChild.updated_at),
                 },
                 actor.correlationId,
                 randomUUID(),
@@ -816,40 +829,49 @@ export class CatalogMutationService {
                 (c) => c.id !== child.id && c.estado === 'ACTIVA',
               ).length,
             );
-            if (parentState !== aggregate.estado)
-              await this.emit(
-                tx,
-                envelope(
-                  'catalog.product.deactivated',
-                  { product_id: aggregate.id },
-                  actor.correlationId,
-                  randomUUID(),
-                ),
-              );
+            if (parentState !== aggregate.estado) parentState = 'INACTIVO';
           }
         } else {
           parentState = action === 'deactivate' ? 'INACTIVO' : 'ACTIVO';
-          if (action === 'deactivate')
-            await this.emit(
-              tx,
-              envelope(
-                'catalog.product.deactivated',
-                {
-                  product_id: aggregate.id,
-                  ...(input.motivo !== undefined
-                    ? { motivo: input.motivo }
-                    : {}),
-                },
-                actor.correlationId,
-                randomUUID(),
-              ),
-            );
         }
         const [parent] = await tx
           .update(products)
           .set({ estado: parentState })
           .where(eq(products.id, aggregate.id))
           .returning();
+        if (!parent) throw new ServiceUnavailableException();
+        if (action === 'deactivate' && !child)
+          await this.emit(
+            tx,
+            envelope(
+              'catalog.product.deactivated',
+              {
+                product_id: parent.id,
+                product_version: transitionVersion(parent.catalog_version),
+                changed_at: transitionTimestamp(parent.updated_at),
+              },
+              actor.correlationId,
+              randomUUID(),
+            ),
+          );
+        if (
+          action === 'deactivate' &&
+          child &&
+          parentState !== aggregate.estado
+        )
+          await this.emit(
+            tx,
+            envelope(
+              'catalog.product.deactivated',
+              {
+                product_id: parent.id,
+                product_version: transitionVersion(parent.catalog_version),
+                changed_at: transitionTimestamp(parent.updated_at),
+              },
+              actor.correlationId,
+              randomUUID(),
+            ),
+          );
         const final = await this.repository.aggregate(tx, parent!);
         return child
           ? presentVariant(this.child(final, child.id))

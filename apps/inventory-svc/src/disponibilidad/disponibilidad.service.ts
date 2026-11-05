@@ -15,9 +15,11 @@ import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
   STOCK_BALANCE_REPOSITORY,
   COMMERCIAL_ROUTES_REPOSITORY,
+  SKU_LIFECYCLE_REPOSITORY,
 } from '../repositories/interfaces/repository.tokens.js';
 import type { IStockBalanceRepository } from '../repositories/interfaces/stock-balance.repository.interface.js';
 import type { ICommercialRoutesRepository } from '../repositories/interfaces/commercial-routes.repository.interface.js';
+import type { ISkuLifecycleRepository } from '../repositories/interfaces/sku-lifecycle.repository.interface.js';
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +43,8 @@ export class DisponibilidadService {
     private readonly stockBalanceRepository: IStockBalanceRepository,
     @Inject(COMMERCIAL_ROUTES_REPOSITORY)
     private readonly commercialRoutesRepository: ICommercialRoutesRepository,
+    @Inject(SKU_LIFECYCLE_REPOSITORY)
+    private readonly skuLifecycleRepository: ISkuLifecycleRepository,
   ) {}
 
   /**
@@ -181,9 +185,12 @@ export class DisponibilidadService {
       uniqueSkus,
       targetLocationId,
     );
+    const inactiveSkus =
+      await this.skuLifecycleRepository.findInactiveSkus(uniqueSkus);
     const balanceBySku = new Map(balances.map((row) => [row.sku_id, row]));
 
     const items: DisponibilidadComercial[] = uniqueSkus.map((sku) => {
+      if (inactiveSkus.has(sku)) return { sku, status: 'INDETERMINADO' };
       const row = balanceBySku.get(sku);
       if (!row) {
         // Sin saldo no se ha demostrado la existencia/evaluabilidad del SKU (HU-015 CA-46).
@@ -373,10 +380,22 @@ export class DisponibilidadService {
       [...requestedBySku.keys()],
       targetLocationId,
     );
+    const inactiveSkus = await this.skuLifecycleRepository.findInactiveSkus([
+      ...requestedBySku.keys(),
+    ]);
     const balanceBySku = new Map(balances.map((row) => [row.sku_id, row]));
 
     for (const line of dto.lines) {
       const bal = balanceBySku.get(line.sku);
+
+      if (inactiveSkus.has(line.sku)) {
+        items.push({
+          sku: line.sku,
+          requested_quantity: line.quantity,
+          result: 'INDETERMINADO',
+        });
+        continue;
+      }
 
       if (!bal) {
         items.push({

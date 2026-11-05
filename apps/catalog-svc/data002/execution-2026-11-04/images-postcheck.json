@@ -1,0 +1,47 @@
+[
+  {
+    "verification": {
+      "statement_1": [
+        {
+          "ok": true,
+          "sku": "ADI-ENT22-AZU-M"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RF3-GRI-38"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RF3-GRI-39"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-REV7-NEG-41"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-REV7-NEG-42"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-ULP-NEG-42"
+        }
+      ],
+      "statement_2": [
+        {
+          "pitch_ok": true
+        }
+      ],
+      "statement_3": [
+        {
+          "id": "5efa1732-7868-4228-87a6-0a236a05ad40",
+          "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-pitch-talla.jpg",
+          "posicion": 0,
+          "principal": true,
+          "created_at": "2026-11-04T04:43:19.91206+00:00",
+          "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9"
+        }
+      ]
+    }
+  }
+]

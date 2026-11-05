@@ -256,6 +256,33 @@ export class ReservationsService {
             return c !== 0 ? c : a.location_id.localeCompare(b.location_id);
           });
 
+          // La baja autoritativa de Catálogo y la admisión de nuevas reservas
+          // comparten un advisory lock. Una baja no altera stock ni cancela las
+          // reservas que ya fueron aceptadas.
+          for (const item of groupedLines) {
+            await this.operationsRepo.lockIdempotencyKey(
+              client,
+              `sku-active:${item.sku}`,
+            );
+            const lifecycle = await client.query<{ active: boolean }>(
+              `SELECT active FROM inventory.sku_lifecycle
+                WHERE sku_id = $1
+                FOR UPDATE`,
+              [item.sku],
+            );
+            if (lifecycle.rows[0]?.active === false) {
+              return this.registrarRechazo(
+                client,
+                dto,
+                idempotencyKey,
+                fingerprint,
+                correlationId,
+                'SKU_INACTIVO',
+                verifiedClientId,
+              );
+            }
+          }
+
           // Bloquear y consultar saldos actuales
           const balanceMap = new Map<
             string,

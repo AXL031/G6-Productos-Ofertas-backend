@@ -129,6 +129,40 @@ export function assertCatalogPublication(message: CatalogEnvelope): void {
     )
       throw new InvalidCatalogMessage();
   }
+  if (
+    message.name === 'catalog.product.deactivated' ||
+    message.name === 'catalog.sku.deactivated'
+  ) {
+    const productEvent = message.name === 'catalog.product.deactivated';
+    const expected = productEvent
+      ? ['product_id', 'product_version', 'changed_at']
+      : ['sku', 'product_id', 'sku_version', 'changed_at'];
+    const version = productEvent ? data.product_version : data.sku_version;
+    let timestampValid = false;
+    if (typeof data.changed_at === 'string') {
+      try {
+        timestampValid =
+          new Date(data.changed_at).toISOString() === data.changed_at;
+      } catch {
+        timestampValid = false;
+      }
+    }
+    if (
+      message.kind !== 'event' ||
+      Object.keys(data).length !== expected.length ||
+      expected.some((key) => !Object.hasOwn(data, key)) ||
+      typeof data.product_id !== 'string' ||
+      data.product_id.length === 0 ||
+      (productEvent
+        ? !Number.isSafeInteger(version) || (version as number) < 1
+        : typeof data.sku !== 'string' ||
+          data.sku.length === 0 ||
+          !Number.isSafeInteger(version) ||
+          (version as number) < 1) ||
+      !timestampValid
+    )
+      throw new InvalidCatalogMessage();
+  }
   if (message.name === 'catalog.master.deactivation.checked') {
     assertMasterData(data, message.operation_id);
     if (

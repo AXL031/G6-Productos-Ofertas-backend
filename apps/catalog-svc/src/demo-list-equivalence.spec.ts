@@ -33,8 +33,28 @@ describe('Preview list response baseline (#49)', () => {
       statements.push({ text, values });
       if (failure && text !== 'rollback') throw new Error('private DB error');
       if (text.includes('from "catalog"."products"')) {
-        const indices = Array.from({ length: count }, (_, i) => i);
+        let indices = Array.from({ length: count }, (_, i) => i);
         if (text.includes('"nombre" desc')) indices.reverse();
+        const pageSize = Number(values.at(-1));
+        if (text.includes('"nombre" >') || text.includes('"nombre" <')) {
+          const cursorName = values.find(
+            (value) => typeof value === 'string' && /^Item \d+$/.test(value),
+          );
+          const cursorId = values.find(
+            (value) => typeof value === 'string' && ids.includes(value),
+          );
+          const cursorIndex = ids.indexOf(String(cursorId));
+          indices = indices.filter((i) =>
+            text.includes('"nombre" desc')
+              ? `Item ${String(i).padStart(2, '0')}` < String(cursorName) ||
+                (`Item ${String(i).padStart(2, '0')}` === cursorName &&
+                  i > cursorIndex)
+              : `Item ${String(i).padStart(2, '0')}` > String(cursorName) ||
+                (`Item ${String(i).padStart(2, '0')}` === cursorName &&
+                  i > cursorIndex),
+          );
+        }
+        indices = indices.slice(0, pageSize);
         return {
           rows: indices.map((i) => [
             ids[i],
@@ -161,7 +181,7 @@ describe('Preview list response baseline (#49)', () => {
     expect(statements.at(-1)?.text).toBe('commit');
   });
 
-  it('keeps filters parameterized and the candidate limit before enrichment', async () => {
+  it('keeps filters parameterized and uses deterministic keyset pages of at most 100', async () => {
     await repository.listDemoCandidates(
       {
         ...query,
@@ -176,16 +196,16 @@ describe('Preview list response baseline (#49)', () => {
     expect(candidate.text).toContain('"nombre" desc');
     expect(candidate.text).toContain('"id" asc');
     expect(candidate.text).not.toContain("x%_\\'");
-    expect(candidate.values).toEqual([
-      "%x\\%\\_\\\\'%",
-      "%x\\%\\_\\\\'%",
-      'category',
-      'brand',
-      101,
-    ]);
+    expect(candidate.values.at(-1)).toBe(100);
     statements.length = 0;
-    await expect(repository.listDemoCandidates(query, 1)).rejects.toThrow();
-    expect(statements).toHaveLength(3); // BEGIN, candidates, ROLLBACK
+    // Six rows lack usable images and are excluded after each keyset page is enriched.
+    expect(await repository.listDemoCandidates(query, 1)).toHaveLength(30);
+    expect(
+      statements.filter((statement) =>
+        statement.text.includes('from "catalog"."products"'),
+      ),
+    ).toHaveLength(37); // 36 keyset pages plus the terminating empty read.
+    expect(statements.at(-1)?.text).toBe('commit');
   });
 
   it('keeps one correlation across all four measured stages and every Pricing candidate', async () => {
@@ -204,8 +224,12 @@ describe('Preview list response baseline (#49)', () => {
       ]);
       expect(logs.every((log) => log.correlationId === id)).toBe(true);
       expect(pricing.currentPrice).toHaveBeenCalledTimes(30);
-      for (const call of pricing.currentPrice.mock.calls)
-        expect(call).toEqual([expect.any(String), undefined, id]);
+      for (const call of pricing.currentPrice.mock.calls) {
+        expect(call[0]).toEqual(expect.any(String));
+        expect(call[1]).toBeLessThanOrEqual(2500);
+        expect(call[2]).toBe(id);
+        expect(call[3]).toBeInstanceOf(AbortSignal);
+      }
     } finally {
       output.mockRestore();
     }
@@ -228,6 +252,36 @@ describe('Preview list response baseline (#49)', () => {
       new Error('private Pricing error'),
     );
     await expect(service.list(query)).rejects.toMatchObject({ status: 503 });
+  });
+
+  it('aborts all Pricing work and returns 503 at the global preview deadline', async () => {
+    vi.useFakeTimers();
+    count = 36;
+    let observedSignal: AbortSignal | undefined;
+    const bounded = new CommercialService(
+      repository,
+      { category: vi.fn(), brand: vi.fn() } as unknown as TaxonomyClient,
+      { enabled: false },
+      { marketplaceDemoPreview: true } as CatalogConfig,
+      {
+        currentPrice: (_id, _timeout, _correlation, signal) => {
+          observedSignal = signal;
+          return new Promise((_, reject) =>
+            signal?.addEventListener('abort', () => reject(new Error()), {
+              once: true,
+            }),
+          );
+        },
+      },
+    );
+    try {
+      const response = bounded.list(query).catch((error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(7000);
+      await expect(response).resolves.toMatchObject({ status: 503 });
+      expect(observedSignal?.aborted).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('bounds SQL count for 4 and 36 candidates (baseline: 10 and 79)', async () => {

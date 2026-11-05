@@ -578,3 +578,49 @@ export const inbox = inventorySchema.table(
   },
   (t) => [index('ix_inbox_processing').on(t.status, t.created_at)],
 );
+
+// Candidate persistence for Catalog's authoritative SKU lifecycle and durable
+// offline sale reconciliation. These tables are not applied at bootstrap.
+export const skuLifecycle = inventorySchema.table(
+  'sku_lifecycle',
+  {
+    sku_id: text('sku_id').primaryKey(),
+    product_id: uuid('product_id').notNull(),
+    sku_version: integer('sku_version').notNull(),
+    active: boolean('active').notNull(),
+    changed_at: timestamp('changed_at', { withTimezone: true }).notNull(),
+    updated_at: timestamp('updated_at', { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (t) => [
+    check('ck_sku_lifecycle_version_positive', sql`${t.sku_version} > 0`),
+    index('ix_sku_lifecycle_product').on(t.product_id),
+  ],
+);
+
+export const offlineSaleReconciliations = inventorySchema.table(
+  'offline_sale_reconciliations',
+  {
+    client_id: text('client_id').notNull(),
+    offline_sale_id: text('offline_sale_id').notNull(),
+    operation_id: uuid('operation_id').notNull().unique(),
+    order_id: text('order_id').notNull(),
+    request_fingerprint: text('request_fingerprint').notNull(),
+    request_payload: jsonb('request_payload').notNull(),
+    result_payload: jsonb('result_payload').notNull(),
+    status: text('status').notNull(),
+    completed_at: timestamp('completed_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.client_id, t.offline_sale_id] }),
+    check(
+      'ck_offline_sale_fingerprint',
+      sql`${t.request_fingerprint} ~ '^[0-9a-f]{64}$'`,
+    ),
+    check(
+      'ck_offline_sale_status',
+      sql`${t.status} IN ('COMPLETED', 'REQUIRES_REVIEW')`,
+    ),
+  ],
+);

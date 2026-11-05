@@ -161,7 +161,8 @@ export class TaxonomyMastersController {
   }
 
   @Get('caracteristicas/:caracteristicaId')
-  @UseGuards(TaxonomyCommercialGuard)
+  @AllowTaxonomyServiceRead()
+  @RequireTaxonomyCommercialUser()
   async obtenerCaracteristica(
     @Param('caracteristicaId') id: string,
     @Headers('x-correlation-id') correlationId?: string,
@@ -277,6 +278,7 @@ export class TaxonomyMastersController {
   }
 
   @Get('tipos-producto/:tipoProductoId')
+  @AllowTaxonomyServiceRead()
   async obtenerTipoProducto(
     @Param('tipoProductoId') id: string,
     @Headers('x-correlation-id') correlationId?: string,
@@ -308,6 +310,7 @@ export class TaxonomyMastersController {
   }
 
   @Get('caracteristicas/:caracteristicaId/valores')
+  @AllowTaxonomyServiceRead()
   async listarValoresCaracteristica(
     @Param('caracteristicaId') id: string,
     @Query('estado') estado?: string,

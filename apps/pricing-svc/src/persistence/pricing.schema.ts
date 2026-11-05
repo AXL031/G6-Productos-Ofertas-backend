@@ -138,6 +138,8 @@ export const scheduledPrices = pricing.table(
     id: uuid('id').notNull().defaultRandom(),
     priceId: uuid('price_id').notNull(),
     validityId: uuid('validity_id').notNull(),
+    productId: text('product_id'),
+    correlationId: uuid('correlation_id'),
     tipoPrecio: text('tipo_precio').notNull(),
     importe: money('importe').notNull(),
     status: scheduledPriceStatus('status').notNull().default('SCHEDULED'),

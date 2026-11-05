@@ -13,6 +13,23 @@ const valid = {
 };
 
 describe('Pricing configuration', () => {
+  it('mantiene cerrada por defecto la publicación tipada y exige broker para habilitarla', () => {
+    expect(validateEnvironment(valid).priceChangedPublishingEnabled).not.toBe(
+      true,
+    );
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        PRICING_PRICE_CHANGED_PUBLISH_ENABLED: 'true',
+      }),
+    ).toThrow('requiere PRICING_AMQP_URL');
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        PRICING_PRICE_CHANGED_PUBLISH_ENABLED: 'yes',
+      }),
+    ).toThrow(InvalidPricingConfig);
+  });
   it('demo es explícita, desactivada por defecto y sin dependencia de G7', () => {
     expect(validateEnvironment(valid).demoNoAuthEnabled).not.toBe(true);
     expect(

@@ -19,6 +19,8 @@ const MODEL_TABLES: Array<[string, PgTable]> = [
   ['inventory_config', schema.inventoryConfig],
   ['dashboard_projection', schema.dashboardProjection],
   ['inbox', schema.inbox],
+  ['sku_lifecycle', schema.skuLifecycle],
+  ['offline_sale_reconciliations', schema.offlineSaleReconciliations],
 ];
 
 interface ColumnShape {
@@ -38,8 +40,8 @@ function col(table: PgTable, name: string): ColumnShape {
 }
 
 describe('schema Drizzle — reconciliación con datos/inventory-svc/physical-model.md', () => {
-  it('expone las 15 tablas del modelo físico con su nombre SQL', () => {
-    expect(MODEL_TABLES).toHaveLength(15);
+  it('expone las 17 tablas del modelo físico con su nombre SQL', () => {
+    expect(MODEL_TABLES).toHaveLength(17);
     expect(MODEL_TABLES.map(([, table]) => getTableName(table)).sort()).toEqual(
       MODEL_TABLES.map(([name]) => name).sort(),
     );

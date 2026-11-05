@@ -85,6 +85,21 @@ export class IsolatedPostgres {
       ${source}
       COMMIT;
     `);
+    const scheduleContextMigration = await readFile(
+      new URL(
+        '../migrations/0002_schedule_effective_events.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    await this.admin.query('BEGIN');
+    try {
+      await this.admin.query(scheduleContextMigration);
+      await this.admin.query('COMMIT');
+    } catch (error) {
+      await this.admin.query('ROLLBACK');
+      throw error;
+    }
     this.runtimeUrl = `postgresql://pricing_app:${password}@127.0.0.1:${port}/pricing_test`;
   }
 

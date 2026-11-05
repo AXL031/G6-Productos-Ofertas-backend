@@ -2089,7 +2089,7 @@ describeIntegracion(
         await request(nest.getHttpServer())
           .get(`/api/v1/tipos-producto/${tipoCreado}`)
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
-          .expect(403);
+          .expect(200);
         await request(nest.getHttpServer())
           .get(`/api/v1/tipos-producto/${tipoCreado}`)
           .set('Authorization', `Bearer ${token('', true)}`)

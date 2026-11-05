@@ -14,6 +14,7 @@ import { AppModule } from '../../src/app.module.js';
 import { CATALOG_SECURITY_CONFIG } from '../../src/catalog-auth.js';
 import { CATALOG_AMQP_SETTINGS } from '../../src/catalog-amqp.js';
 import { CATALOG_TAXONOMY_CONFIG } from '../../src/taxonomy-config.js';
+import { CATALOG_TAXONOMY_IDENTITY } from '../../src/catalog-master.client.js';
 import { Database, type PostgresSettings } from '../../src/database.js';
 import { CatalogPersistenceError } from '../../src/database-errors.js';
 import {
@@ -47,6 +48,7 @@ export class CatalogGatewayHarness {
         iss: this.origin,
         sub: '00000000-0000-4000-8000-000000000050',
         tipo: 'acceso',
+        aud: 'api-productos',
         roles: ['GESTOR_COMERCIAL'],
         iat: now,
         exp: now + 600,
@@ -87,14 +89,46 @@ export class CatalogGatewayHarness {
           res.statusCode = 503;
           body = {};
         } else if (
-          (restrictedDemo
+          (restrictedDemo &&
+          req.method === 'GET' &&
+          ['/api/v1/categorias', '/api/v1/marcas'].includes(req.url ?? '')
             ? req.headers.authorization !== undefined
-            : !req.headers.authorization?.startsWith('Bearer ')) ||
+            : restrictedDemo
+              ? req.headers.authorization !== 'Bearer taxonomy-service-fixture'
+              : !req.headers.authorization?.startsWith('Bearer ')) ||
           req.headers['x-correlation-id'] !== this.correlation
         ) {
           res.statusCode = 401;
           body = {};
-        } else if (req.url === '/api/v1/categorias/category-fixture')
+        } else if (
+          restrictedDemo &&
+          req.method === 'GET' &&
+          req.url === '/api/v1/categorias'
+        )
+          body = {
+            categories: [
+              {
+                categoria_id: 'category-fixture',
+                name: 'Category fixture',
+                status: 'ACTIVA',
+              },
+            ],
+          };
+        else if (
+          restrictedDemo &&
+          req.method === 'GET' &&
+          req.url === '/api/v1/marcas'
+        )
+          body = {
+            brands: [
+              {
+                marca_id: 'brand-fixture',
+                name: 'Brand fixture',
+                status: 'ACTIVA',
+              },
+            ],
+          };
+        else if (req.url === '/api/v1/categorias/category-fixture')
           body = {
             categoriaId: 'category-fixture',
             nombre: 'Category fixture',
@@ -158,6 +192,12 @@ export class CatalogGatewayHarness {
         })
         .overrideProvider(CATALOG_TAXONOMY_CONFIG)
         .useValue({ origin: this.origin })
+        // HTTP integration fixture only; Catalog's real client-credential and
+        // JWT verification flow is covered by catalog-security.provider.spec.
+        .overrideProvider(CATALOG_TAXONOMY_IDENTITY)
+        .useValue({
+          authorization: async () => 'Bearer taxonomy-service-fixture',
+        })
         .overrideProvider(Database)
         .useValue(
           database
