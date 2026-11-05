@@ -203,6 +203,62 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     expect(JSON.parse(calls[0].body)).toEqual({ order_id: 'opaque-order' });
     expect(response.headers['x-correlation-id']).toBe(correlation);
   });
+
+  it('allows the official productos identity only on commercial availability GET', async () => {
+    const path = '/api/v1/inventario/disponibilidad/comercial';
+    const response = await request(app.getHttpServer())
+      .get(path)
+      .set(
+        'Authorization',
+        `Bearer ${signed.token({
+          sub: 'modulo-productos',
+          scope: 'inventario:disponibilidad:leer',
+          aud: ['api-productos'],
+        })}`,
+      );
+    expect(response.status).toBe(200);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({ method: 'GET', url: path });
+  });
+
+  it.each([
+    ['wrong scope', { scope: 'inventario:reservar' }],
+    ['wrong audience', { aud: ['api-ventas'] }],
+    ['wrong client', { sub: 'modulo-ventas' }],
+  ])(
+    'rejects productos availability GET with %s before upstream',
+    async (_reason, claims) => {
+      const response = await request(app.getHttpServer())
+        .get('/api/v1/inventario/disponibilidad/comercial')
+        .set(
+          'Authorization',
+          `Bearer ${signed.token({
+            sub: 'modulo-productos',
+            scope: 'inventario:disponibilidad:leer',
+            aud: ['api-productos'],
+            ...claims,
+          })}`,
+        );
+      expect(response.status).toBe(403);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it('does not extend productos identity to commercial availability POST', async () => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+      .set(
+        'Authorization',
+        `Bearer ${signed.token({
+          sub: 'modulo-productos',
+          scope: 'inventario:disponibilidad:leer',
+          aud: ['api-productos'],
+        })}`,
+      )
+      .send({});
+    expect(response.status).toBe(403);
+    expect(calls).toHaveLength(0);
+  });
   it('rejects missing auth, wrong clients, missing idempotency and unknown methods before upstream', async () => {
     expect(
       (await request(app.getHttpServer()).get('/api/v1/productos')).status,

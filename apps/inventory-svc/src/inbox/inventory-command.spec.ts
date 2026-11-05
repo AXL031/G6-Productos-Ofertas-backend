@@ -311,6 +311,36 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     ).toBe(false);
   });
 
+  it('mantiene bloqueado el payload publicado por Catalog PR #185 hasta homologar schema_version 1', async () => {
+    // Catalog PR #185 emits product_id, variant_id and sku in this event.
+    // AsyncAPI rc.4 instead requires product_id, sku, sku_version and
+    // changed_at, with no extra properties.
+    const catalogPr185Event = {
+      message_id: randomUUID(),
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: randomUUID(),
+      operation_id: randomUUID(),
+      causation_id: null,
+      producer: 'catalog-svc',
+      kind: 'event',
+      name: 'catalog.sku.deactivated',
+      data: {
+        product_id: randomUUID(),
+        variant_id: randomUUID(),
+        sku: 'SKU-CATALOG-PR185',
+      },
+    };
+    const beforeStock = structuredClone(db.stockBalance);
+
+    await expect(service.process(catalogPr185Event)).rejects.toMatchObject({
+      reason: 'INVALID_MESSAGE',
+    });
+    expect(db.inbox).toHaveLength(0);
+    expect(db.skuLifecycle).toHaveLength(0);
+    expect(db.stockBalance).toEqual(beforeStock);
+  });
+
   it('deduplica message_id y no reactiva ni retrocede la versión por replay antiguo', async () => {
     const changedAt = new Date().toISOString();
     const deactivation = {
