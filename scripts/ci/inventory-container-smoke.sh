@@ -43,13 +43,13 @@ report_postgres() {
     created|restarting) printf '[inventory-smoke] PostgreSQL: contenedor inicializando (%s).\n' "$state" ;;
     *) printf '[inventory-smoke] PostgreSQL: contenedor detenido (estado %s, salida %s).\n' "$state" "$code" ;;
   esac
-  summary="$(docker logs --tail 60 "$PG_CONTAINER" 2>&1 | awk '
+  if ! summary="$(docker logs --tail 60 "$PG_CONTAINER" 2>&1 | awk '
     /starting PostgreSQL/ { print "proceso iniciado" }
     /PostgreSQL init process complete/ { print "inicialización completa" }
     /database system is ready to accept connections/ { print "servidor listo" }
     /database system is shut down/ { print "servidor detenido" }
     /FATAL|PANIC|ERROR|permission denied|could not|invalid/ { print "error de arranque registrado (detalle redactado)" }
-  ' | sort -u | tail -n 8)" || summary=''
+  ' | sort -u | tail -n 8)"; then summary=''; fi
   if [[ -n "$summary" ]]; then
     while IFS= read -r event; do printf '[inventory-smoke] PostgreSQL log: %s.\n' "$event"; done <<< "$summary"
   else
@@ -247,18 +247,21 @@ docker run -d --name "$APP_CONTAINER" --label "$LABEL" --network "$NETWORK" \
 APP_PORT="$(docker port "$APP_CONTAINER" 3005/tcp | awk -F: '{print $NF}')"
 BASE="http://127.0.0.1:${APP_PORT}"
 wait_http() {
-  local url=$1 expected=$2 status=''
-  for attempt in {1..60}; do
-    if status="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
+  local url=$1 expected=$2 limit=${3:-60} status='' start=$SECONDS attempt=0 code
+  while (( SECONDS - start < limit )); do
+    attempt=$((attempt + 1))
+    # Inventory allows five seconds for PostgreSQL connection acquisition; give
+    # readiness probes time to return 503 instead of canceling them at 3 seconds.
+    if status="$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "$url" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
     [[ "$status" == "$expected" ]] && return 0
     case "$code" in 0|6|7|28|52|56) ;; *) printf '[inventory-smoke] curl falló (%s); no se reintenta.\n' "$code" >&2; return 1 ;; esac
     if [[ "$(docker container inspect --format '{{.State.Status}}' "$APP_CONTAINER")" != running ]]; then
       printf '[inventory-smoke] Inventory terminó durante espera HTTP.\n' >&2
       return 1
     fi
-    sleep 1
+    if (( SECONDS - start < limit )); then sleep 1; fi
   done
-  printf 'FALLO: %s respondió HTTP %s; esperado %s.\n' "$url" "$status" "$expected" >&2
+  printf '[inventory-smoke] timeout HTTP de %s segundos: observado=%s esperado=%s.\n' "$limit" "$status" "$expected" >&2
   return 1
 }
 stage 'salud de Inventory y healthcheck Docker'
@@ -307,7 +310,7 @@ BAD_EXIT="$(docker inspect --format '{{.State.ExitCode}}' "$BAD_CONTAINER")"
 [[ "$BAD_EXIT" != 0 ]]
 BAD_PORT="$(docker port "$BAD_CONTAINER" 3005/tcp | awk -F: '{print $NF}')"
 for path in health health/readiness; do
-  if status="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BAD_PORT}/${path}" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
+  if status="$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BAD_PORT}/${path}" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
   if [[ "$status" == 200 ]]; then printf '[inventory-smoke] arranque inválido sirvió HTTP 200 (%s).\n' "$path" >&2; exit 1; fi
   case "$code" in 0|6|7|28|52|56) ;; *) printf '[inventory-smoke] curl negativo falló (%s).\n' "$code" >&2; exit 1 ;; esac
 done
