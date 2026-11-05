@@ -8,12 +8,11 @@ set -Eeuo pipefail
 # - Certificado CA de Supabase en /etc/g6-postgres/supabase-server-root.crt (0444)
 # - Registro y ejecutor en /usr/local/lib/g6-productos-ofertas/
 # - Plantillas Compose en /opt/g6-productos-ofertas/
-# - Caddy con HTTPS y directorio /etc/g6-caddy/demo-oidc para Fase 2
+# - Caddy con HTTPS; no instala ni publica un emisor simulado
 
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 DOMAIN=""
 CA_FILE=""
-REGISTRY_PREFIX="ghcr.io/axl031/g6-productos-ofertas-backend"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -25,12 +24,8 @@ while [[ $# -gt 0 ]]; do
       CA_FILE="${2:-}"
       shift 2
       ;;
-    --registry-prefix)
-      REGISTRY_PREFIX="${2:-}"
-      shift 2
-      ;;
     *)
-      printf 'Uso: %s --domain <fqdn> --ca-file <ruta-ca.crt> [--registry-prefix <prefijo>]\n' "$0" >&2
+      printf 'Uso: %s --domain <fqdn> --ca-file <ruta-ca.crt>\n' "$0" >&2
       exit 1
       ;;
   esac
@@ -41,6 +36,7 @@ done
 [[ -n "$CA_FILE" && -f "$CA_FILE" ]] || { printf 'Falta --ca-file válido (%s).\n' "$CA_FILE" >&2; exit 1; }
 
 grep -q 'BEGIN CERTIFICATE' "$CA_FILE" || { printf 'El archivo CA no contiene un certificado PEM válido.\n' >&2; exit 1; }
+[[ "$DOMAIN" =~ ^[a-z0-9][a-z0-9.-]+[a-z0-9]$ ]] || { printf 'Dominio inválido.\n' >&2; exit 1; }
 
 echo "[1/7] Verificando archivo swap de 2 GiB para Azure for Students..."
 if ! swapon --show | grep -q '/swapfile'; then
@@ -54,6 +50,10 @@ if ! swapon --show | grep -q '/swapfile'; then
 fi
 
 echo "[2/7] Verificando Docker Engine y Compose..."
+if ! command -v jq >/dev/null || ! command -v curl >/dev/null; then
+  apt-get update -y
+  apt-get install -y jq curl
+fi
 if ! command -v docker >/dev/null 2>&1; then
   apt-get update -y
   apt-get install -y ca-certificates curl gnupg lsb-release jq
@@ -83,8 +83,6 @@ install --owner root --group root --mode 0444 "$CA_FILE" /etc/g6-postgres/supaba
 echo "[5/7] Instalando registro v2, ejecutor v4 y plantillas Compose..."
 install --directory --owner root --group root --mode 0755 /etc/g6-productos-ofertas
 cat > /etc/g6-productos-ofertas/azure.conf <<EOF
-G6_REGISTRY_PREFIX=${REGISTRY_PREFIX}
-G6_SKIP_PULL_IF_LOCAL=true
 G6_PUBLIC_DOMAIN=${DOMAIN}
 EOF
 chmod 0644 /etc/g6-productos-ofertas/azure.conf
