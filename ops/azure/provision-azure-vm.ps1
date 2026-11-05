@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-  [string]$SubscriptionId,
+  [Parameter(Mandatory = $true)][string]$SubscriptionId,
   [string]$ResourceGroupName = 'rg-g6-productos-azure',
   [string]$VmName = 'vm-g6-backend',
   [string]$Location = 'eastus',
@@ -8,6 +8,7 @@ param(
   [string]$AdminUsername = 'azureuser',
   [string]$SshPublicKeyPath = "$env:USERPROFILE\.ssh\g6_cueva.pub",
   [string]$DnsLabel = ('g6-po-' + ([guid]::NewGuid().ToString('N').Substring(0, 8))),
+  [string]$CostReviewPath,
   [switch]$DryRun
 )
 
@@ -35,27 +36,30 @@ if (-not (Test-Path $SshPublicKeyPath)) {
 }
 
 $accountArgs = @('account', 'show', '--output', 'json')
-if ($SubscriptionId) { $accountArgs += @('--subscription', $SubscriptionId) }
+$accountArgs += @('--subscription', $SubscriptionId)
 $account = (& $az @accountArgs) | ConvertFrom-Json
 if ($LASTEXITCODE -ne 0 -or $account.state -ne 'Enabled') {
   throw "La suscripción de Azure no está activa o requiere 'az login'."
 }
 
-Write-Host "Suscripción activa: $($account.name) ($($account.id))"
+if ($account.id -ne $SubscriptionId) { throw 'La suscripción devuelta no coincide con la solicitada.' }
+Write-Host "Suscripción destino: $($account.name) ($($account.id))"
 Write-Host "Verificando disponibilidad del tamaño '$VmSize' en '$Location' (cuidando límites de Azure for Students)..."
 
-$skus = (& $az vm list-skus --location $Location --size $VmSize --resource-type virtualMachines --output json) | ConvertFrom-Json
+$skus = (& $az vm list-skus --subscription $SubscriptionId --location $Location --size $VmSize --resource-type virtualMachines --output json) | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'No se pudo consultar la disponibilidad del SKU.' }
 $availableSku = $skus | Where-Object { $_.name -eq $VmSize -and ($_.restrictions.Count -eq 0) } | Select-Object -First 1
 if (-not $availableSku) {
-  Write-Warning "El tamaño $VmSize tiene restricciones en $Location para esta suscripción. Probando alternativas económicas (Standard_B2ats_v2, Standard_B2pts_v2, Standard_B2s)..."
-  foreach ($alt in @('Standard_B2ats_v2', 'Standard_B2s', 'Standard_B1ms')) {
-    $altCheck = (& $az vm list-skus --location $Location --size $alt --resource-type virtualMachines --output json) | ConvertFrom-Json
-    if ($altCheck | Where-Object { $_.name -eq $alt -and ($_.restrictions.Count -eq 0) }) {
-      $VmSize = $alt
-      Write-Host "Tamaño seleccionado disponible en ${Location}: $VmSize"
-      break
-    }
-  }
+  throw "El tamaño $VmSize no está disponible en $Location. Selecciona y cotiza otro SKU; no se cambia automáticamente."
+}
+$usages = (& $az vm list-usage --subscription $SubscriptionId --location $Location --output json) | ConvertFrom-Json
+if ($LASTEXITCODE -ne 0) { throw 'No se pudieron consultar cuotas.' }
+$vcpus = [int](($availableSku.capabilities | Where-Object name -eq 'vCPUs' | Select-Object -First 1).value)
+if ($vcpus -lt 1 -or -not $availableSku.family) { throw 'No se pudo determinar la familia/vCPU del SKU.' }
+foreach ($quotaName in @('cores', $availableSku.family)) {
+  $quota = $usages | Where-Object { $_.name.value -ieq $quotaName } | Select-Object -First 1
+  if (-not $quota -or ($quota.limit - $quota.currentValue) -lt $vcpus) { throw "Cuota insuficiente/no verificable: $quotaName" }
+  Write-Host "Cuota ${quotaName}: $($quota.currentValue)/$($quota.limit); requiere $vcpus vCPU adicionales."
 }
 
 $fqdn = "${DnsLabel}.${Location}.cloudapp.azure.com"
@@ -66,14 +70,37 @@ if ($DryRun) {
   Write-Host "  VM             : $VmName ($VmSize, Ubuntu2404, StandardSSD_LRS 30GB)"
   Write-Host "  FQDN HTTPS     : https://$fqdn"
   Write-Host "  Puertos NSG    : 22, 80, 443 (puertos 3000-3008 cerrados al exterior)"
+  Write-Warning 'DryRun verifica SKU/cuotas; no confirma gratuidad, precio, saldo ni aprobación de despliegue.'
   return
 }
 
-& $az group create --name $ResourceGroupName --location $Location --output none
+if (-not $CostReviewPath -or -not (Test-Path -LiteralPath $CostReviewPath)) {
+  throw 'Antes de crear recursos se requiere -CostReviewPath con la cotización real y revisión de la oferta estudiantil (ver README).'
+}
+$review = Get-Content -LiteralPath $CostReviewPath -Raw | ConvertFrom-Json
+$reviewDate = if ($review.reviewedAt -is [DateTime]) {
+  [DateTimeOffset]::new($review.reviewedAt)
+} else {
+  [DateTimeOffset]::Parse($review.reviewedAt, [Globalization.CultureInfo]::InvariantCulture)
+}
+if ($review.subscriptionId -ne $SubscriptionId -or $review.location -ne $Location -or
+    $review.vmSize -ne $VmSize -or $review.storageSku -ne 'StandardSSD_LRS' -or
+    $review.osDiskSizeGiB -ne 30 -or $review.offerVerified -isnot [bool] -or -not $review.offerVerified -or
+    -not $review.quoteUrl -or -not $review.reviewedBy -or
+    $review.monthlyUsd -isnot [ValueType] -or $review.budgetUsd -isnot [ValueType] -or
+    $review.monthlyUsd -is [bool] -or $review.budgetUsd -is [bool] -or
+    -not [double]::IsFinite([double]$review.monthlyUsd) -or -not [double]::IsFinite([double]$review.budgetUsd) -or
+    $review.monthlyUsd -lt 0 -or $review.budgetUsd -le 0 -or $review.monthlyUsd -gt $review.budgetUsd -or
+    $reviewDate -gt [DateTimeOffset]::UtcNow -or $reviewDate -lt [DateTimeOffset]::UtcNow.AddDays(-1)) {
+  throw 'La revisión de costo no coincide con el plan, excede presupuesto o tiene más de 24 horas.'
+}
+
+& $az group create --subscription $SubscriptionId --name $ResourceGroupName --location $Location --output none
 if ($LASTEXITCODE -ne 0) { throw "Error al crear el Resource Group $ResourceGroupName" }
 
 $nsgName = "${VmName}-nsg"
-& $az network nsg create --resource-group $ResourceGroupName --name $nsgName --location $Location --output none
+& $az network nsg create --subscription $SubscriptionId --resource-group $ResourceGroupName --name $nsgName --location $Location --output none
+if ($LASTEXITCODE -ne 0) { throw 'Error al crear NSG.' }
 
 foreach ($rule in @(
   @{ Name = 'Allow-SSH'; Port = 22; Priority = 1000 },
@@ -81,6 +108,7 @@ foreach ($rule in @(
   @{ Name = 'Allow-HTTPS'; Port = 443; Priority = 1020 }
 )) {
   & $az network nsg rule create `
+    --subscription $SubscriptionId `
     --resource-group $ResourceGroupName `
     --nsg-name $nsgName `
     --name $rule.Name `
@@ -90,9 +118,11 @@ foreach ($rule in @(
     --direction Inbound `
     --destination-port-ranges $rule.Port `
     --output none
+  if ($LASTEXITCODE -ne 0) { throw "Error al crear regla NSG: $($rule.Name)" }
 }
 
 & $az vm create `
+  --subscription $SubscriptionId `
   --resource-group $ResourceGroupName `
   --name $VmName `
   --location $Location `

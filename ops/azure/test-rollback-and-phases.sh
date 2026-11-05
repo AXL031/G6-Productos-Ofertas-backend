@@ -5,7 +5,8 @@ set -Eeuo pipefail
 # 1. Liveness (/health) y Readiness (/health/ready + readiness.js) con PostgreSQL real
 # 2. Aislamiento de red (g6-edge y g6-http, loopback 127.0.0.1)
 # 3. HTTPS público vía Caddy
-# 4. Ensayo real de Rollback automático ante imagen fallida en taxonomy-svc
+# Este script es de solo lectura. El ensayo destructivo de rollback se realiza
+# en infraestructura desechable, nunca implícitamente contra la VM.
 
 [[ $EUID -eq 0 ]] || { printf 'Ejecutar con sudo/root.\n' >&2; exit 1; }
 
@@ -14,7 +15,6 @@ if [[ -f /etc/g6-productos-ofertas/azure.conf ]]; then
   source /etc/g6-productos-ofertas/azure.conf
 fi
 
-readonly REGISTRY_PREFIX="${G6_REGISTRY_PREFIX:-ghcr.io/axl031/g6-productos-ofertas-backend}"
 readonly DOMAIN="${G6_PUBLIC_DOMAIN:-localhost}"
 
 echo "================================================================"
@@ -46,6 +46,18 @@ echo ""
 echo "Miembros de g6-http (esperado: g6-api-gateway, g6-catalog-svc, g6-taxonomy-svc):"
 docker network inspect --format '{{range .Containers}}{{.Name}} {{end}}' g6-http
 echo ""
+edge_members="$(docker network inspect --format '{{range .Containers}}{{println .Name}}{{end}}' g6-edge | sed '/^$/d' | sort)"
+http_members="$(docker network inspect --format '{{range .Containers}}{{println .Name}}{{end}}' g6-http | sed '/^$/d' | sort)"
+[[ "$edge_members" == $'g6-api-gateway\ng6-caddy' &&
+   "$http_members" == $'g6-api-gateway\ng6-catalog-svc\ng6-taxonomy-svc' ]] || {
+  printf 'Membresía Docker inesperada; requiere revisión.\n' >&2; exit 1;
+}
+for service in api-gateway catalog-svc taxonomy-svc; do
+  bindings="$(docker port "g6-${service}")"
+  [[ -n "$bindings" ]] && ! grep -Ev '^[0-9]+/tcp -> 127\.0\.0\.1:[0-9]+$' <<< "$bindings" || {
+    printf 'Publicación de puerto inesperada en %s.\n' "$service" >&2; exit 1;
+  }
+done
 
 echo "================================================================"
 echo "3. Verificando HTTPS Público a través de Caddy (${DOMAIN})"
@@ -55,44 +67,11 @@ if [[ "$DOMAIN" != "localhost" ]]; then
   echo ""
 fi
 
-echo "================================================================"
-echo "4. Ensayo de Rollback Automático (taxonomy-svc)"
-echo "================================================================"
-ACTIVE_BEFORE="$(cat /var/lib/g6-productos-ofertas/taxonomy-svc/active-image)"
-echo "Imagen activa antes del ensayo: ${ACTIVE_BEFORE}"
-
-readonly BROKEN_SHA="000000000000000000000000000000000000dead"
-readonly BROKEN_IMAGE="${REGISTRY_PREFIX}/taxonomy-svc:${BROKEN_SHA}"
-
-docker build -t "$BROKEN_IMAGE" - <<'EOF'
-FROM node:24.15.0-alpine
-CMD ["node", "-e", "process.exit(1)"]
-EOF
-
-set +e
-env SSH_ORIGINAL_COMMAND="service-deploy taxonomy-svc ${BROKEN_SHA}" \
-  /usr/local/lib/g6-productos-ofertas/deploy-g6-service </dev/null
-DEPLOY_RC=$?
-set -e
-
-docker rmi "$BROKEN_IMAGE" >/dev/null 2>&1 || true
-
-if [[ "$DEPLOY_RC" -eq 0 ]]; then
-  echo "FALLO: el despliegue de la imagen rota debía fallar y hacer rollback." >&2
-  exit 1
-fi
-
-ACTIVE_AFTER="$(cat /var/lib/g6-productos-ofertas/taxonomy-svc/active-image)"
-CONTAINER_IMAGE="$(docker inspect --format '{{.Config.Image}}' g6-taxonomy-svc)"
-HEALTH_AFTER="$(docker inspect --format '{{.State.Health.Status}}' g6-taxonomy-svc)"
-
-echo "Imagen activa tras rollback:     ${ACTIVE_AFTER}"
-echo "Imagen en contenedor:            ${CONTAINER_IMAGE}"
-echo "Estado Docker health:            ${HEALTH_AFTER}"
-
-[[ "$ACTIVE_AFTER" == "$ACTIVE_BEFORE" && "$CONTAINER_IMAGE" == "$ACTIVE_BEFORE" && "$HEALTH_AFTER" == "healthy" ]] || {
-  echo "FALLO: el estado posterior al rollback no coincide con la imagen original saludable." >&2
-  exit 1
-}
-
-echo "PASS: Rollback automático verificado exitosamente."
+for service in taxonomy-svc catalog-svc api-gateway; do
+  image="$(docker inspect --format '{{.Config.Image}}' "g6-${service}")"
+  [[ "$image" =~ ^ghcr.io/taller-sw-web/g6-productos-ofertas-backend/${service}@sha256:[0-9a-f]{64}$ ]] || {
+    printf 'Imagen no fijada a digest oficial: %s\n' "$service" >&2; exit 1;
+  }
+done
+echo 'PASS: health/readiness y referencias oficiales verificadas.'
+echo 'NO EJECUTADO: rollback remoto ni autenticación funcional. Ejecutar ensayos aislados y adjuntar evidencia independiente.'

@@ -10,12 +10,11 @@ if [[ -f /etc/g6-productos-ofertas/azure.conf ]]; then
   source /etc/g6-productos-ofertas/azure.conf
 fi
 
-readonly G6_DEPLOY_EXECUTOR_VERSION=4
+readonly G6_DEPLOY_EXECUTOR_VERSION=5
 readonly G6_SUPPORTED_SERVICE_REGISTRY_VERSION=2
 readonly G6_HTTP_GENERIC_OVERLAY="/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml"
 readonly G6_HTTP_INVENTORY_OVERLAY="/opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml"
-readonly G6_REGISTRY_PREFIX="${G6_REGISTRY_PREFIX:-ghcr.io/axl031/g6-productos-ofertas-backend}"
-readonly G6_SKIP_PULL_IF_LOCAL="${G6_SKIP_PULL_IF_LOCAL:-true}"
+readonly G6_REGISTRY_PREFIX='ghcr.io/taller-sw-web/g6-productos-ofertas-backend'
 
 fail() {
   printf 'G6 deployment: %s\n' "$1" >&2
@@ -34,17 +33,14 @@ fi
 [[ "$G6_SERVICE_REGISTRY_VERSION" == "$G6_SUPPORTED_SERVICE_REGISTRY_VERSION" ]] ||
   fail 'versiones incompatibles de ejecutor y registro'
 
-readonly LEGACY_INVENTORY_RE='^inventory-deploy ([0-9a-f]{40})$'
-readonly GENERIC_DEPLOY_RE='^service-deploy ([a-z][a-z0-9-]{0,31}) ([0-9a-f]{40})$'
+readonly GENERIC_DEPLOY_RE='^service-deploy (api-gateway|catalog-svc|taxonomy-svc) ([0-9a-f]{40}) (sha256:[0-9a-f]{64})$'
 SERVICE_NAME=''
 IMAGE_SHA=''
 
-if [[ "${SSH_ORIGINAL_COMMAND:-}" =~ $LEGACY_INVENTORY_RE ]]; then
-  SERVICE_NAME=inventory-svc
-  IMAGE_SHA="${BASH_REMATCH[1]}"
-elif [[ "${SSH_ORIGINAL_COMMAND:-}" =~ $GENERIC_DEPLOY_RE ]]; then
+if [[ "${SSH_ORIGINAL_COMMAND:-}" =~ $GENERIC_DEPLOY_RE ]]; then
   SERVICE_NAME="${BASH_REMATCH[1]}"
   IMAGE_SHA="${BASH_REMATCH[2]}"
+  IMAGE_DIGEST="${BASH_REMATCH[3]}"
 else
   fail 'comando remoto no autorizado'
 fi
@@ -54,20 +50,17 @@ g6_service_config "$SERVICE_NAME" || fail 'servicio no autorizado'
 [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'SHA inválido'
 
 readonly REGISTRY_IMAGE="${G6_REGISTRY_PREFIX}/${G6_SERVICE_IMAGE_NAME}"
-readonly NEW_IMAGE="${REGISTRY_IMAGE}:${IMAGE_SHA}"
-
-IMAGE_PRESENT_LOCALLY=false
-if [[ "$G6_SKIP_PULL_IF_LOCAL" == true ]] && docker image inspect "$NEW_IMAGE" >/dev/null 2>&1; then
-  IMAGE_PRESENT_LOCALLY=true
-fi
+readonly NEW_IMAGE="${REGISTRY_IMAGE}@${IMAGE_DIGEST}"
+command -v jq >/dev/null 2>&1 || fail 'jq requerido para verificar readiness'
+command -v timeout >/dev/null 2>&1 || fail 'timeout requerido para acotar verificaciones'
 
 GHCR_USERNAME=''
 GHCR_TOKEN=''
-if [[ "$IMAGE_PRESENT_LOCALLY" != true ]]; then
-  IFS= read -r GHCR_USERNAME || fail 'falta usuario GHCR en stdin'
-  IFS= read -r GHCR_TOKEN || fail 'falta token GHCR en stdin'
-  [[ -n "$GHCR_USERNAME" && -n "$GHCR_TOKEN" ]] || fail 'credenciales GHCR vacías'
-fi
+# Empty stdin supports public official images or credentials already absent.
+# Credentials, when supplied, only live in the private temporary Docker config.
+IFS= read -r GHCR_USERNAME || true
+IFS= read -r GHCR_TOKEN || true
+[[ -z "$GHCR_USERNAME" && -z "$GHCR_TOKEN" || -n "$GHCR_USERNAME" && -n "$GHCR_TOKEN" ]] || fail 'credenciales GHCR incompletas'
 
 g6_http_member_expected_alias() {
   local requested_container="$1" service enabled project compose_unit
@@ -170,18 +163,18 @@ readonly ACTIVE_FILE="${G6_SERVICE_STATE_DIR}/active-image"
 readonly PREVIOUS_FILE="${G6_SERVICE_STATE_DIR}/previous-image"
 readonly CURRENT_IMAGE="$(docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null || true)"
 if [[ -n "$CURRENT_IMAGE" ]]; then
-  readonly CURRENT_PREFIX="${REGISTRY_IMAGE}:"
+  readonly CURRENT_PREFIX="${REGISTRY_IMAGE}@sha256:"
   [[ "$CURRENT_IMAGE" == "$CURRENT_PREFIX"* ]] ||
     fail 'la imagen actual no pertenece al servicio registrado; se conserva sin cambios'
-  readonly CURRENT_SHA="${CURRENT_IMAGE#"$CURRENT_PREFIX"}"
-  [[ "$CURRENT_SHA" =~ ^[0-9a-f]{40}$ ]] ||
-    fail 'la etiqueta actual no es un SHA Git de 40 caracteres; se conserva sin cambios'
+  readonly CURRENT_DIGEST="${CURRENT_IMAGE#"$CURRENT_PREFIX"}"
+  [[ "$CURRENT_DIGEST" =~ ^[0-9a-f]{64}$ ]] ||
+    fail 'la imagen anterior debe estar fijada por digest oficial; se conserva sin cambios'
 fi
 
 export DOCKER_CONFIG
 DOCKER_CONFIG="$(mktemp -d)"
 trap 'rm -rf "$DOCKER_CONFIG"' EXIT
-if [[ "$IMAGE_PRESENT_LOCALLY" != true ]]; then
+if [[ -n "$GHCR_TOKEN" ]]; then
   printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
   unset GHCR_TOKEN
 fi
@@ -210,16 +203,25 @@ compose() {
 container_matches_image_and_is_healthy() {
   local expected_image="$1"
   local actual_image health_status
-  actual_image="$(docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
+  actual_image="$(timeout 2 docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
   [[ "$actual_image" == "$expected_image" ]] || return 1
-  health_status="$(docker inspect --format '{{.State.Health.Status}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
+  health_status="$(timeout 2 docker inspect --format '{{.State.Health.Status}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
   [[ "$health_status" == healthy ]]
 }
 
 service_is_healthy() {
   local expected_image="$1"
   container_matches_image_and_is_healthy "$expected_image" &&
-    curl --fail --silent "http://127.0.0.1:${G6_SERVICE_PORT}/health" >/dev/null
+    curl --fail --silent --max-time 2 "http://127.0.0.1:${G6_SERVICE_PORT}/health" >/dev/null || return 1
+  if [[ "$SERVICE_NAME" == catalog-svc || "$SERVICE_NAME" == taxonomy-svc ]]; then
+    local response
+    response="$(curl --fail --silent --max-time 2 "http://127.0.0.1:${G6_SERVICE_PORT}/health/ready")" || return 1
+    if [[ "$SERVICE_NAME" == catalog-svc ]]; then
+      jq -e '.service == "catalog-svc" and .status == "ready"' <<< "$response" >/dev/null
+    else
+      jq -e '.service == "taxonomy-svc" and .status == "ready"' <<< "$response" >/dev/null
+    fi
+  fi
 }
 
 if [[ -n "$CURRENT_IMAGE" ]]; then
@@ -227,11 +229,15 @@ if [[ -n "$CURRENT_IMAGE" ]]; then
   mv "${PREVIOUS_FILE}.tmp" "$PREVIOUS_FILE"
 fi
 
-if [[ "$IMAGE_PRESENT_LOCALLY" != true ]]; then
-  if ! compose "$NEW_IMAGE" pull; then
-    fail 'pull de la nueva imagen falló; la instancia actual sigue activa'
-  fi
+if ! compose "$NEW_IMAGE" pull; then
+  fail 'pull de la nueva imagen falló; la instancia actual sigue activa'
 fi
+docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$NEW_IMAGE" |
+  grep -Fxq "$NEW_IMAGE" || fail 'el digest descargado no coincide con el aprobado; no se cambió el servicio'
+# A digest alone is not a release approval. The reviewed manifest binds it to
+# a source revision; official application images must carry that OCI label.
+actual_revision="$(docker image inspect --format '{{index .Config.Labels "org.opencontainers.image.revision"}}' "$NEW_IMAGE")"
+[[ "$actual_revision" == "$IMAGE_SHA" ]] || fail 'la revisión OCI no coincide con el SHA aprobado'
 
 if ! compose "$NEW_IMAGE" up --detach --no-deps; then
   if [[ -n "$CURRENT_IMAGE" ]] && compose "$CURRENT_IMAGE" up --detach --no-deps; then
@@ -281,4 +287,5 @@ fi
 
 printf '%s\n' "$NEW_IMAGE" > "${ACTIVE_FILE}.tmp"
 mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
+printf '%s\n' "$IMAGE_SHA" > "${G6_SERVICE_STATE_DIR}/active-sha"
 printf 'G6 deployment: %s activo %s; anterior registrado en %s\n' "$SERVICE_NAME" "$NEW_IMAGE" "$PREVIOUS_FILE"
