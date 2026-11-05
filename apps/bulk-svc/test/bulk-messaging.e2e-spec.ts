@@ -239,15 +239,64 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
         /^AWAITING_CATALOG_RESULT:/,
       );
 
-      await alternateBroker.bindCatalogCommand('catalog.bulk.upsert.requested');
-      await pool.query(
-        "UPDATE bulk.outbox SET last_error = 'AWAITING_CATALOG_RESULT:2000-01-01T00:00:00.000Z' WHERE message_id = $1",
+      await repository.deferOutboxUntilCatalogResult(messageId, 8);
+      const parked = await pool.query(
+        'SELECT message_id, operation_id, payload, attempts, last_error FROM bulk.outbox WHERE message_id = $1',
         [messageId],
       );
+      expect(parked.rows[0]).toMatchObject({
+        message_id: messageId,
+        attempts: 8,
+        last_error: 'CATALOG_ROUTE_REVIEW_REQUIRED',
+      });
+      const originalIdentity = {
+        message_id: parked.rows[0].message_id,
+        operation_id: parked.rows[0].operation_id,
+        payload: parked.rows[0].payload,
+      };
+
+      await alternateBroker.bindCatalogCommand('catalog.bulk.upsert.requested');
+      const recoveryInput = {
+        messageId,
+        reason: 'auditoría de integración RabbitMQ desechable',
+        bindingEvidence:
+          'binding po.comandos.x -> po.catalog.q verificado en fixture',
+        consumerEvidence: 'cola Catalog activa y entrega consumida por prueba',
+      };
+      const recoveries = await Promise.all([
+        repository.reactivateParkedCatalogOutbox(recoveryInput),
+        repository.reactivateParkedCatalogOutbox(recoveryInput),
+      ]);
+      expect(recoveries.sort()).toEqual(['NOT_PARKED', 'REACTIVATED']);
+      expect(
+        await repository.reactivateParkedCatalogOutbox(recoveryInput),
+      ).toBe('NOT_PARKED');
+      const audit = await pool.query(
+        `SELECT handler, event_name, result, payload FROM bulk.inbox
+         WHERE message_id = $1 AND handler LIKE 'bulk.catalog.outbox-recovery:%'`,
+        [messageId],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]).toMatchObject({
+        event_name: 'bulk.catalog.outbox.recovery-authorized',
+        result: 'REACTIVATED',
+        payload: {
+          message_id: messageId,
+          actor: expect.any(String),
+          reason: recoveryInput.reason,
+          binding_evidence: recoveryInput.bindingEvidence,
+          consumer_evidence: recoveryInput.consumerEvidence,
+        },
+      });
       await relay.flush();
       expect(await alternateBroker.nextCommand()).toMatchObject({
         message_id: messageId,
       });
+      const republished = await pool.query(
+        'SELECT message_id, operation_id, payload FROM bulk.outbox WHERE message_id = $1',
+        [messageId],
+      );
+      expect(republished.rows[0]).toEqual(originalIdentity);
       const stillAwaitingCatalogResult = await pool.query(
         'SELECT published_at FROM bulk.outbox WHERE message_id = $1',
         [messageId],
@@ -257,6 +306,53 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       await alternateBroker.stop();
     }
   }, 90000);
+
+  it('does not reactivate a parked Catalog command when its correlated result is already durable', async () => {
+    const messageId = id();
+    const correlationId = id();
+    await repository.enqueueOutbox({
+      messageId,
+      eventName: 'catalog.bulk.upsert.requested',
+      kind: 'command',
+      correlationId,
+      operationId: id(),
+      occurredAt: new Date(),
+      payload: { message_id: messageId },
+    });
+    await repository.deferOutboxUntilCatalogResult(messageId, 8);
+    await pool.query(
+      `INSERT INTO bulk.inbox (message_id, handler, event_name, correlation_id, payload, result)
+       VALUES ($1, 'bulk.contract-result-replay', 'catalog.bulk.upsert.completed', $2,
+         jsonb_build_object('causation_id', $1::text), 'PENDING_REPLAY')`,
+      [id(), correlationId],
+    );
+    const resultMessageId = await pool.query(
+      `SELECT message_id FROM bulk.inbox
+       WHERE correlation_id = $1 AND handler = 'bulk.contract-result-replay'`,
+      [correlationId],
+    );
+    await pool.query(
+      `UPDATE bulk.inbox SET payload = jsonb_build_object('causation_id', $1::text) WHERE message_id = $2`,
+      [messageId, resultMessageId.rows[0]?.message_id],
+    );
+
+    await expect(
+      repository.reactivateParkedCatalogOutbox({
+        messageId,
+        reason: 'resultado durable verificado',
+        bindingEvidence: 'no aplica; comando ya recibió resultado',
+        consumerEvidence: 'no aplica; resultado en replay durable',
+      }),
+    ).resolves.toBe('RESULT_ALREADY_RECORDED');
+    expect(await repository.findPendingOutbox(10, true)).not.toContainEqual(
+      expect.objectContaining({ messageId }),
+    );
+    const parked = await pool.query(
+      'SELECT last_error FROM bulk.outbox WHERE message_id = $1',
+      [messageId],
+    );
+    expect(parked.rows[0]?.last_error).toBe('CATALOG_ROUTE_REVIEW_REQUIRED');
+  });
 
   it('replays a later Catalog result despite more than 100 durable external results without an owner', async () => {
     for (let index = 0; index < 105; index += 1) {

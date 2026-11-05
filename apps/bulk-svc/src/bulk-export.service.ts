@@ -293,7 +293,7 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
         leaseLost ||
         !(await this.repository.isExportClaimCurrent(exportId, fence))
       ) {
-        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        await this.removeUnpublishedArtifact(exportId, fence, file.contentRef);
         return;
       }
       // Database failures here remain retryable. Each retry writes to a unique
@@ -307,13 +307,18 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
           snapshot,
         );
       } catch (error) {
-        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        // A lost PostgreSQL response is ambiguous: the transaction may have
+        // committed. Reconcile from a fresh durable read before considering
+        // removal; an unavailable database always means retain for later.
+        await this.removeUnpublishedArtifact(exportId, fence, file.contentRef);
         throw error;
       }
       this.failureFences.delete(exportId);
       this.retryCounts.delete(exportId);
       if (!completed) {
-        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        // A null result is a confirmed fencing rejection, but still reconcile
+        // so this attempt can never delete an artifact referenced durably.
+        await this.removeUnpublishedArtifact(exportId, fence, file.contentRef);
         return;
       }
     } finally {
@@ -323,13 +328,32 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
 
   private async removeUnpublishedArtifact(
     exportId: string,
+    fence: string,
     contentRef: string,
   ): Promise<void> {
+    const bucket = process.env.BULK_STORAGE_BUCKET;
+    if (
+      !bucket ||
+      !contentRef.startsWith(
+        `supabase://${bucket}/exports/${exportId}/${fence}/`,
+      )
+    ) {
+      this.logger.warn(
+        `Se conserva un objeto cuya propiedad no pudo verificarse para la exportación ${exportId}: ${contentRef}`,
+      );
+      return;
+    }
     try {
+      if (await this.repository.isExportArtifactReferenced(contentRef)) {
+        this.logger.log(
+          `Se conserva el objeto referenciado por PostgreSQL para la exportación ${exportId}.`,
+        );
+        return;
+      }
       await this.storage?.remove(contentRef);
     } catch {
-      this.logger.error(
-        `No se pudo retirar el objeto sin manifiesto de la exportación ${exportId}; referencia para recuperación operativa: ${contentRef}`,
+      this.logger.warn(
+        `No se pudo reconciliar el objeto de la exportación ${exportId}; se conserva para conciliación: ${contentRef}`,
       );
     }
   }
@@ -473,7 +497,7 @@ function isExportManifestForJob(
   ];
   return (
     manifest.contentRef.startsWith(prefix) &&
-    /^\d+\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(csv|xlsx)$/i.test(
+    /^(?:\d+|[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})\/[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.(csv|xlsx)$/i.test(
       manifest.contentRef.slice(prefix.length),
     ) &&
     metadata.export_id === exportId &&

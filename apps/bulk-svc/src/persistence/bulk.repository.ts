@@ -1588,6 +1588,31 @@ export class BulkPersistenceRepository {
     }
   }
 
+  /** Reconciles an upload after an uncertain completion response. Any durable manifest reference wins. */
+  async isExportArtifactReferenced(contentRef: string): Promise<boolean> {
+    try {
+      const result = await this.db.execute(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM bulk.file_manifests
+          WHERE content_ref = ${contentRef}
+        ) OR EXISTS (
+          SELECT 1
+          FROM bulk.export_jobs AS job
+          JOIN bulk.file_manifests AS manifest ON manifest.id = job.output_file_id
+          WHERE job.status = 'COMPLETED' AND manifest.content_ref = ${contentRef}
+        ) AS referenced
+      `);
+      const rows = (
+        result as unknown as { rows?: Array<{ referenced: boolean }> }
+      ).rows;
+      if (!rows || typeof rows[0]?.referenced !== 'boolean')
+        throw new Error('Artifact reconciliation returned no durable result');
+      return rows[0].referenced;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
   async transitionExportJob(
     exportId: string,
     from: BulkJobStatus[],
@@ -1816,6 +1841,95 @@ export class BulkPersistenceRepository {
             sql`${outbox.publishedAt} IS NULL`,
           ),
         );
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  /** Reactivates one parked Catalog command after externally verified topology. */
+  async reactivateParkedCatalogOutbox(input: {
+    messageId: string;
+    reason: string;
+    bindingEvidence: string;
+    consumerEvidence: string;
+  }): Promise<'REACTIVATED' | 'RESULT_ALREADY_RECORDED' | 'NOT_PARKED'> {
+    const reason = input.reason.trim();
+    const bindingEvidence = input.bindingEvidence.trim();
+    const consumerEvidence = input.consumerEvidence.trim();
+    if (!reason || !bindingEvidence || !consumerEvidence)
+      inconsistent('Recovery requires reason and binding/consumer evidence');
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [message] = await tx
+          .select()
+          .from(outbox)
+          .where(eq(outbox.messageId, input.messageId))
+          .for('update')
+          .limit(1);
+        if (!message || message.eventName !== 'catalog.bulk.upsert.requested')
+          return 'NOT_PARKED';
+
+        const [priorResult] = await tx
+          .select({ id: inbox.id })
+          .from(inbox)
+          .where(
+            and(
+              sql`${inbox.handler} IN ('bulk.catalog.bulk-upsert.result', 'bulk.contract-result-replay')`,
+              eq(inbox.correlationId, message.correlationId),
+              sql`${inbox.payload}->>'causation_id' = ${message.messageId}`,
+            ),
+          )
+          .limit(1);
+        if (priorResult) return 'RESULT_ALREADY_RECORDED';
+        if (
+          message.publishedAt !== null ||
+          message.lastError !== 'CATALOG_ROUTE_REVIEW_REQUIRED'
+        )
+          return 'NOT_PARKED';
+
+        const [principal] = await tx
+          .execute(sql`SELECT current_user AS actor`)
+          .then(
+            (result) =>
+              (result as unknown as { rows: Array<{ actor: string }> }).rows,
+          );
+        if (!principal?.actor)
+          throw new Error('Unable to record recovery database principal');
+        const auditHandler = `bulk.catalog.outbox-recovery:${message.attempts}`;
+        await tx
+          .insert(inbox)
+          .values({
+            messageId: message.messageId,
+            handler: auditHandler,
+            eventName: 'bulk.catalog.outbox.recovery-authorized',
+            correlationId: message.correlationId,
+            payload: {
+              message_id: message.messageId,
+              actor: principal.actor,
+              reason,
+              binding_evidence: bindingEvidence,
+              consumer_evidence: consumerEvidence,
+              attempts: message.attempts,
+            },
+            result: 'REACTIVATED',
+          })
+          .onConflictDoNothing({ target: [inbox.messageId, inbox.handler] });
+        // Use a fixed due instant so application/PostgreSQL clock skew cannot
+        // leave an authorized recovery waiting behind the normal backoff.
+        const retryAt = '2000-01-01T00:00:00.000Z';
+        const [updated] = await tx
+          .update(outbox)
+          .set({ lastError: `AWAITING_CATALOG_RESULT:${retryAt}` })
+          .where(
+            and(
+              eq(outbox.id, message.id),
+              sql`${outbox.publishedAt} IS NULL`,
+              eq(outbox.lastError, 'CATALOG_ROUTE_REVIEW_REQUIRED'),
+            ),
+          )
+          .returning({ id: outbox.id });
+        return updated ? 'REACTIVATED' : 'NOT_PARKED';
+      });
     } catch (error) {
       throw persistenceError(error);
     }

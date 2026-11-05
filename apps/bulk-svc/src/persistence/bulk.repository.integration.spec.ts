@@ -14,6 +14,7 @@ import { BulkReadinessService } from '../health/bulk-readiness.service.js';
 import { BulkUserBearerGuard } from '../auth/bulk-user-bearer.guard.js';
 import { BulkProblemFilter } from '../http/bulk-problem.filter.js';
 import { BulkExportService } from '../bulk-export.service.js';
+import type { BulkExportSource } from '../export/bulk-export-source.js';
 import { parseBulkEnvironment } from '../config/bulk-environment.js';
 import {
   bulkSchema,
@@ -596,6 +597,127 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       else process.env.BULK_STORAGE_BUCKET = previousBucket;
     }
   });
+
+  it('retains a PostgreSQL-committed export when the completion response is lost and serves its download', async () => {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    const stored = new Map<string, Buffer>();
+    const removed: string[] = [];
+    const storage = {
+      put: async (bytes: Buffer, _contentType: string, path: string) => {
+        const ref = `supabase://bulk-private-test/${path}`;
+        stored.set(ref, Buffer.from(bytes));
+        return ref;
+      },
+      get: async (ref: string) => stored.get(ref) ?? null,
+      remove: async (ref: string) => {
+        removed.push(ref);
+        stored.delete(ref);
+      },
+    };
+    const observedAt = new Date().toISOString();
+    const page = { items: [], nextCursor: null, observedAt, version: 'v1' };
+    const source: BulkExportSource = {
+      catalog: async () => page,
+      pricing: async () => page,
+      inventory: async () => page,
+    };
+    const complete = repository.completeExportJob.bind(repository);
+    const completeSpy = vi
+      .spyOn(repository, 'completeExportJob')
+      .mockImplementationOnce(async (...args) => {
+        const committed = await complete(...args);
+        expect(committed?.status).toBe('COMPLETED');
+        throw new Error('connection lost after PostgreSQL COMMIT');
+      });
+    const service = new BulkExportService(repository, storage as never, source);
+    try {
+      const accepted = await service.create('CSV');
+      const job = await waitForExport(accepted.export_id, 'COMPLETED');
+      expect(completeSpy).toHaveBeenCalledTimes(1);
+      expect(job.outputFileId).toBeTruthy();
+      const download = await service.download(accepted.export_id);
+      expect(
+        await repository.isExportArtifactReferenced(
+          download.manifest.contentRef,
+        ),
+      ).toBe(true);
+      expect(
+        stored.get(download.manifest.contentRef)?.byteLength,
+      ).toBeGreaterThan(0);
+      expect(removed).toEqual([]);
+    } finally {
+      service.onModuleDestroy();
+      completeSpy.mockRestore();
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
+  }, 30_000);
+
+  it('cleans an export artifact only after PostgreSQL confirms the manifest transaction rolled back', async () => {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    const suffix = randomUUID().replaceAll('-', '');
+    const fn = `bulk.fail_manifest_${suffix}`;
+    const trigger = `fail_manifest_trigger_${suffix}`;
+    const stored = new Map<string, Buffer>();
+    const removed: string[] = [];
+    const storage = {
+      put: async (bytes: Buffer, _contentType: string, path: string) => {
+        const ref = `supabase://bulk-private-test/${path}`;
+        stored.set(ref, Buffer.from(bytes));
+        return ref;
+      },
+      remove: async (ref: string) => {
+        removed.push(ref);
+        stored.delete(ref);
+      },
+    };
+    const observedAt = new Date().toISOString();
+    const page = { items: [], nextCursor: null, observedAt, version: 'v1' };
+    const source: BulkExportSource = {
+      catalog: async () => page,
+      pricing: async () => page,
+      inventory: async () => page,
+    };
+    await pool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.role = 'RESULTADO_EXPORTACION' THEN
+          RAISE EXCEPTION USING ERRCODE='23514', MESSAGE='injected manifest rollback';
+        END IF;
+        RETURN NEW;
+      END
+    $$`);
+    await pool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON bulk.file_manifests FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    const service = new BulkExportService(repository, storage as never, source);
+    try {
+      const accepted = await service.create('CSV');
+      await vi.waitFor(() => expect(removed.length).toBe(1), {
+        timeout: 5_000,
+      });
+      const ref = removed[0]!;
+      expect(await repository.isExportArtifactReferenced(ref)).toBe(false);
+      expect(stored.has(ref)).toBe(false);
+      const manifestCount = await pool.query(
+        'SELECT count(*)::int AS count FROM bulk.file_manifests WHERE content_ref = $1',
+        [ref],
+      );
+      expect(manifestCount.rows[0]?.count).toBe(0);
+      expect(
+        (await repository.findExportJobByExportId(accepted.export_id))?.status,
+      ).toBe('PROCESSING');
+    } finally {
+      service.onModuleDestroy();
+      await pool.query(
+        `DROP TRIGGER IF EXISTS ${trigger} ON bulk.file_manifests`,
+      );
+      await pool.query(`DROP FUNCTION IF EXISTS ${fn}()`);
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
+  }, 30_000);
 
   it('persists and conditionally advances an export without exposing partial output', async () => {
     const job = await repository.createExportJob({
