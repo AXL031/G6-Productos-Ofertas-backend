@@ -199,6 +199,15 @@ node --check del peer y git diff --check PASS. La E2E general local conserva
 su FAIL de Docker y no se reclasifica. La comprobación nueva de salud del peer
 consulta PostgreSQL real, sin sustituir el servicio ni su repositorio.
 
+Segundo candidato 0f482cb89cb1ebf7b07d3a8d0e2df9978fb3c34e, CI 42096850031:
+Bulk outage 2/2 PASS y BLOCK-A1 PASS. BLOCK-A2 superó Pricing COMPLETED,
+sobres reales Inventory v2 y cuarentena por identidad ausente; falló posteriormente
+en la solicitud negativa de activación de variante porque la fixture enviaba
+un cuerpo vacío donde el contrato exige ausencia de cuerpo (400 VALIDACION,
+antes de evaluar preparación). Se corrige solo esa llamada para omitir body
+y comprobar 422 por preparación incompleta, igual que la suite HTTP existente.
+No se cambia el endpoint ni se altera su validación para conseguir el resultado.
+
 Archivos del cambio, todos bajo Catalog:
 
 - `apps/catalog-svc/test/postgres.persistence.e2e-spec.ts`

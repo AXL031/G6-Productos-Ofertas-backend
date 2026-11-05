@@ -640,7 +640,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             '/variantes/' +
             child.variant_id +
             '/activar',
-          {},
+          undefined,
           422,
         );
         await call(
