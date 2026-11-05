@@ -13,6 +13,7 @@ import type { ILocationsRepository } from '../repositories/interfaces/locations.
 import type { IOperationsRepository } from '../repositories/interfaces/operations.repository.interface.js';
 import type { IStockBalanceRepository } from '../repositories/interfaces/stock-balance.repository.interface.js';
 import type { IDatabaseClient } from '../database/database.interface.js';
+import { loadInventoryConfig } from '../config/inventory.config.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INITIALIZATION = 'inventory.sku.initialization.requested';
@@ -21,7 +22,10 @@ const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
 export class InventoryMessageError extends Error {
-  constructor(public readonly reason: 'INVALID_MESSAGE' | 'BLOCKED_CONTRACT') {
+  constructor(
+    public readonly reason:
+      'INVALID_MESSAGE' | 'BLOCKED_CONTRACT' | 'FEATURE_DISABLED',
+  ) {
     super(reason);
   }
 }
@@ -64,6 +68,9 @@ export class InventoryCommandService {
     payload: unknown,
   ): Promise<{ duplicate: boolean; status?: InitializationResult['status'] }> {
     if (record(payload) && payload.name === SKU_DEACTIVATED) {
+      if (!loadInventoryConfig().catalogSkuDeactivationEnabled) {
+        throw new InventoryMessageError('FEATURE_DISABLED');
+      }
       return { duplicate: await this.processSkuDeactivated(payload) };
     }
     const message = this.validate(payload);

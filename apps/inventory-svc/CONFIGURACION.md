@@ -4,10 +4,11 @@ Esta tabla describe las variables que lee actualmente `inventory-svc`. No contie
 
 | Variable | Requisito | Ejemplo seguro | Funcionalidad | Si falta | Owner |
 |---|---|---|---|---|---|
-| `DATABASE_URL` | Obligatoria para operar; alternativa a las variables `PG*` | `<URL PostgreSQL de runtime aprovisionada>` | Pool PostgreSQL, Drizzle, reservas, saldos, operaciones, Kardex y Outbox | El servicio inicia sin pool y las operaciones persistentes no están disponibles | Infraestructura G6 / Supabase |
+| `DATABASE_URL` | Obligatoria para operar; alternativa a las variables `PG*`; producción exige usuario y contraseña explícitos | `<URL PostgreSQL de runtime aprovisionada>` | Pool PostgreSQL, Drizzle, reservas, saldos, operaciones, Kardex y Outbox | Producción falla al arrancar si falta o no conecta; los parámetros SSL embebidos se validan y no anulan la configuración segura | Infraestructura G6 / Supabase |
 | `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` | Alternativa completa a `DATABASE_URL`; host, base, usuario y contraseña requeridos; puerto opcional (5432) | `<host privado>`, `5432`, `<base inventory>`, `<usuario runtime>`, `<secreto aprovisionado>` | Configura el pool PostgreSQL | Sin `DATABASE_URL` ni credenciales requeridas no hay conexión DB; si `PGPORT` está presente debe ser entero 1–65535, en caso contrario el arranque falla (fail-closed) | Infraestructura G6 / Supabase |
-| `PGSSLMODE` | Opcional | `require` | Modo SSL al crear conexión por parámetros `PG*`; `disable` desactiva SSL | El cliente aplica configuración SSL predeterminada | Infraestructura G6 |
-| `PGSSLROOTCERT` | Opcional | `<ruta del certificado CA montado>` | Certificado CA para validar PostgreSQL remoto | Se usa validación TLS predeterminada del cliente | Infraestructura G6 |
+| `PGSSLMODE` | Opcional; `disable`, `require` o `verify-full` | `verify-full` | Las conexiones TLS siempre verifican la cadena y el hostname; `disable` solo se permite para loopback no productivo | Modo desconocido, remoto deshabilitado o conflicto con `DATABASE_URL` impide el arranque | Infraestructura G6 |
+| `PGSSLROOTCERT` | Opcional | `<ruta del certificado CA montado>` | CA confiable explícita para TLS PostgreSQL; la validación de hostname permanece activa | Ruta, contenido o combinación inválida impide el arranque | Infraestructura G6 |
+| `INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED` | Opcional; `false` por defecto; solo `true`/`false` | `false` | Gate exclusivo del evento `catalog.sku.deactivated` rc.4 | Si está deshabilitado, el consumidor pausa sin ACK y conserva el mensaje para reintento tras habilitarlo | Taco / owner Catalog / Marco |
 | `RABBITMQ_URL` | Opcional para arranque; requerido para publicar y consumir mensajes | `<URL RabbitMQ/vhost runtime aprovisionada>` | Despacho Outbox y consumidor de `po.inventario.q` | Outbox conserva eventos `PENDING`; el consumidor no conecta sin URL | Infraestructura G6 / owner RabbitMQ OCI |
 | `G7_JWT_PUBLIC_KEY` | Obligatoria para endpoints protegidos; acepta PEM | `<PEM público provisionado por Seguridad>` | Verificación local RS256 | Fallo cerrado: token rechazado por falta de clave confiable | Seguridad G7, provisionada por Infraestructura |
 | `JWT_PUBLIC_KEY` | Compatibilidad opcional; alternativa heredada a `G7_JWT_PUBLIC_KEY` | `<PEM público provisionado por Seguridad>` | Misma verificación RS256 cuando no está `G7_JWT_PUBLIC_KEY` | Sin ninguna clave configurada, endpoints protegidos rechazan tokens | Seguridad G7, provisionada por Infraestructura |
@@ -64,7 +65,7 @@ En la revisión `32153bffb35daa8761272c7b55fe23dc1df70007` del Gateway (PR #130,
 
 El consumidor comprueba la existencia de `po.inventario.q`, usa prefetch 20 y ACK manual posterior al commit de Inbox, saldo, operación y resultado Outbox. No crea ni modifica exchanges, colas, bindings ni permisos. La inicialización SKU de Catálogo es la única entrada con handler implementado en este bloque: crea saldo cero con versión cero y conserva saldos existentes. Otro `message_id` con la misma operación devuelve el resultado durable con `causation_id` del nuevo intento; una entrega idéntica no repite efectos ni resultados.
 
-`inventory.bulk.stock.adjust.requested` queda aislado con `BLOCKED_CONTRACT`: el AsyncAPI `0.6.0-rc.4` todavía lo declara `GenericData`, sin payload ejecutable. El owner productor es Bulk (Marco Castilla); Inventory participa como consumidor y la versión candidata tipada está prevista para el 04/11. `catalog.sku.deactivated` ya está tipado en rc.4 (`{sku, product_id, sku_version, changed_at}`, `schema_version=1`), pero Catalog aún emite `{product_id, variant_id, sku}`; permanece bloqueado hasta que el productor se alinee y se verifique la integración real. Un mensaje inválido, un contrato bloqueado o un fallo técnico pausa el consumidor y cierra el canal sin ACK. RabbitMQ puede volver a poner las entregas pendientes en la cola al cerrar el canal; este proceso no reconecta automáticamente mientras esté pausado. Requiere resolver la causa y llamar internamente a `resume()` o reiniciar. Un mensaje persistente incompatible puede bloquear el avance de esa cola compartida. No hay endpoint público de reanudación, retry/DLX productivo ni publicación a colas alternativas. La pérdida de conexión sin pausa programa reconexión a los 30 s.
+`inventory.bulk.stock.adjust.requested` queda aislado con `BLOCKED_CONTRACT`: el AsyncAPI `0.6.0-rc.4` todavía lo declara `GenericData`, sin payload ejecutable. El owner productor es Bulk (Marco Castilla); Inventory participa como consumidor y la versión candidata tipada está prevista para el 04/11. `catalog.sku.deactivated` ya está tipado en rc.4 (`{sku, product_id, sku_version, changed_at}`, `schema_version=1`), pero Catalog aún emite `{product_id, variant_id, sku}`. El handler rc.4 está implementado y protegido por `INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED=false` por defecto; un mensaje recibido con el gate cerrado pausa el consumidor sin ACK y queda recuperable. Solo podrá activarse tras alinear el payload de Catalog y verificar bilateralmente el binding/consumo con autorización de Marco. La ausencia de compatibilidad del productor o del binding coordinado puede pausar la cola compartida. Un mensaje inválido, un contrato bloqueado o un fallo técnico pausa el consumidor y cierra el canal sin ACK. RabbitMQ puede volver a poner las entregas pendientes en la cola al cerrar el canal; este proceso no reconecta automáticamente mientras esté pausado. Requiere resolver la causa y llamar internamente a `resume()` o reiniciar. No hay endpoint público de reanudación, retry/DLX productivo ni publicación a colas alternativas. La pérdida de conexión sin pausa programa reconexión a los 30 s.
 
 ### Topología física AMQP adoptada (nombres adoptados en AsyncAPI 0.6.0-rc.3, vigentes en 0.6.0-rc.4 — alcance parcial #29)
 
@@ -109,6 +110,21 @@ La suite real se habilita con `INVENTORY_REAL_INTEGRATION=1`. No requiere ni con
 La suite depende expresamente del repositorio hermano `docs`, ubicado junto a `backend` en el checkout de trabajo. Antes de ejecutarla, revisa y sincroniza el repositorio contractual para que sus migraciones de Inventario correspondan a la revisión que se está validando. La suite lee y aplica en la base temporal vacía `docs/datos/inventory-svc/migration.sql` y `docs/datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql`; no mantiene copias de estas migraciones en backend ni las ejecuta contra Supabase compartido. Si el modelo físico o las migraciones oficiales cambian, revisa primero esos archivos del repositorio `docs` y confirma que la suite aplique el conjunto vigente antes de interpretar sus resultados.
 
 La conexión de runtime con Supabase/RabbitMQ OCI, los usuarios y permisos, así como la distribución de claves/issuer G7, siguen pendientes del frente de infraestructura y seguridad. Este documento no indica que esas conexiones existan ni estén operativas.
+
+## PostgreSQL de producción y migración candidata
+
+En producción, Inventory requiere PostgreSQL y tablas de ciclo de vida SKU y conciliación offline. El preflight verifica conexión, columnas e índices/constraints de idempotencia; si faltan, el arranque falla y readiness queda no disponible. No se crean tablas desde runtime. Conexiones remotas siempre negocian TLS con validación de certificado y hostname. No usar `sslmode=disable`, `PGSSLMODE=disable` ni `NODE_TLS_REJECT_UNAUTHORIZED=0` en producción.
+
+La migración `migrations/20261104_0001_lifecycle_offline_reconciliation.sql` es candidata y aditiva; aún no está aplicada a Supabase. Orden obligatorio cuando Marco autorice un despliegue:
+
+1. Revisar la migración y su compatibilidad con el modelo histórico.
+2. Ejecutar respaldo y preflight del ambiente objetivo.
+3. Aplicarla con autorización y rol propietario.
+4. Validar columnas, restricciones, datos previos y readiness postmigración.
+5. Desplegar el código de Inventory.
+6. Ejecutar la prueba funcional aprobada.
+
+La suite de integración aplica y reejecuta la candidata únicamente en PostgreSQL desechable; nunca en Supabase compartido.
 
 ## Marketplace H4: seguridad y cumplimiento
 

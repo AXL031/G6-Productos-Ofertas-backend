@@ -428,8 +428,11 @@ export class InMemoryDatabaseMock implements IDatabaseService {
     }
 
     if (s.startsWith('SELECT') && s.includes('FROM INVENTORY.SKU_LIFECYCLE')) {
+      const skus = Array.isArray(params?.[0]) ? params[0] : [params?.[0]];
       const rows = this.skuLifecycle.filter(
-        (row) => row.sku_id === params?.[0],
+        (row) =>
+          skus.includes(row.sku_id) &&
+          (!s.includes('ACTIVE = FALSE') || !row.active),
       );
       return { rows: rows as any, rowCount: rows.length };
     }
@@ -701,6 +704,29 @@ export class InMemoryDatabaseMock implements IDatabaseService {
 
     // SELECT from traslados
     if (s.startsWith('SELECT') && s.includes('FROM INVENTORY.TRASLADOS')) {
+      if (s.includes('AS PENDIENTES') && s.includes('AS DISCREPANCIAS')) {
+        const [sku, locationId] = params ?? [];
+        const filtered = this.traslados.filter(
+          (row) =>
+            (!sku || row.sku_id === sku) &&
+            (!locationId ||
+              row.source_location_id === locationId ||
+              row.target_location_id === locationId),
+        );
+        return {
+          rows: [
+            {
+              pendientes: filtered.filter((row) =>
+                ['EN_TRANSITO', 'RECIBIDO_PARCIAL'].includes(row.estado),
+              ).length,
+              discrepancias: filtered.filter(
+                (row) => row.estado === 'COMPLETADO_CON_DISCREPANCIA',
+              ).length,
+            },
+          ] as any,
+          rowCount: 1,
+        };
+      }
       if (s.includes('COUNT(*)')) {
         const filtered = this.filterTraslados(s, params);
         return { rows: [{ total: filtered.length }] as any, rowCount: 1 };

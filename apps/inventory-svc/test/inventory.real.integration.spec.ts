@@ -1,7 +1,9 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import amqp from 'amqplib';
 import pg from 'pg';
@@ -27,6 +29,9 @@ import { ReservationsService } from '../src/reservations/reservations.service.js
 import { InventoryWorkersService } from '../src/workers/inventory-workers.service.js';
 import { InventoryCommandService } from '../src/inbox/inventory-command.service.js';
 import { InventoryConsumerService } from '../src/inbox/inventory-consumer.service.js';
+import { AbsoluteStockAdjustmentService } from '../src/bulk/absolute-stock-adjustment.service.js';
+import { OfflineReconciliationService } from '../src/conciliacion/offline-reconciliation.service.js';
+import type { ConciliacionOfflineRequest } from '../src/types/inventory.dto.js';
 import { DrizzleInboxRepository } from '../src/repositories/drizzle/drizzle-inbox.repository.js';
 import { DrizzleCommercialRoutesRepository } from '../src/repositories/drizzle/drizzle-commercial-routes.repository.js';
 import { DrizzleKardexRepository } from '../src/repositories/drizzle/drizzle-kardex.repository.js';
@@ -79,6 +84,10 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
   const rabbitContainer = `inventory-it-rabbit-${runId}`;
   let pgUrl: string;
   let rabbitUrl: string;
+  let tlsPostgresUrl: string;
+  let tlsDirectory: string;
+  let trustedCaPath: string;
+  let untrustedCaPath: string;
 
   function docker(args: string[], input?: string): string {
     return execFileSync('docker', args, {
@@ -170,6 +179,77 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     const password = randomBytes(24).toString('hex');
     const rabbitPassword = randomBytes(24).toString('hex');
     try {
+      tlsDirectory = mkdtempSync(join(tmpdir(), 'inventory-pg-tls-'));
+      trustedCaPath = join(tlsDirectory, 'ca.crt');
+      untrustedCaPath = join(tlsDirectory, 'untrusted-ca.crt');
+      const openssl =
+        process.platform === 'win32' &&
+        existsSync('C:/Program Files/Git/usr/bin/openssl.exe')
+          ? 'C:/Program Files/Git/usr/bin/openssl.exe'
+          : 'openssl';
+      const opensslRun = (args: string[]) =>
+        execFileSync(openssl, args, { stdio: 'ignore' });
+      opensslRun([
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        join(tlsDirectory, 'ca.key'),
+        '-out',
+        trustedCaPath,
+        '-days',
+        '2',
+        '-subj',
+        '/CN=InventoryIntegrationCA',
+      ]);
+      opensslRun([
+        'req',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        join(tlsDirectory, 'server.key'),
+        '-out',
+        join(tlsDirectory, 'server.csr'),
+        '-subj',
+        '/CN=127.0.0.1',
+        '-addext',
+        'subjectAltName=IP:127.0.0.1',
+      ]);
+      opensslRun([
+        'x509',
+        '-req',
+        '-in',
+        join(tlsDirectory, 'server.csr'),
+        '-CA',
+        trustedCaPath,
+        '-CAkey',
+        join(tlsDirectory, 'ca.key'),
+        '-CAcreateserial',
+        '-out',
+        join(tlsDirectory, 'server.crt'),
+        '-days',
+        '2',
+        '-copy_extensions',
+        'copy',
+      ]);
+      opensslRun([
+        'req',
+        '-x509',
+        '-newkey',
+        'rsa:2048',
+        '-nodes',
+        '-keyout',
+        join(tlsDirectory, 'untrusted-ca.key'),
+        '-out',
+        untrustedCaPath,
+        '-days',
+        '2',
+        '-subj',
+        '/CN=UntrustedInventoryCA',
+      ]);
       docker(['network', 'create', '--label', dockerLabel, networkName]);
       docker([
         'run',
@@ -211,26 +291,66 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         'RABBITMQ_CTL_ERL_ARGS=+S 1:1 +SDcpu 1 +SDio 1',
         'rabbitmq:3.13-management-alpine',
       ]);
-      const pgPort = docker(['port', pgContainer, '5432/tcp'])
-        .split(':')
-        .at(-1);
+      let pgPort = docker(['port', pgContainer, '5432/tcp']).split(':').at(-1);
       const rabbitPort = docker(['port', rabbitContainer, '5672/tcp'])
         .split(':')
         .at(-1);
       if (!pgPort || !rabbitPort)
         throw new Error('Docker no asignó puertos loopback.');
       pgUrl = `postgresql://inventory_test:${password}@127.0.0.1:${pgPort}/inventory_it?sslmode=disable`;
+      tlsPostgresUrl = `postgresql://inventory_test:${password}@127.0.0.1:${pgPort}/inventory_it`;
       rabbitUrl = `amqp://inventory_test:${rabbitPassword}@127.0.0.1:${rabbitPort}/`;
 
-      await waitForContainer(
-        pgContainer,
-        'pg_isready -U inventory_test -d inventory_it',
-      );
       await waitForContainer(
         rabbitContainer,
         'rabbitmq-diagnostics -q check_running',
         'rabbitmq',
       );
+      await waitForContainer(
+        pgContainer,
+        'pg_isready -h 127.0.0.1 -U inventory_test -d inventory_it',
+      );
+      for (const file of ['server.crt', 'server.key']) {
+        docker([
+          'cp',
+          join(tlsDirectory, file),
+          `${pgContainer}:/tmp/inventory-${file}`,
+        ]);
+      }
+      docker([
+        'exec',
+        pgContainer,
+        'sh',
+        '-c',
+        'chown postgres:postgres /tmp/inventory-server.key /tmp/inventory-server.crt && chmod 600 /tmp/inventory-server.key',
+      ]);
+      docker([
+        'exec',
+        pgContainer,
+        'psql',
+        '-U',
+        'inventory_test',
+        '-d',
+        'inventory_it',
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        "ALTER SYSTEM SET ssl = 'on'",
+        '-c',
+        "ALTER SYSTEM SET ssl_cert_file = '/tmp/inventory-server.crt'",
+        '-c',
+        "ALTER SYSTEM SET ssl_key_file = '/tmp/inventory-server.key'",
+      ]);
+      docker(['restart', pgContainer]);
+      await waitForContainer(
+        pgContainer,
+        'pg_isready -h 127.0.0.1 -U inventory_test -d inventory_it',
+      );
+      pgPort = docker(['port', pgContainer, '5432/tcp']).split(':').at(-1);
+      if (!pgPort)
+        throw new Error('Docker perdió el puerto asignado a PostgreSQL.');
+      pgUrl = `postgresql://inventory_test:${password}@127.0.0.1:${pgPort}/inventory_it?sslmode=disable`;
+      tlsPostgresUrl = `postgresql://inventory_test:${password}@127.0.0.1:${pgPort}/inventory_it`;
       const docsRoot = process.env.G6_DOCS_ROOT
         ? pathToFileURL(
             resolve(process.env.G6_DOCS_ROOT, 'datos/inventory-svc') + '/',
@@ -299,6 +419,21 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         ],
         inventoryCandidateMigration,
       );
+      docker(
+        [
+          'exec',
+          '-i',
+          pgContainer,
+          'psql',
+          '-v',
+          'ON_ERROR_STOP=1',
+          '-U',
+          'inventory_test',
+          '-d',
+          'inventory_it',
+        ],
+        inventoryCandidateMigration,
+      );
       docker([
         'exec',
         '--user',
@@ -331,6 +466,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     } catch (error) {
       diagnoseOwnedResources([password, rabbitPassword]);
       cleanupOwnedResources();
+      if (tlsDirectory) rmSync(tlsDirectory, { recursive: true, force: true });
       throw error;
     }
     await brokerChannel.assertExchange(exchangeEvents, 'topic', {
@@ -380,6 +516,67 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     cleanupOwnedResources();
   }, 30_000);
 
+  async function withProductionPostgresTls(
+    databaseUrl: string,
+    caPath: string,
+    expectReady: boolean,
+  ): Promise<void> {
+    const keys = [
+      'NODE_ENV',
+      'DATABASE_URL',
+      'PGHOST',
+      'PGPORT',
+      'PGDATABASE',
+      'PGUSER',
+      'PGPASSWORD',
+      'PGSSLMODE',
+      'PGSSLROOTCERT',
+    ] as const;
+    const saved = Object.fromEntries(
+      keys.map((key) => [key, process.env[key]]),
+    );
+    const service = new DatabaseService();
+    try {
+      for (const key of keys) delete process.env[key];
+      process.env.NODE_ENV = 'production';
+      process.env.DATABASE_URL = databaseUrl;
+      process.env.PGSSLMODE = 'verify-full';
+      process.env.PGSSLROOTCERT = caPath;
+      if (expectReady) {
+        await service.onModuleInit();
+        expect((await service.isHealthy()).healthy).toBe(true);
+      } else {
+        await expect(service.onModuleInit()).rejects.toThrow(
+          /PostgreSQL o el esquema requerido/,
+        );
+        expect((await service.isHealthy()).healthy).toBe(false);
+      }
+    } finally {
+      await service.onModuleDestroy();
+      for (const key of keys) {
+        const value = saved[key];
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  }
+
+  it('conecta al PostgreSQL local desechable con TLS, CA válida y hostname verificado', async () => {
+    await withProductionPostgresTls(tlsPostgresUrl, trustedCaPath, true);
+  }, 15_000);
+
+  it('rechaza certificado firmado por una CA no confiable', async () => {
+    await withProductionPostgresTls(tlsPostgresUrl, untrustedCaPath, false);
+  }, 15_000);
+
+  it('rechaza certificado confiable presentado para un hostname distinto', async () => {
+    const wrongHostnameUrl = tlsPostgresUrl.replace(
+      '@127.0.0.1:',
+      '@localhost:',
+    );
+    await withProductionPostgresTls(wrongHostnameUrl, trustedCaPath, false);
+  }, 15_000);
+
   async function seedStock(sku = `sku-${randomUUID()}`, qty = 20) {
     await database.query(
       `INSERT INTO inventory.stock_balance(sku_id,location_id,on_hand,reserved,blocked) VALUES($1,$2,$3,0,0)`,
@@ -405,6 +602,44 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       [accepted.operation_id],
     );
     return { accepted, reservationId: row.rows[0].reservation_id, order };
+  }
+
+  function absoluteAdjustmentService(
+    output = outboxService,
+  ): AbsoluteStockAdjustmentService {
+    return new AbsoluteStockAdjustmentService(
+      database,
+      new IdempotencyService(),
+      new KardexService(new DrizzleKardexRepository(database)),
+      output,
+      operationsRepo,
+      stockRepo,
+    );
+  }
+
+  function offlineReconciliationService(
+    output = outboxService,
+  ): OfflineReconciliationService {
+    return new OfflineReconciliationService(
+      database,
+      new IdempotencyService(),
+      new KardexService(new DrizzleKardexRepository(database)),
+      output,
+      operationsRepo,
+      stockRepo,
+    );
+  }
+
+  function realCommandService(): InventoryCommandService {
+    return new InventoryCommandService(
+      database,
+      new IdempotencyService(),
+      outboxService,
+      new DrizzleInboxRepository(database),
+      operationsRepo,
+      new DrizzleLocationsRepository(database),
+      stockRepo,
+    );
   }
 
   async function publishRecord(
@@ -1383,6 +1618,617 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         );
       }, 5000);
     }, 30_000);
+  });
+
+  describe('Motores nuevos — integración real PostgreSQL/RabbitMQ', () => {
+    it('ajuste absoluto aplica, deduplica, rechaza versiones/targets y serializa concurrencia', async () => {
+      const sku = await seedStock(`sku-absolute-${randomUUID()}`, 20);
+      await database.query(
+        `UPDATE inventory.stock_balance SET reserved=3, blocked=2 WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      const input = {
+        operation_id: randomUUID(),
+        sku,
+        location_id: locationId,
+        expected_stock_version: 0,
+        target_on_hand: 18,
+      };
+      const service = absoluteAdjustmentService();
+      const applied = await service.apply(input);
+      expect(applied).toMatchObject({
+        status: 'APPLIED',
+        on_hand: 18,
+        reserved: 3,
+        blocked: 2,
+        available: 13,
+        stock_version: 1,
+      });
+      expect(await service.apply(input)).toEqual(applied);
+
+      const stale = await service.apply({
+        ...input,
+        operation_id: randomUUID(),
+        target_on_hand: 17,
+      });
+      expect(stale).toMatchObject({
+        status: 'REJECTED',
+        code: 'VERSION_STALE',
+      });
+      const underCommitted = await service.apply({
+        ...input,
+        operation_id: randomUUID(),
+        expected_stock_version: 1,
+        target_on_hand: 4,
+      });
+      expect(underCommitted).toMatchObject({
+        status: 'REJECTED',
+        code: 'TARGET_BELOW_COMMITTED_UNITS',
+      });
+
+      const concurrent = await Promise.all([
+        service.apply({
+          ...input,
+          operation_id: randomUUID(),
+          expected_stock_version: 1,
+          target_on_hand: 16,
+        }),
+        service.apply({
+          ...input,
+          operation_id: randomUUID(),
+          expected_stock_version: 1,
+          target_on_hand: 17,
+        }),
+      ]);
+      expect(
+        concurrent.filter((result) => result.status === 'APPLIED'),
+      ).toHaveLength(1);
+      expect(
+        concurrent.filter((result) => result.code === 'VERSION_STALE'),
+      ).toHaveLength(1);
+      const durable = await database.query<{
+        on_hand: number;
+        reserved: number;
+        blocked: number;
+        available: number;
+        stock_version: number;
+        kardex: number;
+        outbox: number;
+      }>(
+        `SELECT b.on_hand,b.reserved,b.blocked,b.available,b.stock_version::int AS stock_version,
+                (SELECT count(*)::int FROM inventory.kardex k WHERE k.sku_id=b.sku_id AND k.location_id=b.location_id AND k.operation_type='AJUSTE_ABSOLUTO') AS kardex,
+                (SELECT count(*)::int FROM inventory.outbox o WHERE o.event_type='inventory.stock.changed' AND o.payload->'data'->>'sku'=b.sku_id) AS outbox
+           FROM inventory.stock_balance b WHERE b.sku_id=$1 AND b.location_id=$2`,
+        [sku, locationId],
+      );
+      expect(durable.rows[0]).toMatchObject({
+        reserved: 3,
+        blocked: 2,
+        stock_version: 2,
+        kardex: 2,
+        outbox: 2,
+      });
+    }, 20_000);
+
+    it('ajuste absoluto revierte stock, operación, Kardex y Outbox ante fallo', async () => {
+      const sku = await seedStock(`sku-absolute-rollback-${randomUUID()}`, 8);
+      const failOutbox = Object.create(outboxService) as OutboxService;
+      failOutbox.stockChanged = async () => {
+        throw new Error('fallo controlado antes del commit');
+      };
+      const operationId = randomUUID();
+      const service = absoluteAdjustmentService(failOutbox);
+      await expect(
+        service.apply({
+          operation_id: operationId,
+          sku,
+          location_id: locationId,
+          expected_stock_version: 0,
+          target_on_hand: 5,
+        }),
+      ).rejects.toThrow('fallo controlado');
+      const result = await database.query<{
+        on_hand: number;
+        stock_version: number;
+      }>(
+        `SELECT on_hand,stock_version::int AS stock_version FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      expect(result.rows[0]).toEqual({ on_hand: 8, stock_version: 0 });
+      for (const table of [
+        'inventory.inventory_operations',
+        'inventory.kardex',
+      ]) {
+        const found = await database.query<{ count: number }>(
+          `SELECT count(*)::int AS count FROM ${table} WHERE operation_id=$1`,
+          [operationId],
+        );
+        expect(found.rows[0].count).toBe(0);
+      }
+    });
+
+    it('conciliación offline protege reservas/bloqueos, aplica parcial y deduplica por venta', async () => {
+      const sku = await seedStock(`sku-offline-${randomUUID()}`, 12);
+      await database.query(
+        `UPDATE inventory.stock_balance SET reserved=3,blocked=2 WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      const context = {
+        client_id: 'modulo-ventas' as const,
+        actor_ref: 'VENTAS-IT-ACTOR',
+        store_ref: 'VENTAS-IT-STORE',
+        location_id: locationId,
+        authorized: true as const,
+      };
+      const request: ConciliacionOfflineRequest = {
+        operation_id: randomUUID(),
+        order_id: `order-offline-${randomUUID()}`,
+        offline_sale_id: `sale-${randomUUID()}`,
+        channel_id: 'RETAIL',
+        occurred_at: new Date().toISOString(),
+        lines: [{ sku, quantity: 10, location_id: locationId }],
+      };
+      const service = offlineReconciliationService();
+      const [first, concurrentReplay] = await Promise.all([
+        service.reconcileResolvedSale('modulo-ventas', request, context),
+        service.reconcileResolvedSale('modulo-ventas', request, context),
+      ]);
+      expect(first).toMatchObject({
+        status: 'REQUIRES_REVIEW',
+        lines: [
+          {
+            requested_quantity: 10,
+            applied_quantity: 7,
+            unresolved_quantity: 3,
+            on_hand: 5,
+            reserved: 3,
+            blocked: 2,
+          },
+        ],
+      });
+      expect(concurrentReplay).toEqual(first);
+      const otherOperationReplay = await service.reconcileResolvedSale(
+        'modulo-ventas',
+        { ...request, operation_id: randomUUID() },
+        context,
+      );
+      expect(otherOperationReplay).toEqual(first);
+      await expect(
+        service.reconcileResolvedSale(
+          'modulo-ventas',
+          {
+            ...request,
+            lines: [{ sku, quantity: 9, location_id: locationId }],
+          },
+          context,
+        ),
+      ).rejects.toThrow(/otro contenido/);
+      const physical = await database.query<{
+        on_hand: number;
+        reserved: number;
+        blocked: number;
+        kardex: number;
+        sales: number;
+      }>(
+        `SELECT b.on_hand,b.reserved,b.blocked,
+                (SELECT count(*)::int FROM inventory.kardex WHERE operation_id=$3 AND operation_type='CONCILIACION_OFFLINE') AS kardex,
+                (SELECT count(*)::int FROM inventory.offline_sale_reconciliations WHERE offline_sale_id=$4) AS sales
+           FROM inventory.stock_balance b WHERE b.sku_id=$1 AND b.location_id=$2`,
+        [sku, locationId, request.operation_id, request.offline_sale_id],
+      );
+      expect(physical.rows[0]).toEqual({
+        on_hand: 5,
+        reserved: 3,
+        blocked: 2,
+        kardex: 1,
+        sales: 1,
+      });
+    }, 20_000);
+
+    it('conciliación sin saldo informa revisión y rollback integral preserva evidencia durable', async () => {
+      const context = {
+        client_id: 'modulo-ventas' as const,
+        actor_ref: 'VENTAS-IT-ACTOR',
+        store_ref: 'VENTAS-IT-STORE',
+        location_id: locationId,
+        authorized: true as const,
+      };
+      const noBalance: ConciliacionOfflineRequest = {
+        operation_id: randomUUID(),
+        order_id: `order-${randomUUID()}`,
+        offline_sale_id: `sale-${randomUUID()}`,
+        channel_id: 'RETAIL',
+        occurred_at: new Date().toISOString(),
+        lines: [
+          {
+            sku: `sku-missing-${randomUUID()}`,
+            quantity: 2,
+            location_id: locationId,
+          },
+        ],
+      };
+      const service = offlineReconciliationService();
+      const result = await service.reconcileResolvedSale(
+        'modulo-ventas',
+        noBalance,
+        context,
+      );
+      expect(result).toMatchObject({
+        status: 'REQUIRES_REVIEW',
+        lines: [{ applied_quantity: 0, unresolved_quantity: 2 }],
+      });
+      expect(
+        await database
+          .query(`SELECT id FROM inventory.kardex WHERE operation_id=$1`, [
+            noBalance.operation_id,
+          ])
+          .then((res) => res.rowCount),
+      ).toBe(0);
+      await expect(
+        service.reconcileResolvedSale(
+          'modulo-ventas',
+          {
+            ...noBalance,
+            offline_sale_id: `sale-${randomUUID()}`,
+            lines: [
+              {
+                ...noBalance.lines[0],
+                location_id: '00000000-0000-4000-8000-000000000000',
+              },
+            ],
+          },
+          { ...context, location_id: '00000000-0000-4000-8000-000000000000' },
+        ),
+      ).rejects.toThrow(/Ubicación resuelta no activa/);
+
+      const sku = await seedStock(`sku-offline-rollback-${randomUUID()}`, 8);
+      const rollbackRequest: ConciliacionOfflineRequest = {
+        ...noBalance,
+        operation_id: randomUUID(),
+        order_id: `order-${randomUUID()}`,
+        offline_sale_id: `sale-${randomUUID()}`,
+        lines: [{ sku, quantity: 2, location_id: locationId }],
+      };
+      const failingOutbox = Object.create(outboxService) as OutboxService;
+      failingOutbox.stockChanged = async () => {
+        throw new Error('fallo outbox conciliación');
+      };
+      await expect(
+        offlineReconciliationService(failingOutbox).reconcileResolvedSale(
+          'modulo-ventas',
+          rollbackRequest,
+          context,
+        ),
+      ).rejects.toThrow('fallo outbox conciliación');
+      const stock = await database.query<{ on_hand: number }>(
+        `SELECT on_hand FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      expect(stock.rows[0].on_hand).toBe(8);
+      expect(
+        (
+          await database.query(
+            `SELECT offline_sale_id FROM inventory.offline_sale_reconciliations WHERE offline_sale_id=$1`,
+            [rollbackRequest.offline_sale_id],
+          )
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await database.query(
+            `SELECT operation_id FROM inventory.inventory_operations WHERE operation_id=$1`,
+            [rollbackRequest.operation_id],
+          )
+        ).rowCount,
+      ).toBe(0);
+      expect(
+        (
+          await database.query(
+            `SELECT id FROM inventory.kardex WHERE operation_id=$1`,
+            [rollbackRequest.operation_id],
+          )
+        ).rowCount,
+      ).toBe(0);
+    }, 20_000);
+
+    it('evento Catalog tipado versiona lifecycle, no toca stock y preserva reservas previas', async () => {
+      const sku = await seedStock(`sku-deactivate-${randomUUID()}`, 20);
+      const existingReservation = await reserve(sku, 2);
+      const command = realCommandService();
+      const changedAt = new Date().toISOString();
+      const event = {
+        message_id: randomUUID(),
+        operation_id: randomUUID(),
+        correlation_id: randomUUID(),
+        occurred_at: changedAt,
+        schema_version: 1,
+        kind: 'event',
+        producer: 'catalog-svc',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: randomUUID(),
+          sku_version: 3,
+          changed_at: changedAt,
+        },
+      };
+      const previousGate =
+        process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+      process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'true';
+      try {
+        expect(await command.process(event)).toEqual({ duplicate: false });
+        expect(await command.process(event)).toEqual({ duplicate: true });
+        const oldVersion = {
+          ...event,
+          message_id: randomUUID(),
+          operation_id: randomUUID(),
+          data: {
+            ...event.data,
+            sku_version: 2,
+            changed_at: new Date(Date.now() - 1000).toISOString(),
+          },
+        };
+        expect(await command.process(oldVersion)).toEqual({ duplicate: false });
+        const lifecycle = await database.query<{
+          sku_version: number;
+          active: boolean;
+        }>(
+          `SELECT sku_version,active FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+          [sku],
+        );
+        expect(lifecycle.rows[0]).toEqual({ sku_version: 3, active: false });
+        await expect(
+          command.process({
+            ...event,
+            message_id: randomUUID(),
+            operation_id: randomUUID(),
+            data: {
+              ...event.data,
+              changed_at: new Date(Date.now() + 1000).toISOString(),
+            },
+          }),
+        ).rejects.toMatchObject({ reason: 'INVALID_MESSAGE' });
+        await expect(
+          command.process({
+            ...event,
+            message_id: randomUUID(),
+            operation_id: randomUUID(),
+            data: {
+              sku,
+              product_id: event.data.product_id,
+              variant_id: randomUUID(),
+            },
+          }),
+        ).rejects.toMatchObject({ reason: 'INVALID_MESSAGE' });
+        const attemptId = randomUUID();
+        await reservations.solicitarReserva(
+          {
+            order_id: `PED-INACTIVE-${randomUUID()}`,
+            operation_id: attemptId,
+            channel_id: 'MARKETPLACE',
+            lines: [{ sku, quantity: 1, location_id: locationId }],
+          },
+          undefined,
+          `idem-${randomUUID()}`,
+          'modulo-ventas',
+        );
+        expect(
+          (
+            await database.query<{ result_code: string }>(
+              `SELECT result_code FROM inventory.inventory_operations WHERE operation_id=$1`,
+              [attemptId],
+            )
+          ).rows[0].result_code,
+        ).toBe('SKU_INACTIVO');
+        const current = await database.query<{
+          on_hand: number;
+          reserved: number;
+        }>(
+          `SELECT on_hand,reserved FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+          [sku, locationId],
+        );
+        expect(current.rows[0]).toEqual({ on_hand: 20, reserved: 2 });
+        await reservations.confirmarReserva(
+          existingReservation.reservationId,
+          { order_id: existingReservation.order, operation_id: randomUUID() },
+          undefined,
+          `idem-${randomUUID()}`,
+          'modulo-ventas',
+        );
+        expect(
+          (
+            await database.query<{ on_hand: number; reserved: number }>(
+              `SELECT on_hand,reserved FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+              [sku, locationId],
+            )
+          ).rows[0],
+        ).toEqual({ on_hand: 18, reserved: 0 });
+      } finally {
+        if (previousGate === undefined)
+          delete process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+        else
+          process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = previousGate;
+      }
+    }, 20_000);
+
+    it('serializa reserva contra baja y revierte una entrega cuyo commit de Inbox falla', async () => {
+      const sku = await seedStock(`sku-deactivate-race-${randomUUID()}`, 9);
+      const event = {
+        message_id: randomUUID(),
+        operation_id: randomUUID(),
+        correlation_id: randomUUID(),
+        occurred_at: new Date().toISOString(),
+        schema_version: 1,
+        kind: 'event',
+        producer: 'catalog-svc',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: randomUUID(),
+          sku_version: 2,
+          changed_at: new Date().toISOString(),
+        },
+      };
+      const gate = process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+      process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'true';
+      try {
+        const failingInbox = Object.create(
+          new DrizzleInboxRepository(database),
+        ) as DrizzleInboxRepository;
+        failingInbox.markProcessed = async () => {
+          throw new Error('fallo de commit Inbox');
+        };
+        const failingCommand = new InventoryCommandService(
+          database,
+          new IdempotencyService(),
+          outboxService,
+          failingInbox,
+          operationsRepo,
+          new DrizzleLocationsRepository(database),
+          stockRepo,
+        );
+        await expect(failingCommand.process(event)).rejects.toThrow(
+          'fallo de commit Inbox',
+        );
+        expect(
+          (
+            await database.query(
+              `SELECT sku_id FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+              [sku],
+            )
+          ).rowCount,
+        ).toBe(0);
+        expect(
+          (
+            await database.query(
+              `SELECT message_id FROM inventory.inbox WHERE message_id=$1`,
+              [event.message_id],
+            )
+          ).rowCount,
+        ).toBe(0);
+
+        const reserveOperationId = randomUUID();
+        await Promise.all([
+          realCommandService().process(event),
+          reservations.solicitarReserva(
+            {
+              order_id: `PED-DEACTIVATE-RACE-${randomUUID()}`,
+              operation_id: reserveOperationId,
+              channel_id: 'MARKETPLACE',
+              lines: [{ sku, quantity: 2, location_id: locationId }],
+            },
+            undefined,
+            `idem-${randomUUID()}`,
+            'modulo-ventas',
+          ),
+        ]);
+        expect(
+          (
+            await database.query<{ active: boolean; sku_version: number }>(
+              `SELECT active,sku_version FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+              [sku],
+            )
+          ).rows[0],
+        ).toEqual({ active: false, sku_version: 2 });
+        const result = await database.query<{
+          status: string;
+          result_code: string | null;
+        }>(
+          `SELECT status,result_code FROM inventory.inventory_operations WHERE operation_id=$1`,
+          [reserveOperationId],
+        );
+        expect(['APLICADO', 'RECHAZADO']).toContain(result.rows[0].status);
+        if (result.rows[0].status === 'RECHAZADO') {
+          expect(result.rows[0].result_code).toBe('SKU_INACTIVO');
+        }
+        const balance = await database.query<{
+          on_hand: number;
+          reserved: number;
+        }>(
+          `SELECT on_hand,reserved FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+          [sku, locationId],
+        );
+        expect(balance.rows[0].on_hand).toBe(9);
+        expect([0, 2]).toContain(balance.rows[0].reserved);
+      } finally {
+        if (gate === undefined)
+          delete process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+        else process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = gate;
+      }
+    }, 20_000);
+
+    it('gate AMQP de baja conserva mensaje sin ACK y reanuda tras habilitación', async () => {
+      const sku = await seedStock(`sku-gated-${randomUUID()}`, 5);
+      const event = {
+        message_id: randomUUID(),
+        operation_id: randomUUID(),
+        correlation_id: randomUUID(),
+        occurred_at: new Date().toISOString(),
+        schema_version: 1,
+        kind: 'event',
+        producer: 'catalog-svc',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: randomUUID(),
+          sku_version: 1,
+          changed_at: new Date().toISOString(),
+        },
+      };
+      const gate = process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+      const consumer = new InventoryConsumerService(realCommandService());
+      const writer = await broker.createConfirmChannel();
+      await brokerChannel.bindQueue(
+        'po.inventario.q',
+        exchangeCommands,
+        'catalog.sku.deactivated',
+      );
+      process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'false';
+      try {
+        await consumer.start();
+        writer.publish(
+          exchangeCommands,
+          'catalog.sku.deactivated',
+          Buffer.from(JSON.stringify(event)),
+          {
+            persistent: true,
+            mandatory: true,
+            messageId: event.message_id,
+          },
+        );
+        await viWaitFor(async () => {
+          expect(consumer.getMetrics().paused).toBe(true);
+        }, 5000);
+        expect(consumer.getMetrics().acknowledged).toBe(0);
+        expect(
+          (await brokerChannel.checkQueue('po.inventario.q')).messageCount,
+        ).toBe(1);
+        process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'true';
+        await consumer.resume();
+        await viWaitFor(async () => {
+          expect(consumer.getMetrics().acknowledged).toBe(1);
+        }, 5000);
+        expect(
+          (
+            await database.query(
+              `SELECT sku_id FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+              [sku],
+            )
+          ).rowCount,
+        ).toBe(1);
+      } finally {
+        await consumer.onModuleDestroy();
+        await writer.close().catch(() => undefined);
+        await brokerChannel.unbindQueue(
+          'po.inventario.q',
+          exchangeCommands,
+          'catalog.sku.deactivated',
+        );
+        if (gate === undefined)
+          delete process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
+        else process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = gate;
+      }
+    }, 20_000);
   });
 
   describe('BACK-02 — reconciliación del modelo físico y permisos en PostgreSQL aislado', () => {

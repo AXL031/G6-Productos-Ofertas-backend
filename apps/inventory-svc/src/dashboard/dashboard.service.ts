@@ -1,4 +1,4 @@
-import { Injectable, Inject, Optional } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { loadInventoryConfig } from '../config/inventory.config.js';
 import { DatabaseService } from '../database/database.service.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
@@ -39,7 +39,7 @@ export class DashboardService {
   constructor(
     @Inject(STOCK_BALANCE_REPOSITORY)
     private readonly stockBalanceRepository: IStockBalanceRepository,
-    @Optional() private readonly database?: DatabaseService,
+    private readonly database: DatabaseService,
   ) {}
 
   /** Additional SPEC-016 indicators remain internal; the public DTO is unchanged. */
@@ -51,26 +51,18 @@ export class DashboardService {
       sku: filtros.sku,
       locationId: filtros.locationId,
     });
-    const [enTransito, recepcionParcial, conDiscrepancia] = this.database
-      ? await Promise.all([
-          this.database.query<{ total: number }>(
-            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
-            ['EN_TRANSITO'],
-          ),
-          this.database.query<{ total: number }>(
-            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
-            ['RECIBIDO_PARCIAL'],
-          ),
-          this.database.query<{ total: number }>(
-            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
-            ['COMPLETADO_CON_DISCREPANCIA'],
-          ),
-        ])
-      : [
-          { rows: [{ total: 0 }], rowCount: 1 },
-          { rows: [{ total: 0 }], rowCount: 1 },
-          { rows: [{ total: 0 }], rowCount: 1 },
-        ];
+    const transfers = await this.database.query<{
+      pendientes: number;
+      discrepancias: number;
+    }>(
+      `SELECT
+         count(*) FILTER (WHERE estado IN ('EN_TRANSITO', 'RECIBIDO_PARCIAL'))::int AS pendientes,
+         count(*) FILTER (WHERE estado = 'COMPLETADO_CON_DISCREPANCIA')::int AS discrepancias
+       FROM inventory.traslados
+       WHERE ($1::text IS NULL OR sku_id = $1)
+         AND ($2::uuid IS NULL OR source_location_id = $2 OR target_location_id = $2)`,
+      [filtros.sku ?? null, filtros.locationId ?? null],
+    );
     return {
       unidadesFisicas: dashboard.totalOnHand,
       unidadesReservadas: dashboard.totalReserved,
@@ -81,10 +73,8 @@ export class DashboardService {
         STOCK_BAJO: dashboard.skusStockBajo,
         AGOTADO: dashboard.skusAgotados,
       },
-      trasladosPendientes:
-        Number(enTransito.rows[0]?.total ?? 0) +
-        Number(recepcionParcial.rows[0]?.total ?? 0),
-      trasladosConDiscrepancia: Number(conDiscrepancia.rows[0]?.total ?? 0),
+      trasladosPendientes: Number(transfers.rows[0]?.pendientes ?? 0),
+      trasladosConDiscrepancia: Number(transfers.rows[0]?.discrepancias ?? 0),
     };
   }
 

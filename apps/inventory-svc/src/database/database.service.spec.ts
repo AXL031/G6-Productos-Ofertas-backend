@@ -69,6 +69,42 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
     );
   });
 
+  it('falla el arranque productivo si faltan credenciales PostgreSQL', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    await expect(database.onModuleInit()).rejects.toThrow(
+      /PostgreSQL o el esquema requerido/,
+    );
+    expect(pg.Pool).not.toHaveBeenCalled();
+    expect((await database.isHealthy()).healthy).toBe(false);
+  });
+
+  it('falla el arranque productivo si la conexión inicial no está disponible', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('PGHOST', 'db.example');
+    vi.stubEnv('PGDATABASE', 'inventory_test');
+    vi.stubEnv('PGUSER', 'inventory_test');
+    vi.stubEnv('PGPASSWORD', 'secret-test-only');
+    pool.connect.mockRejectedValueOnce(new Error('secret DSN must not appear'));
+    await expect(database.onModuleInit()).rejects.toThrow(
+      /PostgreSQL o el esquema requerido/,
+    );
+    expect(pool.end).toHaveBeenCalledTimes(1);
+  });
+
+  it('falla el preflight si faltan columnas de las tablas de Inventory requeridas', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('PGHOST', 'db.example');
+    vi.stubEnv('PGDATABASE', 'inventory_test');
+    vi.stubEnv('PGUSER', 'inventory_test');
+    vi.stubEnv('PGPASSWORD', 'secret-test-only');
+    pool.query.mockResolvedValueOnce({ rows: [], rowCount: 0 });
+    await expect(database.onModuleInit()).rejects.toThrow(
+      /PostgreSQL o el esquema requerido/,
+    );
+    expect((await database.isHealthy()).healthy).toBe(false);
+    expect(pool.end).toHaveBeenCalledTimes(1);
+  });
+
   it.each(['PGDATABASE', 'PGPASSWORD'])(
     'no sustituye %s ausente por valores implícitos',
     async (missing) => {
@@ -108,6 +144,7 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
         statement_timeout: 15000,
         lock_timeout: 5000,
         query_timeout: 20000,
+        options: '-c search_path=inventory,public',
       }),
     );
     pool.query

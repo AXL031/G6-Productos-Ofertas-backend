@@ -386,6 +386,37 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
       }
     });
 
+    it('GET y POST comercial nunca declaran positivo un SKU desactivado', async () => {
+      mockDb.skuLifecycle.push({
+        sku_id: sku,
+        product_id: randomUUID(),
+        sku_version: 2,
+        active: false,
+        changed_at: new Date().toISOString(),
+      });
+      const get = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(200);
+      expect(get.body.items).toEqual([{ sku, status: 'INDETERMINADO' }]);
+
+      const post = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(200);
+      expect(post.body.items[0]).toMatchObject({
+        sku,
+        result: 'INDETERMINADO',
+      });
+    });
+
     it('GET permite modulo-productos únicamente para MARKETPLACE', async () => {
       const res = await request(app.getHttpServer())
         .get(

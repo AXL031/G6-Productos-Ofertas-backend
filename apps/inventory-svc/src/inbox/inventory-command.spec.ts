@@ -31,6 +31,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
   });
 
   beforeEach(async () => {
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
     const module = await Test.createTestingModule({
       imports: [InventorySvcModule],
     }).compile();
@@ -39,6 +40,31 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     service = module.get(InventoryCommandService);
     outbox = module.get(OutboxService);
     reservations = module.get(ReservationsService);
+  });
+
+  it('mantiene deshabilitado el handler de baja por defecto sin confirmar el mensaje', async () => {
+    const event = {
+      message_id: randomUUID(),
+      operation_id: randomUUID(),
+      correlation_id: randomUUID(),
+      occurred_at: new Date().toISOString(),
+      schema_version: 1,
+      kind: 'event',
+      producer: 'catalog-svc',
+      name: 'catalog.sku.deactivated',
+      data: {
+        sku: 'SKU-GATE',
+        product_id: randomUUID(),
+        sku_version: 1,
+        changed_at: new Date().toISOString(),
+      },
+    };
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'false');
+    await expect(service.process(event)).rejects.toMatchObject({
+      reason: 'FEATURE_DISABLED',
+    });
+    expect(db.inbox).toHaveLength(0);
+    expect(db.skuLifecycle).toHaveLength(0);
   });
 
   it('inicializa en cero, guarda resultado durable y correlaciona el resultado con el intento', async () => {
