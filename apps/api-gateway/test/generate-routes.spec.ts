@@ -139,6 +139,9 @@ describe('focused Gateway contract route generation', () => {
       /  \{[\s\S]*?operationId: 'listarProductos',[\s\S]*?\n  \},/,
     )?.[0];
     expect(otherOperationAfter).toBe(otherOperation);
+    expect(afterFirstRun).toContain(
+      '// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: verificarCantidadComercial.',
+    );
     expect(afterFirstRun).toContain("'400': { codes: ['VALIDACION'] }");
     expect(afterFirstRun).toContain("security: ['serviceBearer']");
     expect(afterFirstRun).toContain("scope: 'catalogo:leer'");

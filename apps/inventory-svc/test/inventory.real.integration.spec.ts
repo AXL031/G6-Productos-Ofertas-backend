@@ -40,6 +40,9 @@ import { DrizzleOperationsRepository } from '../src/repositories/drizzle/drizzle
 import { DrizzleOutboxRepository } from '../src/repositories/drizzle/drizzle-outbox.repository.js';
 import { DrizzleReservationsRepository } from '../src/repositories/drizzle/drizzle-reservations.repository.js';
 import { DrizzleStockBalanceRepository } from '../src/repositories/drizzle/drizzle-stock-balance.repository.js';
+import { DrizzleSkuLifecycleRepository } from '../src/repositories/drizzle/drizzle-sku-lifecycle.repository.js';
+import { DisponibilidadService } from '../src/disponibilidad/disponibilidad.service.js';
+import { catalogPr185SkuDeactivatedEvent } from './catalog-pr185.fixture.js';
 
 const enabled = Boolean(process.env.INVENTORY_REAL_INTEGRATION === '1');
 const suite = enabled ? describe : describe.skip;
@@ -50,6 +53,12 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
   const database = new DatabaseService();
   const reservationsRepo = new DrizzleReservationsRepository(database);
   const stockRepo = new DrizzleStockBalanceRepository(database);
+  const commercialRoutesRepo = new DrizzleCommercialRoutesRepository(database);
+  const availability = new DisponibilidadService(
+    stockRepo,
+    commercialRoutesRepo,
+    new DrizzleSkuLifecycleRepository(database),
+  );
   const operationsRepo = new DrizzleOperationsRepository(database);
   const outboxRepo = new DrizzleOutboxRepository(database);
   const outboxService = new OutboxService(outboxRepo);
@@ -62,7 +71,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     stockRepo,
     operationsRepo,
     new DrizzleLocationsRepository(database),
-    new DrizzleCommercialRoutesRepository(database),
+    commercialRoutesRepo,
   );
   const expiration = new ReservationExpirationService(
     database,
@@ -1936,26 +1945,28 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       const existingReservation = await reserve(sku, 2);
       const command = realCommandService();
       const changedAt = new Date().toISOString();
-      const event = {
-        message_id: randomUUID(),
-        operation_id: randomUUID(),
-        correlation_id: randomUUID(),
-        occurred_at: changedAt,
-        schema_version: 1,
-        kind: 'event',
-        producer: 'catalog-svc',
-        name: 'catalog.sku.deactivated',
-        data: {
-          sku,
-          product_id: randomUUID(),
-          sku_version: 3,
-          changed_at: changedAt,
-        },
-      };
+      const productId = randomUUID();
+      const event = catalogPr185SkuDeactivatedEvent({
+        sku,
+        productId,
+        skuVersion: 3,
+        changedAt,
+      });
+      await database.query(
+        `INSERT INTO inventory.commercial_fulfillment_routes(channel_id,mode,fulfillment_ref,location_id)
+         VALUES('MARKETPLACE','ENVIO_DOMICILIO',$1,$2)`,
+        [`sku-deactivate-${randomUUID()}`, locationId],
+      );
       const previousGate =
         process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
       process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'true';
       try {
+        expect(
+          await availability.consultarDisponibilidadComercial(
+            [sku],
+            'MARKETPLACE',
+          ),
+        ).toEqual({ items: [{ sku, status: 'DISPONIBLE' }] });
         expect(await command.process(event)).toEqual({ duplicate: false });
         expect(await command.process(event)).toEqual({ duplicate: true });
         const oldVersion = {
@@ -1977,6 +1988,12 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           [sku],
         );
         expect(lifecycle.rows[0]).toEqual({ sku_version: 3, active: false });
+        expect(
+          await availability.consultarDisponibilidadComercial(
+            [sku],
+            'MARKETPLACE',
+          ),
+        ).toEqual({ items: [{ sku, status: 'INDETERMINADO' }] });
         await expect(
           command.process({
             ...event,
@@ -1988,18 +2005,27 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
             },
           }),
         ).rejects.toMatchObject({ reason: 'INVALID_MESSAGE' });
+        const legacyMessageId = randomUUID();
         await expect(
           command.process({
             ...event,
-            message_id: randomUUID(),
+            message_id: legacyMessageId,
             operation_id: randomUUID(),
             data: {
-              sku,
-              product_id: event.data.product_id,
+              product_id: productId,
               variant_id: randomUUID(),
+              sku,
             },
           }),
         ).rejects.toMatchObject({ reason: 'INVALID_MESSAGE' });
+        expect(
+          (
+            await database.query(
+              `SELECT message_id FROM inventory.inbox WHERE message_id=$1`,
+              [legacyMessageId],
+            )
+          ).rowCount,
+        ).toBe(0);
         const attemptId = randomUUID();
         await reservations.solicitarReserva(
           {
@@ -2159,22 +2185,12 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
 
     it('gate AMQP de baja conserva mensaje sin ACK y reanuda tras habilitación', async () => {
       const sku = await seedStock(`sku-gated-${randomUUID()}`, 5);
-      const event = {
-        message_id: randomUUID(),
-        operation_id: randomUUID(),
-        correlation_id: randomUUID(),
-        occurred_at: new Date().toISOString(),
-        schema_version: 1,
-        kind: 'event',
-        producer: 'catalog-svc',
-        name: 'catalog.sku.deactivated',
-        data: {
-          sku,
-          product_id: randomUUID(),
-          sku_version: 1,
-          changed_at: new Date().toISOString(),
-        },
-      };
+      const event = catalogPr185SkuDeactivatedEvent({
+        sku,
+        productId: randomUUID(),
+        skuVersion: 2,
+        changedAt: new Date().toISOString(),
+      });
       const gate = process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
       const consumer = new InventoryConsumerService(realCommandService());
       const writer = await broker.createConfirmChannel();
@@ -2216,6 +2232,59 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
             )
           ).rowCount,
         ).toBe(1);
+
+        writer.publish(
+          exchangeCommands,
+          'catalog.sku.deactivated',
+          Buffer.from(JSON.stringify(event)),
+          { persistent: true, mandatory: true, messageId: event.message_id },
+        );
+        await viWaitFor(async () => {
+          expect(consumer.getMetrics().acknowledged).toBe(2);
+        }, 5000);
+        expect(consumer.getMetrics().duplicates).toBe(1);
+        expect(
+          (
+            await database.query(
+              `SELECT message_id FROM inventory.inbox WHERE message_id=$1`,
+              [event.message_id],
+            )
+          ).rowCount,
+        ).toBe(1);
+        expect(
+          (
+            await database.query(
+              `SELECT sku_id FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+              [sku],
+            )
+          ).rowCount,
+        ).toBe(1);
+
+        const stale = catalogPr185SkuDeactivatedEvent({
+          sku,
+          productId: event.data.product_id,
+          skuVersion: 1,
+          changedAt: new Date(
+            Date.parse(event.data.changed_at) - 1000,
+          ).toISOString(),
+        });
+        writer.publish(
+          exchangeCommands,
+          'catalog.sku.deactivated',
+          Buffer.from(JSON.stringify(stale)),
+          { persistent: true, mandatory: true, messageId: stale.message_id },
+        );
+        await viWaitFor(async () => {
+          expect(consumer.getMetrics().acknowledged).toBe(3);
+        }, 5000);
+        expect(
+          (
+            await database.query<{ active: boolean; sku_version: number }>(
+              `SELECT active,sku_version FROM inventory.sku_lifecycle WHERE sku_id=$1`,
+              [sku],
+            )
+          ).rows[0],
+        ).toEqual({ active: false, sku_version: 2 });
       } finally {
         await consumer.onModuleDestroy();
         await writer.close().catch(() => undefined);
