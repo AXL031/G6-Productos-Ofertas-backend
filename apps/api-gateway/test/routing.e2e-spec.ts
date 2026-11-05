@@ -222,12 +222,12 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
   });
 
   it.each([
-    ['wrong scope', { scope: 'inventario:reservar' }],
-    ['wrong audience', { aud: ['api-ventas'] }],
-    ['wrong client', { sub: 'modulo-ventas' }],
-  ])(
+    ['wrong scope', { scope: 'inventario:reservar' }, 403],
+    ['wrong audience', { aud: ['api-ventas'] }, 401],
+    ['wrong client', { sub: 'modulo-ventas' }, 403],
+  ] as const)(
     'rejects productos availability GET with %s before upstream',
-    async (_reason, claims) => {
+    async (_reason, claims, expectedStatus) => {
       const response = await request(app.getHttpServer())
         .get('/api/v1/inventario/disponibilidad/comercial')
         .set(
@@ -239,7 +239,7 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
             ...claims,
           })}`,
         );
-      expect(response.status).toBe(403);
+      expect(response.status).toBe(expectedStatus);
       expect(calls).toHaveLength(0);
     },
   );
