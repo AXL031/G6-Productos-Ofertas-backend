@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import {
   changePrice,
   schedulePrice,
   requireRule,
+  validateTerms,
   type PriceDefinition,
   type PriceUpdate,
 } from '../domain/price.js';
@@ -24,7 +26,12 @@ export type PriceFact = Pick<
   'messageId' | 'correlationId' | 'causationId' | 'operationId' | 'payload'
 >;
 export type PriceFactSource =
-  PriceFact | ((before: PriceDefinition, after: PriceDefinition) => PriceFact);
+  | PriceFact
+  | readonly PriceFact[]
+  | ((
+      before: PriceDefinition,
+      after: PriceDefinition,
+    ) => PriceFact | readonly PriceFact[]);
 
 @Injectable()
 export class PricingMutations {
@@ -41,7 +48,84 @@ export class PricingMutations {
     fact: PriceFactSource,
   ) {
     return this.repository.transaction(async (tx) => {
-      const { row, definition } = await this.load(tx, target, channelId);
+      const loaded = await this.loadMaybe(tx, target, channelId);
+      if (!loaded) {
+        requireRule(expectedVersion === 0n, 'PRECIO_NO_ENCONTRADO');
+        const regular = input.precioRegular;
+        requireRule(
+          regular !== undefined && regular !== null,
+          'PRECIO_INVALIDO',
+        );
+        const offer =
+          input.accionPrecioOferta === 'ESTABLECER'
+            ? (input.precioOferta ?? null)
+            : null;
+        const terms = {
+          precioRegular: regular,
+          precioOferta: offer,
+          currency: input.currency,
+          motivoCambio: input.motivoCambio,
+          usuarioId: input.usuarioId,
+        };
+        validateTerms(terms);
+        const targetDefinition = {
+          productId: target.productId ?? null,
+          sku: target.sku ?? null,
+        };
+        const definition: PriceDefinition = {
+          target: targetDefinition as PriceDefinition['target'],
+          channelId,
+          priceVersion: 1n,
+          validities: [
+            {
+              ...terms,
+              validFrom: now,
+              validUntil: null,
+              priceVersion: 1n,
+              isCancelled: false,
+            },
+          ],
+        };
+        const [row] = await tx
+          .insert(prices)
+          .values({
+            productId: targetDefinition.productId,
+            sku: targetDefinition.sku,
+            channelId,
+          })
+          .onConflictDoNothing()
+          .returning();
+        requireRule(row !== undefined, 'VERSION_CONFLICT');
+        const [stored] = await tx
+          .insert(priceValidities)
+          .values({ ...definition.validities[0], priceId: row.id })
+          .returning();
+        const before: PriceDefinition = {
+          target: definition.target,
+          channelId,
+          priceVersion: 0n,
+          validities: [],
+        };
+        const facts =
+          typeof fact === 'function' ? fact(before, definition) : fact;
+        const rows = Array.isArray(facts) ? facts : [facts];
+        if (rows.length)
+          await tx.insert(outbox).values(
+            rows.map((item) => ({
+              ...item,
+              eventName: 'pricing.price.changed',
+              kind: 'event' as const,
+              schemaVersion: 1,
+              occurredAt: now,
+            })),
+          );
+        return {
+          definition,
+          validityId: stored.id,
+          tipoOperacion: 'CREACION' as const,
+        };
+      }
+      const { row, definition } = loaded;
       const result = changePrice(definition, input, expectedVersion, now);
       const stored = await this.persist(
         tx,
@@ -60,24 +144,31 @@ export class PricingMutations {
     channelId: string | null,
     input: Parameters<typeof schedulePrice>[1],
     now: Date,
-    fact: PriceFactSource,
+    _fact?: PriceFactSource,
+    eventContext?: { productId: string; correlationId: string },
   ) {
     return this.repository.transaction(async (tx) => {
       const { row, definition } = await this.load(tx, target, channelId);
       const plan = schedulePrice(definition, input, now);
+      // Registrar intención futura y reservar su snapshot/version no equivale
+      // a un cambio efectivo. El reconciliador produce el hecho al activarla.
       const validity = await this.persist(
         tx,
         row.id,
         plan,
         row.priceVersion,
         now,
-        typeof fact === 'function' ? fact(definition, plan) : fact,
       );
       const [scheduled] = await tx
         .insert(scheduledPrices)
         .values({
+          id: randomUUID(),
           priceId: row.id,
           validityId: validity.id,
+          productId:
+            eventContext?.productId ??
+            ('productId' in target ? target.productId : null),
+          correlationId: eventContext?.correlationId ?? randomUUID(),
           tipoPrecio: input.tipoPrecio,
           importe: input.importe,
         })
@@ -86,7 +177,7 @@ export class PricingMutations {
     });
   }
 
-  private async load(
+  private async loadMaybe(
     tx: PricingTransaction,
     target: Target,
     channelId: string | null,
@@ -105,7 +196,7 @@ export class PricingMutations {
         ),
       )
       .for('update');
-    requireRule(row !== undefined, 'PRECIO_NO_ENCONTRADO');
+    if (!row) return undefined;
     const validities = await tx
       .select()
       .from(priceValidities)
@@ -133,13 +224,23 @@ export class PricingMutations {
     return { row, definition };
   }
 
+  private async load(
+    tx: PricingTransaction,
+    target: Target,
+    channelId: string | null,
+  ) {
+    const result = await this.loadMaybe(tx, target, channelId);
+    requireRule(result !== undefined, 'PRECIO_NO_ENCONTRADO');
+    return result;
+  }
+
   private async persist(
     tx: PricingTransaction,
     priceId: string,
     plan: PriceDefinition,
     expected: bigint,
     now: Date,
-    fact: PriceFact,
+    facts?: PriceFact | readonly PriceFact[],
   ) {
     const changed = await tx
       .update(prices)
@@ -166,13 +267,19 @@ export class PricingMutations {
       .insert(priceValidities)
       .values({ ...incoming, priceId })
       .returning();
-    await tx.insert(outbox).values({
-      ...fact,
-      eventName: 'pricing.price.changed',
-      kind: 'event',
-      schemaVersion: 1,
-      occurredAt: now,
-    });
+    if (facts) {
+      const rows = Array.isArray(facts) ? facts : [facts];
+      if (rows.length)
+        await tx.insert(outbox).values(
+          rows.map((fact) => ({
+            ...fact,
+            eventName: 'pricing.price.changed',
+            kind: 'event' as const,
+            schemaVersion: 1,
+            occurredAt: now,
+          })),
+        );
+    }
     return stored;
   }
 }

@@ -3,18 +3,24 @@ import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingReadGuard, record } from './pricing-read.guard.js';
 import { PricingHttpError } from './pricing-http.error.js';
 
+export type PricingServiceScope =
+  'catalogo:leer' | 'precios:leer' | 'tokens:introspeccion';
+
 @Injectable()
 export class CatalogServiceToken {
-  private cached?: { value: string; until: number };
+  private readonly cached = new Map<string, { value: string; until: number }>();
   constructor(
     @Inject(PRICING_CONFIG) private readonly config: PricingConfig,
     @Inject(PricingReadGuard) private readonly verifier: PricingReadGuard,
   ) {}
 
-  async get(): Promise<string | null> {
-    if (this.config.demoNoAuthEnabled) return null;
-    if (this.cached && Date.now() < this.cached.until) return this.cached.value;
-    this.cached = undefined;
+  async get(
+    scope: PricingServiceScope = 'catalogo:leer',
+  ): Promise<string | null> {
+    if (this.config.demoNoAuthEnabled && scope === 'catalogo:leer') return null;
+    const cached = this.cached.get(scope);
+    if (cached && Date.now() < cached.until) return cached.value;
+    this.cached.delete(scope);
     try {
       if (!this.config.serviceToken) throw new Error();
       const response = await fetch(this.config.serviceToken.url, {
@@ -26,7 +32,7 @@ export class CatalogServiceToken {
           grant_type: 'client_credentials',
           client_id: 'modulo-productos',
           client_secret: this.config.serviceToken.secret,
-          scope: 'catalogo:leer',
+          scope,
         }),
       });
       if (
@@ -61,10 +67,10 @@ export class CatalogServiceToken {
         (body.expiresIn as number) <= 0 ||
         !Array.isArray(body.scopes) ||
         !body.scopes.every((scope) => typeof scope === 'string') ||
-        !body.scopes.includes('catalogo:leer')
+        !body.scopes.includes(scope)
       )
         throw new Error();
-      await this.verifier.authorize(body.accessToken, true, 'catalogo:leer');
+      await this.verifier.authorize(body.accessToken, true, scope);
       // Solo se inspeccionan claims después de verificar la firma y el issuer.
       const claims: unknown = JSON.parse(
         Buffer.from(body.accessToken.split('.')[1], 'base64url').toString(
@@ -78,14 +84,14 @@ export class CatalogServiceToken {
         typeof claims.exp !== 'number'
       )
         throw new Error();
-      this.cached = {
+      this.cached.set(scope, {
         value: body.accessToken,
         until:
           Math.min(
             claims.exp * 1000,
             Date.now() + (body.expiresIn as number) * 1000,
           ) - 5000,
-      };
+      });
       return body.accessToken;
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');

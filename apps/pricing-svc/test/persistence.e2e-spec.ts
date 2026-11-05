@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { getTableConfig } from 'drizzle-orm/pg-core';
 import request from 'supertest';
 import type { App } from 'supertest/types.js';
@@ -28,6 +28,9 @@ import {
 import { IsolatedPostgres } from './isolated-postgres.js';
 import { SignedUser } from './signed-user.js';
 import { PricingMutations } from '../src/application/pricing-mutations.js';
+import { PricingScheduleReconciler } from '../src/messaging/schedule-reconciler.js';
+import { PricingProductInitialization } from '../src/messaging/pricing-initialization.js';
+import { CatalogSkuDeactivated } from '../src/messaging/catalog-sku-deactivated.js';
 import {
   CommercialPrices,
   PRICING_CATALOG_CONTEXT,
@@ -55,6 +58,9 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
     let repository: PricingRepository;
     let database: PricingDatabase;
     let mutations: PricingMutations;
+    let reconciler: PricingScheduleReconciler;
+    let initialization: PricingProductInitialization;
+    let deactivation: CatalogSkuDeactivated;
     const contexts = new Map<
       string,
       NonNullable<Awaited<ReturnType<PricingCatalogContext['resolve']>>>
@@ -152,6 +158,9 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       database = module.get(PricingDatabase);
       repository = module.get(PricingRepository);
       mutations = module.get(PricingMutations);
+      reconciler = module.get(PricingScheduleReconciler);
+      initialization = module.get(PricingProductInitialization);
+      deactivation = module.get(CatalogSkuDeactivated);
       app = module.createNestApplication();
       await app.init();
     }, 90000);
@@ -346,8 +355,220 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       ).rejects.toMatchObject({ status: 503 });
     });
 
+    it('consume inicialización Catalog con Inbox, precio y hechos/resultados Outbox atómicos e idempotentes', async () => {
+      const productId = randomUUID();
+      const operationId = randomUUID();
+      const correlationId = randomUUID();
+      const messageId = randomUUID();
+      const occurredAt = new Date(Date.now() - 5000).toISOString();
+      const envelope = (id: string, precio_regular: number) => ({
+        message_id: id,
+        schema_version: 1,
+        occurred_at: occurredAt,
+        correlation_id: correlationId,
+        causation_id: null,
+        operation_id: operationId,
+        producer: 'catalog-svc',
+        kind: 'command',
+        name: 'pricing.product.initialization.requested',
+        data: {
+          product_id: productId,
+          sku_base: 'BASE-' + productId,
+          precio_regular,
+          moneda: 'PEN',
+          channel_id: null,
+          motivo_cambio: 'ALTA_PRODUCTO',
+        },
+      });
+      const first = envelope(messageId, 125.5);
+      expect(
+        await initialization.consume(Buffer.from(JSON.stringify(first))),
+      ).toBe('APPLIED');
+      expect(
+        await initialization.consume(Buffer.from(JSON.stringify(first))),
+      ).toBe('APPLIED');
+      expect(
+        await initialization.consume(
+          Buffer.from(JSON.stringify(envelope(randomUUID(), 125.5))),
+        ),
+      ).toBe('DUPLICATE');
+      const conflict = envelope(randomUUID(), 140);
+      expect(
+        await initialization.consume(Buffer.from(JSON.stringify(conflict))),
+      ).toBe('REJECTED');
+
+      const definitions = await database.db
+        .select()
+        .from(prices)
+        .where(eq(prices.productId, productId));
+      expect(definitions).toHaveLength(1);
+      expect(definitions[0]).toMatchObject({
+        sku: null,
+        channelId: null,
+        priceVersion: 1n,
+      });
+      const snapshots = await repository.findValidities(definitions[0].id);
+      expect(snapshots).toHaveLength(1);
+      expect(snapshots[0]).toMatchObject({
+        precioRegular: '125.50',
+        motivoCambio: 'ALTA_PRODUCTO',
+        usuarioId: null,
+      });
+      const messages = await database.db
+        .select()
+        .from(outbox)
+        .where(eq(outbox.operationId, operationId));
+      expect(messages.map((row) => row.eventName).sort()).toEqual([
+        'pricing.price.changed',
+        'pricing.product.initialization.completed',
+        'pricing.product.initialization.completed',
+        'pricing.product.initialization.rejected',
+      ]);
+      expect(
+        messages.find((row) => row.eventName === 'pricing.price.changed')
+          ?.payload,
+      ).toMatchObject({
+        target_type: 'PRODUCTO',
+        product_id: productId,
+        price_type: 'REGULAR',
+        previous_price: null,
+        new_price: '125.50',
+        price_version: 1,
+        actor: { user_id: null, email: null, ip: null },
+      });
+      const sameIntent = await initialization.consume(
+        Buffer.from(JSON.stringify(envelope(randomUUID(), 125.5))),
+      );
+      expect(sameIntent).toBe('DUPLICATE');
+      const replayedResults = await database.db
+        .select()
+        .from(outbox)
+        .where(
+          and(
+            eq(outbox.operationId, operationId),
+            eq(outbox.kind, 'result'),
+            eq(outbox.eventName, 'pricing.product.initialization.completed'),
+          ),
+        );
+      expect(replayedResults).toHaveLength(3);
+    });
+
+    it('cancela solo programaciones futuras del SKU por versión; duplicados y versiones obsoletas no repiten efectos', async () => {
+      const productId = randomUUID();
+      const sku = 'DEACTIVATE-' + randomUUID();
+      const siblingSku = 'SIBLING-' + randomUUID();
+      const now = new Date('2034-01-01T00:00:00Z');
+      const future = new Date('2035-01-01T00:00:00Z');
+      const inserted = await repository.transaction(async (tx) => {
+        const target = await create(tx, { sku });
+        const sibling = await create(tx, { sku: siblingSku });
+        const base = await create(tx, { productId });
+        const rows: (typeof scheduledPrices.$inferSelect)[] = [];
+        for (const item of [target, sibling, base]) {
+          await tx
+            .update(prices)
+            .set({ priceVersion: 2n })
+            .where(eq(prices.id, item.definition.id));
+          await tx
+            .update(priceValidities)
+            .set({ validUntil: future })
+            .where(eq(priceValidities.id, item.validity.id));
+          const [validity] = await tx
+            .insert(priceValidities)
+            .values({
+              priceId: item.definition.id,
+              precioRegular: '130.00',
+              precioOferta: null,
+              currency: 'PEN',
+              validFrom: future,
+              validUntil: null,
+              priceVersion: 2n,
+              motivoCambio: 'FUTURA',
+              usuarioId: actor,
+            })
+            .returning();
+          const [schedule] = await tx
+            .insert(scheduledPrices)
+            .values({
+              priceId: item.definition.id,
+              validityId: validity.id,
+              productId: item.definition.productId,
+              correlationId: randomUUID(),
+              tipoPrecio: 'REGULAR',
+              importe: '130.00',
+              status: 'SCHEDULED',
+            })
+            .returning();
+          rows.push(schedule);
+        }
+        return rows;
+      });
+      const makeMessage = (
+        messageId: string,
+        version: number,
+        changedAt: Date,
+      ) => ({
+        message_id: messageId,
+        schema_version: 1,
+        occurred_at: now.toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'event',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: productId,
+          sku_version: version,
+          changed_at: changedAt.toISOString(),
+        },
+      });
+      const first = makeMessage(randomUUID(), 2, now);
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(first))),
+      ).toBe('APPLIED');
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(first))),
+      ).toBe('DUPLICATE');
+      const stale = makeMessage(randomUUID(), 1, now);
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(stale))),
+      ).toBe('STALE');
+      const statuses = await database.db
+        .select({ id: scheduledPrices.id, status: scheduledPrices.status })
+        .from(scheduledPrices)
+        .where(
+          inArray(
+            scheduledPrices.id,
+            inserted.map((row) => row.id),
+          ),
+        );
+      expect(statuses.find((row) => row.id === inserted[0].id)?.status).toBe(
+        'CANCELLED',
+      );
+      expect(statuses.find((row) => row.id === inserted[1].id)?.status).toBe(
+        'SCHEDULED',
+      );
+      expect(statuses.find((row) => row.id === inserted[2].id)?.status).toBe(
+        'SCHEDULED',
+      );
+      const invalid = makeMessage(randomUUID(), 3, now);
+      delete invalid.data.sku_version;
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(invalid))),
+      ).toBe('REJECTED');
+    });
+
     it('PATCH SKU conserva canal textual y rechaza canales invalidos sin efectos', async () => {
       const sku = 'PATCH-CHANNEL-' + randomUUID();
+      contexts.set(sku, {
+        sku,
+        productId: randomUUID(),
+        isVariant: true,
+        active: true,
+        eligible: true,
+      });
       const unknownChannel = randomUUID();
       await repository.transaction(async (tx) => {
         for (const channelId of [null, retailChannel, unknownChannel]) {
@@ -454,6 +675,14 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
           'productId' in target
             ? `/api/v1/precios/productos/${target.productId}`
             : `/api/v1/precios/skus/${target.sku}`;
+        if ('sku' in target)
+          contexts.set(target.sku, {
+            sku: target.sku,
+            productId: randomUUID(),
+            isVariant: true,
+            active: true,
+            eligible: true,
+          });
         const jwt = 'Bearer ' + identity.token();
         const correlation = randomUUID();
         const patchBody = {
@@ -1254,6 +1483,72 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         .expect(400);
     });
 
+    it('#56: crea definición ausente solo con versión cero y conserva CAS al actualizar', async () => {
+      const productId = randomUUID();
+      const body = {
+        priceVersion: 0,
+        precioRegular: 100,
+        precioOferta: null,
+        accionPrecioOferta: 'CONSERVAR',
+        moneda: 'PEN',
+        motivoCambio: 'Alta precio base',
+      };
+      await request(app!.getHttpServer())
+        .patch(`/api/v1/precios/productos/${productId}`)
+        .set('Authorization', `Bearer ${identity.token()}`)
+        .send(body)
+        .expect(200)
+        .expect(({ body: result }) => {
+          expect(result).toMatchObject({
+            product_id: productId,
+            price_version: 1,
+          });
+        });
+      await request(app!.getHttpServer())
+        .patch(`/api/v1/precios/productos/${productId}`)
+        .set('Authorization', `Bearer ${identity.token()}`)
+        .send({ ...body, precioRegular: 101 })
+        .expect(409)
+        .expect(({ body: result }) => {
+          expect(result.code).toBe('VERSION_CONFLICT');
+        });
+      await request(app!.getHttpServer())
+        .patch(`/api/v1/precios/productos/${productId}`)
+        .set('Authorization', `Bearer ${identity.token()}`)
+        .send({ ...body, priceVersion: 1, precioRegular: 110 })
+        .expect(200)
+        .expect(({ body: result }) => {
+          expect(result.price_version).toBe(2);
+        });
+      expect(
+        (await repository.findDefinition({ productId }, null))?.priceVersion,
+      ).toBe(2n);
+
+      const sku = `VAR-${randomUUID()}`;
+      contexts.set(sku, {
+        sku,
+        productId,
+        isVariant: true,
+        active: true,
+        eligible: true,
+      });
+      await request(app!.getHttpServer())
+        .patch(`/api/v1/precios/skus/${encodeURIComponent(sku)}`)
+        .set('Authorization', `Bearer ${identity.token()}`)
+        .send({ ...body, precioRegular: 80, motivoCambio: 'Override inicial' })
+        .expect(200)
+        .expect(({ body: result }) => {
+          expect(result).toMatchObject({
+            sku,
+            origen: 'SKU_OVERRIDE',
+            price_version: 1,
+          });
+        });
+      expect(
+        (await repository.findDefinition({ sku }, null))?.priceVersion,
+      ).toBe(1n);
+    });
+
     it('#56: el caso de uso real serializa escritores y revierte precio/historia si falla Outbox', async () => {
       const productId = randomUUID();
       const now = new Date();
@@ -1277,7 +1572,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         accionPrecioOferta: 'CONSERVAR' as const,
         currency: 'PEN',
         motivoCambio: 'fixture-change',
-        usuarioId: 'fixture-actor',
+        usuarioId: actor,
       };
       const results = await Promise.allSettled([
         mutations.update({ productId }, null, input, 1n, now, fact),
@@ -1356,7 +1651,17 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         correlationId: randomUUID(),
         payload: {},
       });
-      await mutations.schedule({ productId }, null, input, now, fact());
+      const correlationId = randomUUID();
+      await mutations.schedule({ productId }, null, input, now, fact(), {
+        productId,
+        correlationId,
+      });
+      expect(
+        await database.db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.correlationId, correlationId)),
+      ).toHaveLength(0);
       const definition = (await repository.findDefinition(
         { productId },
         null,
@@ -1370,6 +1675,23 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       expect(
         await repository.readSchedules({ productId }, 1, 20),
       ).toMatchObject({ total: 1 });
+      expect(await reconciler.runOnce(future)).toEqual({
+        activated: 1,
+        historical: 2,
+      });
+      const effectiveFacts = await database.db
+        .select()
+        .from(outbox)
+        .where(eq(outbox.correlationId, correlationId));
+      expect(effectiveFacts).toHaveLength(1);
+      expect(effectiveFacts[0].payload).toMatchObject({
+        target_type: 'PRODUCTO',
+        product_id: productId,
+        price_type: 'OFERTA',
+        previous_price: '80.25',
+        new_price: '70.00',
+        price_version: 2,
+      });
       const current = await request(app!.getHttpServer())
         .get(`/api/v1/precios/productos/${productId}`)
         .set('Authorization', `Bearer ${identity.token()}`)
@@ -1394,6 +1716,55 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       expect(
         (await repository.findDefinition({ productId }, null))!.priceVersion,
       ).toBe(2n);
+    });
+
+    it('marca histórica una programación ya vencida sin emitirla retroactivamente', async () => {
+      const productId = randomUUID();
+      const now = new Date();
+      const future = new Date(now.getTime() + 1000);
+      const expires = new Date(now.getTime() + 2000);
+      await repository.transaction(async (tx) => {
+        const [price] = await tx
+          .insert(prices)
+          .values({ productId })
+          .returning();
+        await tx.insert(priceValidities).values({
+          ...snapshot(price.id),
+          validFrom: new Date(now.getTime() - 60000),
+        });
+      });
+      const correlationId = randomUUID();
+      await mutations.schedule(
+        { productId },
+        null,
+        {
+          tipoPrecio: 'OFERTA',
+          importe: '70.00',
+          currency: 'PEN',
+          motivoCambio: 'fixture-expired-schedule',
+          usuarioId: actor,
+          validFrom: future,
+          validUntil: expires,
+        },
+        now,
+        undefined,
+        { productId, correlationId },
+      );
+      expect(await reconciler.runOnce(new Date(expires.getTime() + 1))).toEqual(
+        {
+          activated: 0,
+          historical: 1,
+        },
+      );
+      expect(
+        await database.db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.correlationId, correlationId)),
+      ).toHaveLength(0);
+      expect(
+        await repository.readSchedules({ productId }, 1, 20),
+      ).toMatchObject({ items: [{ schedule: { status: 'HISTORICAL' } }] });
     });
 
     it('HTTP no confunde falta de permisos DB con precio ausente y se recupera', async () => {

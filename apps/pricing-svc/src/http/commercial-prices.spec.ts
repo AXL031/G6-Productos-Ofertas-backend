@@ -144,7 +144,10 @@ describe('JWT técnico solo para operationIds comerciales autorizados', () => {
       ...extra,
     });
   it('admite claims mínimos de servicio y no exige roles humanos', async () => {
-    await expect(guard.authorize(token(), true)).resolves.toBeUndefined();
+    await expect(guard.authorize(token(), true)).resolves.toMatchObject({
+      sub: 'modulo-marketplace',
+      tipo: 'servicio',
+    });
   });
   it('no autoriza el token técnico para una consulta administrativa', async () => {
     await expect(guard.authorize(token(), false)).rejects.toMatchObject({
@@ -154,7 +157,7 @@ describe('JWT técnico solo para operationIds comerciales autorizados', () => {
   it('autoriza modulo-productos solo con precios:leer en lecturas comerciales', async () => {
     await expect(
       guard.authorize(token({ sub: 'modulo-productos' }), true),
-    ).resolves.toBeUndefined();
+    ).resolves.toMatchObject({ sub: 'modulo-productos', tipo: 'servicio' });
     await expect(
       guard.authorize(token({ sub: 'modulo-productos' }), false),
     ).rejects.toMatchObject({ status: 401 });

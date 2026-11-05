@@ -18,7 +18,49 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       await postgres.admin!.query(
         `INSERT INTO pricing.outbox(message_id,event_name,kind,correlation_id,occurred_at,payload)
       VALUES($1,'pricing.price.changed','event',$2,now(),$3)`,
-        [id, randomUUID(), JSON.stringify({ fixture_only: true })],
+        [
+          id,
+          randomUUID(),
+          JSON.stringify({
+            target_type: 'PRODUCTO',
+            product_id: randomUUID(),
+            sku: null,
+            channel_id: null,
+            currency: 'PEN',
+            price_type: 'REGULAR',
+            previous_price: null,
+            new_price: '123.45',
+            operation: 'CREACION',
+            reason: 'ALTA_PRODUCTO',
+            price_version: 1,
+            valid_from: new Date().toISOString(),
+            batch_id: null,
+            actor: { user_id: null, email: null, ip: null },
+          }),
+        ],
+      );
+      return id;
+    }
+    async function insertInitializationResult() {
+      const id = randomUUID();
+      await postgres.admin!.query(
+        `INSERT INTO pricing.outbox(message_id,event_name,kind,schema_version,correlation_id,causation_id,operation_id,occurred_at,payload)
+         VALUES($1,'pricing.product.initialization.completed','result',1,$2,$3,$4,now(),$5)`,
+        [
+          id,
+          randomUUID(),
+          randomUUID(),
+          randomUUID(),
+          JSON.stringify({
+            product_id: randomUUID(),
+            sku_base: 'BASE-1',
+            status: 'READY',
+            price_version: 1,
+            vigencia_id: randomUUID(),
+            code: null,
+            completed_at: new Date().toISOString(),
+          }),
+        ],
       );
       return id;
     }
@@ -55,12 +97,48 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
         port: 3002,
         databaseUrl: postgres.runtimeUrl,
         databaseSsl: false,
+        priceChangedPublishingEnabled: true,
       });
     }, 120000);
     afterAll(async () => {
       await database?.onApplicationShutdown();
       await broker.stop();
       await postgres.stop();
+    });
+    it('con la compuerta apagada publica resultados y conserva el evento de precio pendiente', async () => {
+      const id = await insert();
+      const resultId = await insertInitializationResult();
+      const disabled = new PricingOutboxRelay(new PricingRepository(database), {
+        nodeEnv: 'test',
+        port: 3002,
+        databaseUrl: postgres.runtimeUrl,
+        databaseSsl: false,
+      });
+      try {
+        expect(await disabled.runOnce(broker.url)).toEqual({
+          selected: 1,
+          published: 1,
+        });
+        expect((await stored(id)).published_at).toBeNull();
+        expect((await stored(resultId)).published_at).not.toBeNull();
+        const resultMessage = await broker.channel!.get('po.catalog.q', {
+          noAck: false,
+        });
+        expect(resultMessage).not.toBe(false);
+        expect(
+          JSON.parse(resultMessage!.content.toString('utf8')),
+        ).toMatchObject({
+          name: 'pricing.product.initialization.completed',
+          kind: 'result',
+          producer: 'pricing-svc',
+        });
+        broker.channel!.ack(resultMessage!);
+      } finally {
+        await postgres.admin!.query(
+          'UPDATE pricing.outbox SET published_at=now() WHERE message_id IN ($1,$2)',
+          [id, resultId],
+        );
+      }
     });
     it('marca publicado solo después de confirm y conserva identidad y payload', async () => {
       const id = await insert();
@@ -71,7 +149,7 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       expect(await delivery()).toMatchObject({
         message_id: id,
         producer: 'pricing-svc',
-        data: { fixture_only: true },
+        data: { price_type: 'REGULAR', new_price: '123.45' },
       });
       expect((await stored(id)).published_at).not.toBeNull();
       expect(await relay.runOnce(broker.url)).toEqual({
