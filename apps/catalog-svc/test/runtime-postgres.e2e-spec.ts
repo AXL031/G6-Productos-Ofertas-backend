@@ -399,6 +399,24 @@ describe.skipIf(!dockerAvailable)(
         );
         try {
           expect((await fetch(base + '/health/ready')).status).toBe(503);
+          const cliUnavailable = spawnSync(
+            process.execPath,
+            [resolve('dist/apps/catalog-svc/readiness.js')],
+            {
+              cwd: directory,
+              env,
+              encoding: 'utf8',
+              timeout: 15000,
+              windowsHide: true,
+            },
+          );
+          expect(cliUnavailable.error).toBeUndefined();
+          expect(cliUnavailable.status).toBe(1);
+          expect(JSON.parse(cliUnavailable.stdout)).toMatchObject({
+            service: 'catalog-svc',
+            status: 'not_ready',
+            database: 'ready',
+          });
         } finally {
           command(
             'docker',
@@ -417,11 +435,30 @@ describe.skipIf(!dockerAvailable)(
         }
         expect((await fetch(base + '/health/ready')).status).toBe(200);
 
+        command('docker', ['stop', '--time', '0', container]);
+        try {
+          const unavailable = await fetch(base + '/health/ready', {
+            signal: AbortSignal.timeout(5000),
+          });
+          expect(unavailable.status).toBe(503);
+        } finally {
+          command('docker', ['start', container]);
+          await until(ready);
+          databasePort = command('docker', ['port', container, '5432/tcp'])
+            .split(':')
+            .at(-1)!;
+        }
+
         await stop(child);
         const restartPort = await freePort();
+        const restartedEnv = {
+          ...env,
+          CATALOG_SVC_PORT: String(restartPort),
+          PGPORT: databasePort,
+        };
         const restarted = spawn(process.execPath, [main], {
           cwd: directory,
-          env: { ...env, CATALOG_SVC_PORT: String(restartPort) },
+          env: restartedEnv,
           windowsHide: true,
         });
         let restartedLogs = '';
