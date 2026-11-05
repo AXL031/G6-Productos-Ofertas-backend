@@ -328,9 +328,15 @@ jobs:
           printf 'CORRECTO: Dockerfile.service %s escuchó en %s/%s y su healthcheck quedó saludable.\n' "$service" "$port_env" "$port"
         done < ops/oracle/services.psv
 
-    - name: Probar Inventory en contenedor con PostgreSQL TLS desechable
+    - name: Probar imagen Oracle de Inventory con PostgreSQL TLS desechable
       env:
         G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        INVENTORY_TEST_IMAGE: g6-service:inventory-svc-ci
+      run: bash scripts/ci/inventory-container-smoke.sh
+    - name: Probar imagen independiente de Inventory con PostgreSQL TLS desechable
+      env:
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        INVENTORY_TEST_IMAGE: inventory-svc:ci
       run: bash scripts/ci/inventory-container-smoke.sh
     - name: Rechazar arranques sin configuración PostgreSQL
       run: node scripts/ci/invalid-startup.mjs
