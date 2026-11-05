@@ -27,37 +27,7 @@ export interface TaxonomyPublicReadConfig {
 const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
   'listarCategorias',
   'listarMarcas',
-  'obtenerArbolCategorias',
-  'obtenerArbolCategoriasAdmin',
-  'listarCategoriasAdmin',
-  'listarMarcasAdmin',
-  'obtenerMarca',
-  'obtenerMarcaAdmin',
-  'obtenerCategoria',
-  'obtenerCategoriaAdmin',
-  'obtenerCaracteristica',
-  'listarTiposProducto',
-  'obtenerTipoProducto',
-  'listarValoresCaracteristica',
-  'obtenerEsquemaTipoProducto',
 ]);
-const TAXONOMY_HANDLER_ALIASES: Readonly<Record<string, readonly string[]>> = {
-  listarCategorias: ['listarCategorias'],
-  listarMarcas: ['listarMarcas'],
-  obtenerArbolCategoriasAdmin: [
-    'obtenerArbolCategorias',
-    'obtenerArbolCategoriasAdmin',
-  ],
-  listarCategoriasAdmin: ['listarCategoriasAdmin'],
-  listarMarcasAdmin: ['listarMarcasAdmin'],
-  obtenerMarcaAdmin: ['obtenerMarca', 'obtenerMarcaAdmin'],
-  obtenerCategoriaAdmin: ['obtenerCategoria', 'obtenerCategoriaAdmin'],
-  obtenerCaracteristica: ['obtenerCaracteristica'],
-  listarTiposProducto: ['listarTiposProducto'],
-  obtenerTipoProducto: ['obtenerTipoProducto'],
-  listarValoresCaracteristica: ['listarValoresCaracteristica'],
-  obtenerEsquemaTipoProducto: ['obtenerEsquemaTipoProducto'],
-};
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
 const TAXONOMY_SERVICE_CLIENTS = 'taxonomy:service-clients';
@@ -73,17 +43,13 @@ export function readTaxonomyPublicReadConfig(
   const mode = env.G6_SECURITY_MODE;
   if (
     mode !== undefined &&
-    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
+    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(mode)
   ) {
     throw new Error('Configuración de demo Taxonomy inválida');
   }
   const securityMode: TaxonomySecurityMode =
     (mode as TaxonomySecurityMode | undefined) ?? 'G7_AUTHENTICATED';
-  const publicOperations = (
-    env.TAXONOMY_PUBLIC_OPERATION_IDS ??
-    env.G6_PUBLIC_OPERATION_IDS ??
-    ''
-  )
+  const publicOperations = (env.TAXONOMY_PUBLIC_OPERATION_IDS ?? '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
@@ -109,8 +75,7 @@ export function readTaxonomyDemoConfig(
   if (
     flag !== 'true' ||
     !['test', 'development'].includes(env.NODE_ENV ?? '') ||
-    (env.G6_SECURITY_MODE !== undefined &&
-      env.G6_SECURITY_MODE !== 'PUBLIC_READ_ONLY')
+    env.G6_SECURITY_MODE !== undefined
   ) {
     throw new Error('Configuración de demo Taxonomy inválida');
   }
@@ -462,8 +427,10 @@ function isApprovedPublicTaxonomyOperation(
   config: TaxonomyPublicReadConfig | undefined,
 ): boolean {
   if (!handlerName || config?.securityMode !== 'PUBLIC_READ_ONLY') return false;
-  const aliases = TAXONOMY_HANDLER_ALIASES[handlerName] ?? [handlerName];
-  return aliases.some((op) => config.publicOperations.includes(op));
+  return (
+    TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS.has(handlerName) &&
+    config.publicOperations.includes(handlerName)
+  );
 }
 
 @Injectable()
@@ -478,18 +445,8 @@ export class TaxonomyUserGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
-    if (
-      authorization === undefined &&
-      request.method === 'GET' &&
-      Reflect.getMetadata(TAXONOMY_SERVICE_READ, context.getHandler()) ===
-        true &&
-      isApprovedPublicTaxonomyOperation(
-        context.getHandler?.()?.name,
-        this.publicReadConfig,
-      )
-    ) {
-      return true;
-    }
+    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
+      throw new ServiceUnavailableException();
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
@@ -561,6 +518,8 @@ export class TaxonomyAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
     const peer = request.socket?.remoteAddress?.replace(/^::ffff:/, '');
+    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
+      throw new ServiceUnavailableException();
     if (
       this.demoEnabled &&
       authorization === undefined &&

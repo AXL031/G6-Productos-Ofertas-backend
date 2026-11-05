@@ -43,21 +43,15 @@ export function readCatalogReadDemo(
   const securityModeRaw = env.G6_SECURITY_MODE;
   if (
     securityModeRaw !== undefined &&
-    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
-      securityModeRaw,
-    )
+    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(securityModeRaw)
   ) {
     throw new Error(
-      'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY, SIMULATED_AUTH o G7_AUTHENTICATED.',
+      'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY o G7_AUTHENTICATED; SIMULATED_AUTH no está homologado.',
     );
   }
   const securityMode =
     (securityModeRaw as CatalogSecurityMode | undefined) ?? 'G7_AUTHENTICATED';
-  const publicOperations = (
-    env.CATALOG_PUBLIC_OPERATION_IDS ??
-    env.G6_PUBLIC_OPERATION_IDS ??
-    ''
-  )
+  const publicOperations = (env.CATALOG_PUBLIC_OPERATION_IDS ?? '')
     .split(',')
     .map((id) => id.trim())
     .filter(Boolean);
@@ -75,22 +69,20 @@ export function readCatalogReadDemo(
   if (!['true', 'false'].includes(mode))
     throw new Error('GATEWAY_DEMO_NO_AUTH_ENABLED debe ser true/false.');
   if (
-    securityMode === 'PUBLIC_READ_ONLY' &&
-    (mode === 'true' || env.G6_READ_ONLY_DEMO_ENABLED === 'false')
+    securityModeRaw !== undefined &&
+    (mode === 'true' ||
+      flag === 'true' ||
+      env.CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED === 'true')
   ) {
     throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
   }
-  if (
-    securityModeRaw !== undefined &&
-    securityMode !== 'PUBLIC_READ_ONLY' &&
-    (flag === 'true' || mode === 'true' || publicOperations.length > 0)
-  ) {
+  if (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length > 0) {
     throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
   }
   if (securityModeRaw === 'PUBLIC_READ_ONLY') {
     // Phase 1 never activates an automatic list of public operations.
     return Object.freeze({
-      enabled: publicOperations.length > 0,
+      enabled: false,
       securityMode,
       publicOperations: Object.freeze(publicOperations),
     });

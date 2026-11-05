@@ -19,7 +19,7 @@ import {
 } from './taxonomy-config.js';
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import { TaxonomyClient } from './taxonomy.client.js';
-import { createDemoIssuer } from '../../../ops/azure/demo-jwt-issuer.mjs';
+import { createJwtFixture } from '../test/support/jwt-fixture.js';
 
 describe('Explicit internal read-only demo (HTTP provider, isolated repositories)', () => {
   let app: INestApplication;
@@ -75,13 +75,13 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
         CATALOG_PUBLIC_OPERATION_IDS: 'listarProductos',
       }),
     ).toEqual({
-      enabled: true,
+      enabled: false,
       securityMode: 'PUBLIC_READ_ONLY',
       publicOperations: ['listarProductos'],
     });
-    expect(
+    expect(() =>
       readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-    ).toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
+    ).toThrow();
     expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'G7_AUTHENTICATED' }),
     ).toMatchObject({ enabled: false, securityMode: 'G7_AUTHENTICATED' });
@@ -153,108 +153,18 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
   });
 });
 
-describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación Catalog -> Taxonomy HTTP', () => {
-  const ADMIN_SECRET = 'demo-admin-secret-2026-g6-azure';
-  const CLIENT_SECRET = 'demo-productos-client-secret-2026';
+describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin integración G7)', () => {
   const BRAND_ID = '380d9fe0-0290-580a-95e6-6bcd378b9b92';
   const observedTaxonomyCalls: Array<{
     url: string;
     authorization?: string;
   }> = [];
 
-  it('endurece el emisor JWT simulado (Requisito #5): sin bind público, sin claves privadas en JWKS y sin emisión privilegiada no autorizada', async () => {
-    expect(() => createDemoIssuer({ adminSecret: 'short' })).toThrow(
-      /DEMO_ISSUER_CONFIG_INVALID/,
-    );
-    const demo = createDemoIssuer({
-      adminSecret: ADMIN_SECRET,
-      clients: {
-        'modulo-productos': {
-          clientSecret: CLIENT_SECRET,
-          allowedScopes: ['catalogo:leer'],
-        },
-      },
-    });
-    expect(demo.publicJwk).not.toHaveProperty('d');
-    expect(demo.publicJwk).not.toHaveProperty('p');
-    expect(demo.publicJwk).not.toHaveProperty('q');
-    await expect(demo.listenLocalOnly('0.0.0.0', 0)).rejects.toThrow(
-      /PUBLIC_BIND_FORBIDDEN/,
-    );
-    expect(() =>
-      demo.mintProfile({
-        issuer: 'http://127.0.0.1/api/v1/auth',
-        profile: 'user-gestor',
-        secret: 'wrong-secret-value-1234',
-      }),
-    ).toThrow(/UNAUTHORIZED_MINT/);
-
-    const srv = await demo.listenLocalOnly('127.0.0.1', 0);
-    try {
-      // Sin secreto o con secreto inválido -> 401
-      const unauthRes = await fetch(srv.tokenUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: 'modulo-productos',
-          client_secret: 'wrong-secret-value-1234',
-          scope: 'catalogo:leer',
-        }).toString(),
-      });
-      expect(unauthRes.status).toBe(401);
-
-      // Intento de pedir token humano o rol privilegiado por HTTP -> 403
-      const humanAttempt = await fetch(srv.tokenUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: 'modulo-productos',
-          client_secret: CLIENT_SECRET,
-          scope: 'catalogo:leer',
-          roles: 'GESTOR_COMERCIAL',
-        }).toString(),
-      });
-      expect(humanAttempt.status).toBe(403);
-
-      // Intento de pedir scope no autorizado -> 403
-      const badScopeAttempt = await fetch(srv.tokenUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: 'modulo-productos',
-          client_secret: CLIENT_SECRET,
-          scope: 'productos:fisicos:leer',
-        }).toString(),
-      });
-      expect(badScopeAttempt.status).toBe(403);
-
-      // Solicitud M2M autorizada -> 200
-      const validM2m = await fetch(srv.tokenUrl, {
-        method: 'POST',
-        headers: { 'content-type': 'application/x-www-form-urlencoded' },
-        body: new URLSearchParams({
-          grant_type: 'client_credentials',
-          client_id: 'modulo-productos',
-          client_secret: CLIENT_SECRET,
-          scope: 'catalogo:leer',
-        }).toString(),
-      });
-      expect(validM2m.status).toBe(200);
-    } finally {
-      await srv.close();
-    }
-  });
-
-  it('verifica Fase 1 (sin y con lista explícita), Fase 2 (SIMULATED_AUTH), comunicación Catalog->Taxonomy y restauración Fase 3 (G7)', async () => {
-    const simulatedIssuer = createDemoIssuer({
-      adminSecret: ADMIN_SECRET,
+  it('verifica listas explícitas, propagación HTTP y rotación de emisor local en el camino JWT', async () => {
+    const simulatedIssuer = createJwtFixture({
       kid: 'sim-key-1',
     });
-    const g7Issuer = createDemoIssuer({
-      adminSecret: 'g7-real-issuer-secret-2026',
+    const g7Issuer = createJwtFixture({
       kid: 'g7-key-1',
     });
     const simServer = await simulatedIssuer.listenLocalOnly('127.0.0.1', 0);
@@ -366,7 +276,7 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       await request(appPhase1Empty.getHttpServer())
         .post('/api/v1/productos')
         .send({})
-        .expect(403);
+        .expect(401);
       await appPhase1Empty.close();
 
       // 2) Fase 1 con lista explícita (obtenerProductoPorSlug): lectura pública aprobada + Catalog->Taxonomy sin JWT
@@ -382,21 +292,33 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       expect(observedTaxonomyCalls).toEqual([
         { url: '/api/v1/marcas', authorization: undefined },
       ]);
+      expect(repoFixture.findCandidateBySlug).toHaveBeenCalledWith(
+        'zapatilla-marathon',
+        'MARKETPLACE',
+      );
+      await request(appPhase1Explicit.getHttpServer())
+        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
+        .set('Authorization', 'Bearer invalid')
+        .expect(401);
       // Operación GET no incluida en CATALOG_PUBLIC_OPERATION_IDS (listarProductos) sigue protegida (401)
       await request(appPhase1Explicit.getHttpServer())
         .get('/api/v1/productos?canal=MARKETPLACE')
         .expect(401);
-      // Escrituras siguen denegadas (403)
+      // Anonymous writes retain their ordinary authentication requirement.
       await request(appPhase1Explicit.getHttpServer())
         .post('/api/v1/productos')
         .send({})
-        .expect(403);
+        .expect(401);
       await appPhase1Explicit.close();
 
-      // 3) Fase 2 (SIMULATED_AUTH): lectura anónima rechazada (401), tokens simulados válidos aceptados (200)
+      // SIMULATED_AUTH is deliberately unavailable. Cryptographic fixtures below
+      // exercise the existing JWT path, not an approved Phase 2 or real G7 grant.
+      expect(() =>
+        readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
+      ).toThrow();
       taxonomyPhase = 'AUTHENTICATED';
       const appPhase2 = await bootCatalog({
-        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
         SECURITY_ISSUER: simServer.issuer,
         SECURITY_DISCOVERY_URL: simServer.discoveryUrl,
         SECURITY_JWKS_URL: simServer.jwksUrl,
@@ -408,7 +330,6 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       const m2mToken = simulatedIssuer.mintProfile({
         issuer: simServer.issuer,
         profile: 'm2m-marketplace',
-        secret: ADMIN_SECRET,
       });
       observedTaxonomyCalls.length = 0;
       await request(appPhase2.getHttpServer())
@@ -423,7 +344,6 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       const gestorToken = simulatedIssuer.mintProfile({
         issuer: simServer.issuer,
         profile: 'user-gestor',
-        secret: ADMIN_SECRET,
       });
       observedTaxonomyCalls.length = 0;
       await request(appPhase2.getHttpServer())
@@ -438,11 +358,10 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
         },
       ]);
 
-      // Tokens negativos en Fase 2: scope insuficiente (403), sin rol GESTOR_COMERCIAL (403), expirado (401)
+      // Insufficient scopes/roles and expired signed fixture tokens.
       const invalidScopeToken = simulatedIssuer.mintProfile({
         issuer: simServer.issuer,
         profile: 'invalid-scope',
-        secret: ADMIN_SECRET,
       });
       await request(appPhase2.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
@@ -452,7 +371,6 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       const noRoleToken = simulatedIssuer.mintProfile({
         issuer: simServer.issuer,
         profile: 'user-sin-rol',
-        secret: ADMIN_SECRET,
       });
       await request(appPhase2.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
@@ -462,7 +380,6 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       const expiredToken = simulatedIssuer.mintProfile({
         issuer: simServer.issuer,
         profile: 'expired',
-        secret: ADMIN_SECRET,
       });
       await request(appPhase2.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
@@ -471,7 +388,7 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
 
       await appPhase2.close();
 
-      // 4) Restauración de Fase 3 (G7_AUTHENTICATED): rechaza tokens del emisor simulado (401) y acepta solo G7 (200)
+      // Changing the configured trust rejects tokens from the previous fixture issuer.
       const appPhase3G7 = await bootCatalog({
         G6_SECURITY_MODE: 'G7_AUTHENTICATED',
         SECURITY_ISSUER: g7Server.issuer,
@@ -486,7 +403,6 @@ describe('Progresión reversible Fase 1 -> Fase 2 -> Fase 3 (G7) y comunicación
       const g7M2mToken = g7Issuer.mintProfile({
         issuer: g7Server.issuer,
         profile: 'm2m-marketplace',
-        secret: 'g7-real-issuer-secret-2026',
       });
       await request(appPhase3G7.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')

@@ -1,4 +1,5 @@
 import { CONTRACT_ROUTES } from './contract-routes.js';
+import { isEligiblePublicRead } from './gateway-public-reads.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -98,23 +99,14 @@ export function readGatewaySettings(
     if (!['true', 'false'].includes(readOnlyDemoEnabled)) throw new Error();
     if (
       env.G6_SECURITY_MODE !== undefined &&
-      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
-        env.G6_SECURITY_MODE,
-      )
+      !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
     )
       throw new Error();
     const securityMode: GatewaySecurityMode =
       (env.G6_SECURITY_MODE as GatewaySecurityMode | undefined) ??
       'G7_AUTHENTICATED';
     if (
-      securityMode === 'PUBLIC_READ_ONLY' &&
-      (demoNoAuthEnabled === 'true' ||
-        env.G6_READ_ONLY_DEMO_ENABLED === 'false')
-    )
-      throw new Error();
-    if (
       env.G6_SECURITY_MODE !== undefined &&
-      securityMode !== 'PUBLIC_READ_ONLY' &&
       (demoNoAuthEnabled === 'true' || readOnlyDemoEnabled === 'true')
     )
       throw new Error();
@@ -143,7 +135,7 @@ export function readGatewaySettings(
       publicOperations.some((id) =>
         securityMode === 'PUBLIC_READ_ONLY'
           ? !CONTRACT_ROUTES.some(
-              (r) => r.operationId === id && r.method === 'GET',
+              (r) => r.operationId === id && isEligiblePublicRead(r),
             )
           : !CONTRACT_ROUTES.some(
               (r) => r.operationId === id && r.security.length === 0,
@@ -160,8 +152,7 @@ export function readGatewaySettings(
       jwksUrl: env.AUTH_JWKS_URL,
       publicOperations: Object.freeze(publicOperations),
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
-      readOnlyDemoEnabled:
-        readOnlyDemoEnabled === 'true' || securityMode === 'PUBLIC_READ_ONLY',
+      readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',
       securityMode,
     });
   } catch {

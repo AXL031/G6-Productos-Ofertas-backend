@@ -64,7 +64,11 @@ describe('G6 read-only demo Gateway boundary', () => {
     for (const route of CONTRACT_ROUTES) {
       await expect(
         emptyPhase1Identity.authorize(route, undefined),
-      ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+      ).rejects.toMatchObject(
+        route.security.length
+          ? { status: 401, code: 'TOKEN_INVALIDO' }
+          : { status: 403, code: 'SCOPE_INSUFICIENTE' },
+      );
     }
 
     // Solo las operaciones GET explícitamente declaradas en GATEWAY_PUBLIC_OPERATION_IDS se habilitan
@@ -89,13 +93,16 @@ describe('G6 read-only demo Gateway boundary', () => {
     ).resolves.toBeUndefined();
     await expect(
       phase1Identity.authorize(obtenerProducto, undefined),
-    ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
     await expect(
       phase1Identity.authorize(crearProducto, undefined),
-    ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
 
-    // Fase 2 (SIMULATED_AUTH) y restauración de Fase 3 (G7_AUTHENTICATED)
-    for (const mode of ['SIMULATED_AUTH', 'G7_AUTHENTICATED'] as const) {
+    expect(() =>
+      readGatewaySettings({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
+    ).toThrow();
+    // Phase 3 restores the original authentication requirement.
+    for (const mode of ['G7_AUTHENTICATED'] as const) {
       const strictIdentity = new GatewayIdentity(
         readGatewaySettings({
           G6_SECURITY_MODE: mode,
