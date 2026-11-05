@@ -332,12 +332,22 @@ jobs:
       env:
         G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
         INVENTORY_TEST_IMAGE: g6-service:inventory-svc-ci
-      run: bash scripts/ci/inventory-container-smoke.sh
+      run: |
+        set -euo pipefail
+        for attempt in 1 2; do
+          printf 'Smoke Oracle Inventory aislado %s/2\n' "$attempt"
+          bash scripts/ci/inventory-container-smoke.sh
+        done
     - name: Probar imagen independiente de Inventory con PostgreSQL TLS desechable
       env:
         G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
         INVENTORY_TEST_IMAGE: inventory-svc:ci
-      run: bash scripts/ci/inventory-container-smoke.sh
+      run: |
+        set -euo pipefail
+        for attempt in 1 2; do
+          printf 'Smoke Inventory independiente aislado %s/2\n' "$attempt"
+          bash scripts/ci/inventory-container-smoke.sh
+        done
     - name: Rechazar arranques sin configuración PostgreSQL
       run: node scripts/ci/invalid-startup.mjs
     - name: Probar Marketplace con PostgreSQL TLS desechable
