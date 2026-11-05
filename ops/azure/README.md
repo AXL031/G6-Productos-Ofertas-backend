@@ -31,10 +31,12 @@ Imágenes públicas: stdin vacío. Paquetes privados: usuario y token GHCR como 
 Cuotas y precios requieren evidencia fechada por suscripción; no se infieren del código. No se aprovisionaron recursos durante el trabajo. Antes de crear, comprobar oferta activa, antigüedad, crédito restante, región, SKU, cuotas regionales/de familia, disco, IP y transferencia. Un SKU disponible no demuestra gratuidad; swap no acredita capacidad para tres servicios. El build de release ocurre en CI.
 
 ```powershell
-pwsh ./ops/azure/provision-azure-vm.ps1 -SubscriptionId '<id>' -Location '<región permitida>' -VmSize '<SKU cotizado>' -DryRun
+pwsh ./ops/azure/provision-azure-vm.ps1 -SubscriptionId '<id>' -Location '<región permitida>' -VmSize '<SKU cotizado>' -AdminSourceCidr '<IP o CIDR de administración>' -DryRun
 ```
 
 `DryRun` consulta la suscripción exacta, SKU y cuotas sin crear recursos ni cambiar la suscripción predeterminada. No selecciona otro SKU automáticamente. Todos los comandos llevan `--subscription` explícito.
+
+`-AdminSourceCidr` es obligatorio también en `DryRun`: acepta una IP IPv4/IPv6 o CIDR de administración, sin resolver automáticamente tu IP. Las IP individuales se normalizan a `/32` o `/128`; se rechazan origen vacío, comodines, etiquetas de servicio y acceso universal (`/0`). Solo SSH/22 usa ese origen; HTTP/80 y HTTPS/443 conservan acceso público. Repite el mismo parámetro al ejecutar un plan autorizado con `-CostReviewPath`.
 
 Para crear exige además `-CostReviewPath`, JSON con revisión de menos de 24 horas. Campos obligatorios: `subscriptionId`, `location`, `vmSize`, `storageSku=StandardSSD_LRS`, `osDiskSizeGiB=30`, `reviewedAt` (UTC ISO), `reviewedBy`, `quoteUrl`, `offerVerified=true`, `monthlyUsd` y `budgetUsd` numéricos. Cotizar VM + disco + IP + red; total no negativo y dentro del presupuesto positivo aprobado. El archivo registra una revisión; no concede autorización arquitectónica.
 
