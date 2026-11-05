@@ -36,12 +36,19 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 docs_root="${COMBOS_TEST_DOCS_ROOT:-$(cd "$repo_root/../docs" && pwd)}"
 catalog_migration="$docs_root/datos/catalog-svc/migrations/0001_create_catalog.sql"
 combos_migration="$docs_root/datos/combos/migrations/0001_create_combos_persistence.sql"
-for migration in "$catalog_migration" "$combos_migration"; do
+pricing_migration="$repo_root/apps/pricing-svc/test/fixtures/pricing.sql"
+pricing_official_migration="$docs_root/datos/pricing/migrations/0001_create_pricing.sql"
+pricing_context_migration="$repo_root/apps/pricing-svc/migrations/0002_schedule_effective_events.sql"
+for migration in "$catalog_migration" "$combos_migration" "$pricing_migration" "$pricing_official_migration" "$pricing_context_migration"; do
   if [[ ! -f "$migration" ]]; then
     printf 'No se encontró la migración oficial: %s\n' "$migration" >&2
     exit 1
   fi
 done
+if ! cmp -s <(tr -d '\r' < "$pricing_migration") <(tr -d '\r' < "$pricing_official_migration"); then
+  printf 'La fixture Pricing no coincide con la migración oficial fijada.\n' >&2
+  exit 1
+fi
 
 docker info --format '{{.ServerVersion}}' >/dev/null
 
@@ -69,12 +76,13 @@ fi
 
 pg_password="$(openssl rand -hex 24)"
 catalog_password="$(openssl rand -hex 24)"
+pricing_password="$(openssl rand -hex 24)"
 rabbit_password="$(openssl rand -hex 24)"
 
 environment_names=(
   COMBOS_TEST_EPHEMERAL COMBOS_TEST_DATABASE_URL COMBOS_TEST_CA
   COMBOS_TEST_RABBITMQ_URL COMBOS_TEST_RABBITMQ_CONTAINER
-  COMBOS_TEST_CATALOG_PASSWORD COMBOS_TEST_CWD
+  COMBOS_TEST_CATALOG_PASSWORD COMBOS_TEST_PRICING_PASSWORD COMBOS_TEST_CWD
   COMBOS_TEST_EXPECTED_SUITES
   PGHOST PGPORT PGDATABASE PGUSER PGPASSWORD PGSSLMODE PGSSLROOTCERT
 )
@@ -159,6 +167,7 @@ diagnostics() {
     docker logs --timestamps --tail 80 "$name" 2>&1 |
       sed -e "s/$pg_password/[REDACTED]/g" \
           -e "s/$catalog_password/[REDACTED]/g" \
+          -e "s/$pricing_password/[REDACTED]/g" \
           -e "s/$rabbit_password/[REDACTED]/g" >&2 || true
   fi
 }
@@ -227,7 +236,7 @@ rabbit_port="$(docker port "$rabbit_container" 5672/tcp | awk -F: '{print $NF}')
 [[ "$rabbit_port" =~ ^[0-9]+$ ]]
 
 docker exec "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 \
-  -c "CREATE ROLE po_combos_owner NOLOGIN; CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE catalog_app LOGIN PASSWORD '$catalog_password'; CREATE SCHEMA combos AUTHORIZATION po_combos_owner; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner;" >/dev/null
+  -c "CREATE ROLE po_combos_owner NOLOGIN; CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE po_pricing_owner NOLOGIN; CREATE ROLE catalog_app LOGIN PASSWORD '$catalog_password'; CREATE ROLE pricing_app LOGIN PASSWORD '$pricing_password'; CREATE SCHEMA combos AUTHORIZATION po_combos_owner; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner; CREATE SCHEMA pricing AUTHORIZATION po_pricing_owner; CREATE SCHEMA extensions; CREATE EXTENSION btree_gist WITH SCHEMA extensions; GRANT USAGE ON SCHEMA extensions TO po_pricing_owner;" >/dev/null
 
 for context in catalog combos; do
   if [[ "$context" == catalog ]]; then
@@ -243,10 +252,17 @@ for context in catalog combos; do
   } | docker exec -i "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -f - >/dev/null
 done
 
+{
+  printf 'SET ROLE po_pricing_owner;\n'
+  cat "$pricing_migration"
+  cat "$pricing_context_migration"
+} | docker exec -i "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -f - >/dev/null
+
 export COMBOS_TEST_EPHEMERAL=1
 export COMBOS_TEST_DATABASE_URL=harness-owned
 export COMBOS_TEST_CA="$tmp_dir/server.crt"
 export COMBOS_TEST_CATALOG_PASSWORD="$catalog_password"
+export COMBOS_TEST_PRICING_PASSWORD="$pricing_password"
 export COMBOS_TEST_CWD="$tmp_dir"
 export COMBOS_TEST_RABBITMQ_URL="amqp://combos_test:${rabbit_password}@127.0.0.1:${rabbit_port}/%2f"
 export COMBOS_TEST_RABBITMQ_CONTAINER="$rabbit_container"
@@ -255,6 +271,7 @@ export PGSSLMODE=verify-full PGSSLROOTCERT="$COMBOS_TEST_CA"
 
 cd "$repo_root"
 npm run build:catalog-svc
+npm run build:pricing-svc
 
 test_target='apps/combos-svc'
 if [[ -n "$test_file" ]]; then

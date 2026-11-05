@@ -367,8 +367,8 @@ export class CombosAuthGuard implements CanActivate {
         mode === 'PUBLIC_READ_ONLY' &&
         exactRead &&
         route &&
-        (PUBLIC_READ_APPROVALS.has(policy.operationId) ||
-          configuredPublicReads.has(policy.operationId)) &&
+        PUBLIC_READ_APPROVALS.has(policy.operationId) &&
+        configuredPublicReads.has(policy.operationId) &&
         request.method === route.method &&
         request.route.path === route.path
       )

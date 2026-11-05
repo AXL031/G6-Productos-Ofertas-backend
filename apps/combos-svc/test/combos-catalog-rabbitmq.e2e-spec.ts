@@ -5,6 +5,9 @@ import { randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
+import { Test } from '@nestjs/testing';
+import type { INestApplication } from '@nestjs/common';
+import request from 'supertest';
 import { Logger } from '@nestjs/common';
 import pg from 'pg';
 import amqp, { type ChannelModel } from 'amqplib';
@@ -18,6 +21,10 @@ import {
   IntegrationFailure,
 } from '../src/integrations/catalog-sku-context.client.js';
 import { CombosSvcService } from '../src/combos-svc.service.js';
+import { PricingClient } from '../src/integrations/pricing.client.js';
+import { CombosSvcModule } from '../src/combos-svc.module.js';
+import { CombosProblemFilter } from '../src/http/combos-problem.filter.js';
+import { combosCorrelationMiddleware } from '../src/http/combos-correlation.middleware.js';
 
 const exchange = 'po.eventos.x';
 const queue = 'po.combos.q';
@@ -34,6 +41,7 @@ const inactiveSku = 'SKU-CATALOG-INACTIVE-001';
 const ineligibleBaseSku = 'SKU-CATALOG-INELIGIBLE-BASE';
 const opaqueSku = 'SKU /?%# ñ';
 const execPath = resolve(process.cwd(), 'dist/apps/catalog-svc/main.js');
+const pricingExecPath = resolve(process.cwd(), 'dist/apps/pricing-svc/main.js');
 
 describe('Combos isolated E2E fixture preflight', () => {
   it('receives the runner-owned database, broker and Catalog credentials', () => {
@@ -43,6 +51,7 @@ describe('Combos isolated E2E fixture preflight', () => {
       true,
     );
     expect(process.env.COMBOS_TEST_CATALOG_PASSWORD).toBeTruthy();
+    expect(process.env.COMBOS_TEST_PRICING_PASSWORD).toBeTruthy();
     expect(process.env.PGSSLROOTCERT).toBeTruthy();
   });
 });
@@ -60,9 +69,13 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     Buffer.from(JSON.stringify(value)).toString('base64url');
   let issuer = '';
   let catalogOrigin: string;
+  let pricingOrigin: string;
   let jwksServer: Server;
   let catalogProcess: ChildProcess;
+  let pricingProcess: ChildProcess;
+  let comboApp: INestApplication;
   let catalogOutput: string[] = [];
+  let pricingOutput: string[] = [];
   let publisherConnection: ChannelModel;
   let publisher: Channel;
   let consumer: CombosEventConsumer;
@@ -71,6 +84,10 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
   let admin: pg.Pool;
   let comboId: string;
   let comboItemIds: Map<string, string>;
+  let issuedServiceTokens = 0;
+  const issuedScopes: string[] = [];
+  const batchSkus: string[] = [];
+  let noPriceSku = '';
   const originalEnv: Record<string, string | undefined> = {};
   const environmentKeys = [
     'COMBOS_AMQP_ENABLED',
@@ -80,6 +97,14 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     'SECURITY_ISSUER',
     'SECURITY_DISCOVERY_URL',
     'SECURITY_JWKS_URL',
+    'COMBOS_PRICING_URL',
+    'COMBOS_G7_TOKEN_URL',
+    'COMBOS_G7_CLIENT_SECRET',
+    'COMBOS_CATALOG_CONTEXT_AUTHORIZED',
+    'COMBOS_RESTRICTED_DEMO_ENABLED',
+    'COMBOS_ALLOWED_ROLES_CREAR_COMBO',
+    'COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO',
+    'G6_SECURITY_MODE',
   ];
 
   const makeToken = (
@@ -180,6 +205,150 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
         randomUUID(),
       ],
     );
+  }
+
+  async function seedPrice(input: {
+    productId?: string;
+    sku?: string;
+    regular: string;
+    offer: string | null;
+    currency?: string;
+  }): Promise<void> {
+    if ((input.productId === undefined) === (input.sku === undefined))
+      throw new Error('PRICING_FIXTURE_TARGET_INVALID');
+    await admin.query('BEGIN');
+    try {
+      const definition = await admin.query<{ id: string }>(
+        `INSERT INTO pricing.prices(product_id, sku, channel_id)
+         VALUES ($1, $2, NULL) RETURNING id`,
+        [input.productId ?? null, input.sku ?? null],
+      );
+      await admin.query(
+        `INSERT INTO pricing.price_validities
+           (price_id, precio_regular, precio_oferta, currency, valid_from,
+            valid_until, price_version, motivo_cambio)
+         VALUES ($1, $2, $3, $4, now() - interval '1 hour', NULL, 1,
+            'E2E Combos Pricing real')`,
+        [
+          definition.rows[0]!.id,
+          input.regular,
+          input.offer,
+          input.currency ?? 'PEN',
+        ],
+      );
+      await admin.query('COMMIT');
+    } catch (error) {
+      await admin.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
+  }
+
+  async function seedEligibleBatchSku(
+    index: number,
+    withPrice = true,
+  ): Promise<string> {
+    const sku = `SKU-PRICING-BATCH-${String(index).padStart(3, '0')}`;
+    const productId = randomUUID();
+    const client = await admin.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(
+        `INSERT INTO catalog.products
+           (id, nombre, descripcion, categoria_id, tipo_producto_id, marca_id,
+            sku_base, slug, tiene_variantes, estado)
+         VALUES ($1, 'Fixture producto', 'Fixture de integración real',
+           'categoria-fixture', 'tipo-fixture', 'marca-fixture', $2, $3,
+           false, 'ACTIVO'::catalog.estado_producto)`,
+        [productId, sku, `fixture-${productId}`],
+      );
+      await client.query(
+        `INSERT INTO catalog.product_images(product_id, url)
+         VALUES ($1, 'https://fixture.invalid/pricing-batch.png')`,
+        [productId],
+      );
+      for (const dependency of ['PRICING', 'INVENTORY'] as const)
+        await client.query(
+          `INSERT INTO catalog.activation_checks
+             (product_id, variant_id, sku, dependency, operation_id,
+              correlation_id, request_payload, state, result_payload,
+              result_message_id)
+           VALUES ($1, NULL, $2, $3, $4, $5, '{}'::jsonb, 'COMPLETED',
+             '{}'::jsonb, $6)`,
+          [
+            productId,
+            sku,
+            dependency,
+            randomUUID(),
+            randomUUID(),
+            randomUUID(),
+          ],
+        );
+      await client.query(
+        `INSERT INTO catalog.sku_physical_profiles
+           (sku_identity_id, peso_kg, largo_cm, ancho_cm, alto_cm)
+         SELECT id, 1, 10, 10, 10 FROM catalog.sku_identity WHERE sku = $1`,
+        [sku],
+      );
+      if (withPrice) {
+        const definition = await client.query<{ id: string }>(
+          `INSERT INTO pricing.prices(product_id, sku, channel_id)
+           VALUES ($1, NULL, NULL) RETURNING id`,
+          [productId],
+        );
+        await client.query(
+          `INSERT INTO pricing.price_validities
+             (price_id, precio_regular, precio_oferta, currency, valid_from,
+              valid_until, price_version, motivo_cambio)
+           VALUES ($1, '2.00', '1.00', 'PEN', now() - interval '1 hour',
+              NULL, 1, 'E2E Combos Pricing batch')`,
+          [definition.rows[0]!.id],
+        );
+      }
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    } finally {
+      client.release();
+    }
+    return sku;
+  }
+
+  async function seedExpiredOfferHistory(sku: string): Promise<void> {
+    await admin.query('BEGIN');
+    try {
+      const definition = await admin.query<{ id: string }>(
+        `SELECT p.id FROM pricing.prices p
+           JOIN catalog.products c ON c.id::text = p.product_id
+          WHERE c.sku_base = $1`,
+        [sku],
+      );
+      const priceId = definition.rows[0]?.id;
+      if (!priceId) throw new Error('PRICING_FIXTURE_DEFINITION_MISSING');
+      await admin.query(
+        `UPDATE pricing.price_validities
+            SET valid_from = now() - interval '10 days',
+                valid_until = now() - interval '1 day'
+          WHERE price_id = $1`,
+        [priceId],
+      );
+      await admin.query(
+        'UPDATE pricing.prices SET price_version = 2 WHERE id = $1',
+        [priceId],
+      );
+      await admin.query(
+        `INSERT INTO pricing.price_validities
+           (price_id, precio_regular, precio_oferta, currency, valid_from,
+            valid_until, price_version, motivo_cambio)
+         VALUES ($1, '2.00', NULL, 'PEN', now() - interval '1 day', NULL,
+            2, 'E2E oferta vencida')`,
+        [priceId],
+      );
+      await admin.query('COMMIT');
+    } catch (error) {
+      await admin.query('ROLLBACK').catch(() => undefined);
+      throw error;
+    }
   }
 
   async function seedCatalogFixtures(): Promise<void> {
@@ -297,6 +466,30 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
   }
 
+  async function waitForPricing(): Promise<void> {
+    const deadline = Date.now() + 20000;
+    let lastStatus = 0;
+    while (Date.now() < deadline) {
+      if (pricingProcess.exitCode !== null)
+        throw new Error(
+          `PRICING_EXITED:${pricingProcess.exitCode}:${pricingOutput.slice(-30).join('\n')}`,
+        );
+      try {
+        const response = await fetch(`${pricingOrigin}/health/ready`, {
+          signal: AbortSignal.timeout(1000),
+        });
+        lastStatus = response.status;
+        if (response.status === 200) return;
+      } catch {
+        // The real Pricing runtime may still be binding or connecting to PostgreSQL.
+      }
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 100));
+    }
+    throw new Error(
+      `PRICING_START_TIMEOUT:${lastStatus}:${pricingOutput.slice(-30).join('\n')}`,
+    );
+  }
+
   async function publishEvent(
     name: string,
     data: Record<string, unknown>,
@@ -373,7 +566,8 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       throw new Error('COMBOS_CATALOG_HARNESS_REQUIRED');
     if (
       !process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://') ||
-      !process.env.COMBOS_TEST_CATALOG_PASSWORD
+      !process.env.COMBOS_TEST_CATALOG_PASSWORD ||
+      !process.env.COMBOS_TEST_PRICING_PASSWORD
     )
       throw new Error('COMBOS_CATALOG_RABBITMQ_FIXTURES_REQUIRED');
     if (!process.env.COMBOS_TEST_CATALOG_PASSWORD)
@@ -403,7 +597,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     expect(tls.rows[0]?.ssl).toBe(true);
     await seedCatalogFixtures();
 
-    jwksServer = createServer((request, response) => {
+    jwksServer = createServer(async (request, response) => {
       response.setHeader('content-type', 'application/json');
       response.setHeader('cache-control', 'public, max-age=60');
       if (request.url === '/.well-known/openid-configuration') {
@@ -412,6 +606,38 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       }
       if (request.url === '/jwks') {
         response.end(JSON.stringify({ keys: [jwk] }));
+        return;
+      }
+      if (request.url === '/api/v1/auth/token' && request.method === 'POST') {
+        let body = '';
+        for await (const chunk of request) body += chunk.toString();
+        const form = new URLSearchParams(body);
+        const scope = form.get('scope') ?? '';
+        if (
+          form.get('grant_type') !== 'client_credentials' ||
+          form.get('client_id') !== 'modulo-productos' ||
+          form.get('client_secret') !== 'isolated-secret' ||
+          !['catalogo:leer', 'precios:leer'].includes(scope)
+        ) {
+          response.writeHead(401).end('{}');
+          return;
+        }
+        issuedServiceTokens += 1;
+        issuedScopes.push(scope);
+        response.end(
+          JSON.stringify({
+            accessToken: makeToken({
+              tipo: 'servicio',
+              sub: 'modulo-productos',
+              aud: ['api-productos'],
+              scope,
+              roles: undefined,
+            }),
+            tokenType: 'Bearer',
+            expiresIn: 600,
+            scopes: [scope],
+          }),
+        );
         return;
       }
       response.writeHead(404).end('{}');
@@ -469,8 +695,84 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     expect(catalogTls.rows.some((row) => row.ssl === true)).toBe(true);
 
+    await seedPrice({
+      productId: activeProductId,
+      regular: '40.00',
+      offer: '20.00',
+    });
+    await seedPrice({
+      productId: variantProductId,
+      regular: '50.00',
+      offer: '30.00',
+    });
+    await seedPrice({ sku: opaqueSku, regular: '35.00', offer: null });
+    for (let index = 1; index <= 101; index += 1)
+      batchSkus.push(await seedEligibleBatchSku(index));
+    noPriceSku = await seedEligibleBatchSku(102, false);
+    await seedExpiredOfferHistory(batchSkus[0]!);
+
+    const pricingPort = await freePort();
+    pricingOrigin = `http://127.0.0.1:${pricingPort}`;
+    const pricingEnvironment = {
+      PATH: process.env.PATH ?? '',
+      SystemRoot: process.env.SystemRoot ?? '',
+      WINDIR: process.env.WINDIR ?? '',
+      TEMP: process.env.TEMP ?? '',
+      TMP: process.env.TMP ?? '',
+      NODE_ENV: 'test',
+      PRICING_SVC_PORT: String(pricingPort),
+      DATABASE_URL: `postgresql://pricing_app:${process.env.COMBOS_TEST_PRICING_PASSWORD}@127.0.0.1:${process.env.PGPORT}/${process.env.PGDATABASE}`,
+      PGSSLMODE: 'verify-full',
+      PGSSLROOTCERT: process.env.PGSSLROOTCERT!,
+      AUTH_ISSUER: issuer,
+      AUTH_JWKS_URL: `${issuer}/jwks`,
+      PRICING_SERVICE_TOKEN_URL: `${issuer}/api/v1/auth/token`,
+      PRICING_SERVICE_CLIENT_SECRET: 'isolated-secret',
+      PRICING_CATALOG_URL: catalogOrigin,
+      GATEWAY_DEMO_NO_AUTH_ENABLED: 'false',
+      PRICING_PRICE_CHANGED_PUBLISH_ENABLED: 'false',
+    };
+    pricingProcess = spawn(process.execPath, [pricingExecPath], {
+      cwd: process.env.COMBOS_TEST_CWD,
+      env: pricingEnvironment,
+      windowsHide: true,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    const capturePricing = (chunk: Buffer) => {
+      pricingOutput.push(chunk.toString('utf8').replace(/[\r\n]+$/, ''));
+      pricingOutput = pricingOutput.slice(-100);
+    };
+    pricingProcess.stdout?.on('data', capturePricing);
+    pricingProcess.stderr?.on('data', capturePricing);
+    await waitForPricing();
+
+    const pricingTls = await admin.query(
+      `SELECT ssl FROM pg_stat_ssl s JOIN pg_stat_activity a USING (pid)
+         WHERE a.usename = 'pricing_app' AND a.datname = current_database()`,
+    );
+    expect(pricingTls.rows.some((row) => row.ssl === true)).toBe(true);
+
     process.env.COMBOS_CATALOG_URL = catalogOrigin;
+    process.env.COMBOS_PRICING_URL = pricingOrigin;
+    process.env.COMBOS_CATALOG_CONTEXT_AUTHORIZED = 'true';
+    process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
+    process.env.COMBOS_G7_TOKEN_URL = `${issuer}/api/v1/auth/token`;
+    process.env.COMBOS_G7_CLIENT_SECRET = 'isolated-secret';
+    process.env.COMBOS_ALLOWED_ROLES_CREAR_COMBO = 'admin';
+    process.env.COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO = 'admin';
+    process.env.COMBOS_RESTRICTED_DEMO_ENABLED = 'false';
+    process.env.COMBOS_AMQP_ENABLED = 'false';
+    const comboModule = await Test.createTestingModule({
+      imports: [CombosSvcModule],
+    }).compile();
+    comboApp = comboModule.createNestApplication();
+    comboApp.setGlobalPrefix('api/v1', { exclude: ['health', 'ready'] });
+    comboApp.use(combosCorrelationMiddleware);
+    comboApp.useGlobalFilters(new CombosProblemFilter());
+    await comboApp.init();
+
     process.env.COMBOS_CATALOG_SERVICE_BEARER = makeToken();
+    process.env.COMBOS_AMQP_ENABLED = 'true';
     process.env.COMBOS_AMQP_ENABLED = 'true';
     process.env.COMBOS_AMQP_URL = process.env.COMBOS_TEST_RABBITMQ_URL;
     database = new CombosDatabase();
@@ -517,6 +819,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
   }, 60000);
 
   afterAll(async () => {
+    await comboApp?.close();
     await consumer?.onModuleDestroy();
     await publisher?.close().catch(() => undefined);
     await publisherConnection?.close().catch(() => undefined);
@@ -526,7 +829,13 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       );
     }
     await database?.onModuleDestroy();
-    await admin?.end();
+    if (pricingProcess && pricingProcess.exitCode === null) {
+      pricingProcess.kill();
+      await Promise.race([
+        once(pricingProcess, 'exit'),
+        new Promise((resolveDelay) => setTimeout(resolveDelay, 3000)),
+      ]);
+    }
     if (catalogProcess && catalogProcess.exitCode === null) {
       catalogProcess.kill();
       await Promise.race([
@@ -543,6 +852,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       if (original === undefined) delete process.env[key];
       else process.env[key] = original;
     }
+    await admin?.end();
   }, 20000);
 
   it('serves real SKU context and enforces RS256, issuer, audience, scope and client allowlist', async () => {
@@ -655,6 +965,232 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     expect(unauthorizedClient.status).toBe(403);
   }, 30000);
 
+  it('runs Combos -> real Pricing -> real Catalog over PostgreSQL 17/TLS with local OAuth/JWKS', async () => {
+    const now = new Date();
+    const at = now.toISOString();
+    const serviceToken = makeToken({
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      scope: 'precios:leer',
+      roles: undefined,
+    });
+    const expiredToken = makeToken({
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      scope: 'precios:leer',
+      exp: Math.floor(Date.now() / 1000) - 1,
+      roles: undefined,
+    });
+    const pricingBase = `${pricingOrigin}/api/v1/precios`;
+    const noBearer = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`,
+    );
+    expect(noBearer.status).toBe(401);
+    const expired = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`,
+      { headers: { authorization: `Bearer ${expiredToken}` } },
+    );
+    expect(expired.status).toBe(401);
+    const insufficientScope = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`,
+      {
+        headers: {
+          authorization: `Bearer ${makeToken({
+            tipo: 'servicio',
+            sub: 'modulo-productos',
+            scope: 'catalogo:leer',
+            roles: undefined,
+          })}`,
+        },
+      },
+    );
+    expect(insufficientScope.status).toBe(403);
+
+    const inherited = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    expect(inherited.status).toBe(200);
+    expect(await inherited.json()).toMatchObject({
+      sku: activeSku,
+      origen: 'PRODUCTO',
+      precio_regular: 40,
+      precio_oferta: 20,
+      currency: 'PEN',
+      channel_id: null,
+    });
+    const override = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(opaqueSku)}?at=${encodeURIComponent(at)}`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    expect(override.status).toBe(200);
+    expect(await override.json()).toMatchObject({
+      sku: opaqueSku,
+      origen: 'SKU_OVERRIDE',
+      precio_regular: 35,
+      precio_oferta: null,
+      currency: 'PEN',
+      channel_id: null,
+    });
+
+    const expiredOfferSku = batchSkus[0]!;
+    const currentPrice = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(expiredOfferSku)}?at=${encodeURIComponent(at)}`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    expect(currentPrice.status).toBe(200);
+    expect((await currentPrice.json()).precio_oferta).toBeNull();
+    const historicalPrice = await fetch(
+      `${pricingBase}/skus/${encodeURIComponent(expiredOfferSku)}?at=${encodeURIComponent(new Date(now.getTime() - 2 * 86400000).toISOString())}`,
+      { headers: { authorization: `Bearer ${serviceToken}` } },
+    );
+    expect(historicalPrice.status).toBe(200);
+    expect((await historicalPrice.json()).precio_oferta).toBe(1);
+
+    let bearer = expiredToken;
+    let bearerRequests = 0;
+    const renewedPricing = new PricingClient(
+      pricingOrigin,
+      async () => {
+        bearerRequests += 1;
+        return bearer;
+      },
+      fetch,
+      () => {
+        bearer = serviceToken;
+      },
+    );
+    await expect(
+      renewedPricing.getPrices([activeSku], at, undefined, randomUUID()),
+    ).resolves.toMatchObject([{ sku: activeSku, currency: 'PEN' }]);
+    expect(bearerRequests).toBe(2);
+
+    const humanToken = makeToken({
+      tipo: 'acceso',
+      sub: randomUUID(),
+      roles: ['admin'],
+      scope: undefined,
+    });
+    const components = [
+      { sku: activeSku, cantidad: 1 },
+      { sku: opaqueSku, cantidad: 1 },
+    ];
+    const create = (nombre: string, precioCombo: number) =>
+      request(comboApp.getHttpServer())
+        .post('/api/v1/combos')
+        .set('Authorization', `Bearer ${humanToken}`)
+        .send({ nombre, componentes: components, precioCombo });
+    const beforeCreate = await admin.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM combos.combos',
+    );
+    const created = await create('E2E Pricing real', 40).expect(201);
+    const comboId = String(created.body.combo_id);
+    const stored = await admin.query(
+      `SELECT c.currency, c.combo_price, c.version, count(i.id)::int AS items
+         FROM combos.combos c JOIN combos.combo_items i ON i.combo_id = c.id
+        WHERE c.id = $1 GROUP BY c.id`,
+      [comboId],
+    );
+    expect(stored.rows[0]).toMatchObject({
+      currency: 'PEN',
+      combo_price: '40.00',
+      version: '0',
+      items: 2,
+    });
+    expect(issuedScopes).toContain('catalogo:leer');
+    expect(issuedScopes).toContain('precios:leer');
+    const updated = await request(comboApp.getHttpServer())
+      .patch(`/api/v1/combos/${comboId}`)
+      .set('Authorization', `Bearer ${humanToken}`)
+      .send({
+        componentes: components,
+        precioCombo: 35,
+        version: created.body.version,
+      })
+      .expect(200);
+    expect(updated.body).toMatchObject({ combo_id: comboId, price: 35 });
+
+    const beforeRejected = await admin.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM combos.combos',
+    );
+    await create('E2E Pricing invalid total', 60)
+      .expect(422)
+      .then((response) =>
+        expect(response.body.code).toBe('COMBO_PRECIO_INVALIDO'),
+      );
+    await request(comboApp.getHttpServer())
+      .post('/api/v1/combos')
+      .set('Authorization', `Bearer ${humanToken}`)
+      .send({
+        nombre: 'E2E Catalog missing SKU',
+        componentes: [
+          { sku: 'SKU-NOT-IN-CATALOG', cantidad: 1 },
+          { sku: activeSku, cantidad: 1 },
+        ],
+        precioCombo: 10,
+      })
+      .expect(404);
+    const afterRejected = await admin.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM combos.combos',
+    );
+    expect(afterRejected.rows[0]?.count).toBe(beforeRejected.rows[0]?.count);
+    expect(Number(beforeRejected.rows[0]?.count)).toBe(
+      Number(beforeCreate.rows[0]?.count) + 1,
+    );
+
+    const missingPrice = await request(comboApp.getHttpServer())
+      .post('/api/v1/combos')
+      .set('Authorization', `Bearer ${humanToken}`)
+      .send({
+        nombre: 'E2E Pricing missing price',
+        componentes: [
+          { sku: noPriceSku, cantidad: 1 },
+          { sku: activeSku, cantidad: 1 },
+        ],
+        precioCombo: 10,
+      })
+      .expect(503);
+    expect(missingPrice.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+
+    await admin.query(
+      `UPDATE pricing.price_validities v SET currency = 'USD'
+        FROM pricing.prices p
+       WHERE v.price_id = p.id AND p.sku = $1`,
+      [opaqueSku],
+    );
+    const mismatch = await create('E2E Pricing currency mismatch', 20).expect(
+      503,
+    );
+    expect(mismatch.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+    await admin.query(
+      `UPDATE pricing.price_validities v SET currency = 'PEN'
+        FROM pricing.prices p
+       WHERE v.price_id = p.id AND p.sku = $1`,
+      [opaqueSku],
+    );
+    const afterProviderErrors = await admin.query<{ count: string }>(
+      'SELECT count(*)::text AS count FROM combos.combos',
+    );
+    expect(afterProviderErrors.rows[0]?.count).toBe(
+      beforeRejected.rows[0]?.count,
+    );
+
+    for (const count of [100, 101]) {
+      const response = await request(comboApp.getHttpServer())
+        .post('/api/v1/combos')
+        .set('Authorization', `Bearer ${humanToken}`)
+        .send({
+          nombre: `E2E Pricing batch ${count}`,
+          componentes: batchSkus
+            .slice(0, count)
+            .map((sku) => ({ sku, cantidad: 1 })),
+          precioCombo: 50,
+        })
+        .expect(201);
+      expect(response.body.components).toHaveLength(count);
+    }
+  }, 180000);
+
   it('returns a safe technical failure when Catalog cannot authenticate to PostgreSQL', async () => {
     await admin.query('ALTER ROLE catalog_app NOLOGIN');
     await admin.query(
@@ -670,6 +1206,46 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       expect(await response.json()).toMatchObject({
         code: 'SERVICIO_NO_DISPONIBLE',
       });
+      const at = new Date().toISOString();
+      const pricingUnavailable = await fetch(
+        `${pricingOrigin}/api/v1/precios/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`,
+        {
+          headers: {
+            authorization: `Bearer ${makeToken({ scope: 'precios:leer' })}`,
+          },
+        },
+      );
+      expect(pricingUnavailable.status).toBe(503);
+      const beforeFailedWrite = await admin.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM combos.combos',
+      );
+      const failedWrite = await request(comboApp.getHttpServer())
+        .post('/api/v1/combos')
+        .set(
+          'Authorization',
+          `Bearer ${makeToken({
+            tipo: 'acceso',
+            sub: randomUUID(),
+            roles: ['admin'],
+            scope: undefined,
+          })}`,
+        )
+        .send({
+          nombre: 'Catalog outage must not persist',
+          componentes: [
+            { sku: activeSku, cantidad: 1 },
+            { sku: opaqueSku, cantidad: 1 },
+          ],
+          precioCombo: 10,
+        })
+        .expect(503);
+      expect(failedWrite.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      const afterFailedWrite = await admin.query<{ count: string }>(
+        'SELECT count(*)::text AS count FROM combos.combos',
+      );
+      expect(afterFailedWrite.rows[0]?.count).toBe(
+        beforeFailedWrite.rows[0]?.count,
+      );
     } finally {
       await admin.query('ALTER ROLE catalog_app LOGIN');
     }

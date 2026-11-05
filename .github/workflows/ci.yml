@@ -567,7 +567,7 @@ jobs:
         cache-dependency-path: backend/package-lock.json
     - name: Instalar dependencias
       run: npm ci
-    - name: Ejecutar las cuatro suites E2E de Combos sin filtros
+    - name: Ejecutar las cuatro suites E2E de Combos con Catalog y Pricing reales
       env:
         COMBOS_TEST_DOCS_ROOT: ${{ github.workspace }}/docs
         COMBOS_TEST_EVIDENCE_DIR: apps/combos-svc/test/evidence-ci

@@ -293,7 +293,12 @@ describe('Combos JWT security', () => {
       guard.canActivate(ctx(`Bearer ${token()}`)),
     ).rejects.toMatchObject({ status: 403 });
     process.env.COMBOS_PUBLIC_READ_OPERATIONS = 'obtenerCombo';
-    await expect(guard.canActivate(ctx())).resolves.toBe(true);
+    await expect(guard.canActivate(ctx())).rejects.toMatchObject({
+      status: 401,
+    });
+    await expect(
+      guard.canActivate(ctx(`Bearer ${token({ roles: ['combos:admin'] })}`)),
+    ).resolves.toBe(true);
     delete process.env.COMBOS_PUBLIC_READ_OPERATIONS;
     delete process.env.COMBOS_ALLOWED_ROLES_OBTENER_COMBO;
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
