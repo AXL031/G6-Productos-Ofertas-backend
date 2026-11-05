@@ -5,15 +5,15 @@ IMAGE=${INVENTORY_TEST_IMAGE:-inventory-svc:ci}
 DOCS_ROOT=${G6_DOCS_ROOT:-.ci/G6-Productos-Ofertas-docs}
 CURRENT_STAGE='preparación'
 DOCKER_TOUCHED=false
-printf '[inventory-smoke] etapa: preparación de identificadores aislados\n'
-RUN_ID="$(node -p "require('node:crypto').randomUUID().replaceAll('-', '')")"
-LABEL="g6.inventory.smoke=${RUN_ID}"
-NETWORK="inventory-smoke-${RUN_ID}"
-PG_CONTAINER="inventory-smoke-pg-${RUN_ID}"
-APP_CONTAINER="inventory-smoke-app-${RUN_ID}"
-BAD_CONTAINER="inventory-smoke-bad-${RUN_ID}"
-TLS_DIR="$(mktemp -d)"
-PG_PASSWORD="ci-inventory-${RUN_ID}"
+RUN_ID=''
+LABEL=''
+NETWORK=''
+PG_CONTAINER=''
+APP_CONTAINER=''
+BAD_CONTAINER=''
+TLS_DIR=''
+PG_PASSWORD=''
+CA_SOURCE=''
 stage() {
   CURRENT_STAGE=$1
   printf '[inventory-smoke] etapa: %s\n' "$CURRENT_STAGE"
@@ -126,6 +126,16 @@ trap cleanup EXIT
 trap 'on_error "$?" "$LINENO"' ERR
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+stage 'preparación de identificadores aislados'
+RUN_ID="$(node -p "require('node:crypto').randomUUID().replaceAll('-', '')")"
+LABEL="g6.inventory.smoke=${RUN_ID}"
+NETWORK="inventory-smoke-${RUN_ID}"
+PG_CONTAINER="inventory-smoke-pg-${RUN_ID}"
+APP_CONTAINER="inventory-smoke-app-${RUN_ID}"
+BAD_CONTAINER="inventory-smoke-bad-${RUN_ID}"
+TLS_DIR="$(mktemp -d)"
+PG_PASSWORD="ci-inventory-${RUN_ID}"
 
 stage 'validación de herramientas, archivos e imagen'
 for binary in docker openssl curl; do
