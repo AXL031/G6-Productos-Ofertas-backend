@@ -18,7 +18,7 @@ import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { CatalogSkuDeactivated } from './catalog-sku-deactivated.js';
 import { PricingProductInitialization } from './pricing-initialization.js';
 
-const QUEUE = 'po.pricing.q';
+const QUEUE = 'po.precios.q';
 const MAX_MESSAGE_BYTES = 1024 * 1024;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

@@ -360,7 +360,7 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       spy.mockRestore();
       await broker.reconnect();
       expect(
-        (await broker.channel!.checkQueue('po.pricing.q')).consumerCount,
+        (await broker.channel!.checkQueue('po.precios.q')).consumerCount,
       ).toBe(1);
     }, 45000);
 

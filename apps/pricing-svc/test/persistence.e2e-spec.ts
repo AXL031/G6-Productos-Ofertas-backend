@@ -125,6 +125,78 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       return { definition, validity };
     }
 
+    async function seedScheduledSku(
+      sku: string,
+      validFrom: Date,
+      validUntil: Date | null = null,
+      channelId: string | null = null,
+    ) {
+      const productId = randomUUID();
+      const correlationId = randomUUID();
+      const created = await repository.transaction(async (tx) => {
+        const target = await create(tx, { sku }, channelId);
+        await tx
+          .update(priceValidities)
+          .set({ validUntil: validFrom })
+          .where(eq(priceValidities.id, target.validity.id));
+        await tx
+          .update(prices)
+          .set({ priceVersion: 2n })
+          .where(eq(prices.id, target.definition.id));
+        const [validity] = await tx
+          .insert(priceValidities)
+          .values({
+            ...snapshot(target.definition.id, 2n),
+            precioRegular: '110.00',
+            precioOferta: null,
+            validFrom,
+            validUntil,
+            motivoCambio: 'PRI-010 fixture schedule',
+          })
+          .returning();
+        const [schedule] = await tx
+          .insert(scheduledPrices)
+          .values({
+            priceId: target.definition.id,
+            validityId: validity.id,
+            productId,
+            correlationId,
+            tipoPrecio: 'REGULAR',
+            importe: '110.00',
+            status: 'SCHEDULED',
+          })
+          .returning();
+        return { schedule, validity, price: target.definition };
+      });
+      return { ...created, productId, correlationId };
+    }
+
+    function skuDeactivationMessage(
+      sku: string,
+      productId: string,
+      skuVersion: number,
+      changedAt: Date,
+      messageId = randomUUID(),
+    ) {
+      return {
+        message_id: messageId,
+        schema_version: 1,
+        occurred_at: changedAt.toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'event',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: productId,
+          sku_version: skuVersion,
+          changed_at: changedAt.toISOString(),
+        },
+      };
+    }
+
     beforeAll(async () => {
       await postgres.start();
       await identity.start();
@@ -504,6 +576,12 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         }
         return rows;
       });
+      const overdue = await seedScheduledSku(
+        sku,
+        new Date(now.getTime() - 60_000),
+        new Date(now.getTime() + 3_600_000),
+        'OVERDUE-CHANNEL',
+      );
       const makeMessage = (
         messageId: string,
         version: number,
@@ -554,6 +632,24 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       expect(statuses.find((row) => row.id === inserted[2].id)?.status).toBe(
         'SCHEDULED',
       );
+      expect(
+        await database.db
+          .select({ status: scheduledPrices.status })
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, overdue.schedule.id)),
+      ).toEqual([{ status: 'HISTORICAL' }]);
+      expect(
+        await database.db
+          .select({ isCancelled: priceValidities.isCancelled })
+          .from(priceValidities)
+          .where(eq(priceValidities.id, overdue.validity.id)),
+      ).toEqual([{ isCancelled: false }]);
+      expect(
+        await database.db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.correlationId, overdue.correlationId)),
+      ).toHaveLength(0);
       const invalid = makeMessage(randomUUID(), 3, now);
       delete invalid.data.sku_version;
       expect(
@@ -670,6 +766,121 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
             ),
           ),
       ).toHaveLength(1);
+    });
+
+    it('PRI-010: baja primero y reconciliador reiniciado nunca publica una programación vencida pendiente', async () => {
+      const sku = 'PRI010-RESTART-' + randomUUID();
+      const changedAt = new Date('2034-01-02T00:00:00.000Z');
+      const validFrom = new Date('2034-01-01T00:00:00.000Z');
+      const now = new Date('2034-01-03T00:00:00.000Z');
+      const pending = await seedScheduledSku(sku, validFrom);
+      const message = skuDeactivationMessage(
+        sku,
+        pending.productId,
+        3,
+        changedAt,
+      );
+
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(message))),
+      ).toBe('APPLIED');
+      const restarted = new PricingScheduleReconciler(repository, {
+        nodeEnv: 'test',
+        port: 3002,
+        databaseUrl: postgres.runtimeUrl,
+        databaseSsl: false,
+      });
+      await expect(restarted.runOnce(now)).resolves.toMatchObject({
+        activated: 0,
+      });
+      expect(
+        await database.db
+          .select({ status: scheduledPrices.status })
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, pending.schedule.id)),
+      ).toEqual([{ status: 'HISTORICAL' }]);
+      expect(
+        await database.db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.correlationId, pending.correlationId)),
+      ).toHaveLength(0);
+      expect(
+        await database.db
+          .select({ result: inbox.result })
+          .from(inbox)
+          .where(eq(inbox.messageId, message.message_id)),
+      ).toEqual([{ result: 'APPLIED' }]);
+    });
+
+    it('PRI-010: reconciliación efectiva previa a baja conserva el único hecho ya producido', async () => {
+      const sku = 'PRI010-ACTIVE-FIRST-' + randomUUID();
+      const validFrom = new Date('2034-02-01T00:00:00.000Z');
+      const pending = await seedScheduledSku(sku, validFrom);
+      expect(await reconciler.runOnce(validFrom)).toMatchObject({
+        activated: 1,
+      });
+      const existingFacts = await database.db
+        .select()
+        .from(outbox)
+        .where(eq(outbox.correlationId, pending.correlationId));
+      expect(existingFacts).toHaveLength(2);
+      const existingFactIds = existingFacts
+        .map((fact) => fact.messageId)
+        .sort();
+      const message = skuDeactivationMessage(
+        sku,
+        pending.productId,
+        3,
+        new Date(validFrom.getTime() + 1),
+      );
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(message))),
+      ).toBe('APPLIED');
+      expect(
+        await database.db
+          .select({ status: scheduledPrices.status })
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, pending.schedule.id)),
+      ).toEqual([{ status: 'ACTIVE' }]);
+      const retainedFacts = await database.db
+        .select()
+        .from(outbox)
+        .where(eq(outbox.correlationId, pending.correlationId));
+      expect(retainedFacts.map((fact) => fact.messageId).sort()).toEqual(
+        existingFactIds,
+      );
+    });
+
+    it('PRI-010: dos reconciliadores concurrentes producen un solo estado ACTIVE y un solo hecho', async () => {
+      const sku = 'PRI010-TWO-WORKERS-' + randomUUID();
+      const validFrom = new Date('2034-03-01T00:00:00.000Z');
+      const pending = await seedScheduledSku(sku, validFrom);
+      const other = new PricingScheduleReconciler(repository, {
+        nodeEnv: 'test',
+        port: 3002,
+        databaseUrl: postgres.runtimeUrl,
+        databaseSsl: false,
+      });
+      const outcomes = await Promise.all([
+        reconciler.runOnce(validFrom),
+        other.runOnce(validFrom),
+      ]);
+      expect(outcomes.reduce((sum, result) => sum + result.activated, 0)).toBe(
+        1,
+      );
+      expect(
+        await database.db
+          .select({ status: scheduledPrices.status })
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, pending.schedule.id)),
+      ).toEqual([{ status: 'ACTIVE' }]);
+      const facts = await database.db
+        .select()
+        .from(outbox)
+        .where(eq(outbox.correlationId, pending.correlationId));
+      expect(facts).toHaveLength(2);
+      expect(new Set(facts.map((fact) => fact.messageId)).size).toBe(2);
     });
 
     it('bloquea cambios y nuevas programaciones SKU después de una baja persistida y conserva el precio base', async () => {

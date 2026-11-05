@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { and, eq, gte, sql } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import {
   inbox,
@@ -156,7 +156,11 @@ export class CatalogSkuDeactivated {
       const stale = Number(skuVersion) <= latestVersion;
       if (!stale) {
         const affected = await tx
-          .select({ id: scheduledPrices.id })
+          .select({
+            id: scheduledPrices.id,
+            validityId: scheduledPrices.validityId,
+            validFrom: priceValidities.validFrom,
+          })
           .from(scheduledPrices)
           .innerJoin(prices, eq(prices.id, scheduledPrices.priceId))
           .innerJoin(
@@ -164,27 +168,19 @@ export class CatalogSkuDeactivated {
             eq(priceValidities.id, scheduledPrices.validityId),
           )
           .where(
-            and(
-              eq(prices.sku, sku),
-              eq(scheduledPrices.status, 'SCHEDULED'),
-              gte(priceValidities.validFrom, changedAt!),
-            ),
+            and(eq(prices.sku, sku), eq(scheduledPrices.status, 'SCHEDULED')),
           )
           .for('update');
         for (const row of affected) {
-          const [schedule] = await tx
-            .select({ validityId: scheduledPrices.validityId })
-            .from(scheduledPrices)
-            .where(eq(scheduledPrices.id, row.id))
-            .limit(1);
-          if (!schedule) continue;
-          await tx
-            .update(priceValidities)
-            .set({ isCancelled: true })
-            .where(eq(priceValidities.id, schedule.validityId));
+          const future = row.validFrom >= changedAt!;
+          if (future)
+            await tx
+              .update(priceValidities)
+              .set({ isCancelled: true })
+              .where(eq(priceValidities.id, row.validityId));
           await tx
             .update(scheduledPrices)
-            .set({ status: 'CANCELLED' })
+            .set({ status: future ? 'CANCELLED' : 'HISTORICAL' })
             .where(
               and(
                 eq(scheduledPrices.id, row.id),

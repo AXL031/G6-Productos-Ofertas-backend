@@ -190,6 +190,7 @@ export class PricingOutboxRelay
     let connection: ChannelModel | undefined;
     let channel: ConfirmChannel | undefined;
     try {
+      const producerUser = decodeURIComponent(new URL(url).username);
       connection = await connect(url, {
         timeout: 2000,
         rejectUnauthorized: true,
@@ -247,6 +248,7 @@ export class PricingOutboxRelay
                     contentEncoding: 'utf-8',
                     messageId: row.messageId,
                     correlationId: row.correlationId,
+                    userId: producerUser,
                   },
                   (error: unknown) => {
                     clearTimeout(timeout);

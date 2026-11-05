@@ -15,6 +15,7 @@ import {
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import {
+  inbox,
   outbox,
   priceValidities,
   prices,
@@ -156,6 +157,38 @@ export class PricingScheduleReconciler
           await tx.execute(
             sql`SELECT pg_advisory_xact_lock(hashtextextended(${'sku-deactivation:' + item.price.sku}, 0))`,
           );
+        let deactivatedAt: Date | undefined;
+        if (item.price.sku !== null) {
+          const accepted = await tx
+            .select({ payload: inbox.payload })
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.handler, 'pricing.catalog-sku-deactivated.v1'),
+                eq(inbox.result, 'APPLIED'),
+                sql`${inbox.payload}->'data'->>'sku' = ${item.price.sku}`,
+              ),
+            );
+          for (const row of accepted) {
+            const payload = row.payload;
+            if (
+              typeof payload === 'object' &&
+              payload !== null &&
+              'data' in payload &&
+              typeof payload.data === 'object' &&
+              payload.data !== null &&
+              'changed_at' in payload.data &&
+              typeof payload.data.changed_at === 'string'
+            ) {
+              const candidate = new Date(payload.data.changed_at);
+              if (
+                Number.isFinite(candidate.getTime()) &&
+                (!deactivatedAt || candidate < deactivatedAt)
+              )
+                deactivatedAt = candidate;
+            }
+          }
+        }
         const [current] = await tx
           .select({
             scheduled: scheduledPrices,
@@ -201,6 +234,31 @@ export class PricingScheduleReconciler
               );
             historical++;
           }
+          continue;
+        }
+
+        // An accepted Catalog deactivation is durable. A schedule that was
+        // still pending at that point can never be materialized afterwards.
+        // Its captured valid_from determines whether we retain it as cancelled
+        // or historical; neither path creates an effective fact.
+        if (deactivatedAt) {
+          const future = current.validity.validFrom >= deactivatedAt;
+          if (future)
+            await tx
+              .update(priceValidities)
+              .set({ isCancelled: true })
+              .where(eq(priceValidities.id, current.validity.id));
+          const [closed] = await tx
+            .update(scheduledPrices)
+            .set({ status: future ? 'CANCELLED' : 'HISTORICAL' })
+            .where(
+              and(
+                eq(scheduledPrices.id, current.scheduled.id),
+                eq(scheduledPrices.status, 'SCHEDULED'),
+              ),
+            )
+            .returning({ id: scheduledPrices.id });
+          if (closed && !future) historical++;
           continue;
         }
 

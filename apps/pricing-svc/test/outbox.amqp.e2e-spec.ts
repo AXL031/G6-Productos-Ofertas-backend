@@ -77,10 +77,13 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       });
       if (!message) throw new Error('Falta la entrega AMQP esperada.');
       broker.channel!.ack(message);
-      return JSON.parse(message.content.toString('utf8')) as {
-        message_id: string;
-        data: unknown;
-        producer: string;
+      return {
+        ...(JSON.parse(message.content.toString('utf8')) as {
+          message_id: string;
+          data: unknown;
+          producer: string;
+        }),
+        user_id: message.properties.userId,
       };
     }
     beforeAll(async () => {
@@ -149,6 +152,7 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       expect(await delivery()).toMatchObject({
         message_id: id,
         producer: 'pricing-svc',
+        user_id: 'fixture',
         data: { price_type: 'REGULAR', new_price: '123.45' },
       });
       expect((await stored(id)).published_at).not.toBeNull();

@@ -481,6 +481,7 @@ jobs:
       env:
         PRICING_TEST_POSTGRES: '1'
         PRICING_TEST_AMQP: '1'
+        PRICING_TEST_AUDIT: '1'
         PRICE_AUDIT_TEST_POSTGRES: '1'
         PRICE_AUDIT_TEST_AMQP: '1'
       run: npm run test:e2e -- apps/pricing-svc apps/price-audit-svc --reporter=verbose
