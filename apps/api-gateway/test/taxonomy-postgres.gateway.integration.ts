@@ -76,7 +76,6 @@ function createToken(
       iss: issuerUrl,
       sub: SUB,
       tipo: 'acceso',
-      aud: ['api-productos'],
       roles: ['GESTOR_COMERCIAL'],
       iat: now,
       exp: now + 300,
@@ -326,7 +325,7 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     }
   });
 
-  it('devuelve filas persistidas con Bearer RS256 autorizado y propaga correlación', async () => {
+  it('devuelve filas PostgreSQL con JWT humano sin aud por Gateway y Taxonomy', async () => {
     const token = createToken(issuerPrivateKey);
     const correlationId = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
     outgoing = [];
@@ -364,6 +363,58 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     );
     expect(dbCheck.rows[0].total).toBe(2);
     expect(JSON.stringify(body)).not.toContain(token);
+  });
+
+  it('conserva audiencia, scope y cliente obligatorios para JWT de servicio Taxonomy', async () => {
+    const serviceToken = createToken(issuerPrivateKey, {
+      tipo: 'servicio',
+      sub: 'modulo-marketplace',
+      client_id: 'modulo-marketplace',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+      roles: [],
+    });
+    const valid = await fetch(`${taxonomyUrl}/api/v1/categorias`, {
+      headers: { authorization: `Bearer ${serviceToken}` },
+    });
+    status(valid, 200);
+    expect((await json(valid)).categories).toHaveLength(1);
+
+    for (const claims of [
+      { tipo: 'servicio', aud: undefined },
+      { tipo: 'servicio', aud: ['audiencia-invalida'] },
+    ]) {
+      const invalidToken = createToken(issuerPrivateKey, {
+        sub: 'modulo-marketplace',
+        client_id: 'modulo-marketplace',
+        scope: 'catalogo:leer',
+        roles: [],
+        ...claims,
+      });
+      const rejected = await fetch(`${taxonomyUrl}/api/v1/categorias`, {
+        headers: { authorization: `Bearer ${invalidToken}` },
+      });
+      status(rejected, 401);
+    }
+
+    for (const claims of [
+      { scope: 'catalogo:escribir' },
+      { sub: 'cliente-no-autorizado', client_id: 'cliente-no-autorizado' },
+    ]) {
+      const unauthorizedToken = createToken(issuerPrivateKey, {
+        tipo: 'servicio',
+        aud: ['api-productos'],
+        scope: 'catalogo:leer',
+        roles: [],
+        sub: 'modulo-marketplace',
+        client_id: 'modulo-marketplace',
+        ...claims,
+      });
+      const rejected = await fetch(`${taxonomyUrl}/api/v1/categorias`, {
+        headers: { authorization: `Bearer ${unauthorizedToken}` },
+      });
+      status(rejected, 403);
+    }
   });
 
   it('rechaza una petición anónima en Gateway antes de llamar a Taxonomy', async () => {
@@ -500,7 +551,7 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     status(direct, 401);
   });
 
-  it('rechaza issuer y audience incorrectos en las capas que los validan', async () => {
+  it('rechaza issuer inválido y no requiere aud para JWT humano', async () => {
     const wrongIssuer = createToken(issuerPrivateKey, {
       iss: 'https://issuer-invalido.test/',
     });
@@ -518,8 +569,9 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
       `${gatewayUrl}/api/v1/tipos-producto`,
       { headers: { authorization: `Bearer ${wrongAudience}` } },
     );
-    status(audienceResponse, 401);
+    status(audienceResponse, 200);
     expect(outgoing).toHaveLength(1);
+    expect((await json(audienceResponse)).items).toHaveLength(2);
   });
 
   it('rechaza 403 al usuario sin GESTOR_COMERCIAL antes del upstream', async () => {

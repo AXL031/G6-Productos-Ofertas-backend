@@ -351,14 +351,13 @@ export class TaxonomyTokenVerifier {
 
     if (claims.tipo === 'acceso') {
       const roles = claims.roles === undefined ? [] : strings(claims.roles);
-      const tokenAudiences = audiences(claims.aud);
-      if (!UUID_PATTERN.test(claims.sub) || !roles || !tokenAudiences)
+      if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new TaxonomyTokenRejected();
       return {
         kind: 'user',
         subject: claims.sub,
         roles,
-        audiences: tokenAudiences,
+        audiences: [],
       };
     }
     if (claims.tipo === 'servicio') {
@@ -396,9 +395,9 @@ export class TaxonomyUserGuard implements CanActivate {
         throw new UnauthorizedException();
       throw new ServiceUnavailableException();
     }
-    if (!principal.audiences.includes(SECURITY_AUDIENCE))
-      throw new UnauthorizedException();
     if (principal.kind === 'service') {
+      if (!principal.audiences.includes(SECURITY_AUDIENCE))
+        throw new UnauthorizedException();
       if (
         request.method !== 'GET' ||
         Reflect.getMetadata(TAXONOMY_SERVICE_READ, context.getHandler()) !==

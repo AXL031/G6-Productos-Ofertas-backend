@@ -1844,7 +1844,7 @@ describeIntegracion(
         humano = false,
         roles = ['GESTOR_COMERCIAL'],
         cliente = 'modulo-productos',
-        audience = 'api-productos',
+        audience: string | undefined = 'api-productos',
         invalidSignature = false,
       ) => {
         const now = Math.floor(Date.now() / 1000);
@@ -1857,7 +1857,7 @@ describeIntegracion(
             sub: humano ? randomUUID() : cliente,
             tipo: humano ? 'acceso' : 'servicio',
             ...(humano ? { roles } : {}),
-            aud: audience,
+            ...(audience === undefined ? {} : { aud: audience }),
             scope,
             iat: now,
             exp: now + 60,
@@ -2062,6 +2062,25 @@ describeIntegracion(
           .get('/api/v1/tipos-producto')
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
           .expect(200);
+        const tiposProductoHumano = await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set(
+            'Authorization',
+            `Bearer ${token('', true, ['GESTOR_COMERCIAL'], 'unused', undefined)}`,
+          )
+          .expect(200);
+        expect(tiposProductoHumano.body.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ tipoProductoId: tipoCreado }),
+          ]),
+        );
+        await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set(
+            'Authorization',
+            `Bearer ${token('catalogo:leer', false, [], 'modulo-productos', undefined)}`,
+          )
+          .expect(401);
         await request(nest.getHttpServer())
           .get('/api/v1/tipos-producto')
           .set('Authorization', `Bearer ${token('otro')}`)
