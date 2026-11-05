@@ -78,6 +78,7 @@ function assertCanalDelCliente(
   clientId: string | undefined,
   correlationId?: string,
   commercialDemo = false,
+  allowProductsMarketplace = false,
 ): void {
   const expectedClient =
     typeof canal === 'string' && Object.hasOwn(CANAL_CLIENT_MAP, canal)
@@ -88,6 +89,19 @@ function assertCanalDelCliente(
       `El canal '${canal ?? ''}' debe ser MARKETPLACE, CHATBOT o RETAIL`,
       correlationId,
     );
+  }
+  if (clientId === KNOWN_CLIENTS.PRODUCTOS) {
+    if (
+      !allowProductsMarketplace ||
+      canal !== 'MARKETPLACE' ||
+      commercialDemo
+    ) {
+      throw ProblemDetailsException.scopeInsuficiente(
+        'modulo-productos solo puede consultar el GET comercial para MARKETPLACE',
+        correlationId,
+      );
+    }
+    return;
   }
   if (!commercialDemo && expectedClient !== clientId) {
     throw ProblemDetailsException.scopeInsuficiente(
@@ -275,6 +289,7 @@ export class InventoryController {
     KNOWN_CLIENTS.MARKETPLACE,
     KNOWN_CLIENTS.CHATBOT,
     KNOWN_CLIENTS.RETAIL,
+    KNOWN_CLIENTS.PRODUCTOS,
   ])
   async consultarDisponibilidadComercial(
     @Query('skus') skusQuery: string | string[] | undefined,
@@ -295,6 +310,7 @@ export class InventoryController {
       req.clientId,
       correlationId,
       isCommercialDemoRequest(req),
+      true,
     );
 
     return this.disponibilidadService.consultarDisponibilidadComercial(

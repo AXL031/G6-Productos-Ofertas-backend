@@ -5,6 +5,7 @@ import { InMemoryDatabaseMock } from '../../test/in-memory-database.mock.js';
 
 import { DrizzleStockBalanceRepository } from '../repositories/drizzle/drizzle-stock-balance.repository.js';
 import { DrizzleCommercialRoutesRepository } from '../repositories/drizzle/drizzle-commercial-routes.repository.js';
+import { DrizzleSkuLifecycleRepository } from '../repositories/drizzle/drizzle-sku-lifecycle.repository.js';
 
 describe('DisponibilidadService — Consultas de Stock y D-INV-01', () => {
   let disponibilidadService: DisponibilidadService;
@@ -26,6 +27,7 @@ describe('DisponibilidadService — Consultas de Stock y D-INV-01', () => {
     disponibilidadService = new DisponibilidadService(
       stockBalanceRepo,
       commercialRoutesRepo,
+      new DrizzleSkuLifecycleRepository(dbService),
     );
   });
 
@@ -179,6 +181,80 @@ describe('DisponibilidadService — Consultas de Stock y D-INV-01', () => {
       for (const item of res.items) {
         expect(Object.keys(item).sort()).toEqual(['sku', 'status']);
       }
+    });
+
+    it('representa SKU desactivados como INDETERMINADO sin ocultar detalle administrativo', async () => {
+      mockDb.commercialRoutes.push({
+        id: 'route-comercial',
+        channel_id: 'MARKETPLACE',
+        mode: 'ENVIO_DOMICILIO',
+        fulfillment_ref: 'LIMA_METROPOLITANA',
+        location_id: locLurin,
+        active: true,
+      });
+      mockDb.skuLifecycle.push({
+        sku_id: 'NIK-REV7-NEG-41',
+        product_id: '66461bc1-02a0-4c8c-b453-c36ffa336a18',
+        sku_version: 4,
+        active: false,
+        changed_at: new Date().toISOString(),
+      });
+      mockDb.stockBalance.find(
+        (row) => row.sku_id === 'PUM-LIMIT-01',
+      )!.on_hand = 0;
+
+      const get = await disponibilidadService.consultarDisponibilidadComercial(
+        ['NIK-REV7-NEG-41', 'PUM-LIMIT-01'],
+        'MARKETPLACE',
+      );
+      expect(get.items).toEqual([
+        { sku: 'NIK-REV7-NEG-41', status: 'INDETERMINADO' },
+        { sku: 'PUM-LIMIT-01', status: 'AGOTADO' },
+      ]);
+      const post = await disponibilidadService.verificarCantidadComercial({
+        channel_id: 'MARKETPLACE',
+        fulfillment: {
+          mode: 'ENVIO_DOMICILIO',
+          fulfillment_ref: 'LIMA_METROPOLITANA',
+        },
+        lines: [
+          { sku: 'NIK-REV7-NEG-41', quantity: 1 },
+          { sku: 'PUM-LIMIT-01', quantity: 1 },
+        ],
+      });
+      expect(post.items.map((item) => item.result)).toEqual([
+        'INDETERMINADO',
+        'INSUFICIENTE',
+      ]);
+      const detailed = await disponibilidadService.consultarDisponibilidad(
+        ['NIK-REV7-NEG-41'],
+        locLurin,
+      );
+      expect(detailed.items[0]).toMatchObject({
+        sku: 'NIK-REV7-NEG-41',
+        on_hand: 18,
+        status: 'DISPONIBLE',
+      });
+    });
+
+    it('falla cerrada si no puede leer el ciclo de vida y el endpoint es comercial', async () => {
+      mockDb.commercialRoutes.push({
+        id: 'route-comercial',
+        channel_id: 'MARKETPLACE',
+        mode: 'ENVIO_DOMICILIO',
+        fulfillment_ref: 'LIMA_METROPOLITANA',
+        location_id: locLurin,
+        active: true,
+      });
+      vi.spyOn(dbService, 'query').mockRejectedValueOnce(
+        new Error('database unavailable'),
+      );
+      await expect(
+        disponibilidadService.consultarDisponibilidadComercial(
+          ['NIK-REV7-NEG-41'],
+          'MARKETPLACE',
+        ),
+      ).rejects.toThrow('database unavailable');
     });
 
     it('deduplica SKUs y respeta overrides de umbral por SKU', async () => {

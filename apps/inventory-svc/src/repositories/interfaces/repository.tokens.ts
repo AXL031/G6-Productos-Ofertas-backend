@@ -11,3 +11,4 @@ export const THRESHOLDS_REPOSITORY = Symbol('IThresholdsRepository');
 export const INCIDENTS_REPOSITORY = Symbol('IIncidentsRepository');
 export const TRASLADOS_REPOSITORY = Symbol('ITrasladosRepository');
 export const INBOX_REPOSITORY = Symbol('IInboxRepository');
+export const SKU_LIFECYCLE_REPOSITORY = Symbol('ISkuLifecycleRepository');

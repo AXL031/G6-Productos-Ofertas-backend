@@ -1,4 +1,4 @@
-// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: obtenerCategoriaAdmin.
+// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: consultarDisponibilidadComercial.
 import type { ContractRoute } from './contract-route.js';
 export const CONTRACT_ROUTES: readonly ContractRoute[] = [
   {
@@ -7044,7 +7044,12 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
     security: ['serviceBearer'],
     scope: 'inventario:disponibilidad:leer',
     audience: 'api-productos',
-    clients: ['modulo-marketplace', 'modulo-chatbot', 'modulo-retail'],
+    clients: [
+      'modulo-marketplace',
+      'modulo-chatbot',
+      'modulo-retail',
+      'modulo-productos',
+    ],
     introspection: false,
     headers: [
       {

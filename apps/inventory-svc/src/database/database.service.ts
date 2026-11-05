@@ -4,7 +4,6 @@ import {
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
-import * as fs from 'node:fs';
 import pg from 'pg';
 import { SanitizedLogger } from '../logging/sanitized-logger.js';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -19,6 +18,7 @@ import {
   loadInventoryConfig,
   InventoryConfig,
 } from '../config/inventory.config.js';
+import { createPostgresPoolOptions } from './postgres-connection-options.js';
 
 const { Pool } = pg;
 
@@ -32,6 +32,7 @@ export class DatabaseService
   private pool: pg.Pool | null = null;
   private drizzleDb: DrizzleDatabase | null = null;
   private isConnected = false;
+  private requiredSchemaReady = false;
   private customService: IDatabaseService | null = null;
 
   constructor() {}
@@ -69,70 +70,16 @@ export class DatabaseService
   }
 
   private async initPool(config: InventoryConfig): Promise<void> {
+    const production = process.env.NODE_ENV === 'production';
     try {
-      let sslConfig: boolean | { ca?: string; rejectUnauthorized?: boolean } =
-        false;
-      if (config.pgSslRootCert && fs.existsSync(config.pgSslRootCert)) {
-        sslConfig = {
-          ca: fs.readFileSync(config.pgSslRootCert, 'utf8'),
-          rejectUnauthorized: true,
-        };
-      } else if (config.pgSslMode === 'disable') {
-        sslConfig = false;
-      } else if (config.databaseUrl) {
-        if (
-          config.databaseUrl.includes('localhost') ||
-          config.databaseUrl.includes('sslmode=disable')
-        ) {
-          sslConfig = false;
-        } else {
-          sslConfig = { rejectUnauthorized: true };
-        }
-      } else if (
-        config.pgHost &&
-        config.pgSslMode &&
-        config.pgSslMode !== 'disable'
-      ) {
-        sslConfig = { rejectUnauthorized: true };
-      }
-
-      if (config.databaseUrl) {
-        this.pool = new Pool({
-          connectionString: config.databaseUrl,
-          ssl: sslConfig,
-          max: 10,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 5000,
-          statement_timeout: 15000,
-          lock_timeout: 5000,
-          query_timeout: 20000,
-        });
-      } else if (
-        config.pgHost &&
-        config.pgUser &&
-        config.pgDatabase &&
-        config.pgPassword
-      ) {
-        this.pool = new Pool({
-          host: config.pgHost,
-          port: config.pgPort ?? 5432,
-          database: config.pgDatabase,
-          user: config.pgUser,
-          password: config.pgPassword,
-          ssl: sslConfig,
-          max: 10,
-          idleTimeoutMillis: 30000,
-          connectionTimeoutMillis: 5000,
-          statement_timeout: 15000,
-          lock_timeout: 5000,
-          query_timeout: 20000,
-        });
-      } else {
+      const poolOptions = createPostgresPoolOptions(config);
+      if (!poolOptions) {
         this.logger.warn(
-          'No se configuró DATABASE_URL ni credenciales PG en el entorno. La conexión real queda en espera.',
+          'PostgreSQL no está configurado; readiness permanecerá no listo.',
         );
         return;
       }
+      this.pool = new Pool(poolOptions);
 
       // Conectar Drizzle ORM a la instancia del pool PostgreSQL
       this.drizzleDb = drizzle(this.pool, { schema });
@@ -141,20 +88,12 @@ export class DatabaseService
         this.logger.error({ event: 'inventory.database.pool_error', error });
       });
 
-      // Configure default search_path to inventory on each new client
-      this.pool.on('connect', (client) => {
-        client.query('SET search_path TO inventory, public').catch((err) => {
-          this.logger.error(
-            'Error configurando search_path en cliente PG',
-            err,
-          );
-        });
-      });
-
       // Validate connection
       const client = await this.pool.connect();
       try {
         await client.query('SELECT 1');
+        if (production) await this.assertRequiredSchema();
+        this.requiredSchemaReady = true;
         this.isConnected = true;
         this.logger.log(
           'Conexión PostgreSQL hacia schema inventory inicializada y validada con éxito (Drizzle ORM activo).',
@@ -164,9 +103,91 @@ export class DatabaseService
       }
     } catch (err) {
       this.isConnected = false;
-      this.logger.warn(
-        `No fue posible validar la conexión a PostgreSQL: ${(err as Error).message}. Las operaciones transaccionales dependerán de la disponibilidad del broker/base de datos.`,
-      );
+      this.requiredSchemaReady = false;
+      await this.pool?.end().catch(() => undefined);
+      this.pool = null;
+      this.drizzleDb = null;
+      this.logger.error({
+        event: 'inventory.database.initialization_failed',
+        reason: 'POSTGRES_CONFIGURATION_CONNECTION_OR_SCHEMA',
+        errorCode:
+          err &&
+          typeof err === 'object' &&
+          'code' in err &&
+          typeof err.code === 'string'
+            ? err.code
+            : 'CONFIGURATION_OR_TLS_ERROR',
+      });
+      if (production) {
+        throw new Error(
+          'PostgreSQL o el esquema requerido de Inventory no está preparado.',
+        );
+      }
+    }
+  }
+
+  private async assertRequiredSchema(): Promise<void> {
+    if (!this.pool) throw new Error('Database pool is unavailable');
+    const result = await this.pool.query<{
+      table_name: string;
+      column_name: string;
+    }>(
+      `SELECT table_name, column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'inventory'
+          AND (table_name, column_name) IN (
+            ('sku_lifecycle', 'sku_id'),
+            ('sku_lifecycle', 'product_id'),
+            ('sku_lifecycle', 'sku_version'),
+            ('sku_lifecycle', 'active'),
+            ('sku_lifecycle', 'changed_at'),
+            ('sku_lifecycle', 'updated_at'),
+            ('offline_sale_reconciliations', 'client_id'),
+            ('offline_sale_reconciliations', 'offline_sale_id'),
+            ('offline_sale_reconciliations', 'operation_id'),
+            ('offline_sale_reconciliations', 'order_id'),
+            ('offline_sale_reconciliations', 'request_fingerprint'),
+            ('offline_sale_reconciliations', 'request_payload'),
+            ('offline_sale_reconciliations', 'result_payload'),
+            ('offline_sale_reconciliations', 'status'),
+            ('offline_sale_reconciliations', 'completed_at')
+          )`,
+    );
+    if (result.rows.length !== 15) {
+      throw new Error('Required Inventory schema is missing or incompatible');
+    }
+    const constraints = await this.pool.query<{
+      table_name: string;
+      constraint_type: string;
+      columns: string;
+    }>(
+      `SELECT tc.table_name, tc.constraint_type,
+              string_agg(kcu.column_name, ',' ORDER BY kcu.ordinal_position) AS columns
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON kcu.constraint_catalog = tc.constraint_catalog
+          AND kcu.constraint_schema = tc.constraint_schema
+          AND kcu.constraint_name = tc.constraint_name
+          AND kcu.table_schema = tc.table_schema
+          AND kcu.table_name = tc.table_name
+        WHERE tc.constraint_schema = 'inventory'
+          AND tc.table_name IN ('sku_lifecycle', 'offline_sale_reconciliations')
+          AND tc.constraint_type IN ('PRIMARY KEY', 'UNIQUE')
+        GROUP BY tc.table_name, tc.constraint_type`,
+    );
+    const actual = new Set(
+      constraints.rows.map(
+        (row) => `${row.table_name}:${row.constraint_type}:${row.columns}`,
+      ),
+    );
+    if (
+      !actual.has('sku_lifecycle:PRIMARY KEY:sku_id') ||
+      !actual.has(
+        'offline_sale_reconciliations:PRIMARY KEY:client_id,offline_sale_id',
+      ) ||
+      !actual.has('offline_sale_reconciliations:UNIQUE:operation_id')
+    ) {
+      throw new Error('Required Inventory schema constraints are missing');
     }
   }
 
@@ -246,9 +267,20 @@ export class DatabaseService
     const start = Date.now();
     try {
       await this.pool.query('SELECT 1');
+      if (process.env.NODE_ENV === 'production') {
+        await this.assertRequiredSchema();
+      }
+      this.requiredSchemaReady = true;
+      if (!this.requiredSchemaReady) {
+        return { healthy: false, error: 'Esquema requerido no preparado' };
+      }
       return { healthy: true, latencyMs: Date.now() - start };
-    } catch (err) {
-      return { healthy: false, error: (err as Error).message };
+    } catch {
+      this.requiredSchemaReady = false;
+      return {
+        healthy: false,
+        error: 'PostgreSQL o esquema requerido no disponible',
+      };
     }
   }
 }

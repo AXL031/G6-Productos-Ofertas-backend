@@ -1,6 +1,6 @@
 // Offline generation from the official OpenAPI converted to JSON by a YAML parser.
-// For one route, pass its operationId as the third argument; only its error codes
-// are refreshed, preserving all other generated route metadata and formatting.
+// For one route, pass its operationId as the third argument; its contract-derived
+// security metadata and error codes are refreshed without touching other routes.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
@@ -228,7 +228,7 @@ for (const [status, response] of Object.entries(replacement.responses)) {
 }
 writeFileSync(
   output,
-  `// Generated from Docs OpenAPI 0.6.0-rc.2; focused update: ${operationId}.\n` +
+  `// Generated from Docs OpenAPI ${spec.info.version}; focused update: ${operationId}.\n` +
     existing.slice(existing.indexOf('\n') + 1, objectStart) +
     existingRoute +
     existing.slice(objectEnd),

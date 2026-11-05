@@ -1,5 +1,6 @@
 import { Injectable, Inject } from '@nestjs/common';
 import { loadInventoryConfig } from '../config/inventory.config.js';
+import { DatabaseService } from '../database/database.service.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
   DashboardInventario,
@@ -18,12 +19,64 @@ export interface DashboardFiltros {
   locationId?: string;
 }
 
+/** SPEC-016 metrics kept internal until OpenAPI approves an expanded DTO. */
+export interface DashboardMetricasInternas {
+  unidadesFisicas: number;
+  unidadesReservadas: number;
+  unidadesBloqueadas: number;
+  unidadesDisponibles: number;
+  skuPorEstado: {
+    DISPONIBLE: number;
+    STOCK_BAJO: number;
+    AGOTADO: number;
+  };
+  trasladosPendientes: number;
+  trasladosConDiscrepancia: number;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
     @Inject(STOCK_BALANCE_REPOSITORY)
     private readonly stockBalanceRepository: IStockBalanceRepository,
+    private readonly database: DatabaseService,
   ) {}
+
+  /** Additional SPEC-016 indicators remain internal; the public DTO is unchanged. */
+  async obtenerMetricasInternas(
+    filtros: DashboardFiltros = {},
+  ): Promise<DashboardMetricasInternas> {
+    const dashboard = await this.obtenerDashboard(filtros);
+    const rows = await this.stockBalanceRepository.findByFilters({
+      sku: filtros.sku,
+      locationId: filtros.locationId,
+    });
+    const transfers = await this.database.query<{
+      pendientes: number;
+      discrepancias: number;
+    }>(
+      `SELECT
+         count(*) FILTER (WHERE estado IN ('EN_TRANSITO', 'RECIBIDO_PARCIAL'))::int AS pendientes,
+         count(*) FILTER (WHERE estado = 'COMPLETADO_CON_DISCREPANCIA')::int AS discrepancias
+       FROM inventory.traslados
+       WHERE ($1::text IS NULL OR sku_id = $1)
+         AND ($2::uuid IS NULL OR source_location_id = $2 OR target_location_id = $2)`,
+      [filtros.sku ?? null, filtros.locationId ?? null],
+    );
+    return {
+      unidadesFisicas: dashboard.totalOnHand,
+      unidadesReservadas: dashboard.totalReserved,
+      unidadesBloqueadas: rows.reduce((sum, row) => sum + row.blocked, 0),
+      unidadesDisponibles: dashboard.totalAvailable,
+      skuPorEstado: {
+        DISPONIBLE: dashboard.skusDisponibles,
+        STOCK_BAJO: dashboard.skusStockBajo,
+        AGOTADO: dashboard.skusAgotados,
+      },
+      trasladosPendientes: Number(transfers.rows[0]?.pendientes ?? 0),
+      trasladosConDiscrepancia: Number(transfers.rows[0]?.discrepancias ?? 0),
+    };
+  }
 
   /**
    * Read model del dashboard (SPEC-016). Calcula indicadores por SKU y por
