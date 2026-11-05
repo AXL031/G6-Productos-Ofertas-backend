@@ -6,6 +6,7 @@ param(
   [string]$Location = 'eastus',
   [string]$VmSize = 'Standard_B1s',
   [string]$AdminUsername = 'azureuser',
+  [string]$AdminSourceCidr,
   [string]$SshPublicKeyPath = "$env:USERPROFILE\.ssh\g6_cueva.pub",
   [string]$DnsLabel = ('g6-po-' + ([guid]::NewGuid().ToString('N').Substring(0, 8))),
   [string]$CostReviewPath,
@@ -13,6 +14,24 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+# No implicit Internet/service-tag source, including during preflight.
+$sourceParts = @($AdminSourceCidr -split '/')
+$adminAddress = $null
+if ([string]::IsNullOrWhiteSpace($AdminSourceCidr) -or $sourceParts.Count -gt 2 -or
+    -not [Net.IPAddress]::TryParse($sourceParts[0], [ref]$adminAddress)) {
+  throw 'Se requiere -AdminSourceCidr con una IP o CIDR de administración explícita.'
+}
+$isV4 = $adminAddress.AddressFamily -eq [Net.Sockets.AddressFamily]::InterNetwork
+$maxPrefix = if ($isV4) { 32 } else { 128 }
+if (($isV4 -and $sourceParts[0] -notmatch '^(\d{1,3}\.){3}\d{1,3}$') -or
+    $sourceParts[0].Contains('%') -or $adminAddress.IsIPv4MappedToIPv6 -or
+    $adminAddress.Equals([Net.IPAddress]::Any) -or $adminAddress.Equals([Net.IPAddress]::IPv6Any) -or
+    ($sourceParts.Count -eq 2 -and ($sourceParts[1] -notmatch '^\d{1,3}$' -or
+      [int]$sourceParts[1] -lt 1 -or [int]$sourceParts[1] -gt $maxPrefix))) {
+  throw 'Origen SSH inválido: usa una IP o CIDR de administración; no se permite acceso universal (/0).'
+}
+$adminSource = $adminAddress.ToString() + '/' + $(if ($sourceParts.Count -eq 2) { $sourceParts[1] } else { $maxPrefix })
 
 function Resolve-AzCli {
   $cmd = Get-Command az -ErrorAction SilentlyContinue
@@ -70,6 +89,7 @@ if ($DryRun) {
   Write-Host "  VM             : $VmName ($VmSize, Ubuntu2404, StandardSSD_LRS 30GB)"
   Write-Host "  FQDN HTTPS     : https://$fqdn"
   Write-Host "  Puertos NSG    : 22, 80, 443 (puertos 3000-3008 cerrados al exterior)"
+  Write-Host "  Origen SSH     : $adminSource (HTTP/HTTPS públicos)"
   Write-Warning 'DryRun verifica SKU/cuotas; no confirma gratuidad, precio, saldo ni aprobación de despliegue.'
   return
 }
@@ -103,9 +123,9 @@ $nsgName = "${VmName}-nsg"
 if ($LASTEXITCODE -ne 0) { throw 'Error al crear NSG.' }
 
 foreach ($rule in @(
-  @{ Name = 'Allow-SSH'; Port = 22; Priority = 1000 },
-  @{ Name = 'Allow-HTTP'; Port = 80; Priority = 1010 },
-  @{ Name = 'Allow-HTTPS'; Port = 443; Priority = 1020 }
+  @{ Name = 'Allow-SSH'; Port = 22; Priority = 1000; Source = $adminSource },
+  @{ Name = 'Allow-HTTP'; Port = 80; Priority = 1010; Source = '*' },
+  @{ Name = 'Allow-HTTPS'; Port = 443; Priority = 1020; Source = '*' }
 )) {
   & $az network nsg rule create `
     --subscription $SubscriptionId `
@@ -116,6 +136,7 @@ foreach ($rule in @(
     --access Allow `
     --protocol Tcp `
     --direction Inbound `
+    --source-address-prefixes $rule.Source `
     --destination-port-ranges $rule.Port `
     --output none
   if ($LASTEXITCODE -ne 0) { throw "Error al crear regla NSG: $($rule.Name)" }
