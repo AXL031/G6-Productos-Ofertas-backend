@@ -5,6 +5,7 @@ import type { CommercialService } from './commercial.service.js';
 import type { CatalogConfig } from './config.js';
 import type { PricingClient } from './pricing.client.js';
 import type { PostgresCatalogRepository } from './postgres-catalog.repository.js';
+import type { CatalogAmqpRuntime } from './catalog-amqp.js';
 
 describe('Catalog readiness modes', () => {
   const database = { verifyIdentity: vi.fn() } as unknown as Database;
@@ -13,6 +14,7 @@ describe('Catalog readiness modes', () => {
   const repository = {
     checkDemoReadAccess: vi.fn(),
   } as unknown as PostgresCatalogRepository;
+  const amqp = { required: false, ready: false } as CatalogAmqpRuntime;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -126,5 +128,33 @@ describe('Catalog readiness modes', () => {
       ServiceUnavailableException,
     );
     expect(pricing.checkReady).not.toHaveBeenCalled();
+  });
+
+  it('requires an enabled AMQP transport to be subscribed and recovered', async () => {
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      { marketplaceDemoPreview: false } as CatalogConfig,
+      pricing,
+      repository,
+      { required: true, ready: false } as CatalogAmqpRuntime,
+    );
+    await expect(controller.ready()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+  });
+
+  it('does not require RabbitMQ when the runtime is explicitly disabled', async () => {
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      { marketplaceDemoPreview: false } as CatalogConfig,
+      pricing,
+      repository,
+      amqp,
+    );
+    await expect(controller.ready()).resolves.toMatchObject({
+      status: 'ready',
+    });
   });
 });

@@ -1,0 +1,270 @@
+{
+  "status": "PROPOSED_NOT_EXECUTED",
+  "additional_inserts": 14,
+  "scope_reason": "A/B/E se ejecutaron con sus scripts fusionados. B autoriza doce portadas y deja cuatro fuera; estos INSERT nuevos no están contenidos en los SQL ejecutados de master y requieren confirmar el alcance adicional.",
+  "covers": [
+    {
+      "sku": "PUM-ULP-BASE",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "source_variant_id": "9ba54bda-2686-8e3b-41c6-68b6efa16338",
+      "source_image_id": "e26d7736-b820-4e43-b92b-4f95cc773186",
+      "file": "puma-ultra-play-negro.jpg",
+      "storage_id": "3150f807-c196-4fc3-be05-f6bd4c6677de",
+      "etag": "\"3a9ba6ba7f775f7061d6cb703a3fc34f-1\"",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-ultra-play-negro.jpg",
+      "sha256": "8a3d508bca48dcf4663a3ed8b61536bb126c91ca211cf72db0145803222c2021",
+      "principal": true,
+      "posicion": 0,
+      "evidence": "Asociación real a variante del mismo producto; objeto ya verificado por A y HTTP/SHA-256; no inspección visual individual.",
+      "status": "PROPOSED_NOT_EXECUTED"
+    },
+    {
+      "sku": "ADI-ENT22-BASE",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "source_variant_id": "35133a17-114a-381e-090a-87446d5fc701",
+      "source_image_id": "c9b5f3d3-542e-4c1b-bd87-e50a53aa0703",
+      "file": "adidas-entrada22-azul.jpg",
+      "storage_id": "bf691787-7ad2-42e2-9af4-e75f9e0b34d6",
+      "etag": "\"1b1058af89e537cdc25b7e5392daf886\"",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada22-azul.jpg",
+      "sha256": "05a192e8a2218714aef0efb8e89f993010a29af110dcf138de2461a5d9f0a58d",
+      "principal": true,
+      "posicion": 0,
+      "evidence": "Asociación real a variante del mismo producto; objeto ya verificado por A y HTTP/SHA-256; no inspección visual individual.",
+      "status": "PROPOSED_NOT_EXECUTED"
+    },
+    {
+      "sku": "ADI-RF3-BASE",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "source_variant_id": "f1bd0fad-819b-b0fd-b5b1-53bb36fd468f",
+      "source_image_id": "739bdf11-ce20-4f19-a49e-8fa09bda60f3",
+      "file": "adidas-runfalcon3-gris.jpg",
+      "storage_id": "3830bc41-91ed-4b55-ba3c-ce3a2f638440",
+      "etag": "\"b069348a3f481a1c15aa3db22b58c9c9-1\"",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runfalcon3-gris.jpg",
+      "sha256": "27b511dcd523792dd19060758cacfd67c3baee9ebe9525306fde519388eef4ee",
+      "principal": true,
+      "posicion": 0,
+      "evidence": "Asociación real a variante del mismo producto; objeto ya verificado por A y HTTP/SHA-256; no inspección visual individual.",
+      "status": "PROPOSED_NOT_EXECUTED"
+    },
+    {
+      "sku": "NIK-REV7-BASE",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "source_variant_id": "437853de-9b59-6b0b-5b26-ccd51e2e062b",
+      "source_image_id": "aba3e97a-6575-4c13-81e7-fe35a2e14d0a",
+      "file": "nike-revolution7-negro.jpg",
+      "storage_id": "adb98816-5445-49c7-8a60-093ff4b6dff2",
+      "etag": "\"632ef3c08b347454ee8361ad8178c153-1\"",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-revolution7-negro.jpg",
+      "sha256": "d88aac3a63fa649e186ee2bb6df5039370c60e5c1b66d6f64dde061260cda3a9",
+      "principal": true,
+      "posicion": 0,
+      "evidence": "Asociación real a variante del mismo producto; objeto ya verificado por A y HTTP/SHA-256; no inspección visual individual.",
+      "status": "PROPOSED_NOT_EXECUTED"
+    }
+  ],
+  "identifying_associations": [
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "sku": "PUM-ULP-BASE",
+      "type": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "existing": false,
+      "variant_attributes": 1,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "e1a23656-970d-4766-a8cd-6f8ffce18811",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ]
+    },
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "sku": "PUM-ULP-BASE",
+      "type": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "existing": false,
+      "variant_attributes": 1,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "574895ac-015f-43c0-8958-229095a8c4db",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "4d68c7e4-69d4-9e79-8e9e-379aa2a3a01a",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        }
+      ]
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "sku": "ADI-ENT22-BASE",
+      "type": "b023a151-d69f-ff9a-483a-678eefe6842e",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "existing": false,
+      "variant_attributes": 1,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "23c96a8d-1b4c-4f83-a855-710570e9e5aa",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ]
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "sku": "ADI-ENT22-BASE",
+      "type": "b023a151-d69f-ff9a-483a-678eefe6842e",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "existing": false,
+      "variant_attributes": 1,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "7054506c-f144-4c1d-8938-12099d417358",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "b023a151-d69f-ff9a-483a-678eefe6842e",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        }
+      ]
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "sku": "ADI-RF3-BASE",
+      "type": "457dbfec-c787-826f-7898-d231aeabb589",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "existing": false,
+      "variant_attributes": 2,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "21d0ea00-2932-4122-976b-f97da5edda79",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ]
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "sku": "ADI-RF3-BASE",
+      "type": "457dbfec-c787-826f-7898-d231aeabb589",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "existing": false,
+      "variant_attributes": 2,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "12b26028-3be1-4446-a462-2734a077337b",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        }
+      ]
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "sku": "NIK-REV7-BASE",
+      "type": "457dbfec-c787-826f-7898-d231aeabb589",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "existing": false,
+      "variant_attributes": 2,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "21d0ea00-2932-4122-976b-f97da5edda79",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+        }
+      ]
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "sku": "NIK-REV7-BASE",
+      "type": "457dbfec-c787-826f-7898-d231aeabb589",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "existing": false,
+      "variant_attributes": 2,
+      "all_identifying": true,
+      "associations": [
+        {
+          "id": "12b26028-3be1-4446-a462-2734a077337b",
+          "estado": "ACTIVO",
+          "created_at": "2026-10-14T01:02:30.042622+00:00",
+          "updated_at": "2026-10-14T01:02:30.042622+00:00",
+          "obligatoria": true,
+          "tipo_producto_id": "457dbfec-c787-826f-7898-d231aeabb589",
+          "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+        }
+      ]
+    }
+  ],
+  "pitch_attributes": [
+    {
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "sku": "NIK-PITCH-05",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "nombre_snapshot": "Talla",
+      "valor_id": "52d4b91a-f829-c05e-d60e-31ada29b0513",
+      "valor": null,
+      "value_name": "5",
+      "status": "PROPOSED_NOT_EXECUTED",
+      "evidence": "Descripción real de Catálogo: talla 5; Excel académico original talla 5."
+    },
+    {
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "sku": "NIK-PITCH-05",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "nombre_snapshot": "Color",
+      "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea",
+      "valor": null,
+      "value_name": "Blanco",
+      "status": "PROPOSED_NOT_EXECUTED",
+      "evidence": "Propuesta de familia de color Blanco basada en referencia Nike FZ2636-101 White / Blue Fury / Glacier Blue; no se infiere del SKU. Confirmar que el alcance autoriza esta asignación simplificada."
+    }
+  ],
+  "migrations": {
+    "status": "BLOCKED_SPECIFIC",
+    "docs_ref": "80f208978c2c703e2b2d62064112365e7b9e1677",
+    "normative_migrations": [
+      "0001_create_catalog.sql"
+    ],
+    "candidates": [
+      "0002_create_sku_barcodes.sql",
+      "0003_product_publication_history.sql"
+    ],
+    "requirements": [
+      "Marco/Docs: incorporar candidatos exactos en historial normativo o autorizar bundle temporal verificable según procedimiento.",
+      "Administrador/BD: login directo/session con TLS verify-full y membresía del owner para datos/deploy/migrate.py; catalog_dev_login no puede SET ROLE po_catalog_owner."
+    ],
+    "no_manual_ledger": true,
+    "no_migrations_applied": true
+  }
+}

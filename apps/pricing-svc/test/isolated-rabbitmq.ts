@@ -54,6 +54,12 @@ export class IsolatedRabbitmq {
     await this.channel.assertExchange('po.eventos.x', 'topic', {
       durable: true,
     });
+    await this.channel.assertExchange('po.comandos.x', 'topic', {
+      durable: true,
+    });
+    await this.channel.assertExchange('po.resultados.x', 'topic', {
+      durable: true,
+    });
     await this.channel.assertQueue('po.auditoria-precios.q', {
       durable: true,
       arguments: { 'x-queue-type': 'quorum' },
@@ -62,6 +68,34 @@ export class IsolatedRabbitmq {
       'po.auditoria-precios.q',
       'po.eventos.x',
       'pricing.price.changed',
+    );
+    await this.channel.assertQueue('po.catalog.q', {
+      durable: true,
+      arguments: { 'x-queue-type': 'quorum' },
+    });
+    await this.channel.bindQueue(
+      'po.catalog.q',
+      'po.resultados.x',
+      'pricing.product.initialization.completed',
+    );
+    await this.channel.assertQueue('po.precios.q', {
+      durable: true,
+      arguments: { 'x-queue-type': 'quorum' },
+    });
+    await this.channel.bindQueue(
+      'po.precios.q',
+      'po.comandos.x',
+      'pricing.product.initialization.requested',
+    );
+    await this.channel.bindQueue(
+      'po.precios.q',
+      'po.comandos.x',
+      'pricing.bulk.price.apply.requested',
+    );
+    await this.channel.bindQueue(
+      'po.precios.q',
+      'po.eventos.x',
+      'catalog.sku.deactivated',
     );
   }
   async pause() {

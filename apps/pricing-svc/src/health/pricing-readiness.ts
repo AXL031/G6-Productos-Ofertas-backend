@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { PricingDatabase } from '../persistence/pricing.database.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingOutboxRelay } from '../messaging/outbox-relay.js';
+import { PricingInboxConsumer } from '../messaging/inbox-consumer.js';
 
 @Injectable()
 export class PricingReadiness {
@@ -9,12 +10,17 @@ export class PricingReadiness {
     @Inject(PricingDatabase) private readonly database: PricingDatabase,
     @Inject(PRICING_CONFIG) private readonly config: PricingConfig,
     @Inject(PricingOutboxRelay) private readonly relay?: PricingOutboxRelay,
+    @Inject(PricingInboxConsumer)
+    private readonly consumer?: PricingInboxConsumer,
   ) {}
 
   check(): Promise<boolean> {
     if (!this.config.demoNoAuthEnabled && !this.config.auth)
       return Promise.resolve(false);
-    if (this.config.amqpUrl && !this.relay?.available)
+    if (
+      this.config.amqpUrl &&
+      (!this.consumer?.available || !this.relay?.available)
+    )
       return Promise.resolve(false);
     return this.database.check();
   }

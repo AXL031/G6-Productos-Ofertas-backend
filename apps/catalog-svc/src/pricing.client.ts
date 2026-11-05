@@ -65,6 +65,7 @@ export class PricingClient {
     productId: string,
     timeoutMs = 2500,
     requestCorrelationId?: string,
+    signal?: AbortSignal,
   ): Promise<CurrentProductPrice | null> {
     try {
       if (!this.config.pricingOrigin) throw new Error();
@@ -80,7 +81,9 @@ export class PricingClient {
         ),
         {
           redirect: 'manual',
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: signal
+            ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+            : AbortSignal.timeout(timeoutMs),
           headers: { 'X-Correlation-Id': correlationId(requestCorrelationId) },
         },
       );

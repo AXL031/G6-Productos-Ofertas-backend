@@ -21,7 +21,13 @@ function text(value: unknown): value is string {
 export function isUri(value: unknown): value is string {
   if (typeof value !== 'string') return false;
   try {
-    return new URL(value).protocol.length > 1;
+    const url = new URL(value);
+    return (
+      ['http:', 'https:'].includes(url.protocol) &&
+      url.hostname.length > 0 &&
+      !url.username &&
+      !url.password
+    );
   } catch {
     return false;
   }

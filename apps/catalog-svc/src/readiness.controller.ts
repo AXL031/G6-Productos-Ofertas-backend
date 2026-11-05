@@ -9,6 +9,7 @@ import { CommercialService } from './commercial.service.js';
 import { CatalogConfig } from './config.js';
 import { PricingClient } from './pricing.client.js';
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
+import { CatalogAmqpRuntime } from './catalog-amqp.js';
 
 @Controller('health')
 export class ReadinessController {
@@ -18,11 +19,13 @@ export class ReadinessController {
     @Optional() private readonly config?: CatalogConfig,
     @Optional() private readonly pricing?: PricingClient,
     @Optional() private readonly repository?: PostgresCatalogRepository,
+    @Optional() private readonly amqp?: CatalogAmqpRuntime,
   ) {}
   @Get('ready')
   async ready() {
     try {
       await this.database.verifyIdentity();
+      if (this.amqp?.required && !this.amqp.ready) throw new Error();
       if (
         this.config?.marketplaceDemoPreview &&
         !this.config.readDemo?.enabled
