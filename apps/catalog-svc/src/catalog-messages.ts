@@ -241,7 +241,9 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     !UUID.test(String(value.correlation_id)) ||
     (value.schema_version !== 1 &&
       !(
-        value.name === 'catalog.bulk.upsert.requested' &&
+        (value.name === 'catalog.bulk.upsert.requested' ||
+          value.name === 'inventory.sku.initialization.completed' ||
+          value.name === 'inventory.sku.initialization.rejected') &&
         value.schema_version === 2
       )) ||
     typeof value.occurred_at !== 'string' ||

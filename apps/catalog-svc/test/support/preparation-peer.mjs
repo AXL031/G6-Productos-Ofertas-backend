@@ -19,6 +19,13 @@ try {
     ],
     { logger: false },
   );
+  if (config.peer === 'inventory') {
+    const { DatabaseService } = await import(
+      pathToFileURL(join(config.build, 'database/database.service.js')).href
+    );
+    if (!(await app.get(DatabaseService).isHealthy()).healthy)
+      throw new Error('DISPOSABLE_DATABASE_NOT_READY');
+  }
   let closing = false;
   process.on('SIGTERM', async () => {
     if (closing) return;

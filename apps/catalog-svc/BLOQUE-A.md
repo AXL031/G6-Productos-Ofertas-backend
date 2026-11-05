@@ -92,6 +92,13 @@ esta propuesta ni se activan productos compartidos.
   correlationId, contentType, mandatory y persistent; falta userId.
 - Catalog, apps/catalog-svc/src/catalog-amqp.ts, contrasta userId con producerUsers.
   Sin identidad autenticada el mensaje se considera inválido y se envía a DLQ.
+- Además, Inventory emite schema_version=2 para los resultados. El envelope oficial
+  AsyncAPI rc.4 admite enteros desde 1 y el payload de inicialización no cambia.
+  Catalog solo admitía v1. Se corrige Catalog para aceptar v1/v2 únicamente en los
+  dos resultados de inicialización Inventory ya tipados; v3, otros productores,
+  causalidad/operación ausentes y payload incorrecto siguen rechazados. Se añaden
+  pruebas positivas/negativas; el test entre procesos valida el sobre real v2.
+  Esto no elimina el bloqueo independiente de userId ni habilita una activación.
 - Desbloqueo: publicador real emite userId correspondiente a la conexión autenticada,
   RabbitMQ lo valida; pruebas entre procesos demuestran aceptación, idempotencia y
   activación sin modificar el consumidor ni añadir identidad mediante una fixture.
@@ -176,9 +183,27 @@ Get-Command docker no encuentra ejecutable; la llamada real de Bulk devuelve
 ENOENT antes de crear un contenedor. No hay otro fallo local de código detectado.
 El run del candidato se registra en la descripción de la PR después de publicarlo.
 
+Primer candidato publicado: fa82ef052f8404b86e500cd10a7ac64810692d4f,
+PR DRAFT #194, CI 42095502089. Bulk outage ejecutó sus dos pruebas y pasó;
+BLOCK-A1 pasó con PostgreSQL TLS. BLOCK-A2 falló por configuración de fixture
+que combinaba DATABASE_URL y credenciales PG individuales: Inventory rechaza
+expresamente esa ambigüedad. Se corrige exclusivamente el entorno de prueba de
+Catalog para utilizar URL + configuración TLS, y se añade comprobación real
+de salud PostgreSQL del peer antes de anunciar arranque. No se modifica Inventory
+ni su parser. El FAIL original se conserva; la nueva CI validará la corrección.
+
+Después de corregir el candidato: 34 pruebas enfocadas de mensajes PASS;
+575 unitarias Catalog PASS; 169 E2E locales PASS y 114 SKIP por las mismas
+dependencias/opt-in; typecheck, lint, format:check, build:catalog-svc, build:all,
+node --check del peer y git diff --check PASS. La E2E general local conserva
+su FAIL de Docker y no se reclasifica. La comprobación nueva de salud del peer
+consulta PostgreSQL real, sin sustituir el servicio ni su repositorio.
+
 Archivos del cambio, todos bajo Catalog:
 
 - `apps/catalog-svc/test/postgres.persistence.e2e-spec.ts`
+- `apps/catalog-svc/src/catalog-messages.ts`
+- `apps/catalog-svc/src/catalog-messages.spec.ts`
 - `apps/catalog-svc/test/support/disposable-catalog-broker.ts`
 - `apps/catalog-svc/test/support/preparation-peer.mjs`
 - `apps/catalog-svc/test/fixtures/inventory-initial.sql`

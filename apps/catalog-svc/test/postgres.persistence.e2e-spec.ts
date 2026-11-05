@@ -469,12 +469,6 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             PATH: process.env.PATH,
             SystemRoot: process.env.SystemRoot,
             NODE_ENV: 'test',
-            PGHOST: '127.0.0.1',
-            PGPORT: port,
-            PGDATABASE: 'postgres',
-            PGUSER:
-              peer === 'pricing' ? 'pricing_app' : 'inventory_fixture_app',
-            PGPASSWORD: 'isolated-' + peer + '-password',
             PGSSLMODE: 'verify-full',
             PGSSLROOTCERT: caFile,
             DATABASE_URL:
@@ -590,6 +584,8 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           )
             continue;
           inventoryResults.push(envelope);
+          expect(envelope.schema_version).toBe(2);
+          expect(parseCatalogMessage(envelope)).toEqual(envelope);
           // Known foreign-owner defect: publisher has no AMQP userId.
           expect(wire.properties.userId).toBeUndefined();
           expect(envelope.data.status).toBe('INITIALIZED');
