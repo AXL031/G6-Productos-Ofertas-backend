@@ -215,10 +215,16 @@ export function isDemoBypassRoute(
   route: ContractRoute,
   settings: GatewaySettings,
 ): boolean {
-  return (
-    settings.demoNoAuthEnabled ||
-    (settings.readOnlyDemoEnabled === true &&
+  if (settings.demoNoAuthEnabled) return true;
+  if (settings.securityMode === 'PUBLIC_READ_ONLY') {
+    return (
       route.method === 'GET' &&
-      readOnlyDemoOperations.has(route.operationId))
+      settings.publicOperations.includes(route.operationId)
+    );
+  }
+  return (
+    settings.readOnlyDemoEnabled === true &&
+    route.method === 'GET' &&
+    readOnlyDemoOperations.has(route.operationId)
   );
 }

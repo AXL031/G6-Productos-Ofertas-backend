@@ -378,6 +378,12 @@ export class CatalogTokenVerifier {
   }
 }
 
+const CATALOG_DEMO_OPERATION_BY_HANDLER: Readonly<Record<string, string>> = {
+  list: 'listarProductos',
+  detail: 'obtenerProductoPorSlug',
+  product: 'obtenerProducto',
+};
+
 @Injectable()
 export class CatalogAuthGuard implements CanActivate {
   constructor(
@@ -423,8 +429,17 @@ export class CatalogAuthGuard implements CanActivate {
       Object.assign(request, { catalogRestrictedDemo: true });
       return true;
     }
-    if (this.readDemo.enabled) {
-      if (request.method === 'GET' && policy.demoRead) {
+    if (
+      this.readDemo.enabled ||
+      this.readDemo.securityMode === 'PUBLIC_READ_ONLY'
+    ) {
+      const handlerOp =
+        CATALOG_DEMO_OPERATION_BY_HANDLER[context.getHandler().name];
+      const operationApproved =
+        this.readDemo.publicOperations !== undefined
+          ? !!handlerOp && this.readDemo.publicOperations.includes(handlerOp)
+          : this.readDemo.enabled;
+      if (request.method === 'GET' && policy.demoRead && operationApproved) {
         request.catalogDemoRead = true;
         // An anonymous read is not a fabricated human/service identity.
         return true;
