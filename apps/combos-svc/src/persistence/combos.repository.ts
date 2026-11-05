@@ -76,6 +76,12 @@ export class InboxMessageConflictError extends Error {
   }
 }
 
+class ProductCandidateSnapshotChangedError extends Error {
+  constructor() {
+    super('PRODUCT_CANDIDATE_SNAPSHOT_CHANGED');
+  }
+}
+
 @Injectable()
 export class CombosRepository {
   constructor(private readonly database: CombosDatabase) {}
@@ -92,6 +98,8 @@ export class CombosRepository {
     skus?: string[];
     resolveProductSkus?: (componentSkus: string[]) => Promise<string[]>;
     changedAt?: string;
+    candidateSkus?: string[];
+    snapshotRetries?: number;
   }): Promise<'PROCESSED' | 'DUPLICATE'> {
     const productDeactivation =
       input.eventName === 'catalog.product.deactivated' &&
@@ -104,61 +112,74 @@ export class CombosRepository {
       if (!input.resolveProductSkus)
         throw new Error('PRODUCT_SKU_RESOLVER_REQUIRED');
       const candidates = await this.database.query(async (client) =>
-        client.query('SELECT DISTINCT sku FROM combos.combo_items ORDER BY sku'),
+        client.query(
+          'SELECT DISTINCT sku FROM combos.combo_items ORDER BY sku',
+        ),
       );
-      input.skus = await input.resolveProductSkus(
-        candidates.rows.map((row) => String(row.sku)),
-      );
+      input.candidateSkus = candidates.rows.map((row) => String(row.sku));
+      input.skus = await input.resolveProductSkus(input.candidateSkus);
     }
-    return this.database.query(async (client) => {
-      await client.query('BEGIN');
-      try {
-        const skuDeactivation =
-          input.eventName === 'catalog.sku.deactivated' &&
-          input.handler === 'combos.catalog.sku.deactivated';
-        const stockChange =
-          input.eventName === 'inventory.stock.changed' &&
-          input.handler === 'combos.inventory.stock.changed';
-        if (productDeactivation) {
-          await client.query('SELECT pg_advisory_xact_lock($1)', [
-            COMPONENT_CATALOG_LOCK_KEY,
-          ]);
-          const prior = await this.existingDisposition(client, input);
-          if (prior) {
-            await client.query('COMMIT');
-            return prior;
+    try {
+      return await this.database.query(async (client) => {
+        await client.query('BEGIN');
+        try {
+          const skuDeactivation =
+            input.eventName === 'catalog.sku.deactivated' &&
+            input.handler === 'combos.catalog.sku.deactivated';
+          const stockChange =
+            input.eventName === 'inventory.stock.changed' &&
+            input.handler === 'combos.inventory.stock.changed';
+          if (productDeactivation) {
+            await client.query('SELECT pg_advisory_xact_lock($1)', [
+              COMPONENT_CATALOG_LOCK_KEY,
+            ]);
+            const prior = await this.existingDisposition(client, input);
+            if (prior) {
+              await client.query('COMMIT');
+              return prior;
+            }
+            const currentCandidates = await client.query(
+              'SELECT DISTINCT sku FROM combos.combo_items ORDER BY sku',
+            );
+            const currentSkus = currentCandidates.rows.map((row) =>
+              String(row.sku),
+            );
+            if (
+              JSON.stringify(currentSkus) !==
+              JSON.stringify(input.candidateSkus ?? [])
+            )
+              throw new ProductCandidateSnapshotChangedError();
+          } else if (skuDeactivation) {
+            await client.query('SELECT pg_advisory_xact_lock($1)', [
+              COMPONENT_CATALOG_LOCK_KEY,
+            ]);
           }
-        } else if (skuDeactivation) {
-          await client.query('SELECT pg_advisory_xact_lock($1)', [
-            COMPONENT_CATALOG_LOCK_KEY,
-          ]);
-        }
-        const inserted = await client.query(
-          `INSERT INTO combos.inbox
+          const inserted = await client.query(
+            `INSERT INTO combos.inbox
              (message_id, handler, event_name, correlation_id, operation_id, payload, result)
            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
            ON CONFLICT (message_id, handler) DO NOTHING
            RETURNING id`,
-          [
-            input.messageId,
-            input.handler,
-            input.eventName,
-            input.correlationId,
-            input.operationId,
-            JSON.stringify(input.payload),
-            input.disposition,
-          ],
-        );
-        if (inserted.rowCount === 0) {
-          const duplicate = await this.existingDisposition(client, input);
-          if (!duplicate) throw new InboxMessageConflictError();
-          await client.query('COMMIT');
-          return duplicate;
-        }
+            [
+              input.messageId,
+              input.handler,
+              input.eventName,
+              input.correlationId,
+              input.operationId,
+              JSON.stringify(input.payload),
+              input.disposition,
+            ],
+          );
+          if (inserted.rowCount === 0) {
+            const duplicate = await this.existingDisposition(client, input);
+            if (!duplicate) throw new InboxMessageConflictError();
+            await client.query('COMMIT');
+            return duplicate;
+          }
 
-        if (productDeactivation && input.skus) {
-          await client.query(
-            `INSERT INTO combos.component_projection
+          if (productDeactivation && input.skus) {
+            await client.query(
+              `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, catalog_observed_at)
              SELECT id, true, $2::timestamptz
              FROM combos.combo_items WHERE sku = ANY($1::text[])
@@ -167,13 +188,13 @@ export class CombosRepository {
                  catalog_observed_at = EXCLUDED.catalog_observed_at
              WHERE combos.component_projection.catalog_observed_at IS NULL
                 OR combos.component_projection.catalog_observed_at <= EXCLUDED.catalog_observed_at`,
-            [input.skus, input.changedAt],
-          );
-        }
+              [input.skus, input.changedAt],
+            );
+          }
 
-        if (skuDeactivation && input.sku) {
-          await client.query(
-            `INSERT INTO combos.component_projection
+          if (skuDeactivation && input.sku) {
+            await client.query(
+              `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, catalog_observed_at)
              SELECT id, true, $2::timestamptz
              FROM combos.combo_items WHERE sku = $1
@@ -182,13 +203,13 @@ export class CombosRepository {
                  catalog_observed_at = EXCLUDED.catalog_observed_at
              WHERE combos.component_projection.catalog_observed_at IS NULL
                 OR combos.component_projection.catalog_observed_at <= EXCLUDED.catalog_observed_at`,
-            [input.sku, input.changedAt],
-          );
-        }
+              [input.sku, input.changedAt],
+            );
+          }
 
-        if (stockChange && input.sku) {
-          await client.query(
-            `INSERT INTO combos.component_projection
+          if (stockChange && input.sku) {
+            await client.query(
+              `INSERT INTO combos.component_projection
                (combo_item_id, catalog_deactivated, projected_available, inventory_observed_at)
              SELECT id, false, NULL, $2::timestamptz
              FROM combos.combo_items WHERE sku = $1
@@ -198,16 +219,27 @@ export class CombosRepository {
                    COALESCE(combos.component_projection.inventory_observed_at, EXCLUDED.inventory_observed_at),
                    EXCLUDED.inventory_observed_at
                  )`,
-            [input.sku, input.changedAt],
-          );
+              [input.sku, input.changedAt],
+            );
+          }
+          await client.query('COMMIT');
+          return 'PROCESSED';
+        } catch (error) {
+          await client.query('ROLLBACK').catch(() => undefined);
+          throw error;
         }
-        await client.query('COMMIT');
-        return 'PROCESSED';
-      } catch (error) {
-        await client.query('ROLLBACK').catch(() => undefined);
-        throw error;
-      }
-    });
+      });
+    } catch (error) {
+      if (
+        error instanceof ProductCandidateSnapshotChangedError &&
+        (input.snapshotRetries ?? 0) < 2
+      )
+        return this.processEvent({
+          ...input,
+          snapshotRetries: (input.snapshotRetries ?? 0) + 1,
+        });
+      throw error;
+    }
   }
 
   private async existingDisposition(
@@ -277,7 +309,9 @@ export class CombosRepository {
     try {
       return await this.database.drizzle().transaction(
         async (tx) => {
-          await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
+          await tx.execute(
+            sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`,
+          );
           const [combo] = await tx
             .select()
             .from(combos)
@@ -312,8 +346,12 @@ export class CombosRepository {
         throw new RangeError('PAGINATION_OFFSET_INVALID');
       return await this.database.drizzle().transaction(
         async (tx) => {
-          await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
-          const conditions = input.status ? [eq(combos.status, input.status)] : [];
+          await tx.execute(
+            sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`,
+          );
+          const conditions = input.status
+            ? [eq(combos.status, input.status)]
+            : [];
           const where = conditions.length ? and(...conditions) : undefined;
           const [count] = await tx
             .select({ total: sql<string>`count(*)::text` })
@@ -384,15 +422,21 @@ export class CombosRepository {
           })
           .returning({ id: combos.id });
         if (!combo) throw new Error('COMBO_INSERT_FAILED');
-        const insertedItems = await tx.insert(comboItems).values(
-          input.components.map((component) => ({
-            comboId: combo.id,
-            sku: component.sku,
-            quantity: component.quantity,
-          })),
-        ).returning({ id: comboItems.id, sku: comboItems.sku });
+        const insertedItems = await tx
+          .insert(comboItems)
+          .values(
+            input.components.map((component) => ({
+              comboId: combo.id,
+              sku: component.sku,
+              quantity: component.quantity,
+            })),
+          )
+          .returning({ id: comboItems.id, sku: comboItems.sku });
         const observedAtBySku = new Map(
-          input.components.map((component) => [component.sku, component.catalogObservedAt]),
+          input.components.map((component) => [
+            component.sku,
+            component.catalogObservedAt,
+          ]),
         );
         await tx.insert(componentProjection).values(
           insertedItems.map((item) => ({
@@ -437,15 +481,21 @@ export class CombosRepository {
         if (!changed.length) return false;
         if (patch.components !== undefined) {
           await tx.delete(comboItems).where(eq(comboItems.comboId, id));
-          const insertedItems = await tx.insert(comboItems).values(
-            patch.components.map((component) => ({
-              comboId: id,
-              sku: component.sku,
-              quantity: component.quantity,
-            })),
-          ).returning({ id: comboItems.id, sku: comboItems.sku });
+          const insertedItems = await tx
+            .insert(comboItems)
+            .values(
+              patch.components.map((component) => ({
+                comboId: id,
+                sku: component.sku,
+                quantity: component.quantity,
+              })),
+            )
+            .returning({ id: comboItems.id, sku: comboItems.sku });
           const observedAtBySku = new Map(
-            patch.components.map((component) => [component.sku, component.catalogObservedAt]),
+            patch.components.map((component) => [
+              component.sku,
+              component.catalogObservedAt,
+            ]),
           );
           await tx.insert(componentProjection).values(
             insertedItems.map((item) => ({

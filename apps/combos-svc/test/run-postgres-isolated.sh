@@ -266,7 +266,7 @@ if [[ -n "$test_name_pattern" ]]; then
 fi
 test_report="$tmp_dir/vitest-results.json"
 test_args+=(--reporter=json "--outputFile=$test_report")
-npm run test:e2e -- "${test_args[@]}"
+COMBOS_RUN_ISOLATED_E2E=1 npm run test:e2e -- "${test_args[@]}"
 node --input-type=module - "$test_report" <<'NODE'
 import { readFileSync } from 'node:fs';
 

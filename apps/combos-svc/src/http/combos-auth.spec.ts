@@ -24,6 +24,7 @@ describe('Combos JWT security', () => {
   };
   const first = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const second = generateKeyPairSync('rsa', { modulusLength: 2048 });
+  const simulatedKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
   let current = first;
   let kid = 'combos-key-1';
   let issuer = '';
@@ -62,15 +63,21 @@ describe('Combos JWT security', () => {
       } else if (request.url === '/.well-known/openid-configuration') {
         response.end(JSON.stringify({ issuer, jwks_uri: `${issuer}/jwks` }));
       } else if (request.url === '/sim/.well-known/openid-configuration') {
-        response.end(JSON.stringify({ issuer: `${issuer}/sim`, jwks_uri: `${issuer}/sim/jwks` }));
+        response.end(
+          JSON.stringify({
+            issuer: `${issuer}/sim`,
+            jwks_uri: `${issuer}/sim/jwks`,
+          }),
+        );
       } else if (request.url === '/jwks' || request.url === '/sim/jwks') {
         jwksRequests += 1;
+        const signingKey = request.url === '/sim/jwks' ? simulatedKey : current;
         response.end(
           JSON.stringify({
             keys: [
               {
-                ...current.publicKey.export({ format: 'jwk' }),
-                kid,
+                ...signingKey.publicKey.export({ format: 'jwk' }),
+                kid: request.url === '/sim/jwks' ? 'combos-sim-key' : kid,
                 alg: 'RS256',
                 use: 'sig',
               },
@@ -93,7 +100,9 @@ describe('Combos JWT security', () => {
   });
 
   afterAll(async () => {
-    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    await new Promise<void>((resolveClose) =>
+      server.close(() => resolveClose()),
+    );
     for (const [key, value] of Object.entries(priorEnv)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -107,13 +116,17 @@ describe('Combos JWT security', () => {
       subject: '00000000-0000-4000-8000-000000000001',
       roles: ['admin'],
     });
-    await expect(verifier.verify(token({ aud: 'wrong-api' }))).rejects.toThrow();
+    await expect(
+      verifier.verify(token({ aud: 'wrong-api' })),
+    ).rejects.toThrow();
     await expect(verifier.verify(token({ exp: 1 }))).rejects.toThrow();
     await expect(
       verifier.verify(token({ nbf: Math.floor(Date.now() / 1000) + 60 })),
     ).rejects.toThrow();
     await expect(verifier.verify(token({ tipo: 'demo' }))).rejects.toThrow();
-    await expect(verifier.verify(token({ roles: undefined }))).rejects.toThrow();
+    await expect(
+      verifier.verify(token({ roles: undefined })),
+    ).rejects.toThrow();
     await expect(
       verifier.verify(token({ iss: 'https://other.invalid' })),
     ).rejects.toThrow();
@@ -123,11 +136,15 @@ describe('Combos JWT security', () => {
   it('refreshes JWKS once for key rotation and coalesces concurrent cold loads', async () => {
     const verifier = new ComboTokenVerifier();
     const before = jwksRequests;
-    await Promise.all(Array.from({ length: 25 }, () => verifier.verify(token())));
+    await Promise.all(
+      Array.from({ length: 25 }, () => verifier.verify(token())),
+    );
     expect(jwksRequests - before).toBe(1);
     current = second;
     kid = 'combos-key-2';
-    await expect(verifier.verify(token())).resolves.toMatchObject({ kind: 'user' });
+    await expect(verifier.verify(token())).resolves.toMatchObject({
+      kind: 'user',
+    });
     current = first;
     kid = 'combos-key-1';
   });
@@ -154,7 +171,11 @@ describe('Combos JWT security', () => {
   ])('requires a verified user principal for %s', async (operationId) => {
     const verifier = new ComboTokenVerifier();
     const simulatedVerifier = new SimulatedComboTokenVerifier();
-    const guard = new CombosAuthGuard(new Reflector(), verifier, simulatedVerifier);
+    const guard = new CombosAuthGuard(
+      new Reflector(),
+      verifier,
+      simulatedVerifier,
+    );
     const handler = () => undefined;
     RequireComboAccess({ operationId, identity: 'user' })(
       { [operationId]: handler },
@@ -169,13 +190,38 @@ describe('Combos JWT security', () => {
             headers: authorization ? { authorization } : {},
             socket: { remoteAddress: '127.0.0.1' },
             method: 'GET',
-            route: { path: operationId === 'obtenerCombo' ? '/combos/:comboId' : '/unmatched' },
+            route: {
+              path:
+                operationId === 'obtenerCombo'
+                  ? '/combos/:comboId'
+                  : '/unmatched',
+            },
           }),
         }),
       }) as unknown as ExecutionContext;
-    await expect(guard.canActivate(context(`Bearer ${token()}`))).resolves.toBe(
-      true,
-    );
+    const roleKey = `COMBOS_ALLOWED_ROLES_${operationId.replace(/([a-z0-9])([A-Z])/g, '$1_$2').toUpperCase()}`;
+    const priorRoles = process.env[roleKey];
+    delete process.env[roleKey];
+    await expect(
+      guard.canActivate(context(`Bearer ${token()}`)),
+    ).rejects.toMatchObject({ status: 403 });
+    process.env[roleKey] = '';
+    await expect(
+      guard.canActivate(context(`Bearer ${token()}`)),
+    ).rejects.toMatchObject({ status: 403 });
+    process.env[roleKey] = 'combos:admin';
+    await expect(
+      guard.canActivate(
+        context(`Bearer ${token({ roles: ['inventario:admin'] })}`),
+      ),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      guard.canActivate(
+        context(`Bearer ${token({ roles: ['combos:admin'] })}`),
+      ),
+    ).resolves.toBe(true);
+    if (priorRoles === undefined) delete process.env[roleKey];
+    else process.env[roleKey] = priorRoles;
     await expect(guard.canActivate(context())).rejects.toMatchObject({
       status: 401,
     });
@@ -184,7 +230,9 @@ describe('Combos JWT security', () => {
       sub: 'modulo-productos',
       scope: 'combos:leer',
     });
-    await expect(guard.canActivate(context(`Bearer ${service}`))).rejects.toMatchObject({
+    await expect(
+      guard.canActivate(context(`Bearer ${service}`)),
+    ).rejects.toMatchObject({
       status: 403,
     });
   });
@@ -193,24 +241,61 @@ describe('Combos JWT security', () => {
     const operationId = 'obtenerCombo';
     const handler = () => undefined;
     RequireComboAccess({ operationId, identity: 'user' })(
-      { [operationId]: handler }, operationId,
+      { [operationId]: handler },
+      operationId,
       Object.getOwnPropertyDescriptor({ [operationId]: handler }, operationId)!,
     );
-    const guard = new CombosAuthGuard(new Reflector(), new ComboTokenVerifier(), new SimulatedComboTokenVerifier());
-    const ctx = (authorization?: string) => ({
-      getHandler: () => handler,
-      switchToHttp: () => ({ getRequest: () => ({
-        headers: authorization ? { authorization } : {},
-        socket: { remoteAddress: '127.0.0.1' }, method: 'GET',
-        route: { path: '/combos/:comboId' },
-      }) }),
-    }) as unknown as ExecutionContext;
+    const guard = new CombosAuthGuard(
+      new Reflector(),
+      new ComboTokenVerifier(),
+      new SimulatedComboTokenVerifier(),
+    );
+    const ctx = (authorization?: string) =>
+      ({
+        getHandler: () => handler,
+        switchToHttp: () => ({
+          getRequest: () => ({
+            headers: authorization ? { authorization } : {},
+            socket: { remoteAddress: '127.0.0.1' },
+            method: 'GET',
+            route: { path: '/combos/:comboId' },
+          }),
+        }),
+      }) as unknown as ExecutionContext;
     process.env.G6_SECURITY_MODE = 'SIMULATED_AUTH';
-    const simulated = token({ iss: `${issuer}/sim` });
-    await expect(guard.canActivate(ctx(`Bearer ${simulated}`))).resolves.toBe(true);
-    await expect(guard.canActivate(ctx(`Bearer ${token()}`))).rejects.toMatchObject({ status: 401 });
+    process.env.COMBOS_ALLOWED_ROLES_OBTENER_COMBO = 'admin';
+    const simulated = token(
+      { iss: `${issuer}/sim` },
+      simulatedKey,
+      'combos-sim-key',
+    );
+    await expect(guard.canActivate(ctx(`Bearer ${simulated}`))).resolves.toBe(
+      true,
+    );
+    await expect(
+      guard.canActivate(ctx(`Bearer ${token()}`)),
+    ).rejects.toMatchObject({ status: 401 });
     process.env.G6_SECURITY_MODE = 'PUBLIC_READ_ONLY';
-    await expect(guard.canActivate(ctx())).rejects.toMatchObject({ status: 403 });
+    await expect(guard.canActivate(ctx())).rejects.toMatchObject({
+      status: 401,
+    });
+    process.env.COMBOS_ALLOWED_ROLES_OBTENER_COMBO = 'combos:admin';
+    await expect(
+      guard.canActivate(ctx(`Bearer ${token({ roles: ['combos:admin'] })}`)),
+    ).resolves.toBe(true);
+    await expect(
+      guard.canActivate(ctx(`Bearer ${token({ roles: ['pricing:admin'] })}`)),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      guard.canActivate(ctx(`Bearer ${simulated}`)),
+    ).rejects.toMatchObject({ status: 401 });
+    await expect(
+      guard.canActivate(ctx(`Bearer ${token()}`)),
+    ).rejects.toMatchObject({ status: 403 });
+    process.env.COMBOS_PUBLIC_READ_OPERATIONS = 'obtenerCombo';
+    await expect(guard.canActivate(ctx())).resolves.toBe(true);
+    delete process.env.COMBOS_PUBLIC_READ_OPERATIONS;
+    delete process.env.COMBOS_ALLOWED_ROLES_OBTENER_COMBO;
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
   });
 
@@ -218,27 +303,64 @@ describe('Combos JWT security', () => {
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
     process.env.COMBOS_ALLOWED_CLIENTS_COMBOS_READ = 'modulo-productos';
     const verifier = new ComboTokenVerifier();
-    const guard = new CombosAuthGuard(new Reflector(), verifier, new SimulatedComboTokenVerifier());
-    const run = async (operationId: string, path: string, client: string, identity: 'user' | 'user_or_service' = 'user_or_service') => {
+    const guard = new CombosAuthGuard(
+      new Reflector(),
+      verifier,
+      new SimulatedComboTokenVerifier(),
+    );
+    const run = async (
+      operationId: string,
+      path: string,
+      client: string,
+      identity: 'user' | 'user_or_service' = 'user_or_service',
+    ) => {
       const handler = () => undefined;
-      RequireComboAccess({ operationId, identity, ...(identity === 'user_or_service' ? { scope: 'combos:leer' } : {}) })(
-        { [operationId]: handler }, operationId,
-        Object.getOwnPropertyDescriptor({ [operationId]: handler }, operationId)!,
+      RequireComboAccess({
+        operationId,
+        identity,
+        ...(identity === 'user_or_service' ? { scope: 'combos:leer' } : {}),
+      })(
+        { [operationId]: handler },
+        operationId,
+        Object.getOwnPropertyDescriptor(
+          { [operationId]: handler },
+          operationId,
+        )!,
       );
-      const auth = token({ tipo: 'servicio', sub: client, scope: 'combos:leer' });
+      const auth = token({
+        tipo: 'servicio',
+        sub: client,
+        scope: 'combos:leer',
+      });
       const ctx = {
         getHandler: () => handler,
-        switchToHttp: () => ({ getRequest: () => ({
-          headers: { authorization: `Bearer ${auth}` },
-          socket: { remoteAddress: '127.0.0.1' }, method: 'GET', route: { path },
-        }) }),
+        switchToHttp: () => ({
+          getRequest: () => ({
+            headers: { authorization: `Bearer ${auth}` },
+            socket: { remoteAddress: '127.0.0.1' },
+            method: 'GET',
+            route: { path },
+          }),
+        }),
       } as unknown as ExecutionContext;
       return guard.canActivate(ctx);
     };
-    await expect(run('obtenerCombo', '/combos/:comboId', 'modulo-productos')).resolves.toBe(true);
-    await expect(run('consultarDisponibilidadCombo', '/combos/:comboId/disponibilidad', 'modulo-productos')).resolves.toBe(true);
-    await expect(run('obtenerCombo', '/combos/:comboId', 'otro-modulo')).rejects.toMatchObject({ status: 403 });
-    await expect(run('actualizarCombo', '/combos/:comboId', 'modulo-productos', 'user')).rejects.toMatchObject({ status: 403 });
+    await expect(
+      run('obtenerCombo', '/combos/:comboId', 'modulo-productos'),
+    ).resolves.toBe(true);
+    await expect(
+      run(
+        'consultarDisponibilidadCombo',
+        '/combos/:comboId/disponibilidad',
+        'modulo-productos',
+      ),
+    ).resolves.toBe(true);
+    await expect(
+      run('obtenerCombo', '/combos/:comboId', 'otro-modulo'),
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      run('actualizarCombo', '/combos/:comboId', 'modulo-productos', 'user'),
+    ).rejects.toMatchObject({ status: 403 });
     delete process.env.COMBOS_ALLOWED_CLIENTS_COMBOS_READ;
   });
 });

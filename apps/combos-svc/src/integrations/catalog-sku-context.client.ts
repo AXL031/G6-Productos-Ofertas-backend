@@ -125,10 +125,10 @@ export class CatalogSkuContextClient {
           },
           signal: AbortSignal.any([requestSignal, AbortSignal.timeout(5000)]),
         });
-        } catch (error) {
+      } catch (error) {
         throw new IntegrationFailure(
           'CATALOG',
-            error instanceof Error &&
+          error instanceof Error &&
             (error.name === 'TimeoutError' || error.name === 'AbortError')
             ? 'TIMEOUT'
             : 'NETWORK_FAILURE',
@@ -163,28 +163,24 @@ export class CatalogSkuContextClient {
         throw new IntegrationFailure('CATALOG', 'SKU_NO_ENCONTRADO', 404);
       throw new IntegrationFailure('CATALOG', 'UPSTREAM_FAILURE', 404);
     }
-    if (response.status === 401)
-      await response.body?.cancel();
+    if (response.status === 401) await response.body?.cancel();
     if (response.status === 401)
       throw new IntegrationFailure(
         'CATALOG',
         'SERVICE_AUTHENTICATION_FAILED',
         401,
       );
-    if (response.status === 403)
-      await response.body?.cancel();
+    if (response.status === 403) await response.body?.cancel();
     if (response.status === 403)
       throw new IntegrationFailure(
         'CATALOG',
         'SERVICE_AUTHORIZATION_FAILED',
         403,
       );
-    if (response.status === 503)
-      await response.body?.cancel();
+    if (response.status === 503) await response.body?.cancel();
     if (response.status === 503)
       throw new IntegrationFailure('CATALOG', 'UNAVAILABLE', 503);
-    if (response.status !== 200)
-      await response.body?.cancel();
+    if (response.status !== 200) await response.body?.cancel();
     if (response.status !== 200)
       throw new IntegrationFailure(
         'CATALOG',

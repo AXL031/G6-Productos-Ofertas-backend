@@ -9,7 +9,8 @@ export interface CombosEnvironment {
   readonly port: number;
   readonly demoEnabled: boolean;
   readonly demoGatewayIps: readonly string[];
-  readonly securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  readonly securityMode:
+    'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   readonly pool: PoolConfig;
 }
 
@@ -41,7 +42,11 @@ export function readCombosEnvironment(
   const host = env.COMBOS_SVC_HOST ?? '0.0.0.0';
   if (!validHost(host)) errors.push('COMBOS_SVC_HOST');
   const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
-  if (!['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(securityMode))
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
     errors.push('G6_SECURITY_MODE');
   const demoEnabled = env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true';
   const demoGatewayIps = (env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS ?? '')
@@ -67,6 +72,12 @@ export function readCombosEnvironment(
     errors.push('COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED');
   if (env.NODE_TLS_REJECT_UNAUTHORIZED === '0')
     errors.push('NODE_TLS_REJECT_UNAUTHORIZED');
+  if (
+    (env.COMBOS_TEST_EPHEMERAL !== undefined &&
+      env.COMBOS_TEST_EPHEMERAL !== '1') ||
+    (env.COMBOS_TEST_EPHEMERAL === '1' && env.NODE_ENV !== 'test')
+  )
+    errors.push('COMBOS_TEST_EPHEMERAL is restricted to NODE_ENV=test');
 
   for (const key of [
     'COMBOS_AMQP_ENABLED',
@@ -90,27 +101,39 @@ export function readCombosEnvironment(
     env.COMBOS_SIMULATED_DISCOVERY_URL,
     env.COMBOS_SIMULATED_JWKS_URL,
   ];
-  if (securityMode === 'SIMULATED_AUTH' && simulatedValues.some((value) => !value?.trim()))
+  if (
+    securityMode === 'SIMULATED_AUTH' &&
+    simulatedValues.some((value) => !value?.trim())
+  )
     errors.push('COMBOS_SIMULATED_ISSUER/DISCOVERY_URL/JWKS_URL');
-  if (simulatedValues.some((value) => value !== undefined) && simulatedValues.some((value) => !value?.trim()))
+  if (
+    simulatedValues.some((value) => value !== undefined) &&
+    simulatedValues.some((value) => !value?.trim())
+  )
     errors.push('COMBOS_SIMULATED_ISSUER/DISCOVERY_URL/JWKS_URL');
   if (
     securityMode === 'SIMULATED_AUTH' &&
     env.COMBOS_SIMULATED_ISSUER?.trim() === env.SECURITY_ISSUER?.trim()
-  ) errors.push('COMBOS_SIMULATED_ISSUER must be independent from G7');
+  )
+    errors.push('COMBOS_SIMULATED_ISSUER must be independent from G7');
   if (
     securityValues.some((value) => value !== undefined) &&
     securityValues.some((value) => !value?.trim())
   )
     errors.push('SECURITY_ISSUER/SECURITY_DISCOVERY_URL/SECURITY_JWKS_URL');
-  if (securityMode === 'G7_AUTHENTICATED' && securityValues.some((value) => !value?.trim()))
+  if (
+    securityMode === 'G7_AUTHENTICATED' &&
+    securityValues.some((value) => !value?.trim())
+  )
     errors.push('SECURITY_ISSUER/SECURITY_DISCOVERY_URL/SECURITY_JWKS_URL');
   if (
     (env.COMBOS_G7_TOKEN_URL !== undefined ||
       env.COMBOS_G7_CLIENT_SECRET !== undefined) &&
     securityValues.some((value) => !value?.trim())
   )
-    errors.push('COMBOS_G7_TOKEN_URL requires G7 issuer, discovery and JWKS configuration');
+    errors.push(
+      'COMBOS_G7_TOKEN_URL requires G7 issuer, discovery and JWKS configuration',
+    );
   for (const key of [
     'COMBOS_CATALOG_URL',
     'COMBOS_PRICING_URL',

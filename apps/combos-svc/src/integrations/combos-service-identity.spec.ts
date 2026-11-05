@@ -3,9 +3,7 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { once } from 'node:events';
 import type { AddressInfo } from 'node:net';
 import { ComboTokenVerifier } from '../http/combos-auth.js';
-import {
-  CombosServiceIdentity,
-} from './combos-service-identity.js';
+import { CombosServiceIdentity } from './combos-service-identity.js';
 
 describe('CombosServiceIdentity', () => {
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -100,7 +98,9 @@ describe('CombosServiceIdentity', () => {
   });
 
   afterAll(async () => {
-    await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
+    await new Promise<void>((resolveClose) =>
+      server.close(() => resolveClose()),
+    );
     for (const [key, value] of original) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;
@@ -128,7 +128,9 @@ describe('CombosServiceIdentity', () => {
     delete process.env.COMBOS_G7_CLIENT_SECRET;
     try {
       const identity = new CombosServiceIdentity(new ComboTokenVerifier());
-      await expect(identity.authorization('catalogo:leer')).rejects.toMatchObject({
+      await expect(
+        identity.authorization('catalogo:leer'),
+      ).rejects.toMatchObject({
         reason: 'AUTH_NOT_CONFIGURED',
       });
     } finally {

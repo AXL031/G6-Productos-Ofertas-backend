@@ -35,14 +35,16 @@ export class CombosSvcController {
     return res.status(result.status === 'ok' ? 200 : 503).json(result);
   }
   @RequireComboAccess({ operationId: 'listarCombosAdmin', identity: 'user' })
-  @Get('combos') async list(
+  @Get('combos')
+  async list(
     @Req() req: Request,
     @Query() query: Record<string, string | undefined>,
   ) {
     return this.service.list(query);
   }
   @RequireComboAccess({ operationId: 'crearCombo', identity: 'user' })
-  @Post('combos') async create(
+  @Post('combos')
+  async create(
     @Req() req: Request,
     @Body() body: ComboInput,
     @Res() res: Response,
@@ -52,15 +54,18 @@ export class CombosSvcController {
       .status(201)
       .json(await this.service.create(body, correlationId ?? randomUUID()));
   }
-  @RequireComboAccess({ operationId: 'obtenerCombo', identity: 'user_or_service', scope: 'combos:leer' })
-  @Get('combos/:comboId') async get(
-    @Req() req: Request,
-    @Param('comboId') id: string,
-  ) {
+  @RequireComboAccess({
+    operationId: 'obtenerCombo',
+    identity: 'user_or_service',
+    scope: 'combos:leer',
+  })
+  @Get('combos/:comboId')
+  async get(@Req() req: Request, @Param('comboId') id: string) {
     return this.service.get(id);
   }
   @RequireComboAccess({ operationId: 'actualizarCombo', identity: 'user' })
-  @Patch('combos/:comboId') async update(
+  @Patch('combos/:comboId')
+  async update(
     @Req() req: Request,
     @Param('comboId') id: string,
     @Body() body: ComboInput,
@@ -74,11 +79,13 @@ export class CombosSvcController {
   async deactivate(@Req() req: Request, @Param('comboId') id: string) {
     return this.service.deactivate(id);
   }
-  @RequireComboAccess({ operationId: 'consultarDisponibilidadCombo', identity: 'user_or_service', scope: 'combos:leer' })
-  @Get('combos/:comboId/disponibilidad') async availability(
-    @Req() req: Request,
-    @Param('comboId') id: string,
-  ) {
+  @RequireComboAccess({
+    operationId: 'consultarDisponibilidadCombo',
+    identity: 'user_or_service',
+    scope: 'combos:leer',
+  })
+  @Get('combos/:comboId/disponibilidad')
+  async availability(@Req() req: Request, @Param('comboId') id: string) {
     return this.service.availability(id);
   }
 }

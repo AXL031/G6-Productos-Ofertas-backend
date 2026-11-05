@@ -275,6 +275,10 @@ jobs:
               --env 'PGDATABASE=combos_ci' --env 'PGUSER=combos_ci'
               --env 'PGPASSWORD=ci-only-unused' --env 'PGSSLMODE=verify-full'
               --env 'PGSSLROOTCERT=/run/g6-ci-certs/ca.crt'
+              --env 'G6_SECURITY_MODE=G7_AUTHENTICATED'
+              --env 'SECURITY_ISSUER=https://identity.invalid'
+              --env 'SECURITY_DISCOVERY_URL=https://identity.invalid/.well-known/openid-configuration'
+              --env 'SECURITY_JWKS_URL=https://identity.invalid/jwks'
               --env 'COMBOS_RESTRICTED_DEMO_ENABLED=false'
               --mount "type=bind,source=$combos_ca,target=/run/g6-ci-certs/ca.crt,readonly")
           fi

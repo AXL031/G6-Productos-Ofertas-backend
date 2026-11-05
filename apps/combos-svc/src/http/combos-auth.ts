@@ -15,7 +15,18 @@ import { isAllowedDemoGatewayIp } from './combos-demo-origin.js';
 
 const AUDIENCE = 'api-productos';
 const POLICY = Symbol('COMBO_ACCESS_POLICY');
-const USER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PUBLIC_READ_APPROVALS = new Set<string>();
+const PUBLIC_READ_ROUTES: Readonly<
+  Record<string, { method: string; path: string }>
+> = {
+  obtenerCombo: { method: 'GET', path: '/combos/:comboId' },
+  consultarDisponibilidadCombo: {
+    method: 'GET',
+    path: '/combos/:comboId/disponibilidad',
+  },
+};
+const USER_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export interface ComboAccessPolicy {
   operationId: string;
@@ -25,9 +36,7 @@ export interface ComboAccessPolicy {
   allowedRoles?: readonly string[];
 }
 
-export function RequireComboAccess(
-  policy: ComboAccessPolicy,
-): MethodDecorator {
+export function RequireComboAccess(policy: ComboAccessPolicy): MethodDecorator {
   return SetMetadata(POLICY, policy);
 }
 
@@ -103,7 +112,9 @@ export class ComboTokenVerifier {
   private cache?: KeySet;
   private loading?: Promise<KeySet>;
 
-  protected environmentPrefix(): string { return 'SECURITY'; }
+  protected environmentPrefix(): string {
+    return 'SECURITY';
+  }
 
   constructor() {
     const env = process.env;
@@ -298,7 +309,9 @@ export class ComboTokenVerifier {
 
 @Injectable()
 export class SimulatedComboTokenVerifier extends ComboTokenVerifier {
-  protected override environmentPrefix(): string { return 'COMBOS_SIMULATED'; }
+  protected override environmentPrefix(): string {
+    return 'COMBOS_SIMULATED';
+  }
 }
 
 @Injectable()
@@ -318,14 +331,20 @@ export class CombosAuthGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
     const exactRead =
-      (policy.operationId === 'obtenerCombo' && request.method === 'GET' && request.route.path === '/combos/:comboId') ||
-      (policy.operationId === 'consultarDisponibilidadCombo' && request.method === 'GET' && request.route.path === '/combos/:comboId/disponibilidad');
-    // These reads remain PENDIENTE_VERIFICACION in the adopted matrix.
-    // Keep anonymous access closed until exact public approval is recorded.
-    if (mode === 'PUBLIC_READ_ONLY') {
-      if (!exactRead) throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-      throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    }
+      (policy.operationId === 'obtenerCombo' &&
+        request.method === 'GET' &&
+        request.route.path === '/combos/:comboId') ||
+      (policy.operationId === 'consultarDisponibilidadCombo' &&
+        request.method === 'GET' &&
+        request.route.path === '/combos/:comboId/disponibilidad');
+    const configuredPublicReads = new Set(
+      (process.env.COMBOS_PUBLIC_READ_OPERATIONS ?? '')
+        .split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+    );
+    // A public phase only adds explicitly approved anonymous operations.
+    // Protected operations keep the same authentication/authorization path.
     if (process.env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true') {
       if (
         !isAllowedDemoGatewayIp(
@@ -342,12 +361,25 @@ export class CombosAuthGuard implements CanActivate {
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
-    if (!match) throw new UnauthorizedException({ code: 'TOKEN_INVALIDO' });
+    if (!match) {
+      const route = PUBLIC_READ_ROUTES[policy.operationId];
+      if (
+        mode === 'PUBLIC_READ_ONLY' &&
+        exactRead &&
+        route &&
+        (PUBLIC_READ_APPROVALS.has(policy.operationId) ||
+          configuredPublicReads.has(policy.operationId)) &&
+        request.method === route.method &&
+        request.route.path === route.path
+      )
+        return true;
+      throw new UnauthorizedException({ code: 'TOKEN_INVALIDO' });
+    }
     let principal: Principal;
     try {
-      principal = await (mode === 'SIMULATED_AUTH'
-        ? this.simulatedVerifier
-        : this.g7Verifier).verify(match[1]!);
+      principal = await (
+        mode === 'SIMULATED_AUTH' ? this.simulatedVerifier : this.g7Verifier
+      ).verify(match[1]!);
     } catch (error) {
       if (error instanceof ComboIdentityUnavailable)
         throw new ServiceUnavailableException({
@@ -363,11 +395,16 @@ export class CombosAuthGuard implements CanActivate {
     if (policy.identity === 'user_or_service' && principal.kind === 'service') {
       const allowedClients = (
         process.env.COMBOS_ALLOWED_CLIENTS_COMBOS_READ ?? ''
-      ).split(',').map((client) => client.trim()).filter(Boolean);
+      )
+        .split(',')
+        .map((client) => client.trim())
+        .filter(Boolean);
       if (
-        !policy.scope || !principal.scopes.includes(policy.scope) ||
+        !policy.scope ||
+        !principal.scopes.includes(policy.scope) ||
         !allowedClients.includes(principal.subject)
-      ) throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
+      )
+        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
     }
     if (
       policy.scope &&
@@ -379,11 +416,23 @@ export class CombosAuthGuard implements CanActivate {
       principal.kind === 'service' &&
       policy.identity === 'service' &&
       !policy.allowedClients?.includes(principal.subject)
-    ) throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    if (
-      principal.kind === 'user' && policy.allowedRoles?.length &&
-      !policy.allowedRoles.some((role) => principal.roles.includes(role))
-    ) throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
+    )
+      throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
+    if (principal.kind === 'user') {
+      const roleKey = `COMBOS_ALLOWED_ROLES_${policy.operationId
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .toUpperCase()}`;
+      const configuredRoles = (process.env[roleKey] ?? '')
+        .split(',')
+        .map((role) => role.trim())
+        .filter(Boolean);
+      const allowedRoles = policy.allowedRoles ?? configuredRoles;
+      if (
+        allowedRoles.length === 0 ||
+        !allowedRoles.some((role) => principal.roles.includes(role))
+      )
+        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
+    }
     return true;
   }
 }

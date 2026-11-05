@@ -44,6 +44,8 @@ describe.skipIf(!isolatedHarnessEnabled)(
       'PGSSLMODE',
       'PGSSLROOTCERT',
       'COMBOS_RESTRICTED_DEMO_ENABLED',
+      'G6_SECURITY_MODE',
+      'COMBOS_ALLOWED_CLIENTS_COMBOS_READ',
       'COMBOS_TEST_DEFAULT_AUTH',
       'COMBOS_RESTRICTED_DEMO_NETWORK_CONFIRMED',
       'COMBOS_RESTRICTED_DEMO_GATEWAY_IPS',
@@ -54,6 +56,12 @@ describe.skipIf(!isolatedHarnessEnabled)(
       'COMBOS_PRICING_SERVICE_BEARER',
       'COMBOS_G7_TOKEN_URL',
       'COMBOS_G7_CLIENT_SECRET',
+      'COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN',
+      'COMBOS_ALLOWED_ROLES_CREAR_COMBO',
+      'COMBOS_ALLOWED_ROLES_OBTENER_COMBO',
+      'COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO',
+      'COMBOS_ALLOWED_ROLES_DESACTIVAR_COMBO',
+      'COMBOS_ALLOWED_ROLES_CONSULTAR_DISPONIBILIDAD_COMBO',
       'SECURITY_ISSUER',
       'SECURITY_DISCOVERY_URL',
       'SECURITY_JWKS_URL',
@@ -93,6 +101,10 @@ describe.skipIf(!isolatedHarnessEnabled)(
 
     beforeAll(async () => {
       for (const key of keys) backup[key] = process.env[key];
+      for (const key of keys.filter((name) =>
+        name.startsWith('COMBOS_ALLOWED_ROLES_'),
+      ))
+        process.env[key] = 'admin';
       process.env.PGHOST = '127.0.0.1';
       process.env.PGSSLMODE = 'verify-full';
       process.env.PGSSLROOTCERT = process.env.COMBOS_TEST_CA!;
@@ -111,12 +123,18 @@ describe.skipIf(!isolatedHarnessEnabled)(
           return;
         }
         if (req.url === '/jwks') {
-          res.end(JSON.stringify({ keys: [{
-            ...keyPair.publicKey.export({ format: 'jwk' }),
-            kid,
-            alg: 'RS256',
-            use: 'sig',
-          }] }));
+          res.end(
+            JSON.stringify({
+              keys: [
+                {
+                  ...keyPair.publicKey.export({ format: 'jwk' }),
+                  kid,
+                  alg: 'RS256',
+                  use: 'sig',
+                },
+              ],
+            }),
+          );
           return;
         }
         if (req.url === '/token' && req.method === 'POST') {
@@ -133,12 +151,14 @@ describe.skipIf(!isolatedHarnessEnabled)(
           }
           const scope = form.get('scope') ?? '';
           issuedServiceTokens += 1;
-          res.end(JSON.stringify({
-            accessToken: makeToken('servicio', scope),
-            tokenType: 'Bearer',
-            expiresIn: 600,
-            scopes: [scope],
-          }));
+          res.end(
+            JSON.stringify({
+              accessToken: makeToken('servicio', scope),
+              tokenType: 'Bearer',
+              expiresIn: 600,
+              scopes: [scope],
+            }),
+          );
           return;
         }
         res.writeHead(404).end('{}');
@@ -216,7 +236,10 @@ describe.skipIf(!isolatedHarnessEnabled)(
       app = module.createNestApplication();
       process.env.COMBOS_TEST_DEFAULT_AUTH = 'true';
       app.use((req, _res, next) => {
-        if (!req.headers.authorization && process.env.COMBOS_TEST_DEFAULT_AUTH === 'true')
+        if (
+          !req.headers.authorization &&
+          process.env.COMBOS_TEST_DEFAULT_AUTH === 'true'
+        )
           req.headers.authorization = `Bearer ${makeToken()}`;
         next();
       });
@@ -382,9 +405,7 @@ describe.skipIf(!isolatedHarnessEnabled)(
       const once = await dbAgain.query((client) =>
         client.query('SELECT version FROM combos.combos WHERE id=$1', [id]),
       );
-      await request(server)
-        .post(`/api/v1/combos/${id}/desactivar`)
-        .expect(200);
+      await request(server).post(`/api/v1/combos/${id}/desactivar`).expect(200);
       const twice = await dbAgain.query((client) =>
         client.query('SELECT version FROM combos.combos WHERE id=$1', [id]),
       );
@@ -439,9 +460,9 @@ describe.skipIf(!isolatedHarnessEnabled)(
       });
       created.push(comboId);
       const projection = await repository.projections(comboId);
-      expect(projection.every((item) => item.catalogDeactivated === false)).toBe(
-        true,
-      );
+      expect(
+        projection.every((item) => item.catalogDeactivated === false),
+      ).toBe(true);
 
       const racingSku = `RACE-${randomUUID()}`;
       const changedAt = new Date(Date.now() - 30000).toISOString();
@@ -506,8 +527,12 @@ describe.skipIf(!isolatedHarnessEnabled)(
 
       let providerStarted!: () => void;
       let releaseProvider!: () => void;
-      const started = new Promise<void>((resolve) => (providerStarted = resolve));
-      const blockedProvider = new Promise<void>((resolve) => (releaseProvider = resolve));
+      const started = new Promise<void>(
+        (resolve) => (providerStarted = resolve),
+      );
+      const blockedProvider = new Promise<void>(
+        (resolve) => (releaseProvider = resolve),
+      );
       const productEvent = repository.processEvent({
         messageId: randomUUID(),
         handler: 'combos.catalog.product.deactivated',
@@ -555,7 +580,10 @@ describe.skipIf(!isolatedHarnessEnabled)(
           Promise.race([
             independentCreate,
             new Promise<never>((_resolve, reject) =>
-              setTimeout(() => reject(new Error('WRITE_BLOCKED_BY_PROVIDER')), 2000),
+              setTimeout(
+                () => reject(new Error('WRITE_BLOCKED_BY_PROVIDER')),
+                2000,
+              ),
             ),
           ]),
         ).resolves.toBeTruthy();
@@ -695,8 +723,17 @@ describe.skipIf(!isolatedHarnessEnabled)(
     });
 
     it('verifies RS256 users and denies unauthenticated/service identities for all six operations', async () => {
+      const roleKeys = [
+        'COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN',
+        'COMBOS_ALLOWED_ROLES_CREAR_COMBO',
+        'COMBOS_ALLOWED_ROLES_OBTENER_COMBO',
+        'COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO',
+        'COMBOS_ALLOWED_ROLES_DESACTIVAR_COMBO',
+        'COMBOS_ALLOWED_ROLES_CONSULTAR_DISPONIBILIDAD_COMBO',
+      ];
       process.env.COMBOS_RESTRICTED_DEMO_ENABLED = 'false';
       process.env.COMBOS_TEST_DEFAULT_AUTH = 'false';
+      for (const key of roleKeys) delete process.env[key];
       const repository = app.get(CombosRepository);
       const comboId = await repository.create({
         name: 'JWT integration',
@@ -722,14 +759,17 @@ describe.skipIf(!isolatedHarnessEnabled)(
       const calls = [
         () => request(app.getHttpServer()).get('/api/v1/combos'),
         () =>
-          request(app.getHttpServer()).post('/api/v1/combos').send({
-            nombre: 'JWT create',
-            componentes: [
-              { sku: 'JWT-A', cantidad: 1 },
-              { sku: 'JWT-B', cantidad: 1 },
-            ],
-            precioCombo: 5,
-          }),
+          request(app.getHttpServer())
+            .post('/api/v1/combos')
+            .send({
+              nombre: 'JWT create',
+              metadata: { ignored: true },
+              componentes: [
+                { sku: 'JWT-A', cantidad: 1, extension: 'ignored' },
+                { sku: 'JWT-B', cantidad: 1, extension: 'ignored' },
+              ],
+              precioCombo: 5,
+            }),
         () => request(app.getHttpServer()).get(`/api/v1/combos/${comboId}`),
         () =>
           request(app.getHttpServer())
@@ -746,32 +786,107 @@ describe.skipIf(!isolatedHarnessEnabled)(
       ];
       for (const call of calls) {
         await call().expect(401);
+        await call().set('Authorization', 'Bearer malformed').expect(401);
         await call()
-          .set('Authorization', 'Bearer malformed')
-          .expect(401);
-        await call()
-          .set('Authorization', `Bearer ${makeToken('servicio', 'combos:leer')}`)
+          .set(
+            'Authorization',
+            `Bearer ${makeToken('servicio', 'combos:leer')}`,
+          )
           .expect(403);
+        await call()
+          .set(
+            'Authorization',
+            `Bearer ${makeToken('acceso', undefined, { roles: ['inventario:admin'] })}`,
+          )
+          .expect(403);
+        await call().set('Authorization', `Bearer ${makeToken()}`).expect(403);
       }
+      for (const key of roleKeys) process.env[key] = 'combos:admin';
+      const adminAuth = `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`;
+      await request(app.getHttpServer())
+        .post('/api/v1/combos')
+        .set('Authorization', adminAuth)
+        .send({
+          nombre: 'Missing price',
+          componentes: [
+            { sku: 'A', cantidad: 1 },
+            { sku: 'B', cantidad: 1 },
+          ],
+        })
+        .expect(400);
+      await request(app.getHttpServer())
+        .post('/api/v1/combos')
+        .set('Authorization', adminAuth)
+        .send({
+          nombre: 'Invalid quantity',
+          precioCombo: 1,
+          componentes: [
+            { sku: 'A', cantidad: '1' },
+            { sku: 'B', cantidad: 1 },
+          ],
+        })
+        .expect(400);
       await calls[0]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(200);
       await calls[1]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(201);
       await calls[2]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(200);
       await calls[3]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(200);
       await calls[4]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(200);
       await calls[5]!()
-        .set('Authorization', `Bearer ${makeToken()}`)
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
         .expect(200);
+      await calls[5]!()
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
+        .expect(200);
+      process.env.G6_SECURITY_MODE = 'PUBLIC_READ_ONLY';
+      process.env.COMBOS_ALLOWED_CLIENTS_COMBOS_READ = 'modulo-productos';
+      await request(app.getHttpServer()).get('/api/v1/combos').expect(401);
+      await calls[2]!()
+        .set(
+          'Authorization',
+          `Bearer ${makeToken('acceso', undefined, { roles: ['combos:admin'] })}`,
+        )
+        .expect(200);
+      await calls[2]!()
+        .set('Authorization', `Bearer ${makeToken('servicio', 'combos:leer')}`)
+        .expect(200);
+      await calls[4]!()
+        .set('Authorization', `Bearer ${makeToken('servicio', 'combos:leer')}`)
+        .expect(403);
+      process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
+      delete process.env.COMBOS_ALLOWED_CLIENTS_COMBOS_READ;
       expect(issuedServiceTokens).toBeGreaterThan(0);
+      for (const key of roleKeys) process.env[key] = 'admin';
       process.env.COMBOS_TEST_DEFAULT_AUTH = 'true';
     }, 30000);
 

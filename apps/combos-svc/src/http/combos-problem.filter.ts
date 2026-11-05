@@ -32,7 +32,8 @@ export class CombosProblemFilter implements ExceptionFilter {
           ? response.code
           : undefined;
       code =
-        typeof responseCode === 'string' && /^[A-Z0-9_]{1,64}$/.test(responseCode)
+        typeof responseCode === 'string' &&
+        /^[A-Z0-9_]{1,64}$/.test(responseCode)
           ? responseCode
           : status === 400
             ? 'VALIDACION'

@@ -56,23 +56,13 @@ export class CombosDatabase implements OnModuleDestroy {
         );
       }
       if (code === '22P02' || code === '22003')
-        throw new HttpException(
-          { code: 'VALIDACION' },
-          400,
-          { cause: error },
-        );
+        throw new HttpException({ code: 'VALIDACION' }, 400, { cause: error });
       if (code === '23505')
-        throw new HttpException(
-          { code: 'VERSION_CONFLICT' },
-          409,
-          { cause: error },
-        );
+        throw new HttpException({ code: 'VERSION_CONFLICT' }, 409, {
+          cause: error,
+        });
       if (code === '23503' || code === '23514')
-        throw new HttpException(
-          { code: 'VALIDACION' },
-          422,
-          { cause: error },
-        );
+        throw new HttpException({ code: 'VALIDACION' }, 422, { cause: error });
       throw error;
     } finally {
       client.release();

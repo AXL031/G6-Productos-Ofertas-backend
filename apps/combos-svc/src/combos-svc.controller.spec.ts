@@ -4,7 +4,11 @@ import { CombosSvcService } from './combos-svc.service.js';
 import { CombosDatabase } from './persistence/combos.database.js';
 import { CombosRepository } from './persistence/combos.repository.js';
 import { CombosEventConsumer } from './messaging/combos-event-consumer.js';
-import { ComboTokenVerifier, CombosAuthGuard, SimulatedComboTokenVerifier } from './http/combos-auth.js';
+import {
+  ComboTokenVerifier,
+  CombosAuthGuard,
+  SimulatedComboTokenVerifier,
+} from './http/combos-auth.js';
 import type { Response } from 'express';
 
 describe('CombosSvcController', () => {

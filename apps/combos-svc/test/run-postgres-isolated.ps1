@@ -9,7 +9,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $environmentNames = @(
   'COMBOS_TEST_EPHEMERAL', 'COMBOS_TEST_DATABASE_URL', 'COMBOS_TEST_CA',
-  'COMBOS_TEST_RABBITMQ_URL', 'COMBOS_TEST_RABBITMQ_CONTAINER', 'COMBOS_TEST_CATALOG_PASSWORD', 'COMBOS_TEST_CWD',
+  'COMBOS_TEST_RABBITMQ_URL', 'COMBOS_TEST_RABBITMQ_CONTAINER', 'COMBOS_TEST_CATALOG_PASSWORD', 'COMBOS_TEST_CWD', 'COMBOS_RUN_ISOLATED_E2E',
   'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD', 'PGHOST', 'PGSSLMODE', 'PGSSLROOTCERT'
 )
 $originalEnvironment = @{}
@@ -158,6 +158,7 @@ try {
   $testReport = Join-Path $folder 'vitest-results.json'
   $testArguments += @('--reporter=json', '--reporter=default', "--outputFile=$testReport")
   try {
+    $env:COMBOS_RUN_ISOLATED_E2E = '1'
     & npm.cmd run test:e2e -- @testArguments
     if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' }
     if (-not (Test-Path -LiteralPath $testReport)) { throw 'Vitest no produjo el reporte JSON requerido.' }

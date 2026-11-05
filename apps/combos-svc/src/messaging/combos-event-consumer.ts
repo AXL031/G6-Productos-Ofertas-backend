@@ -16,7 +16,10 @@ import {
   CombosRepository,
   InboxMessageConflictError,
 } from '../persistence/combos.repository.js';
-import { CatalogSkuContextClient, IntegrationFailure } from '../integrations/catalog-sku-context.client.js';
+import {
+  CatalogSkuContextClient,
+  IntegrationFailure,
+} from '../integrations/catalog-sku-context.client.js';
 import { CombosServiceIdentity } from '../integrations/combos-service-identity.js';
 
 export const COMBOS_QUEUE = 'po.combos.q';
@@ -73,7 +76,10 @@ function exactKeys(value: Record<string, unknown>, keys: string[]) {
 }
 function validDate(value: unknown): value is string {
   if (typeof value !== 'string' || !ISO_DATE.test(value)) return false;
-  const parts = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(value);
+  const parts =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d+)?(Z|[+-](\d{2}):(\d{2}))$/.exec(
+      value,
+    );
   if (!parts) return false;
   const year = Number(parts[1]);
   const month = Number(parts[2]);
@@ -231,7 +237,11 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
-    if (process.env.COMBOS_AMQP_ENABLED === undefined || process.env.COMBOS_AMQP_ENABLED === 'false') return;
+    if (
+      process.env.COMBOS_AMQP_ENABLED === undefined ||
+      process.env.COMBOS_AMQP_ENABLED === 'false'
+    )
+      return;
     if (process.env.COMBOS_AMQP_ENABLED !== 'true')
       throw new Error('COMBOS_AMQP_ENABLED_INVALID');
     this.enabled = true;
@@ -442,27 +452,33 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
       }
       const mappingDeadline = AbortSignal.timeout(15000);
       const resolveProductSkus = async (candidates: string[]) => {
-        const contexts = await mapWithConcurrency(candidates, 8, async (sku) => {
-          try {
-            return await catalog.getContextForMapping(
-              sku,
-              catalogRequestCorrelationId,
-              mappingDeadline,
-            );
-          } catch (error) {
-            // Product resolution scans combo references. A SKU no longer present
-            // in Catalog cannot belong to this product; other failures remain retryable.
-            if (
-              error instanceof IntegrationFailure &&
-              error.dependency === 'CATALOG' &&
-              error.reason === 'SKU_NO_ENCONTRADO'
-            ) return undefined;
-            throw error;
-          }
-        });
+        const contexts = await mapWithConcurrency(
+          candidates,
+          8,
+          async (sku) => {
+            try {
+              return await catalog.getContextForMapping(
+                sku,
+                catalogRequestCorrelationId,
+                mappingDeadline,
+              );
+            } catch (error) {
+              // Product resolution scans combo references. A SKU no longer present
+              // in Catalog cannot belong to this product; other failures remain retryable.
+              if (
+                error instanceof IntegrationFailure &&
+                error.dependency === 'CATALOG' &&
+                error.reason === 'SKU_NO_ENCONTRADO'
+              )
+                return undefined;
+              throw error;
+            }
+          },
+        );
         return contexts
-          .filter((context): context is NonNullable<typeof context> =>
-            context?.productId === data.product_id,
+          .filter(
+            (context): context is NonNullable<typeof context> =>
+              context?.productId === data.product_id,
           )
           .map((context) => context.sku);
       };
@@ -545,7 +561,11 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
           disposition: 'REJECTED_INVALID_EVENT',
         });
         if (this.channel) this.channel.ack(message);
-        this.logDisposition(messageId, message.properties.correlationId, result);
+        this.logDisposition(
+          messageId,
+          message.properties.correlationId,
+          result,
+        );
         return;
       } catch (error) {
         this.logger.error(

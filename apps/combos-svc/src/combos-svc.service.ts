@@ -180,7 +180,6 @@ export class CombosSvcService {
       if (
         !item ||
         typeof item !== 'object' ||
-        Object.keys(item).some((key) => !['sku', 'cantidad'].includes(key)) ||
         typeof item.sku !== 'string' ||
         !item.sku.trim() ||
         !Number.isSafeInteger(item.cantidad) ||
@@ -201,10 +200,7 @@ export class CombosSvcService {
     if (
       !input ||
       typeof input !== 'object' ||
-      Object.keys(input).some(
-        (key) =>
-          !['nombre', 'descripcion', 'componentes', 'precioCombo'].includes(key),
-      ) ||
+      Array.isArray(input) ||
       typeof input.nombre !== 'string' ||
       !input.nombre.trim() ||
       (input.descripcion !== undefined &&
@@ -250,13 +246,23 @@ export class CombosSvcService {
       );
       const productIds = new Map<string, string>();
       const catalogObservedAt = new Map<string, string>();
-      const contexts = await mapWithConcurrency(items, 5, (item) =>
-        catalog.getContext(item.sku, correlationId, operationSignal),
-      );
-      for (const [index, context] of contexts.entries()) {
+      const contexts = await mapWithConcurrency(items, 5, async (item) => {
+        // Capture before the provider read. This local instant is only a
+        // conservative race detector; Catalog has no authoritative revision
+        // in its context DTO, so cross-service ordering cannot be proven.
+        const requestedAt = new Date().toISOString();
+        const context = await catalog.getContext(
+          item.sku,
+          correlationId,
+          operationSignal,
+        );
+        return { context, requestedAt };
+      });
+      for (const [index, result] of contexts.entries()) {
+        const { context } = result;
         const item = items[index]!;
         productIds.set(item.sku, context.productId);
-        catalogObservedAt.set(item.sku, new Date().toISOString());
+        catalogObservedAt.set(item.sku, result.requestedAt);
       }
       const pricing = new PricingClient(
         pricingUrl,
@@ -349,12 +355,7 @@ export class CombosSvcService {
       throw new ComboError(400, 'VALIDACION', 'Identificador inválido');
     if (!input || typeof input !== 'object')
       throw new ComboError(400, 'VALIDACION', 'Cuerpo inválido');
-    if (
-      Object.keys(input).some(
-        (key) =>
-          !['nombre', 'descripcion', 'componentes', 'precioCombo', 'version'].includes(key),
-      )
-    )
+    if (Array.isArray(input))
       throw new ComboError(400, 'VALIDACION', 'Campo no permitido');
     if (
       input.nombre !== undefined &&

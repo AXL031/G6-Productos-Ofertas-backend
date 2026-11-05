@@ -1,7 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import {
-  ComboTokenVerifier,
-} from '../http/combos-auth.js';
+import { ComboTokenVerifier } from '../http/combos-auth.js';
 import { IntegrationFailure } from './catalog-sku-context.client.js';
 
 type ServiceScope = 'catalogo:leer' | 'precios:leer';
