@@ -6,10 +6,6 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { pathToFileURL } from 'node:url';
-import {
-  CATALOG_READ_DEMO,
-  type CatalogReadDemo,
-} from './catalog-read-demo.js';
 
 export const CATALOG_DATABASE = Symbol('CATALOG_DATABASE');
 
@@ -70,17 +66,13 @@ async function runReadinessProbe(): Promise<void> {
   const [
     { NestFactory },
     { AppModule },
-    { Database },
     { CatalogConfig },
-    { PricingClient },
-    repository,
+    { ReadinessController: CommercialReadinessController },
   ] = await Promise.all([
     import('@nestjs/core'),
     import('./app.module.js'),
-    import('./database.js'),
     import('./config.js'),
-    import('./pricing.client.js'),
-    import('./postgres-catalog.repository.js'),
+    import('./readiness.controller.js'),
   ]);
   const config = new CatalogConfig(process.env);
   const app = await NestFactory.createApplicationContext(
@@ -94,43 +86,23 @@ async function runReadinessProbe(): Promise<void> {
   let status = 'not_ready';
   let eligibilityStatus = 'unverified';
   let pricingStatus = 'not_checked';
-  let demoCatalogRead = false;
   try {
-    await app.get(Database).verifyIdentity();
-    database = 'ready';
-    if (app.get<CatalogReadDemo>(CATALOG_READ_DEMO).enabled) {
-      await app.get(repository.PostgresCatalogRepository).listCandidates(
-        {
-          canal: 'MARKETPLACE',
-          pagina: 1,
-          tamanio: 1,
-          orden: 'NOMBRE_ASC',
-        },
-        true,
-      );
-      eligibilityStatus = 'not_evaluated_demo';
-    } else if (config.marketplaceDemoPreview) {
-      await app.get(repository.PostgresCatalogRepository).checkDemoReadAccess();
-      demoCatalogRead = true;
-      await app.get(PricingClient).checkReady();
-      pricingStatus = 'ready';
-      eligibilityStatus = 'not_required_demo';
-    } else {
-      await app.get(repository.PostgresCatalogRepository).listCandidates({
-        canal: 'MARKETPLACE',
-        pagina: 1,
-        tamanio: 1,
-        orden: 'NOMBRE_ASC',
-      });
-      eligibilityStatus = 'ready';
-    }
+    await app.get(CommercialReadinessController).checkReadiness((stage) => {
+      if (stage === 'database') database = 'ready';
+      if (stage === 'catalog-read') {
+        if (config.readDemo.enabled) eligibilityStatus = 'not_evaluated_demo';
+        else eligibilityStatus = 'not_required_demo';
+      }
+      if (stage === 'pricing') pricingStatus = 'ready';
+      if (stage === 'commercial') eligibilityStatus = 'ready';
+    });
     status = 'ready';
   } catch {
     status = 'not_ready';
     if (
       config.marketplaceDemoPreview &&
       database === 'ready' &&
-      demoCatalogRead
+      eligibilityStatus === 'not_required_demo'
     )
       pricingStatus = 'unavailable';
   } finally {

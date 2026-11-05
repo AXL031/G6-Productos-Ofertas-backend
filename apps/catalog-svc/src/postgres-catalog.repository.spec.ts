@@ -195,22 +195,22 @@ describe('Catalog provider SQL and projections (isolated)', () => {
     ]);
   });
 
-  it('checks demo read access with bounded SELECT-only probes on the four required tables', async () => {
+  it('checks every demo listing relation with one bounded SELECT-only statement', async () => {
     await repo.checkDemoReadAccess();
-    const checks = statements.filter((statement) =>
-      /SELECT 1 FROM catalog\.(products|variants|product_images|variant_images) LIMIT 0/.test(
-        statement.text,
-      ),
+    expect(statements).toHaveLength(1);
+    expect(statements[0].text).toContain(
+      '(SELECT 1 FROM catalog.products LIMIT 0)',
     );
-    expect(checks.map((statement) => statement.text)).toEqual([
-      'SELECT 1 FROM catalog.products LIMIT 0',
-      'SELECT 1 FROM catalog.variants LIMIT 0',
-      'SELECT 1 FROM catalog.product_images LIMIT 0',
-      'SELECT 1 FROM catalog.variant_images LIMIT 0',
-    ]);
-    expect(checks.every((statement) => statement.values.length === 0)).toBe(
-      true,
-    );
+    for (const relation of [
+      'product_attribute_values',
+      'product_images',
+      'variants',
+      'variant_images',
+    ])
+      expect(statements[0].text).toContain(
+        `(SELECT 1 FROM catalog.${relation} LIMIT 0)`,
+      );
+    expect(statements[0].values).toHaveLength(0);
   });
 
   it('falls back from placeholder product images to valid variant images', async () => {

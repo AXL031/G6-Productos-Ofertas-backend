@@ -192,7 +192,11 @@ describe.skipIf(!dockerAvailable)(
       }
     }, 30000);
 
-    function environment(mode: string, port: number): NodeJS.ProcessEnv {
+    function environment(
+      mode: string,
+      port: number,
+      readDemo = false,
+    ): NodeJS.ProcessEnv {
       const clean = Object.fromEntries(
         Object.entries(process.env).filter(
           ([key]) => !/^(PG|G6_|DATABASE_URL|CATALOG_)/i.test(key),
@@ -203,6 +207,10 @@ describe.skipIf(!dockerAvailable)(
         NODE_ENV: 'test',
         CATALOG_SVC_PORT: String(port),
         CATALOG_SVC_HOST: '127.0.0.1',
+        CATALOG_AMQP_ENABLED: 'false',
+        CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'false',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'false',
+        G6_READ_ONLY_DEMO_ENABLED: String(readDemo),
         PGHOST: 'localhost',
         G6_CONNECT_HOST: '127.0.0.1',
         PGPORT: databasePort,
@@ -283,6 +291,155 @@ describe.skipIf(!dockerAvailable)(
       },
       60000,
     );
+
+    it('uses lightweight read-only demo readiness in HTTP and CLI, and fails closed on missing privileges or relations', async () => {
+      const port = await freePort();
+      const env = environment('session', port, true);
+      const child = spawn(process.execPath, [main], {
+        cwd: directory,
+        env,
+        windowsHide: true,
+      });
+      let logs = '';
+      child.stdout?.on('data', (data) => (logs += String(data)));
+      child.stderr?.on('data', (data) => (logs += String(data)));
+      try {
+        await until(() => {
+          if (child.exitCode !== null)
+            throw new Error('Catalog demo exited before positive startup');
+          return logs.includes('APPLICATION_STARTED');
+        });
+        const base = 'http://127.0.0.1:' + port;
+        expect((await fetch(base + '/health')).status).toBe(200);
+        expect((await fetch(base + '/health/live')).status).toBe(200);
+
+        const latencies: number[] = [];
+        for (let index = 0; index < 10; index++) {
+          const started = performance.now();
+          const response = await fetch(base + '/health/ready');
+          latencies.push(performance.now() - started);
+          expect(response.status).toBe(200);
+          expect(await response.json()).toMatchObject({ status: 'ready' });
+          expect(latencies.at(-1)).toBeLessThan(2000);
+        }
+
+        const commercial = await fetch(
+          base +
+            '/api/v1/productos?canal=MARKETPLACE&pagina=1&tamanio=1&orden=NOMBRE_ASC',
+        );
+        expect(commercial.status).toBe(200);
+        expect(await commercial.json()).toMatchObject({
+          items: [],
+          pagina: 1,
+          tamanio: 1,
+        });
+
+        const cli = spawnSync(
+          process.execPath,
+          [resolve('dist/apps/catalog-svc/readiness.js')],
+          {
+            cwd: directory,
+            env,
+            encoding: 'utf8',
+            timeout: 15000,
+            windowsHide: true,
+          },
+        );
+        expect(cli.error).toBeUndefined();
+        expect(cli.status).toBe(0);
+        expect(JSON.parse(cli.stdout)).toMatchObject({
+          service: 'catalog-svc',
+          status: 'ready',
+          database: 'ready',
+          eligibility: 'not_evaluated_demo',
+        });
+
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          'REVOKE SELECT ON catalog.product_attribute_values FROM catalog_app;',
+        );
+        expect((await fetch(base + '/health/ready')).status).toBe(503);
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          'GRANT SELECT ON catalog.product_attribute_values TO catalog_app;',
+        );
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          'ALTER TABLE catalog.variant_images RENAME TO variant_images_missing;',
+        );
+        try {
+          expect((await fetch(base + '/health/ready')).status).toBe(503);
+        } finally {
+          command(
+            'docker',
+            [
+              'exec',
+              '-i',
+              container,
+              'psql',
+              '-U',
+              'postgres',
+              '-v',
+              'ON_ERROR_STOP=1',
+            ],
+            'ALTER TABLE catalog.variant_images_missing RENAME TO variant_images;',
+          );
+        }
+        expect((await fetch(base + '/health/ready')).status).toBe(200);
+
+        await stop(child);
+        const restartPort = await freePort();
+        const restarted = spawn(process.execPath, [main], {
+          cwd: directory,
+          env: { ...env, CATALOG_SVC_PORT: String(restartPort) },
+          windowsHide: true,
+        });
+        let restartedLogs = '';
+        restarted.stdout?.on('data', (data) => (restartedLogs += String(data)));
+        restarted.stderr?.on('data', (data) => (restartedLogs += String(data)));
+        try {
+          await until(() => restartedLogs.includes('APPLICATION_STARTED'));
+          expect(
+            (await fetch(`http://127.0.0.1:${restartPort}/health/ready`))
+              .status,
+          ).toBe(200);
+        } finally {
+          await stop(restarted);
+        }
+      } finally {
+        await stop(child);
+      }
+    }, 90000);
 
     it.each(['session', 'direct'])(
       'rejects missing identity, an unrelated CA and a mismatched TLS hostname in %s',

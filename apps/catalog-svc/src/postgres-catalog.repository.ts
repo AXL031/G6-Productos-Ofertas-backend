@@ -176,10 +176,14 @@ export class PostgresCatalogRepository {
 
   async checkDemoReadAccess(): Promise<void> {
     await this.database.read(async (db) => {
-      await db.execute(sql.raw('SELECT 1 FROM catalog.products LIMIT 0'));
-      await db.execute(sql.raw('SELECT 1 FROM catalog.variants LIMIT 0'));
-      await db.execute(sql.raw('SELECT 1 FROM catalog.product_images LIMIT 0'));
-      await db.execute(sql.raw('SELECT 1 FROM catalog.variant_images LIMIT 0'));
+      await db.execute(
+        sql.raw(`SELECT
+        (SELECT 1 FROM catalog.products LIMIT 0) AS products,
+        (SELECT 1 FROM catalog.product_attribute_values LIMIT 0) AS product_attributes,
+        (SELECT 1 FROM catalog.product_images LIMIT 0) AS product_images,
+        (SELECT 1 FROM catalog.variants LIMIT 0) AS variants,
+        (SELECT 1 FROM catalog.variant_images LIMIT 0) AS variant_images`),
+      );
     });
   }
 
