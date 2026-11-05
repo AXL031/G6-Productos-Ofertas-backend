@@ -378,6 +378,12 @@ export class CatalogTokenVerifier {
   }
 }
 
+const CATALOG_PUBLIC_OPERATION_BY_HANDLER: Readonly<Record<string, string>> = {
+  list: 'listarProductos',
+  detail: 'obtenerProductoPorSlug',
+  product: 'obtenerProducto',
+};
+
 @Injectable()
 export class CatalogAuthGuard implements CanActivate {
   constructor(
@@ -404,6 +410,27 @@ export class CatalogAuthGuard implements CanActivate {
         catalogDemoPreview?: boolean;
       }
     >();
+    if (this.readDemo.securityMode === 'SIMULATED_AUTH')
+      throw new ServiceUnavailableException({ code: 'SERVICIO_NO_DISPONIBLE' });
+    const handlerOp =
+      CATALOG_PUBLIC_OPERATION_BY_HANDLER[context.getHandler().name];
+    const publicController =
+      context.getClass().name ===
+      (handlerOp === 'obtenerProducto'
+        ? 'CatalogQueryController'
+        : 'CommercialController');
+    if (
+      this.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
+      request.headers.authorization === undefined &&
+      request.method === 'GET' &&
+      policy.demoRead &&
+      publicController &&
+      handlerOp &&
+      this.readDemo.publicOperations?.includes(handlerOp)
+    ) {
+      // Public authorization never enables the legacy draft/administrative path.
+      return true;
+    }
     if (this.readDemo.restricted && policy.restrictedDemo) {
       const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
       if (!peer || !this.readDemo.gatewayIps?.includes(peer))
