@@ -308,12 +308,22 @@ done
 [[ "$BAD_STATE" == exited ]]
 BAD_EXIT="$(docker inspect --format '{{.State.ExitCode}}' "$BAD_CONTAINER")"
 [[ "$BAD_EXIT" != 0 ]]
-BAD_PORT="$(docker port "$BAD_CONTAINER" 3005/tcp | awk -F: '{print $NF}')"
-for path in health health/readiness; do
-  if status="$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BAD_PORT}/${path}" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
-  if [[ "$status" == 200 ]]; then printf '[inventory-smoke] arranque inválido sirvió HTTP 200 (%s).\n' "$path" >&2; exit 1; fi
-  case "$code" in 0|6|7|28|52|56) ;; *) printf '[inventory-smoke] curl negativo falló (%s).\n' "$code" >&2; exit 1 ;; esac
-done
+if BAD_PORT_OUTPUT="$(docker port "$BAD_CONTAINER" 3005/tcp 2>/dev/null)"; then
+  BAD_PORT="$(awk -F: '{print $NF}' <<< "$BAD_PORT_OUTPUT")"
+  if [[ -z "$BAD_PORT" ]]; then printf '[inventory-smoke] Docker reportó puerto vacío para arranque inválido.\n' >&2; exit 1; fi
+  for path in health health/readiness; do
+    if status="$(curl -sS --max-time 8 -o /dev/null -w '%{http_code}' "http://127.0.0.1:${BAD_PORT}/${path}" 2>/dev/null)"; then code=0; else code=$?; status=000; fi
+    if [[ "$status" == 200 ]]; then printf '[inventory-smoke] arranque inválido sirvió HTTP 200 (%s).\n' "$path" >&2; exit 1; fi
+    case "$code" in 0|6|7|28|52|56) ;; *) printf '[inventory-smoke] curl negativo falló (%s).\n' "$code" >&2; exit 1 ;; esac
+  done
+else
+  BAD_PORT_STATUS="$(docker inspect --format '{{if index .NetworkSettings.Ports "3005/tcp"}}published{{else}}unpublished{{end}}' "$BAD_CONTAINER")"
+  if [[ "$BAD_PORT_STATUS" != unpublished || "$BAD_STATE" != exited || "$BAD_EXIT" == 0 ]]; then
+    printf '[inventory-smoke] no se pudo probar HTTP y no se confirmó contenedor detenido sin puerto.\n' >&2
+    exit 1
+  fi
+  printf '[inventory-smoke] HTTP health/readiness no publicables: proceso exited y puerto 3005 no publicado.\n'
+fi
 BAD_LOGS="$(docker logs "$BAD_CONTAINER" 2>&1)"
 if grep -Fq "$PG_PASSWORD" <<< "$BAD_LOGS" || grep -Eqi 'postgres(ql)?://[^[:space:]]+:[^[:space:]@]+@|PGPASSWORD=' <<< "$BAD_LOGS"; then
   printf 'FALLO: las trazas del arranque negativo exponen credenciales o DSN.\n' >&2
