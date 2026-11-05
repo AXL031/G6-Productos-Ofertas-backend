@@ -361,7 +361,9 @@ export function consolidateExportRows(input: {
           'Pricing export contains an offer outside requested_at',
         );
     }
-    if (price.productId !== null) {
+    // A record tied to a SKU is a SKU price even when Pricing includes its
+    // owning productId. Only product-only records participate in inheritance.
+    if (price.productId !== null && price.sku === null) {
       if (productPrices.has(price.productId))
         throw new Error('Duplicate price parent identity');
       productPrices.set(price.productId, price);

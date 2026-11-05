@@ -23,7 +23,9 @@ export class IsolatedBulkRabbitmq {
   private adminChannel: Channel | null = null;
   url = '';
 
-  async start(): Promise<void> {
+  async start(
+    options: { alternateCommandExchange?: boolean } = {},
+  ): Promise<void> {
     await exec(
       'docker',
       [
@@ -63,8 +65,21 @@ export class IsolatedBulkRabbitmq {
       throw new Error('RabbitMQ aislado no quedó disponible.');
     this.adminConnection.on('error', () => undefined);
     this.adminChannel = await this.adminConnection.createChannel();
+    if (options.alternateCommandExchange) {
+      await this.adminChannel.assertExchange('po.sin-ruta.x', 'fanout', {
+        durable: true,
+      });
+      await this.adminChannel.assertQueue('po.sin-ruta.q', {
+        durable: true,
+        arguments: { 'x-queue-type': 'quorum' },
+      });
+      await this.adminChannel.bindQueue('po.sin-ruta.q', 'po.sin-ruta.x', '');
+    }
     await this.adminChannel.assertExchange('po.comandos.x', 'topic', {
       durable: true,
+      ...(options.alternateCommandExchange
+        ? { alternateExchange: 'po.sin-ruta.x' }
+        : {}),
     });
     await this.adminChannel.assertExchange('po.resultados.x', 'topic', {
       durable: true,
@@ -207,6 +222,32 @@ export class IsolatedBulkRabbitmq {
       'po.comandos.x',
       routingKey,
     );
+  }
+
+  async unbindCatalogCommand(routingKey: string): Promise<void> {
+    await this.adminChannel!.unbindQueue(
+      'po.catalogo.q',
+      'po.comandos.x',
+      routingKey,
+    );
+  }
+
+  async nextUnroutedCommand(): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const message = await this.adminChannel!.get('po.sin-ruta.q', {
+        noAck: false,
+      });
+      if (message) {
+        this.adminChannel!.ack(message);
+        return JSON.parse(message.content.toString('utf8')) as Record<
+          string,
+          unknown
+        >;
+      }
+      await pause(25);
+    }
+    throw new Error('No llegó el comando a po.sin-ruta.q.');
   }
 
   async suspend(): Promise<void> {

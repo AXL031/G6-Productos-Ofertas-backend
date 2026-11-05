@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   batchJobs,
@@ -1216,6 +1217,19 @@ export class BulkPersistenceRepository {
           payload: input.payload,
           result: outcome,
         });
+        await tx
+          .update(outbox)
+          .set({
+            publishedAt: sql`coalesce(${outbox.publishedAt}, now())`,
+            lastError: null,
+          })
+          .where(
+            and(
+              eq(outbox.messageId, input.causationId),
+              eq(outbox.eventName, 'catalog.bulk.upsert.requested'),
+              sql`${outbox.publishedAt} IS NULL`,
+            ),
+          );
         return { processed: true, result: outcome };
       });
     } catch (error) {
@@ -1441,11 +1455,11 @@ export class BulkPersistenceRepository {
     try {
       return await this.db
         .update(exportJobs)
-        .set({ status: 'QUEUED' })
+        .set({ status: 'QUEUED', claimToken: null, leaseUntil: null })
         .where(
           and(
             eq(exportJobs.status, 'PROCESSING'),
-            sql`${exportJobs.updatedAt} <= ${staleBefore}`,
+            sql`(${exportJobs.leaseUntil} IS NOT NULL AND ${exportJobs.leaseUntil} <= now()) OR (${exportJobs.leaseUntil} IS NULL AND ${exportJobs.updatedAt} <= ${staleBefore})`,
           ),
         )
         .returning();
@@ -1460,7 +1474,11 @@ export class BulkPersistenceRepository {
     try {
       const [claimed] = await this.db
         .update(exportJobs)
-        .set({ status: 'PROCESSING' })
+        .set({
+          status: 'PROCESSING',
+          claimToken: randomUUID(),
+          leaseUntil: sql`now() + interval '60 seconds'`,
+        })
         .where(
           and(
             eq(exportJobs.exportId, exportId),
@@ -1469,9 +1487,9 @@ export class BulkPersistenceRepository {
         )
         .returning({
           job: exportJobs,
-          fence: sql<string>`xmin::text`,
+          fence: exportJobs.claimToken,
         });
-      return claimed ?? null;
+      return claimed?.fence ? { ...claimed, fence: claimed.fence } : null;
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1483,16 +1501,37 @@ export class BulkPersistenceRepository {
   ): Promise<boolean> {
     try {
       const [claimed] = await this.db
-        .select({ fence: sql<string>`xmin::text` })
+        .select({ fence: exportJobs.claimToken })
         .from(exportJobs)
         .where(
           and(
             eq(exportJobs.exportId, exportId),
             eq(exportJobs.status, 'PROCESSING'),
+            sql`${exportJobs.leaseUntil} > now()`,
           ),
         )
         .limit(1);
       return claimed?.fence === fence;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async renewExportClaim(exportId: string, fence: string): Promise<boolean> {
+    try {
+      const [renewed] = await this.db
+        .update(exportJobs)
+        .set({ leaseUntil: sql`now() + interval '60 seconds'` })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'PROCESSING'),
+            eq(exportJobs.claimToken, fence),
+            sql`${exportJobs.leaseUntil} > now()`,
+          ),
+        )
+        .returning({ id: exportJobs.id });
+      return Boolean(renewed);
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1510,7 +1549,8 @@ export class BulkPersistenceRepository {
           and(
             eq(exportJobs.exportId, exportId),
             eq(exportJobs.status, 'PROCESSING'),
-            sql`xmin::text = ${fence}`,
+            eq(exportJobs.claimToken, fence),
+            sql`${exportJobs.leaseUntil} > now()`,
           ),
         )
         .returning();
@@ -1591,13 +1631,8 @@ export class BulkPersistenceRepository {
           .for('update')
           .limit(1);
         if (!claimed) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
-        const [jobFence] = await tx
-          .select({ fence: sql<string>`xmin::text` })
-          .from(exportJobs)
-          .where(eq(exportJobs.id, claimed.id))
-          .limit(1);
         const job = claimed;
-        if (job.status !== 'PROCESSING' || jobFence?.fence !== fence)
+        if (job.status !== 'PROCESSING' || job.claimToken !== fence)
           return null;
         if (resultFile.format !== job.format)
           inconsistent('Export output format must match the requested format');
@@ -1659,7 +1694,8 @@ export class BulkPersistenceRepository {
             and(
               eq(exportJobs.id, job.id),
               eq(exportJobs.status, 'PROCESSING'),
-              sql`xmin::text = ${fence}`,
+              eq(exportJobs.claimToken, fence),
+              sql`${exportJobs.leaseUntil} > now()`,
             ),
           )
           .returning();
@@ -1703,12 +1739,17 @@ export class BulkPersistenceRepository {
 
   async findPendingOutbox(
     limit = 100,
+    onlyDue = false,
   ): Promise<Array<typeof outbox.$inferSelect>> {
     try {
       return await this.db
         .select()
         .from(outbox)
-        .where(sql`${outbox.publishedAt} IS NULL`)
+        .where(
+          onlyDue
+            ? sql`${outbox.publishedAt} IS NULL AND ${outbox.lastError} IS DISTINCT FROM 'CATALOG_ROUTE_REVIEW_REQUIRED' AND (coalesce(${outbox.lastError}, '') NOT LIKE 'AWAITING_CATALOG_RESULT:%' OR substring(${outbox.lastError} from 25)::timestamptz <= now())`
+            : sql`${outbox.publishedAt} IS NULL`,
+        )
         .orderBy(asc(outbox.occurredAt), asc(outbox.id))
         .limit(Math.max(1, Math.min(limit, 1000)));
     } catch (error) {
@@ -1747,6 +1788,34 @@ export class BulkPersistenceRepository {
           })
           .where(eq(outbox.id, message.id));
       });
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async deferOutboxUntilCatalogResult(
+    messageId: string,
+    attempts: number,
+  ): Promise<void> {
+    try {
+      const parked = attempts >= 8;
+      const retryAt = new Date(
+        Date.now() + Math.min(300_000, 30_000 * 2 ** Math.min(attempts - 1, 4)),
+      ).toISOString();
+      await this.db
+        .update(outbox)
+        .set({
+          attempts,
+          lastError: parked
+            ? 'CATALOG_ROUTE_REVIEW_REQUIRED'
+            : `AWAITING_CATALOG_RESULT:${retryAt}`,
+        })
+        .where(
+          and(
+            eq(outbox.messageId, messageId),
+            sql`${outbox.publishedAt} IS NULL`,
+          ),
+        );
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1835,8 +1904,10 @@ export class BulkPersistenceRepository {
 
   async listPendingContractResults(
     limit = 100,
+    eventNames?: string[],
   ): Promise<PendingContractResult[]> {
     try {
+      if (eventNames && eventNames.length === 0) return [];
       const rows = await this.db
         .select({
           messageId: inbox.messageId,
@@ -1849,6 +1920,7 @@ export class BulkPersistenceRepository {
           and(
             eq(inbox.handler, 'bulk.contract-result-replay'),
             eq(inbox.result, 'PENDING_REPLAY'),
+            ...(eventNames ? [inArray(inbox.eventName, eventNames)] : []),
           ),
         )
         .orderBy(asc(inbox.createdAt))
@@ -1859,6 +1931,25 @@ export class BulkPersistenceRepository {
         correlationId: row.correlationId ?? '',
         payload: row.payload,
       }));
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async countPendingContractResults(eventNames: string[]): Promise<number> {
+    if (eventNames.length === 0) return 0;
+    try {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.handler, 'bulk.contract-result-replay'),
+            eq(inbox.result, 'PENDING_REPLAY'),
+            inArray(inbox.eventName, eventNames),
+          ),
+        );
+      return row?.count ?? 0;
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1928,7 +2019,13 @@ function matchesExportObjectIdentity(
   format: BulkFileFormat,
   bucket: string | undefined,
 ): boolean {
-  if (!bucket || !/^\d+$/.test(fence)) return false;
+  if (
+    !bucket ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      fence,
+    )
+  )
+    return false;
   const prefix = `supabase://${bucket}/exports/${exportId}/${fence}/`;
   return new RegExp(
     `^${escapeRegExp(prefix)}[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.${format.toLowerCase()}$`,

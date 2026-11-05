@@ -642,7 +642,11 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       });
       const first = await workerA.claimQueuedExportJob(exportId);
       expect(first).not.toBeNull();
-      await workerB.requeueStaleProcessingExports(new Date(Date.now() + 1_000));
+      await pool.query(
+        "UPDATE bulk.export_jobs SET lease_until = now() - interval '1 millisecond' WHERE export_id = $1",
+        [exportId],
+      );
+      await workerB.requeueStaleProcessingExports(new Date());
       const second = await workerB.claimQueuedExportJob(exportId);
       expect(second).not.toBeNull();
       expect(second!.fence).not.toBe(first!.fence);
@@ -694,6 +698,81 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
       else process.env.BULK_STORAGE_BUCKET = previousBucket;
     }
   });
+
+  it('renews a long PostgreSQL export lease across worker restart and fences a concurrent reclaim', async () => {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    const workerA = new BulkPersistenceRepository(database);
+    const workerB = new BulkPersistenceRepository(database);
+    const exportId = randomUUID();
+    let renewing = true;
+    const created = await workerA.createExportJob({ exportId, format: 'CSV' });
+    const first = await workerA.claimQueuedExportJob(exportId);
+    expect(first).not.toBeNull();
+    const renew = setInterval(() => {
+      if (renewing) void workerA.renewExportClaim(exportId, first!.fence);
+    }, 15_000);
+    renew.unref();
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 61_000));
+      expect(await workerA.isExportClaimCurrent(exportId, first!.fence)).toBe(
+        true,
+      );
+      await workerB.requeueStaleProcessingExports(new Date());
+      expect(await workerB.claimQueuedExportJob(exportId)).toBeNull();
+
+      renewing = false;
+      clearInterval(renew);
+      await pool.query(
+        "UPDATE bulk.export_jobs SET lease_until = now() - interval '1 millisecond' WHERE export_id = $1",
+        [exportId],
+      );
+      await workerB.requeueStaleProcessingExports(new Date());
+      const restartedWorkerClaim = await workerB.claimQueuedExportJob(exportId);
+      expect(restartedWorkerClaim).not.toBeNull();
+
+      const snapshot = {
+        requestedAt: created.createdAt.toISOString(),
+        catalogObservedAt: created.createdAt.toISOString(),
+        pricingObservedAt: created.createdAt.toISOString(),
+        inventoryObservedAt: created.createdAt.toISOString(),
+        catalogVersion: 'catalog-v1',
+        pricingVersion: 'pricing-v1',
+        inventoryVersion: 'inventory-v1',
+      };
+      const stale = await workerA.completeExportJob(
+        exportId,
+        {
+          format: 'CSV',
+          contentRef: `supabase://bulk-private-test/exports/${exportId}/${first!.fence}/${randomUUID()}.csv`,
+        },
+        first!.fence,
+        snapshot,
+      );
+      expect(stale).toBeNull();
+      const completed = await workerB.completeExportJob(
+        exportId,
+        {
+          format: 'CSV',
+          contentRef: `supabase://bulk-private-test/exports/${exportId}/${restartedWorkerClaim!.fence}/${randomUUID()}.csv`,
+        },
+        restartedWorkerClaim!.fence,
+        snapshot,
+      );
+      expect(completed?.status).toBe('COMPLETED');
+      expect(
+        await pool.query(
+          'SELECT count(*)::int AS count FROM bulk.file_manifests WHERE content_ref LIKE $1',
+          [`%/${exportId}/%`],
+        ),
+      ).toMatchObject({ rows: [{ count: 1 }] });
+    } finally {
+      renewing = false;
+      clearInterval(renew);
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
+  }, 90000);
 
   it('retries a transient PostgreSQL failure during an export claim', async () => {
     const suffix = randomUUID().replaceAll('-', '');
@@ -747,7 +826,7 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
         'ALTER TABLE bulk.export_jobs DISABLE TRIGGER trg_export_jobs_updated_at',
       );
       await pool.query(
-        "UPDATE bulk.export_jobs SET updated_at = now() - interval '2 minutes' WHERE export_id = $1",
+        "UPDATE bulk.export_jobs SET updated_at = now() - interval '2 minutes', lease_until = now() - interval '1 millisecond' WHERE export_id = $1",
         [job.exportId],
       );
     } finally {

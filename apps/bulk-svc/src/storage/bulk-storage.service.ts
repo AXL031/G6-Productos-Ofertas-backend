@@ -182,4 +182,34 @@ export class BulkStorageService {
       );
     }
   }
+
+  async remove(contentRef: string): Promise<void> {
+    const { url, key, bucket } = this.config();
+    if (!matchesBulkStorageReference(contentRef, bucket))
+      throw new BulkDomainError(
+        'STORAGE_UNAVAILABLE',
+        'La referencia privada no corresponde al bucket configurado.',
+      );
+    const objectName = contentRef.slice(`supabase://${bucket}/`.length);
+    try {
+      await withStorageRequest(undefined, async (signal) => {
+        const response = await fetch(
+          `${url}/storage/v1/object/${encodeURIComponent(bucket)}/${objectName.split('/').map(encodeURIComponent).join('/')}`,
+          {
+            method: 'DELETE',
+            headers: { apikey: key, authorization: `Bearer ${key}` },
+            signal,
+          },
+        );
+        if (!response.ok && response.status !== 404)
+          throw new Error('object cleanup failed');
+      });
+    } catch (error) {
+      throw new BulkDomainError(
+        'STORAGE_UNAVAILABLE',
+        'No se pudo retirar un objeto de exportación sin manifiesto.',
+        { cause: error },
+      );
+    }
+  }
 }

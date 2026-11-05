@@ -215,6 +215,7 @@ export class CatalogBulkResultConsumer
   private reconnectTimer: NodeJS.Timeout | null = null;
   private replayTimer: NodeJS.Timeout | null = null;
   private replaying = false;
+  private replayRequested = false;
 
   constructor(
     private readonly repository: BulkPersistenceRepository,
@@ -405,12 +406,33 @@ export class CatalogBulkResultConsumer
   }
 
   async replayPendingContractResults(): Promise<void> {
-    if (this.replaying || this.stopping) return;
+    if (this.stopping) return;
+    if (this.replaying) {
+      this.replayRequested = true;
+      return;
+    }
     this.replaying = true;
     let hasPending = false;
     try {
-      const pending = await this.repository.listPendingContractResults(100);
+      const supportedRoutes = this.contractResultDispatcher
+        ? [...RESULT_ROUTES, ...OTHER_BULK_ROUTES.keys()]
+        : [...RESULT_ROUTES];
+      const unsupportedRoutes = [...OTHER_BULK_ROUTES.keys()].filter(
+        (route) => !supportedRoutes.includes(route),
+      );
+      const pending = await this.repository.listPendingContractResults(
+        100,
+        supportedRoutes,
+      );
       hasPending = pending.length > 0;
+      if (unsupportedRoutes.length) {
+        const blocked =
+          await this.repository.countPendingContractResults(unsupportedRoutes);
+        if (blocked > 0)
+          this.logger.warn(
+            `Hay ${blocked} resultados externos durables pendientes sin dispatcher habilitado; rutas: ${unsupportedRoutes.join(', ')}.`,
+          );
+      }
       for (const item of pending) {
         try {
           if (RESULT_ROUTES.has(item.eventName)) {
@@ -431,8 +453,12 @@ export class CatalogBulkResultConsumer
             continue;
           }
           await this.repository.markContractResultReplayed(item);
-        } catch {
-          // Pending replay remains durable until its owner or dependency recovers.
+        } catch (error) {
+          const detail =
+            error instanceof Error ? error.message : 'unknown replay failure';
+          this.logger.warn(
+            `Replay pendiente para ${item.eventName} (${item.messageId}) no aplicado; permanece durable: ${detail}`,
+          );
         }
       }
     } catch {
@@ -440,7 +466,10 @@ export class CatalogBulkResultConsumer
       hasPending = true;
     } finally {
       this.replaying = false;
-      if (hasPending) this.scheduleReplay();
+      if (this.replayRequested) {
+        this.replayRequested = false;
+        queueMicrotask(() => void this.replayPendingContractResults());
+      } else if (hasPending) this.scheduleReplay();
     }
   }
 

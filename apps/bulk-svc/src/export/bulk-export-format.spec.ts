@@ -159,4 +159,98 @@ describe('Bulk export format and consolidation', () => {
       createExportCsv(Array.from({ length: 100_001 }, () => rows[0]!)),
     ).toThrow('Export exceeds the configured safe row limit');
   });
+
+  it('keeps a parent price and one variant override without treating the override as a duplicate parent', () => {
+    const productId = randomUUID();
+    const catalog = ['PARENT', 'VAR-01', 'VAR-02'].map((sku) => ({
+      productId,
+      skuBase: 'PARENT',
+      variantSku: sku === 'PARENT' ? null : sku,
+      name: sku,
+      description: null,
+      categoryId: 'c',
+      brandId: 'b',
+      productTypeId: 't',
+    }));
+    const rows = consolidateExportRows({
+      catalog,
+      prices: [
+        {
+          productId,
+          sku: null,
+          regular: 100,
+          offer: null,
+          offerStartsAt: null,
+          offerEndsAt: null,
+        },
+        {
+          productId,
+          sku: 'VAR-01',
+          regular: 80,
+          offer: null,
+          offerStartsAt: null,
+          offerEndsAt: null,
+        },
+      ],
+      stock: [],
+      snapshot,
+    });
+    expect(
+      rows.map((row) => [row.variantSku ?? row.skuBase, row.price?.regular]),
+    ).toEqual([
+      ['PARENT', 100],
+      ['VAR-01', 80],
+      ['VAR-02', 100],
+    ]);
+    expect(() =>
+      consolidateExportRows({
+        catalog,
+        prices: [
+          {
+            productId,
+            sku: null,
+            regular: 100,
+            offer: null,
+            offerStartsAt: null,
+            offerEndsAt: null,
+          },
+          {
+            productId,
+            sku: 'VAR-01',
+            regular: 80,
+            offer: null,
+            offerStartsAt: null,
+            offerEndsAt: null,
+          },
+          {
+            productId,
+            sku: 'VAR-01',
+            regular: 70,
+            offer: null,
+            offerStartsAt: null,
+            offerEndsAt: null,
+          },
+        ],
+        stock: [],
+        snapshot,
+      }),
+    ).toThrow('Duplicate price SKU identity');
+    expect(() =>
+      consolidateExportRows({
+        catalog,
+        prices: [
+          {
+            productId: randomUUID(),
+            sku: 'VAR-01',
+            regular: 80,
+            offer: null,
+            offerStartsAt: null,
+            offerEndsAt: null,
+          },
+        ],
+        stock: [],
+        snapshot,
+      }),
+    ).toThrow('Pricing export DTO is incompatible');
+  });
 });

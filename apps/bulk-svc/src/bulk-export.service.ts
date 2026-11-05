@@ -32,6 +32,7 @@ export type ExportFormat = 'CSV' | 'XLSX';
 @Injectable()
 export class BulkExportService implements OnModuleInit, OnModuleDestroy {
   private static readonly PROCESSING_LEASE_MS = 60_000;
+  private static readonly LEASE_RENEW_INTERVAL_MS = 20_000;
   private static readonly MAX_EXPORT_ROWS = 100_000;
   private static readonly MAX_EXPORT_BYTES = 64 * 1024 * 1024;
   private static readonly RETRY_BASE_MS = 250;
@@ -202,79 +203,135 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
       fence = claimed.fence;
       this.failureFences.set(exportId, fence);
     }
-    if (!this.source || !this.storage) {
-      await this.repository.failProcessingExportJob(exportId, fence);
-      this.failureFences.delete(exportId);
-      this.retryCounts.delete(exportId);
-      return;
-    }
-    let file: { format: ExportFormat; contentRef: string };
-    let snapshot: ExportSnapshot;
+    let leaseLost = false;
+    let renewalInProgress = false;
+    const leaseTimer = setInterval(() => {
+      if (renewalInProgress || leaseLost || this.destroyed) return;
+      renewalInProgress = true;
+      void this.repository
+        .renewExportClaim(exportId, fence!)
+        .then((renewed) => {
+          if (!renewed) leaseLost = true;
+        })
+        .catch(() => {
+          leaseLost = true;
+        })
+        .finally(() => {
+          renewalInProgress = false;
+        });
+    }, BulkExportService.LEASE_RENEW_INTERVAL_MS);
+    leaseTimer.unref();
     try {
-      const job = await this.repository.findExportJobByExportId(exportId);
-      if (!job || (job.format !== 'CSV' && job.format !== 'XLSX'))
-        throw new Error('Export format is invalid');
-      const requestedAt = job.createdAt.toISOString();
-      const [catalog, pricing, inventory] = await Promise.all([
-        this.readAll((cursor, limit, signal) =>
-          this.source!.catalog(cursor, limit, signal),
-        ),
-        this.readAll(
-          (cursor, limit, signal, at) =>
-            this.source!.pricing(cursor, limit, signal, at!),
+      if (!this.source || !this.storage) {
+        await this.repository.failProcessingExportJob(exportId, fence);
+        this.failureFences.delete(exportId);
+        this.retryCounts.delete(exportId);
+        return;
+      }
+      let file: { format: ExportFormat; contentRef: string };
+      let snapshot: ExportSnapshot;
+      try {
+        const job = await this.repository.findExportJobByExportId(exportId);
+        if (!job || (job.format !== 'CSV' && job.format !== 'XLSX'))
+          throw new Error('Export format is invalid');
+        const requestedAt = job.createdAt.toISOString();
+        const [catalog, pricing, inventory] = await Promise.all([
+          this.readAll((cursor, limit, signal) =>
+            this.source!.catalog(cursor, limit, signal),
+          ),
+          this.readAll(
+            (cursor, limit, signal, at) =>
+              this.source!.pricing(cursor, limit, signal, at!),
+            requestedAt,
+          ),
+          this.readAll((cursor, limit, signal) =>
+            this.source!.inventory(cursor, limit, signal),
+          ),
+        ]);
+        snapshot = {
           requestedAt,
-        ),
-        this.readAll((cursor, limit, signal) =>
-          this.source!.inventory(cursor, limit, signal),
-        ),
-      ]);
-      snapshot = {
-        requestedAt,
-        catalogObservedAt: catalog.observedAt,
-        pricingObservedAt: pricing.observedAt,
-        inventoryObservedAt: inventory.observedAt,
-        catalogVersion: catalog.version,
-        pricingVersion: pricing.version,
-        inventoryVersion: inventory.version,
-      };
-      const rows = consolidateExportRows({
-        catalog: catalog.items,
-        prices: pricing.items,
-        stock: inventory.items,
-        snapshot,
-      });
-      const bytes =
-        job.format === 'CSV' ? createExportCsv(rows) : createExportXlsx(rows);
-      const contentType =
-        job.format === 'CSV'
-          ? 'text/csv; charset=utf-8'
-          : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      const attemptId = randomUUID();
-      if (bytes.byteLength > BulkExportService.MAX_EXPORT_BYTES)
-        throw new Error('Export exceeds the configured safe byte limit');
-      const contentRef = await this.storage.put(
-        bytes,
-        contentType,
-        `exports/${exportId}/${fence}/${attemptId}.${job.format.toLowerCase()}`,
-      );
-      file = { format: job.format, contentRef };
-    } catch {
-      await this.repository.failProcessingExportJob(exportId, fence);
+          catalogObservedAt: catalog.observedAt,
+          pricingObservedAt: pricing.observedAt,
+          inventoryObservedAt: inventory.observedAt,
+          catalogVersion: catalog.version,
+          pricingVersion: pricing.version,
+          inventoryVersion: inventory.version,
+        };
+        const rows = consolidateExportRows({
+          catalog: catalog.items,
+          prices: pricing.items,
+          stock: inventory.items,
+          snapshot,
+        });
+        const bytes =
+          job.format === 'CSV' ? createExportCsv(rows) : createExportXlsx(rows);
+        const contentType =
+          job.format === 'CSV'
+            ? 'text/csv; charset=utf-8'
+            : 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        const attemptId = randomUUID();
+        if (
+          leaseLost ||
+          !(await this.repository.isExportClaimCurrent(exportId, fence))
+        )
+          return;
+        if (bytes.byteLength > BulkExportService.MAX_EXPORT_BYTES)
+          throw new Error('Export exceeds the configured safe byte limit');
+        const contentRef = await this.storage.put(
+          bytes,
+          contentType,
+          `exports/${exportId}/${fence}/${attemptId}.${job.format.toLowerCase()}`,
+        );
+        file = { format: job.format, contentRef };
+      } catch {
+        await this.repository.failProcessingExportJob(exportId, fence);
+        this.failureFences.delete(exportId);
+        this.retryCounts.delete(exportId);
+        return;
+      }
+      if (
+        leaseLost ||
+        !(await this.repository.isExportClaimCurrent(exportId, fence))
+      ) {
+        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        return;
+      }
+      // Database failures here remain retryable. Each retry writes to a unique
+      // immutable object path, so a stale attempt cannot overwrite a published file.
+      let completed;
+      try {
+        completed = await this.repository.completeExportJob(
+          exportId,
+          { format: file.format, contentRef: file.contentRef },
+          fence,
+          snapshot,
+        );
+      } catch (error) {
+        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        throw error;
+      }
       this.failureFences.delete(exportId);
       this.retryCounts.delete(exportId);
-      return;
+      if (!completed) {
+        await this.removeUnpublishedArtifact(exportId, file.contentRef);
+        return;
+      }
+    } finally {
+      clearInterval(leaseTimer);
     }
-    // Database failures here remain retryable. Each retry writes to a unique
-    // immutable object path, so a stale attempt cannot overwrite a published file.
-    const completed = await this.repository.completeExportJob(
-      exportId,
-      { format: file.format, contentRef: file.contentRef },
-      fence,
-      snapshot,
-    );
-    this.failureFences.delete(exportId);
-    this.retryCounts.delete(exportId);
-    if (!completed) return;
+  }
+
+  private async removeUnpublishedArtifact(
+    exportId: string,
+    contentRef: string,
+  ): Promise<void> {
+    try {
+      await this.storage?.remove(contentRef);
+    } catch {
+      this.logger.error(
+        `No se pudo retirar el objeto sin manifiesto de la exportación ${exportId}; referencia para recuperación operativa: ${contentRef}`,
+      );
+    }
   }
 
   private async readAll<T>(

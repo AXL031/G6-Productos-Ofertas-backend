@@ -14,6 +14,7 @@ import { BulkPersistenceRepository } from '../persistence/bulk.repository.js';
 import { BULK_AMQP_URL, bulkAmqpUserId } from './bulk-rabbitmq.js';
 
 const EXCHANGE = 'po.comandos.x';
+const CATALOG_UPSERT = 'catalog.bulk.upsert.requested';
 export type BulkMessagingState =
   'NOT_CONFIGURED' | 'CONNECTING' | 'READY' | 'RECOVERING' | 'TOPOLOGY_BLOCKED';
 
@@ -66,7 +67,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
     try {
       const userId = bulkAmqpUserId(this.amqpUrl);
       const channel = await this.getChannel();
-      const pending = await this.repository.findPendingOutbox(50);
+      const pending = await this.repository.findPendingOutbox(50, true);
       for (const item of pending) {
         const payload = Buffer.from(JSON.stringify(item.payload), 'utf8');
         this.returned.delete(item.messageId);
@@ -96,6 +97,16 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
             'Publicación Outbox sin ruta; el comando permanece pendiente y se volverá a comprobar la topología con backoff.',
           );
           return;
+        }
+        if (item.eventName === CATALOG_UPSERT) {
+          // An alternate exchange can satisfy mandatory routing and confirms.
+          // Keep the outbox pending until the correlated Catalog result proves
+          // the primary consumer received this stable message_id.
+          await this.repository.deferOutboxUntilCatalogResult(
+            item.messageId,
+            item.attempts + 1,
+          );
+          continue;
         }
         await this.repository.markOutboxPublished(item.messageId, {
           publishedAt: new Date(),
