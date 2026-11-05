@@ -25,6 +25,7 @@ export const INVENTORY_SCOPES = {
 } as const;
 
 export const KNOWN_CLIENTS = {
+  PRODUCTOS: 'modulo-productos',
   VENTAS: 'modulo-ventas',
   POSTVENTA: 'modulo-postventa',
   MARKETPLACE: 'modulo-marketplace',

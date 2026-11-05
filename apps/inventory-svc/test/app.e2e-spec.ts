@@ -521,6 +521,305 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
     );
   });
 
+  describe('Disponibilidad comercial — identidad interna modulo-productos (H4)', () => {
+    const productosToken = createCryptographicJwt({
+      clientId: 'modulo-productos',
+      scope: 'inventario:disponibilidad:leer',
+    });
+    const productosSinScopeToken = createCryptographicJwt({
+      clientId: 'modulo-productos',
+      scope: 'inventario:reservar',
+    });
+    const marketplaceToken = createCryptographicJwt({
+      clientId: 'modulo-marketplace',
+      scope: 'inventario:disponibilidad:leer',
+    });
+    const chatbotToken = createCryptographicJwt({
+      clientId: 'modulo-chatbot',
+      scope: 'inventario:disponibilidad:leer',
+    });
+    const desconocidoToken = createCryptographicJwt({
+      clientId: 'modulo-desconocido',
+      scope: 'inventario:disponibilidad:leer',
+    });
+    const productosFirmaInvalida = createCryptographicJwt({
+      clientId: 'modulo-productos',
+      scope: 'inventario:disponibilidad:leer',
+      tamperSignature: true,
+    });
+    let previousDemo: string | undefined;
+    let previousDemoIps: string | undefined;
+
+    beforeAll(() => {
+      previousDemo = process.env.INVENTORY_DEMO_NO_AUTH_ENABLED;
+      previousDemoIps = process.env.INVENTORY_DEMO_GATEWAY_IPS;
+      delete process.env.INVENTORY_DEMO_NO_AUTH_ENABLED;
+      delete process.env.INVENTORY_DEMO_GATEWAY_IPS;
+    });
+
+    afterAll(() => {
+      if (previousDemo === undefined)
+        delete process.env.INVENTORY_DEMO_NO_AUTH_ENABLED;
+      else process.env.INVENTORY_DEMO_NO_AUTH_ENABLED = previousDemo;
+      if (previousDemoIps === undefined)
+        delete process.env.INVENTORY_DEMO_GATEWAY_IPS;
+      else process.env.INVENTORY_DEMO_GATEWAY_IPS = previousDemoIps;
+    });
+
+    beforeEach(() => {
+      mockDb.commercialRoutes.push({
+        id: randomUUID(),
+        channel_id: 'MARKETPLACE',
+        mode: 'ENVIO_DOMICILIO',
+        fulfillment_ref: 'REF-MP',
+        location_id: locLurin,
+        active: true,
+      });
+    });
+
+    it('la excepción demo permanece desactivada durante las pruebas contractuales', () => {
+      expect(process.env.INVENTORY_DEMO_NO_AUTH_ENABLED ?? 'false').toBe(
+        'false',
+      );
+    });
+
+    it('GET: modulo-productos + scope + MARKETPLACE responde 200 contractual', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${productosToken}`)
+        .expect(200);
+
+      expect(res.body.items).toEqual([
+        { sku: 'NIK-REV7-NEG-41', status: 'DISPONIBLE' },
+      ]);
+      expect(Object.keys(res.body.items[0]).sort()).toEqual(['sku', 'status']);
+    });
+
+    it('GET: modulo-productos sin el scope requerido responde 403', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${productosSinScopeToken}`)
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it.each(['CHATBOT', 'RETAIL'])(
+      'GET: modulo-productos con canal %s no autorizado responde 403',
+      async (canal) => {
+        const res = await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=${canal}`,
+          )
+          .set('Authorization', `Bearer ${productosToken}`)
+          .expect(403);
+
+        expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+      },
+    );
+
+    it('GET: un cliente comercial con canal ajeno sigue respondiendo 403', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=CHATBOT`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it('GET: un cliente no autorizado con scope válido responde 403', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${desconocidoToken}`)
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it('GET: un canal inexistente responde 400', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=VENTAS`,
+        )
+        .set('Authorization', `Bearer ${productosToken}`)
+        .expect(400);
+
+      expect(res.body.code).toBe('VALIDACION');
+    });
+
+    it('GET: sin JWT responde 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .expect(401);
+
+      expect(res.body.code).toBe('TOKEN_INVALIDO');
+    });
+
+    it('GET: con JWT de firma inválida responde 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${productosFirmaInvalida}`)
+        .expect(401);
+
+      expect(res.body.code).toBe('TOKEN_INVALIDO');
+    });
+
+    it('POST: modulo-productos + scope + MARKETPLACE responde 200 no vinculante', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${productosToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(200);
+
+      expect(res.body.binding).toBe(false);
+      expect(res.body.items[0].result).toBe('SUFICIENTE');
+    });
+
+    it('POST: modulo-productos sin el scope requerido responde 403', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${productosSinScopeToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it.each(['CHATBOT', 'RETAIL'])(
+      'POST: modulo-productos con channel_id %s no autorizado responde 403',
+      async (channelId) => {
+        const res = await request(app.getHttpServer())
+          .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+          .set('Authorization', `Bearer ${productosToken}`)
+          .send({
+            channel_id: channelId,
+            fulfillment: {
+              mode: 'ENVIO_DOMICILIO',
+              fulfillment_ref: 'REF-MP',
+            },
+            lines: [{ sku, quantity: 1 }],
+          })
+          .expect(403);
+
+        expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+      },
+    );
+
+    it('POST: un cliente comercial con channel_id ajeno sigue respondiendo 403', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${chatbotToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it('POST: un cliente no autorizado con scope válido responde 403', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${desconocidoToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it('POST: un channel_id inexistente responde 400', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${productosToken}`)
+        .send({
+          channel_id: 'VENTAS',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(400);
+
+      expect(res.body.code).toBe('VALIDACION');
+    });
+
+    it('POST: sin JWT responde 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(401);
+
+      expect(res.body.code).toBe('TOKEN_INVALIDO');
+    });
+
+    it('POST: con JWT de firma inválida responde 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${productosFirmaInvalida}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(401);
+
+      expect(res.body.code).toBe('TOKEN_INVALIDO');
+    });
+
+    it('modulo-productos no obtiene acceso general a la disponibilidad detallada', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/disponibilidad?skus=${sku}`)
+        .set('Authorization', `Bearer ${productosToken}`)
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+
+    it('modulo-productos no obtiene acceso a reservas', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/inventario/reservas')
+        .set('Authorization', `Bearer ${productosToken}`)
+        .set('Idempotency-Key', randomUUID())
+        .send({
+          order_id: randomUUID(),
+          operation_id: randomUUID(),
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        })
+        .expect(403);
+
+      expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+    });
+  });
+
   describe('Reintegro F3/Postventa (POST /api/v1/inventario/reintegros)', () => {
     const postventaToken = createCryptographicJwt({
       clientId: 'modulo-postventa',
