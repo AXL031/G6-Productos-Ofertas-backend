@@ -314,7 +314,6 @@ describe('OutboxPublisherService — Publicación Confiable y Confirmación de B
   });
 
   it('6. userId del customPublisher se propaga a las opciones AMQP de publicación (integración con Catalog)', async () => {
-    const eventId = randomUUID();
     const opId = randomUUID();
     const correlId = randomUUID();
     for (const [name, kind] of [
@@ -383,7 +382,11 @@ describe('OutboxPublisherService — Publicación Confiable y Confirmación de B
       event_type: 'inventory.stock.changed',
       aggregate_type: 'stock',
       aggregate_id: 'SKU-X',
-      payload: { message_id: eventId, kind: 'event', correlation_id: randomUUID() },
+      payload: {
+        message_id: eventId,
+        kind: 'event',
+        correlation_id: randomUUID(),
+      },
       status: 'PENDING',
       created_at: new Date().toISOString(),
     });

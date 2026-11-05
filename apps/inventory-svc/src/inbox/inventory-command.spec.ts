@@ -491,7 +491,11 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     // Intentar re-inicializar con una ubicación específica
     const command = {
       ...message(),
-      data: { sku, product_id: 'PRODUCTO-NUEVO', default_location_id: locLurin },
+      data: {
+        sku,
+        product_id: 'PRODUCTO-NUEVO',
+        default_location_id: locLurin,
+      },
     };
     const result = await service.process(command);
 

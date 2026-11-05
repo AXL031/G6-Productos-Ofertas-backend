@@ -53,7 +53,6 @@ const CANAL_CLIENT_MAP: Record<string, string> = {
   RETAIL: KNOWN_CLIENTS.RETAIL,
 };
 
-
 function parseSkusQuery(skusQuery?: string | string[]): string[] {
   if (typeof skusQuery === 'string') {
     return skusQuery
