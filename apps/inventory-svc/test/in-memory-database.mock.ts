@@ -163,6 +163,26 @@ export interface TrasladoRecepcionRow {
   received_at: string;
 }
 
+export interface SkuLifecycleRow {
+  sku_id: string;
+  product_id: string;
+  sku_version: number;
+  active: boolean;
+  changed_at: string;
+}
+
+export interface OfflineSaleReconciliationRow {
+  client_id: string;
+  offline_sale_id: string;
+  operation_id: string;
+  order_id: string;
+  request_fingerprint: string;
+  request_payload: unknown;
+  result_payload: unknown;
+  status: 'COMPLETED' | 'REQUIRES_REVIEW';
+  completed_at: string;
+}
+
 export class InMemoryDatabaseMock implements IDatabaseService {
   locations: LocationRow[] = [];
   stockBalance: StockBalanceRow[] = [];
@@ -177,6 +197,8 @@ export class InMemoryDatabaseMock implements IDatabaseService {
   incidencias: IncidenciaRow[] = [];
   traslados: TrasladoRow[] = [];
   trasladoRecepciones: TrasladoRecepcionRow[] = [];
+  skuLifecycle: SkuLifecycleRow[] = [];
+  offlineSaleReconciliations: OfflineSaleReconciliationRow[] = [];
 
   private rowLocks = new Map<string, Promise<void>>();
   private lockResolvers = new Map<string, () => void>();
@@ -255,6 +277,8 @@ export class InMemoryDatabaseMock implements IDatabaseService {
     this.incidencias = [];
     this.traslados = [];
     this.trasladoRecepciones = [];
+    this.skuLifecycle = [];
+    this.offlineSaleReconciliations = [];
   }
 
   private cloneState() {
@@ -272,6 +296,10 @@ export class InMemoryDatabaseMock implements IDatabaseService {
       incidencias: JSON.parse(JSON.stringify(this.incidencias)),
       traslados: JSON.parse(JSON.stringify(this.traslados)),
       trasladoRecepciones: JSON.parse(JSON.stringify(this.trasladoRecepciones)),
+      skuLifecycle: JSON.parse(JSON.stringify(this.skuLifecycle)),
+      offlineSaleReconciliations: JSON.parse(
+        JSON.stringify(this.offlineSaleReconciliations),
+      ),
     };
   }
 
@@ -289,6 +317,8 @@ export class InMemoryDatabaseMock implements IDatabaseService {
     this.incidencias = snapshot.incidencias;
     this.traslados = snapshot.traslados;
     this.trasladoRecepciones = snapshot.trasladoRecepciones;
+    this.skuLifecycle = snapshot.skuLifecycle;
+    this.offlineSaleReconciliations = snapshot.offlineSaleReconciliations;
   }
 
   private async acquireRowLock(key: string): Promise<void> {
@@ -397,9 +427,87 @@ export class InMemoryDatabaseMock implements IDatabaseService {
       return { rows: [{ '?column?': 1 }] as any, rowCount: 1 };
     }
 
+    if (s.startsWith('SELECT') && s.includes('FROM INVENTORY.SKU_LIFECYCLE')) {
+      const rows = this.skuLifecycle.filter(
+        (row) => row.sku_id === params?.[0],
+      );
+      return { rows: rows as any, rowCount: rows.length };
+    }
+    if (s.startsWith('INSERT INTO INVENTORY.SKU_LIFECYCLE')) {
+      const [sku_id, product_id, sku_version, changed_at] = params ?? [];
+      const current = this.skuLifecycle.find((row) => row.sku_id === sku_id);
+      if (current) {
+        if (current.sku_version < Number(sku_version)) {
+          Object.assign(current, {
+            product_id,
+            sku_version: Number(sku_version),
+            active: false,
+            changed_at,
+          });
+        }
+      } else {
+        this.skuLifecycle.push({
+          sku_id,
+          product_id,
+          sku_version: Number(sku_version),
+          active: false,
+          changed_at,
+        });
+      }
+      return { rows: [], rowCount: 1 };
+    }
+
+    if (
+      s.startsWith('SELECT') &&
+      s.includes('FROM INVENTORY.OFFLINE_SALE_RECONCILIATIONS')
+    ) {
+      const rows = this.offlineSaleReconciliations.filter(
+        (row) =>
+          row.client_id === params?.[0] && row.offline_sale_id === params?.[1],
+      );
+      return { rows: rows as any, rowCount: rows.length };
+    }
+    if (s.startsWith('INSERT INTO INVENTORY.OFFLINE_SALE_RECONCILIATIONS')) {
+      const [
+        client_id,
+        offline_sale_id,
+        operation_id,
+        order_id,
+        request_fingerprint,
+        request_payload,
+        result_payload,
+        status,
+        completed_at,
+      ] = params ?? [];
+      this.offlineSaleReconciliations.push({
+        client_id,
+        offline_sale_id,
+        operation_id,
+        order_id,
+        request_fingerprint,
+        request_payload:
+          typeof request_payload === 'string'
+            ? JSON.parse(request_payload)
+            : request_payload,
+        result_payload:
+          typeof result_payload === 'string'
+            ? JSON.parse(result_payload)
+            : result_payload,
+        status,
+        completed_at,
+      });
+      return { rows: [], rowCount: 1 };
+    }
+
     // SELECT from locations
     if (s.includes('FROM INVENTORY.LOCATIONS')) {
-      if (s.includes('WHERE ACTIVE = TRUE')) {
+      if (s.includes('ACTIVE = TRUE')) {
+        if (s.includes('WHERE ID = $1')) {
+          const rows = this.locations.filter(
+            (l) => l.id === params?.[0] && l.active,
+          );
+          return { rows: rows as any, rowCount: rows.length };
+        }
         return {
           rows: this.locations.filter((l) => l.active) as any,
           rowCount: this.locations.length,

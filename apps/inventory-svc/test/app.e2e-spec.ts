@@ -351,6 +351,12 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
       clientId: 'modulo-chatbot',
       scope: 'inventario:disponibilidad:leer',
     });
+    const productsToken = createCryptographicJwt({
+      clientId: 'modulo-productos',
+      tipo: 'servicio',
+      aud: 'api-productos',
+      scope: 'inventario:disponibilidad:leer',
+    });
 
     beforeEach(() => {
       mockDb.commercialRoutes.push({
@@ -379,6 +385,83 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
         expect(Object.keys(item).sort()).toEqual(['sku', 'status']);
       }
     });
+
+    it('GET permite modulo-productos únicamente para MARKETPLACE', async () => {
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${productsToken}`)
+        .expect(200);
+      expect(res.body.items).toEqual([{ sku, status: 'DISPONIBLE' }]);
+    });
+
+    it.each(['CHATBOT', 'RETAIL'])(
+      'GET rechaza modulo-productos para %s',
+      async (canal) => {
+        const res = await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=${canal}`,
+          )
+          .set('Authorization', `Bearer ${productsToken}`)
+          .expect(403);
+        expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+      },
+    );
+
+    it('mantiene modulo-productos fuera del POST verificador y de la disponibilidad detallada', async () => {
+      await request(app.getHttpServer())
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .set('Authorization', `Bearer ${productsToken}`)
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO', fulfillment_ref: 'REF-MP' },
+          lines: [{ sku, quantity: 1 }],
+        })
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad?skus=${sku}&location_id=${locLurin}`,
+        )
+        .set('Authorization', `Bearer ${productsToken}`)
+        .expect(403);
+    });
+
+    it.each([
+      { name: 'sin scope', override: { scope: '' }, status: 403 },
+      {
+        name: 'audience inválida',
+        override: { aud: 'otro-servicio' },
+        status: 401,
+      },
+      {
+        name: 'issuer inválido',
+        override: { iss: 'https://otro-issuer.invalid' },
+        status: 401,
+      },
+      {
+        name: 'expirado',
+        override: { exp: Math.floor(Date.now() / 1000) },
+        status: 401,
+      },
+    ])(
+      'protege modulo-productos con JWT válido salvo $name',
+      async ({ override, status }) => {
+        const token = createCryptographicJwt({
+          clientId: 'modulo-productos',
+          tipo: 'servicio',
+          aud: 'api-productos',
+          scope: 'inventario:disponibilidad:leer',
+          ...override,
+        });
+        await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+          )
+          .set('Authorization', `Bearer ${token}`)
+          .expect(status);
+      },
+    );
 
     it('GET responde INDETERMINADO cuando no hay ruta única de cumplimiento', async () => {
       mockDb.commercialRoutes = [];

@@ -1,5 +1,6 @@
-import { Injectable, Inject } from '@nestjs/common';
+import { Injectable, Inject, Optional } from '@nestjs/common';
 import { loadInventoryConfig } from '../config/inventory.config.js';
+import { DatabaseService } from '../database/database.service.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
   DashboardInventario,
@@ -18,12 +19,74 @@ export interface DashboardFiltros {
   locationId?: string;
 }
 
+/** SPEC-016 metrics kept internal until OpenAPI approves an expanded DTO. */
+export interface DashboardMetricasInternas {
+  unidadesFisicas: number;
+  unidadesReservadas: number;
+  unidadesBloqueadas: number;
+  unidadesDisponibles: number;
+  skuPorEstado: {
+    DISPONIBLE: number;
+    STOCK_BAJO: number;
+    AGOTADO: number;
+  };
+  trasladosPendientes: number;
+  trasladosConDiscrepancia: number;
+}
+
 @Injectable()
 export class DashboardService {
   constructor(
     @Inject(STOCK_BALANCE_REPOSITORY)
     private readonly stockBalanceRepository: IStockBalanceRepository,
+    @Optional() private readonly database?: DatabaseService,
   ) {}
+
+  /** Additional SPEC-016 indicators remain internal; the public DTO is unchanged. */
+  async obtenerMetricasInternas(
+    filtros: DashboardFiltros = {},
+  ): Promise<DashboardMetricasInternas> {
+    const dashboard = await this.obtenerDashboard(filtros);
+    const rows = await this.stockBalanceRepository.findByFilters({
+      sku: filtros.sku,
+      locationId: filtros.locationId,
+    });
+    const [enTransito, recepcionParcial, conDiscrepancia] = this.database
+      ? await Promise.all([
+          this.database.query<{ total: number }>(
+            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
+            ['EN_TRANSITO'],
+          ),
+          this.database.query<{ total: number }>(
+            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
+            ['RECIBIDO_PARCIAL'],
+          ),
+          this.database.query<{ total: number }>(
+            `SELECT count(*)::int AS total FROM inventory.traslados WHERE estado = $1`,
+            ['COMPLETADO_CON_DISCREPANCIA'],
+          ),
+        ])
+      : [
+          { rows: [{ total: 0 }], rowCount: 1 },
+          { rows: [{ total: 0 }], rowCount: 1 },
+          { rows: [{ total: 0 }], rowCount: 1 },
+        ];
+    return {
+      unidadesFisicas: dashboard.totalOnHand,
+      unidadesReservadas: dashboard.totalReserved,
+      unidadesBloqueadas: rows.reduce((sum, row) => sum + row.blocked, 0),
+      unidadesDisponibles: dashboard.totalAvailable,
+      skuPorEstado: {
+        DISPONIBLE: dashboard.skusDisponibles,
+        STOCK_BAJO: dashboard.skusStockBajo,
+        AGOTADO: dashboard.skusAgotados,
+      },
+      trasladosPendientes:
+        Number(enTransito.rows[0]?.total ?? 0) +
+        Number(recepcionParcial.rows[0]?.total ?? 0),
+      trasladosConDiscrepancia: Number(conDiscrepancia.rows[0]?.total ?? 0),
+    };
+  }
 
   /**
    * Read model del dashboard (SPEC-016). Calcula indicadores por SKU y por

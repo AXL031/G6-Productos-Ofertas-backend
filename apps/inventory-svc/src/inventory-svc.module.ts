@@ -49,6 +49,8 @@ import {
 import { InventoryAuthGuard } from './auth/inventory-auth.guard.js';
 import { UserAuthGuard } from './auth/user-auth.guard.js';
 import { InventoryWorkersService } from './workers/inventory-workers.service.js';
+import { AbsoluteStockAdjustmentService } from './bulk/absolute-stock-adjustment.service.js';
+import { OfflineReconciliationService } from './conciliacion/offline-reconciliation.service.js';
 
 @Module({
   imports: [],
@@ -78,6 +80,8 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     InventoryWorkersService,
     InventoryCommandService,
     InventoryConsumerService,
+    AbsoluteStockAdjustmentService,
+    OfflineReconciliationService,
     { provide: INBOX_REPOSITORY, useClass: DrizzleInboxRepository },
     // Repositorios Drizzle vinculados a sus tokens de interfaz
     {
@@ -147,6 +151,8 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     DashboardService,
     IncidenciasService,
     TrasladosService,
+    AbsoluteStockAdjustmentService,
+    OfflineReconciliationService,
     InventoryAuthGuard,
     UserAuthGuard,
     LOCATIONS_REPOSITORY,

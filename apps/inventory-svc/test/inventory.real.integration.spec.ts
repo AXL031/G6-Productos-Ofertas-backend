@@ -1,6 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import amqp from 'amqplib';
 import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -229,10 +231,11 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         'rabbitmq-diagnostics -q check_running',
         'rabbitmq',
       );
-      const docsRoot = new URL(
-        '../../../../docs/datos/inventory-svc/',
-        import.meta.url,
-      );
+      const docsRoot = process.env.G6_DOCS_ROOT
+        ? pathToFileURL(
+            resolve(process.env.G6_DOCS_ROOT, 'datos/inventory-svc') + '/',
+          )
+        : new URL('../../../../docs/datos/inventory-svc/', import.meta.url);
       const initial = await readFile(
         new URL('migration.sql', docsRoot),
         'utf8',
@@ -241,6 +244,13 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
         new URL(
           'migrations/0002_order_id_operaciones_disponibilidad.sql',
           docsRoot,
+        ),
+        'utf8',
+      );
+      const inventoryCandidateMigration = await readFile(
+        new URL(
+          '../migrations/20261104_0001_lifecycle_offline_reconciliation.sql',
+          import.meta.url,
         ),
         'utf8',
       );
@@ -273,6 +283,21 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           'inventory_it',
         ],
         `BEGIN;\n${incremental}\nCOMMIT;`,
+      );
+      docker(
+        [
+          'exec',
+          '-i',
+          pgContainer,
+          'psql',
+          '-v',
+          'ON_ERROR_STOP=1',
+          '-U',
+          'inventory_test',
+          '-d',
+          'inventory_it',
+        ],
+        inventoryCandidateMigration,
       );
       docker([
         'exec',
@@ -1377,6 +1402,8 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       'outbox',
       'inbox',
       'commercial_fulfillment_routes',
+      'sku_lifecycle',
+      'offline_sale_reconciliations',
     ];
 
     it('materializa las 15 tablas del modelo solo dentro del schema inventory', async () => {

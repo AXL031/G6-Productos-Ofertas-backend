@@ -6,11 +6,13 @@ import { DatabaseService } from '../database/database.service.js';
 import { InventoryCommandService } from './inventory-command.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { InMemoryDatabaseMock } from '../../test/in-memory-database.mock.js';
+import { ReservationsService } from '../reservations/reservations.service.js';
 
 describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () => {
   let service: InventoryCommandService;
   let db: InMemoryDatabaseMock;
   let outbox: OutboxService;
+  let reservations: ReservationsService;
   const location = '9129b578-631e-1735-8427-b683fb524380';
   const message = () => ({
     message_id: randomUUID(),
@@ -36,6 +38,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     module.get(DatabaseService).setCustomService(db);
     service = module.get(InventoryCommandService);
     outbox = module.get(OutboxService);
+    reservations = module.get(ReservationsService);
   });
 
   it('inicializa en cero, guarda resultado durable y correlaciona el resultado con el intento', async () => {
@@ -211,14 +214,145 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     ).toBe(location);
   });
 
-  it.each(['inventory.bulk.stock.adjust.requested', 'catalog.sku.deactivated'])(
-    'mantiene aislado un contrato sin payload ejecutable: %s',
-    async (name) => {
+  it('mantiene bloqueado inventory.bulk.stock.adjust.requested mientras su contrato siga en GenericData', async () => {
+    await expect(
+      service.process({
+        ...message(),
+        name: 'inventory.bulk.stock.adjust.requested',
+      }),
+    ).rejects.toMatchObject({ reason: 'BLOCKED_CONTRACT' });
+    expect(db.inbox).toHaveLength(0);
+    expect(db.outbox).toHaveLength(0);
+  });
+
+  it('procesa catalog.sku.deactivated rc.4 con inbox transaccional y sin tocar stock', async () => {
+    const changedAt = new Date().toISOString();
+    const deactivation = {
+      message_id: randomUUID(),
+      operation_id: randomUUID(),
+      correlation_id: randomUUID(),
+      schema_version: 1,
+      occurred_at: changedAt,
+      kind: 'event',
+      producer: 'catalog-svc',
+      name: 'catalog.sku.deactivated',
+      data: {
+        sku: 'SKU-DESACTIVADO',
+        product_id: randomUUID(),
+        sku_version: 3,
+        changed_at: changedAt,
+      },
+    };
+    const beforeStock = structuredClone(db.stockBalance);
+    expect(await service.process(deactivation)).toEqual({ duplicate: false });
+    expect(db.inbox[0]).toMatchObject({
+      message_type: 'catalog.sku.deactivated',
+      source: 'catalog-svc',
+      status: 'PROCESSED',
+    });
+    expect(db.skuLifecycle).toEqual([
+      {
+        sku_id: 'SKU-DESACTIVADO',
+        product_id: deactivation.data.product_id,
+        sku_version: 3,
+        active: false,
+        changed_at: changedAt,
+      },
+    ]);
+    expect(db.stockBalance).toEqual(beforeStock);
+    expect(db.outbox).toHaveLength(0);
+    expect(db.kardex).toHaveLength(0);
+    await reservations.solicitarReserva(
+      {
+        order_id: 'ORD-SKU-INACTIVO',
+        operation_id: randomUUID(),
+        channel_id: 'MARKETPLACE',
+        lines: [
+          {
+            sku: 'SKU-DESACTIVADO',
+            quantity: 1,
+            location_id: location,
+          },
+        ],
+      },
+      undefined,
+      randomUUID(),
+      'modulo-ventas',
+    );
+    expect(db.operations.at(-1)?.result_code).toBe('SKU_INACTIVO');
+    expect(
+      db.stockBalance.some((row) => row.sku_id === 'SKU-DESACTIVADO'),
+    ).toBe(false);
+  });
+
+  it('deduplica message_id y no reactiva ni retrocede la versión por replay antiguo', async () => {
+    const changedAt = new Date().toISOString();
+    const deactivation = {
+      message_id: randomUUID(),
+      operation_id: randomUUID(),
+      correlation_id: randomUUID(),
+      schema_version: 1,
+      occurred_at: changedAt,
+      kind: 'event',
+      producer: 'catalog-svc',
+      name: 'catalog.sku.deactivated',
+      data: {
+        sku: 'SKU-DESACTIVADO',
+        product_id: randomUUID(),
+        sku_version: 7,
+        changed_at: changedAt,
+      },
+    };
+    await service.process(deactivation);
+    expect(await service.process(deactivation)).toEqual({ duplicate: true });
+    await service.process({
+      ...deactivation,
+      message_id: randomUUID(),
+      operation_id: randomUUID(),
+      data: { ...deactivation.data, sku_version: 5 },
+    });
+    expect(db.skuLifecycle[0].sku_version).toBe(7);
+    expect(db.skuLifecycle[0].active).toBe(false);
+    expect(db.inbox).toHaveLength(2);
+  });
+
+  it.each([
+    { producer: 'promotions-svc' },
+    { schema_version: 2 },
+    {
+      data: {
+        sku: 'SKU',
+        product_id: randomUUID(),
+        sku_version: 1,
+        changed_at: new Date().toISOString(),
+        extra: true,
+      },
+    },
+  ])(
+    'rechaza envelopes de desactivación incompatibles sin persistirlos: %j',
+    async (override) => {
+      const changedAt = new Date().toISOString();
       await expect(
-        service.process({ ...message(), name }),
-      ).rejects.toMatchObject({ reason: 'BLOCKED_CONTRACT' });
+        service.process({
+          message_id: randomUUID(),
+          operation_id: randomUUID(),
+          correlation_id: randomUUID(),
+          schema_version: 1,
+          occurred_at: changedAt,
+          kind: 'event',
+          producer: 'catalog-svc',
+          name: 'catalog.sku.deactivated',
+          data: {
+            sku: 'SKU',
+            product_id: randomUUID(),
+            sku_version: 1,
+            changed_at: changedAt,
+          },
+          ...override,
+        }),
+      ).rejects.toMatchObject({ reason: 'INVALID_MESSAGE' });
       expect(db.inbox).toHaveLength(0);
-      expect(db.outbox).toHaveLength(0);
+      expect(db.skuLifecycle).toHaveLength(0);
     },
   );
 });
