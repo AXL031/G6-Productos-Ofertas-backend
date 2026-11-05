@@ -4917,8 +4917,17 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         },
         actor,
       );
-      await database.read((db) =>
-        db.insert(variantImages).values([
+      await database.read(async (db) => {
+        await db
+          .update(variantImages)
+          .set({ posicion: 2 })
+          .where(
+            and(
+              eq(variantImages.variant_id, child.variant_id),
+              eq(variantImages.url, 'https://example.test/variant'),
+            ),
+          );
+        await db.insert(variantImages).values([
           {
             variant_id: child.variant_id,
             url: 'https://example.test/variant-second',
@@ -4929,8 +4938,8 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
             url: 'https://example.test/variant-first-extra',
             posicion: 0,
           },
-        ]),
-      );
+        ]);
+      });
       await complete(parent.product_id);
       await service.state(
         parent.product_id,
@@ -5090,9 +5099,9 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
               },
             ],
             images: [
-              'https://example.test/variant',
               'https://example.test/variant-first-extra',
               'https://example.test/variant-second',
+              'https://example.test/variant',
             ],
             physical_profile: {
               sku: child.sku,
