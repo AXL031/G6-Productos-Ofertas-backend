@@ -3,6 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { GATEWAY_SETTINGS, type GatewaySettings } from './gateway-settings.js';
 import type { ContractRoute } from './contract-route.js';
 import { readLimitedResponse } from './bounded-response.js';
+import { isEligiblePublicRead } from './gateway-public-reads.js';
 
 export class GatewayFailure extends Error {
   constructor(
@@ -153,6 +154,15 @@ export class GatewayIdentity {
     route: ContractRoute,
     authorization: string | undefined,
   ): Promise<void> {
+    if (this.settings.securityMode === 'SIMULATED_AUTH')
+      throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
+    if (
+      authorization === undefined &&
+      this.settings.securityMode === 'PUBLIC_READ_ONLY' &&
+      isEligiblePublicRead(route) &&
+      this.settings.publicOperations.includes(route.operationId)
+    )
+      return;
     if (isDemoBypassRoute(route, this.settings)) return;
     if (this.settings.readOnlyDemoEnabled)
       throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
@@ -215,10 +225,15 @@ export function isDemoBypassRoute(
   route: ContractRoute,
   settings: GatewaySettings,
 ): boolean {
+  if (
+    settings.securityMode === 'PUBLIC_READ_ONLY' ||
+    settings.securityMode === 'SIMULATED_AUTH'
+  )
+    return false;
+  if (settings.demoNoAuthEnabled) return true;
   return (
-    settings.demoNoAuthEnabled ||
-    (settings.readOnlyDemoEnabled === true &&
-      route.method === 'GET' &&
-      readOnlyDemoOperations.has(route.operationId))
+    settings.readOnlyDemoEnabled === true &&
+    route.method === 'GET' &&
+    readOnlyDemoOperations.has(route.operationId)
   );
 }
