@@ -37,11 +37,17 @@ El pool requiere todos los parámetros PG indicados, `PGSSLMODE=verify-full` y u
 
   Responde `200` solo si ambas consultas resuelven, o `503` (problem+json, `SERVICIO_NO_DISPONIBLE`) ante cualquier error: conexión fallida, permisos denegados (`42501`) sobre las columnas consultadas —incluidas `categories.orden` y `brands.logo_url`—, o tabla/columna ausente.
 
+`GET /health/ready` aplica las mismas comprobaciones. PostgreSQL y AMQP, cuando está configurado, son dependencias de readiness; `/health` es liveness del proceso y no consulta dependencias. La pausa del consumidor AMQP mantiene readiness en `503` hasta reiniciar el runtime.
+
+## Errores y diagnóstico estructurado
+
+Las excepciones inesperadas responden `500 ERROR_INTERNO` con `detail` constante (`Ha ocurrido un error interno en el servicio`). El filtro no incluye el mensaje ni el stack de la excepción. Registra `taxonomy.http.unexpected_error` con servicio, código, estado, categoría fija y `correlation_id` solo cuando es UUID válido. Las excepciones `ProblemDetailsException` y HTTP controladas mantienen su respuesta contractual.
+
+Las señales de baja cardinalidad incluyen `taxonomy.database.query_failed`, `taxonomy.database.idle_connection_failed`, `taxonomy.health.readiness_failed` (componente `postgres` o `amqp`), `taxonomy.amqp.consumer_paused` (tres intentos, entrega sin ACK), `taxonomy.amqp.outbox_publish_pending` y `taxonomy.deactivation.recovery_failed`; las discrepancias de bajas vencidas se informan con `taxonomy.deactivation.recovery_discrepancy`. Los eventos no incluyen mensajes de excepción, credenciales ni payloads. Estas señales están instrumentadas en código; la configuración de alertas y dashboards externos queda a cargo de Operaciones.
+
 ## Persistencia
 
-**Alcance parcial del issue #35:** los mapeos Drizzle cubren categorías y marcas de las 12 tablas del modelo físico. Queda pendiente mapear las otras diez tablas y validar la persistencia contra las migraciones oficiales; el fixture aislado de estas pruebas no ejecuta dichas migraciones. Este avance no cierra el issue #35.
-
-**Alcance parcial de SPEC-009/010 (issue #36):** siguen pendientes la gestión HTTP completa de características (`listarCaracteristicas`, `crearCaracteristica`, `obtenerCaracteristica`, `actualizarCaracteristica`, `desactivarCaracteristica` y `reactivarCaracteristica`), `reactivarValorCaracteristica` y `reactivarTipoProducto`. Las operaciones `listarTiposProducto` y `obtenerEsquemaTipoProducto` aceptan usuarios o el cliente de servicio `modulo-productos` con audiencia `api-productos` y scope `catalogo:leer`; las demás lecturas requieren usuario y las mutaciones exigen rol `GESTOR_COMERCIAL`. El OpenAPI actual aún declara `userBearer` para estas lecturas; la coordinación contractual y los grants efectivos siguen pendientes. La ejecución local de pruebas no acredita homologación con Catálogo ni despliegue.
+Las operaciones HTTP de Taxonomy se comprueban contra el OpenAPI oficial, el Gateway, los controladores Nest y sus pruebas mediante `node scripts/ci/check-taxonomy-contract.mjs ../docs/contratos/http/openapi.yaml`. La documentación del contrato y las pruebas locales no acreditan grants externos, homologación con Catálogo ni despliegue.
 
 El límite de valores LISTA se configura mediante `MAX_ACTIVE_LIST_VALUES`; la migración aditiva `0005_configurable_list_values.sql` instala el valor inicial y actualiza el trigger para aplicar el mismo límite. Su aplicación a cualquier base compartida requiere el procedimiento autorizado.
 

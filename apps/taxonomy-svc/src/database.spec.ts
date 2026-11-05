@@ -73,6 +73,8 @@ describe('taxonomy PostgreSQL configuration and lifecycle', () => {
   it('sanitizes driver/callback failures', async () => {
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
     const database = new Database();
+    const logger = { error: vi.fn() };
+    database.usarLogger(logger);
     try {
       await expect(
         database.read(async () => {
@@ -82,6 +84,16 @@ describe('taxonomy PostgreSQL configuration and lifecycle', () => {
         status: 503,
         message: 'Servicio temporalmente no disponible',
       });
+      expect(logger.error).toHaveBeenCalledExactlyOnceWith({
+        event: 'taxonomy.database.query_failed',
+        service: 'taxonomy-svc',
+        component: 'postgres',
+        state: 'unavailable',
+        reason: 'POSTGRES_QUERY_FAILURE',
+      });
+      expect(JSON.stringify(logger.error.mock.calls)).not.toContain(
+        'private-password',
+      );
     } finally {
       await database.onModuleDestroy();
     }
