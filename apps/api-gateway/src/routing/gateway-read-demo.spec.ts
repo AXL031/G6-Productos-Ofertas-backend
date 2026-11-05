@@ -42,4 +42,68 @@ describe('G6 read-only demo Gateway boundary', () => {
       identity.authorize(CONTRACT_ROUTES[0], undefined),
     ).rejects.toMatchObject({ status: 401 });
   });
+  it('supports reversible G6_SECURITY_MODE without automatically activating any public operations', async () => {
+    expect(readGatewaySettings({}).securityMode).toBe('G7_AUTHENTICATED');
+    expect(() =>
+      readGatewaySettings({ G6_SECURITY_MODE: 'INVALID_MODE' }),
+    ).toThrow('Invalid Gateway configuration');
+    expect(() =>
+      readGatewaySettings({
+        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+        GATEWAY_PUBLIC_OPERATION_IDS: 'crearProducto',
+      }),
+    ).toThrow('Invalid Gateway configuration');
+
+    // Requisito #3: sin GATEWAY_PUBLIC_OPERATION_IDS explícito, PUBLIC_READ_ONLY
+    // mantiene 0 operaciones públicas activadas automáticamente.
+    const emptyPhase1Settings = readGatewaySettings({
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+    });
+    expect(emptyPhase1Settings.publicOperations).toEqual([]);
+    const emptyPhase1Identity = new GatewayIdentity(emptyPhase1Settings);
+    for (const route of CONTRACT_ROUTES) {
+      await expect(
+        emptyPhase1Identity.authorize(route, undefined),
+      ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+    }
+
+    // Solo las operaciones GET explícitamente declaradas en GATEWAY_PUBLIC_OPERATION_IDS se habilitan
+    const phase1Identity = new GatewayIdentity(
+      readGatewaySettings({
+        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+        GATEWAY_PUBLIC_OPERATION_IDS:
+          'listarProductos,obtenerProductoPorSlug,listarCategorias,listarMarcas',
+      }),
+    );
+    const listarProductos = CONTRACT_ROUTES.find(
+      (r) => r.operationId === 'listarProductos',
+    )!;
+    const obtenerProducto = CONTRACT_ROUTES.find(
+      (r) => r.operationId === 'obtenerProducto',
+    )!;
+    const crearProducto = CONTRACT_ROUTES.find(
+      (r) => r.operationId === 'crearProducto',
+    )!;
+    await expect(
+      phase1Identity.authorize(listarProductos, undefined),
+    ).resolves.toBeUndefined();
+    await expect(
+      phase1Identity.authorize(obtenerProducto, undefined),
+    ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+    await expect(
+      phase1Identity.authorize(crearProducto, undefined),
+    ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+
+    // Fase 2 (SIMULATED_AUTH) y restauración de Fase 3 (G7_AUTHENTICATED)
+    for (const mode of ['SIMULATED_AUTH', 'G7_AUTHENTICATED'] as const) {
+      const strictIdentity = new GatewayIdentity(
+        readGatewaySettings({
+          G6_SECURITY_MODE: mode,
+        }),
+      );
+      await expect(
+        strictIdentity.authorize(listarProductos, undefined),
+      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    }
+  });
 });

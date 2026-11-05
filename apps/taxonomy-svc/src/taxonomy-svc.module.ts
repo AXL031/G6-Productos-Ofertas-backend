@@ -37,7 +37,9 @@ import {
   TaxonomyTokenVerifier,
   readTaxonomySecurityConfig,
   TAXONOMY_DEMO_ENABLED,
+  TAXONOMY_PUBLIC_READ_CONFIG,
   readTaxonomyDemoConfig,
+  readTaxonomyPublicReadConfig,
   TaxonomyUserGuard,
   TaxonomyCommercialGuard,
 } from './taxonomy-auth.js';
@@ -87,6 +89,10 @@ export interface OpcionesModuloTaxonomy {
       useFactory: () => readTaxonomyDemoConfig(process.env),
     },
     {
+      provide: TAXONOMY_PUBLIC_READ_CONFIG,
+      useFactory: () => readTaxonomyPublicReadConfig(process.env),
+    },
+    {
       provide: TAXONOMY_SECURITY_CONFIG,
       useFactory: () => readTaxonomySecurityConfig(process.env),
     },
@@ -105,6 +111,10 @@ export class TaxonomySvcModule {
         {
           provide: TAXONOMY_DEMO_ENABLED,
           useValue: readTaxonomyDemoConfig(env),
+        },
+        {
+          provide: TAXONOMY_PUBLIC_READ_CONFIG,
+          useValue: readTaxonomyPublicReadConfig(env),
         },
         {
           provide: TAXONOMY_SECURITY_CONFIG,
@@ -129,6 +139,10 @@ export class TaxonomySvcModule {
             useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
           },
           {
+            provide: TAXONOMY_PUBLIC_READ_CONFIG,
+            useValue: readTaxonomyPublicReadConfig(opciones.env ?? process.env),
+          },
+          {
             provide: TAXONOMY_SECURITY_CONFIG,
             useValue: readTaxonomySecurityConfig(opciones.env ?? process.env),
           },
@@ -146,6 +160,10 @@ export class TaxonomySvcModule {
         {
           provide: TAXONOMY_DEMO_ENABLED,
           useValue: readTaxonomyDemoConfig(opciones.env ?? process.env),
+        },
+        {
+          provide: TAXONOMY_PUBLIC_READ_CONFIG,
+          useValue: readTaxonomyPublicReadConfig(opciones.env ?? process.env),
         },
         proveedorDeRepositorio(opciones.databaseUrl),
         {
