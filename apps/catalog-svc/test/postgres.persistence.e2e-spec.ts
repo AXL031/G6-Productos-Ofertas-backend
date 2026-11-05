@@ -6,7 +6,7 @@ import {
   type BulkRowResult,
 } from '../src/catalog-bulk.service.js';
 import { CatalogTokenVerifier } from '../src/catalog-auth.js';
-import { ServiceUnavailableException } from '@nestjs/common';
+import { HttpException, ServiceUnavailableException } from '@nestjs/common';
 import type { CatalogEnvelope } from '../src/catalog-messages.js';
 import { spawn, spawnSync } from 'node:child_process';
 import {
@@ -70,6 +70,7 @@ import {
   outbox,
   skuIdentity,
   skuPhysicalProfiles,
+  productImages,
   variantImages,
 } from '../src/catalog.schema.js';
 
@@ -304,6 +305,142 @@ describe.skipIf(!dockerAvailable)(
       };
     }
 
+    it('enumerates Marketplace preview snapshots beyond 100 with real PostgreSQL and complete Pricing', async () => {
+      const marker = 'PREVIEW-PAGES-' + randomUUID();
+      const groups = [1, 100, 101, 205] as const;
+      await transactions.run(async (tx) => {
+        for (const size of groups)
+          for (let index = 0; index < size; index++) {
+            const name = `${marker}-${size}-${String(index).padStart(3, '0')}`;
+            const row = await repository.insertProduct(tx, {
+              ...productInput(`${marker}-SKU-${size}-${index}`),
+              nombre: name,
+            });
+            await tx.insert(productImages).values([
+              {
+                product_id: row.id,
+                url: `https://example.test/${size}/${index}/primary.jpg`,
+                principal: true,
+                posicion: 0,
+              },
+              {
+                product_id: row.id,
+                url: `https://example.test/${size}/${index}/secondary.jpg`,
+                principal: false,
+                posicion: 1,
+              },
+            ]);
+          }
+      });
+      const reads = new PostgresCatalogRepository(database);
+      let activePrices = 0,
+        maxConcurrentPrices = 0;
+      const pricing = {
+        currentPrice: async () => {
+          activePrices++;
+          maxConcurrentPrices = Math.max(maxConcurrentPrices, activePrices);
+          await pause(1);
+          activePrices--;
+          return {
+            precio_regular: 10,
+            precio_oferta: null,
+            currency: 'PEN' as const,
+          };
+        },
+      };
+      const service = new CommercialService(
+        reads,
+        {} as TaxonomyClient,
+        { enabled: false },
+        { marketplaceDemoPreview: true } as CatalogConfig,
+        pricing,
+      );
+      for (const size of [0, ...groups]) {
+        const q = size ? `${marker}-${size}-` : marker + '-absent-';
+        const result = await service.list({
+          canal: 'MARKETPLACE',
+          q,
+          pagina: 1,
+          tamanio: 250,
+          orden: 'NOMBRE_ASC',
+        });
+        expect(result.total).toBe(size);
+        expect(result.items).toHaveLength(size);
+        if (size > 1) {
+          expect(result.items[0]?.name).toBe(`${marker}-${size}-000`);
+          expect(result.items.at(-1)?.name).toBe(
+            `${marker}-${size}-${String(size - 1).padStart(3, '0')}`,
+          );
+          expect(result.items[0]?.images).toEqual([
+            `https://example.test/${size}/0/primary.jpg`,
+            `https://example.test/${size}/0/secondary.jpg`,
+          ]);
+        }
+      }
+      const secondPage = await service.list({
+        canal: 'MARKETPLACE',
+        q: `${marker}-205-`,
+        pagina: 2,
+        tamanio: 10,
+        orden: 'NOMBRE_ASC',
+      });
+      expect(secondPage).toMatchObject({ total: 205, pagina: 2, tamanio: 10 });
+      expect(secondPage.items[0]?.name).toBe(`${marker}-205-010`);
+      expect(maxConcurrentPrices).toBeLessThanOrEqual(3);
+      const noPrice = new CommercialService(
+        reads,
+        {} as TaxonomyClient,
+        { enabled: false },
+        { marketplaceDemoPreview: true } as CatalogConfig,
+        { currentPrice: async () => null },
+      );
+      expect(
+        (
+          await noPrice.list({
+            canal: 'MARKETPLACE',
+            q: `${marker}-1-`,
+            pagina: 1,
+            tamanio: 10,
+            orden: 'NOMBRE_ASC',
+          })
+        ).total,
+      ).toBe(0);
+      const invalidDto = new CommercialService(
+        reads,
+        {} as TaxonomyClient,
+        { enabled: false },
+        { marketplaceDemoPreview: true } as CatalogConfig,
+        { currentPrice: async () => undefined as never },
+      );
+      await expect(
+        invalidDto.list({
+          canal: 'MARKETPLACE',
+          q: `${marker}-1-`,
+          pagina: 1,
+          tamanio: 10,
+          orden: 'NOMBRE_ASC',
+        }),
+      ).rejects.toMatchObject({ status: 503 });
+      const literal = (value: string) =>
+        "'" + value.replaceAll("'", "''") + "'";
+      const markerPattern = literal(marker + '-%');
+      command(
+        'docker',
+        [
+          'exec',
+          '-i',
+          container,
+          'psql',
+          '-U',
+          'postgres',
+          '-v',
+          'ON_ERROR_STOP=1',
+        ],
+        `SET session_replication_role = replica;
+         DELETE FROM catalog.products WHERE nombre LIKE ${markerPattern};`,
+      );
+    }, 120000);
+
     it('reads internal demo drafts and their actual variant photos without exposing them through the ordinary active-only query', async () => {
       const marker = 'DEMO-READ-' + randomUUID();
       const parent = await transactions.run(async (tx) => {
@@ -537,6 +674,10 @@ describe.skipIf(!dockerAvailable)(
               process.stdout.write(
                 JSON.stringify({
                   evidence: 'PERF-49-controlled-postgres-pricing-fixture',
+                  environment: 'disposable PostgreSQL 17 Alpine over TLS',
+                  candidateVolume: 36,
+                  method:
+                    'wall clock around repository and deterministic local Pricing fixture; SQL SELECT/execute calls instrumented',
                   version: index === 0 ? '6278b686-legacy' : 'candidate',
                   tamanio,
                   orden,
@@ -565,8 +706,8 @@ describe.skipIf(!dockerAvailable)(
           await versions[0].listDemoCandidates({ ...base, ...filter }, 100),
         );
       }
-      for (const reads of versions)
-        await expect(reads.listDemoCandidates(base, 35)).rejects.toThrow();
+      await expect(versions[0].listDemoCandidates(base, 35)).rejects.toThrow();
+      expect(await versions[1].listDemoCandidates(base, 35)).toHaveLength(30);
       expect((await versions[1].listCandidates(base)).items).toEqual([]);
     }, 30000);
 
@@ -1201,6 +1342,7 @@ describe.skipIf(!dockerAvailable)(
           moneda: 'PEN',
         }),
       },
+      masterOverrides: Partial<CatalogMasterClient> = {},
     ) {
       return new CatalogMutationService(
         transactions,
@@ -1208,6 +1350,7 @@ describe.skipIf(!dockerAvailable)(
         {
           masters: async () => ({ schemaVersion: 1 }),
           attributes: async (_type: string, values: Attribute[]) => values,
+          ...masterOverrides,
         } as unknown as CatalogMasterClient,
         creationPolicy,
       );
@@ -2471,6 +2614,104 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         tipo_producto_id: 'corrected-type',
         attributes: [{ valor: 'cotton' }],
       });
+      const incompatibleService = mutationService(undefined, {
+        attributes: async (type: string, values: Attribute[]) => {
+          if (type.startsWith('incompatible-'))
+            throw new HttpException(
+              { code: 'ATRIBUTO_IDENTIFICADOR_INVALIDO' },
+              422,
+            );
+          return values;
+        },
+      });
+      const beforeIncompatible = await read(product.product_id);
+      const incompatibleVersion = Number(beforeIncompatible.catalog_version);
+      await expect(
+        incompatibleService.update(
+          product.product_id,
+          undefined,
+          {
+            tipoProductoId: 'incompatible-persisted',
+            catalogVersion: incompatibleVersion,
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { code: 'VALIDACION' },
+      });
+      await expect(
+        incompatibleService.update(
+          product.product_id,
+          undefined,
+          {
+            tipoProductoId: 'incompatible-supplied',
+            catalogVersion: incompatibleVersion,
+            atributos: [
+              {
+                caracteristica_id: 'material',
+                nombre: 'Material',
+                valor_id: null,
+                valor: 'linen',
+              },
+            ],
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        response: { code: 'VALIDACION' },
+      });
+      expect(await read(product.product_id)).toMatchObject({
+        tipo_producto_id: beforeIncompatible.tipo_producto_id,
+        catalog_version: beforeIncompatible.catalog_version,
+      });
+      const inactiveTypeService = mutationService(undefined, {
+        masters: async (value: { tipo_producto_id: string }) => {
+          if (value.tipo_producto_id === 'inactive-type')
+            throw new HttpException({ code: 'TIPO_PRODUCTO_INVALIDO' }, 422);
+          return { schemaVersion: 1 };
+        },
+      });
+      await expect(
+        inactiveTypeService.update(
+          product.product_id,
+          undefined,
+          {
+            tipoProductoId: 'inactive-type',
+            catalogVersion: incompatibleVersion,
+          },
+          actor,
+        ),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: { code: 'TIPO_PRODUCTO_INVALIDO' },
+      });
+      const concurrent = await service.createProduct(createRequest(), actor);
+      const concurrentUpdates = await Promise.allSettled([
+        service.update(
+          concurrent.product_id,
+          undefined,
+          { tipoProductoId: 'concurrent-type-a', catalogVersion: 0 },
+          actor,
+        ),
+        service.update(
+          concurrent.product_id,
+          undefined,
+          { tipoProductoId: 'concurrent-type-b', catalogVersion: 0 },
+          actor,
+        ),
+      ]);
+      expect(
+        concurrentUpdates.filter((result) => result.status === 'fulfilled'),
+      ).toHaveLength(1);
+      expect(
+        concurrentUpdates.filter(
+          (result) =>
+            result.status === 'rejected' &&
+            result.reason?.response?.code === 'VERSION_CONFLICT',
+        ),
+      ).toHaveLength(1);
       await expect(
         service.update(
           product.product_id,
@@ -4274,6 +4515,96 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         ),
       ).toMatchObject({ status: 'ACTIVO', catalog_version: 2 });
     });
+    it('persists the exact product deactivation event once under concurrent retries', async () => {
+      const service = mutationService();
+      const product = await service.createProduct(createRequest(), actor);
+      await complete(product.product_id, 'pricing');
+      await complete(product.product_id, 'inventory');
+      await service.state(product.product_id, undefined, 'activate', {}, actor);
+      const rollbackFixtureSql = (statement: string) =>
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          statement,
+        );
+      rollbackFixtureSql(`
+          CREATE OR REPLACE FUNCTION catalog.test_reject_product_deactivation()
+          RETURNS trigger LANGUAGE plpgsql AS $$
+          BEGIN
+            IF NEW.event_name = 'catalog.product.deactivated' THEN
+              RAISE EXCEPTION 'disposable Outbox rollback fixture';
+            END IF;
+            RETURN NEW;
+          END $$;
+        `);
+      rollbackFixtureSql(`
+          CREATE TRIGGER test_reject_product_deactivation
+          BEFORE INSERT ON catalog.outbox FOR EACH ROW
+          EXECUTE FUNCTION catalog.test_reject_product_deactivation();
+        `);
+      await expect(
+        service.state(product.product_id, undefined, 'deactivate', {}, actor),
+      ).rejects.toBeDefined();
+      expect(
+        (
+          await database.read((db) =>
+            db
+              .select()
+              .from(products)
+              .where(eq(products.id, product.product_id)),
+          )
+        )[0]?.estado,
+      ).toBe('ACTIVO');
+      rollbackFixtureSql(
+        'DROP TRIGGER test_reject_product_deactivation ON catalog.outbox',
+      );
+      rollbackFixtureSql(
+        'DROP FUNCTION catalog.test_reject_product_deactivation()',
+      );
+      const attempts = await Promise.allSettled([
+        service.state(product.product_id, undefined, 'deactivate', {}, actor),
+        service.state(product.product_id, undefined, 'deactivate', {}, actor),
+      ]);
+      expect(attempts.every((attempt) => attempt.status === 'fulfilled')).toBe(
+        true,
+      );
+      const [persisted] = await database.read((db) =>
+        db.select().from(products).where(eq(products.id, product.product_id)),
+      );
+      const events = await database.read((db) =>
+        db
+          .select()
+          .from(outbox)
+          .where(
+            and(
+              eq(outbox.event_name, 'catalog.product.deactivated'),
+              sql`${outbox.payload}->>'product_id' = ${product.product_id}`,
+            ),
+          ),
+      );
+      expect(events).toHaveLength(1);
+      expect(Object.keys(events[0]!.payload).sort()).toEqual([
+        'changed_at',
+        'product_id',
+        'product_version',
+      ]);
+      expect(events[0]!.payload).toEqual({
+        product_id: product.product_id,
+        product_version: Number(persisted!.catalog_version),
+        changed_at: persisted!.updated_at.toISOString(),
+      });
+      expect(events[0]!.correlation_id).toBe(actor.correlationId);
+    });
+
     it('serializes last-variant deactivation and preserves independent parent/child reactivation', async () => {
       const service = mutationService(),
         parent = await service.createProduct(createRequest(true), actor);
@@ -4333,6 +4664,40 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       expect(
         events.filter((e) => e.event_name.endsWith('.deactivated')),
       ).toHaveLength(2);
+      const skuEvent = events.find(
+          (event) => event.event_name === 'catalog.sku.deactivated',
+        )!,
+        productEvent = events.find(
+          (event) => event.event_name === 'catalog.product.deactivated',
+        )!;
+      expect(Object.keys(skuEvent.payload).sort()).toEqual([
+        'changed_at',
+        'product_id',
+        'sku',
+        'sku_version',
+      ]);
+      expect(skuEvent.payload).toMatchObject({
+        product_id: parent.product_id,
+        sku: child.sku,
+        sku_version: Number(snapshot.children[0]!.catalog_version),
+        changed_at: snapshot.children[0]!.updated_at.toISOString(),
+      });
+      expect(Object.keys(productEvent.payload).sort()).toEqual([
+        'changed_at',
+        'product_id',
+        'product_version',
+      ]);
+      expect(productEvent.payload).toMatchObject({
+        product_id: parent.product_id,
+        product_version: Number(snapshot.catalog_version),
+        changed_at: snapshot.updated_at.toISOString(),
+      });
+      expect(skuEvent.correlation_id).toBe(actor.correlationId);
+      expect(productEvent.correlation_id).toBe(actor.correlationId);
+      const versionsBeforeRepeat = [
+        snapshot.catalog_version,
+        snapshot.children[0]!.catalog_version,
+      ];
       await service.state(
         parent.product_id,
         child.variant_id,
@@ -4340,6 +4705,27 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         undefined,
         actor,
       );
+      const repeatSnapshot = await transactions.run(async (tx) =>
+        repository.aggregate(
+          tx,
+          (await repository.lockProduct(tx, parent.product_id))!,
+        ),
+      );
+      expect([
+        repeatSnapshot.catalog_version,
+        repeatSnapshot.children[0]!.catalog_version,
+      ]).toEqual(versionsBeforeRepeat);
+      const repeatedEvents = await database.read((db) =>
+        db
+          .select()
+          .from(outbox)
+          .where(sql`${outbox.payload}->>'product_id' = ${parent.product_id}`),
+      );
+      expect(
+        repeatedEvents.filter((event) =>
+          event.event_name.endsWith('.deactivated'),
+        ),
+      ).toHaveLength(2);
       await service.state(
         parent.product_id,
         child.variant_id,

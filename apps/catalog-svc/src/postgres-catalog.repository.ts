@@ -10,10 +10,12 @@ import {
   desc,
   eq,
   exists,
+  gt,
   ilike,
   inArray,
   or,
   sql,
+  lt,
   type SQL,
 } from 'drizzle-orm';
 import { Database, type CatalogTransaction } from './database.js';
@@ -295,35 +297,60 @@ export class PostgresCatalogRepository {
 
   async listDemoCandidates(
     query: ProductQuery,
-    maxCandidates: number,
+    batchSize = 100,
     correlationId?: string,
   ): Promise<ProductSummary[]> {
+    if (!Number.isSafeInteger(batchSize) || batchSize < 1 || batchSize > 100)
+      throw new ServiceUnavailableException();
     return this.database.read((db) =>
       db.transaction(
         async (tx) => {
-          const rows = await this.telemetry.measure(
-            'DEMO_CANDIDATES_SQL',
-            async () =>
-              tx
-                .select(projection)
-                .from(products)
-                .where(this.demoWhere(query))
-                .orderBy(
-                  query.orden === 'NOMBRE_DESC'
-                    ? desc(products.nombre)
-                    : asc(products.nombre),
-                  asc(products.id),
-                )
-                .limit(maxCandidates + 1),
-            correlationId,
-          );
-          if (rows.length > maxCandidates)
-            throw new ServiceUnavailableException();
-          return this.telemetry.measure(
-            'DEMO_ENRICHMENT_SQL',
-            () => this.enrichDemoCandidates(tx, rows),
-            correlationId,
-          );
+          const result: ProductSummary[] = [];
+          let cursor: { name: string; id: string } | undefined;
+          while (true) {
+            const rows = await this.telemetry.measure(
+              'DEMO_CANDIDATES_SQL',
+              async () =>
+                tx
+                  .select(projection)
+                  .from(products)
+                  .where(
+                    and(
+                      this.demoWhere(query),
+                      cursor
+                        ? or(
+                            query.orden === 'NOMBRE_DESC'
+                              ? lt(products.nombre, cursor.name)
+                              : gt(products.nombre, cursor.name),
+                            and(
+                              eq(products.nombre, cursor.name),
+                              gt(products.id, cursor.id),
+                            ),
+                          )
+                        : undefined,
+                    ),
+                  )
+                  .orderBy(
+                    query.orden === 'NOMBRE_DESC'
+                      ? desc(products.nombre)
+                      : asc(products.nombre),
+                    asc(products.id),
+                  )
+                  .limit(batchSize),
+              correlationId,
+            );
+            if (!rows.length) break;
+            cursor = { name: rows.at(-1)!.name, id: rows.at(-1)!.product_id };
+            result.push(
+              ...(await this.telemetry.measure(
+                'DEMO_ENRICHMENT_SQL',
+                () => this.enrichDemoCandidates(tx, rows),
+                correlationId,
+              )),
+            );
+            if (rows.length < batchSize) break;
+          }
+          return result;
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       ),

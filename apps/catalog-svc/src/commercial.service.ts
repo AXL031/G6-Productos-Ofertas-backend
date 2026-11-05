@@ -42,6 +42,7 @@ export class CommercialService {
         id: string,
         timeoutMs?: number,
         correlationId?: string,
+        signal?: AbortSignal,
       ): Promise<CurrentProductPrice | null>;
     },
     @Optional() private readonly priceFilter?: CatalogPriceFilter,
@@ -67,28 +68,36 @@ export class CommercialService {
   private async demoPrices<T extends { product_id: string }>(
     rows: T[],
     correlationId?: string,
+    signal?: AbortSignal,
   ): Promise<Array<T & CurrentProductPrice>> {
     if (!this.pricing) throw new ServiceUnavailableException();
     const output: Array<T & CurrentProductPrice> = [];
+    const deadline = Date.now() + 7000;
     let cursor = 0;
     const worker = async () => {
-      while (cursor < rows.length) {
+      while (cursor < rows.length && !signal?.aborted) {
         const index = cursor++;
+        const remaining = deadline - Date.now();
+        if (remaining <= 0) throw new ServiceUnavailableException();
         const price = await this.pricing!.currentPrice(
           rows[index].product_id,
-          undefined,
+          Math.min(2500, remaining),
           correlationId,
+          signal,
         );
+        if (price === undefined) throw new ServiceUnavailableException();
         if (price) output[index] = Object.assign(rows[index], price);
       }
     };
     try {
       await Promise.all(
-        Array.from({ length: Math.min(4, rows.length) }, worker),
+        Array.from({ length: Math.min(3, rows.length) }, worker),
       );
     } catch {
       throw new ServiceUnavailableException();
     }
+    if (signal?.aborted || Date.now() >= deadline)
+      throw new ServiceUnavailableException();
     return output.filter(
       (row): row is T & CurrentProductPrice => row !== undefined,
     );
@@ -117,42 +126,67 @@ export class CommercialService {
             throw new BadRequestException(
               'estado no está disponible en preview',
             );
-          if (query.categoriaId !== undefined)
-            await this.taxonomy.category(query.categoriaId, correlationId);
-          if (query.marcaId !== undefined)
-            await this.taxonomy.brand(query.marcaId, correlationId);
-          let candidates: ProductSummary[];
-          try {
-            candidates = await this.repository.listDemoCandidates(
-              query,
-              100,
+          const controller = new AbortController();
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const deadline = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+              controller.abort();
+              reject(new ServiceUnavailableException());
+            }, 7000);
+          });
+          const work = (async (): Promise<ProductPage> => {
+            if (query.categoriaId !== undefined)
+              await this.taxonomy.category(query.categoriaId, correlationId);
+            if (query.marcaId !== undefined)
+              await this.taxonomy.brand(query.marcaId, correlationId);
+            let candidates: ProductSummary[];
+            try {
+              candidates = await this.repository.listDemoCandidates(
+                query,
+                100,
+                correlationId,
+              );
+            } catch {
+              throw new ServiceUnavailableException();
+            }
+            const priced = await this.telemetry.measure(
+              'DEMO_PRICING',
+              () =>
+                this.demoPrices(candidates, correlationId, controller.signal),
               correlationId,
             );
+            const ordered = priced.sort((a, b) => {
+              const order = a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
+              const idOrder =
+                a.product_id < b.product_id
+                  ? -1
+                  : a.product_id > b.product_id
+                    ? 1
+                    : 0;
+              return (
+                (query.orden === 'NOMBRE_DESC' ? -order : order) || idOrder
+              );
+            });
+            const start = (query.pagina - 1) * query.tamanio;
+            return {
+              items: ordered.slice(
+                start,
+                start + query.tamanio,
+              ) as DemoProduct[],
+              pagina: query.pagina,
+              tamanio: query.tamanio,
+              total: ordered.length,
+            };
+          })();
+          try {
+            return await Promise.race([work, deadline]);
           } catch {
+            controller.abort();
             throw new ServiceUnavailableException();
+          } finally {
+            if (timer) clearTimeout(timer);
+            controller.abort();
           }
-          const priced = await this.telemetry.measure(
-            'DEMO_PRICING',
-            () => this.demoPrices(candidates, correlationId),
-            correlationId,
-          );
-          const ordered = priced.sort((a, b) => {
-            const order = a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-            const idOrder =
-              a.product_id < b.product_id
-                ? -1
-                : a.product_id > b.product_id
-                  ? 1
-                  : 0;
-            return (query.orden === 'NOMBRE_DESC' ? -order : order) || idOrder;
-          });
-          const start = (query.pagina - 1) * query.tamanio;
-          return {
-            items: ordered.slice(start, start + query.tamanio) as DemoProduct[],
-            pagina: query.pagina,
-            tamanio: query.tamanio,
-            total: ordered.length,
-          };
         },
         correlationId,
       );

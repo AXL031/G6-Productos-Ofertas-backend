@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   activeAttempt,
+  assertCatalogPublication,
   envelope,
   InvalidCatalogMessage,
   manualRetryAllowed,
@@ -9,6 +10,101 @@ import {
 } from './catalog-messages.js';
 
 describe('Catalog preparation message contract and retry identity', () => {
+  it.each([
+    {
+      name: 'catalog.product.deactivated',
+      data: {
+        product_id: 'product-opaque',
+        product_version: 3,
+        changed_at: '2026-11-04T12:00:00.000Z',
+      },
+    },
+    {
+      name: 'catalog.sku.deactivated',
+      data: {
+        sku: '000-opaque',
+        product_id: 'product-opaque',
+        sku_version: 5,
+        changed_at: '2026-11-04T12:00:00.000Z',
+      },
+    },
+  ])(
+    'serializes the exact AsyncAPI deactivation payload: $name',
+    ({ name, data }) => {
+      const message = envelope(name, data, randomUUID(), randomUUID());
+      assertCatalogPublication(message);
+      const serialized = JSON.parse(JSON.stringify(message)) as typeof message;
+      expect(Object.keys(serialized.data).sort()).toEqual(
+        Object.keys(data).sort(),
+      );
+      expect(serialized.data).toEqual(data);
+    },
+  );
+  it.each([
+    [
+      'missing product version',
+      'catalog.product.deactivated',
+      { product_id: 'p', changed_at: '2026-11-04T12:00:00.000Z' },
+    ],
+    [
+      'extra product key',
+      'catalog.product.deactivated',
+      {
+        product_id: 'p',
+        product_version: 1,
+        changed_at: '2026-11-04T12:00:00.000Z',
+        motivo: 'extra',
+      },
+    ],
+    [
+      'unsafe product version',
+      'catalog.product.deactivated',
+      {
+        product_id: 'p',
+        product_version: Number.MAX_SAFE_INTEGER + 1,
+        changed_at: '2026-11-04T12:00:00.000Z',
+      },
+    ],
+    [
+      'zero sku version',
+      'catalog.sku.deactivated',
+      {
+        sku: 's',
+        product_id: 'p',
+        sku_version: 0,
+        changed_at: '2026-11-04T12:00:00.000Z',
+      },
+    ],
+    [
+      'variant id is not contracted',
+      'catalog.sku.deactivated',
+      {
+        sku: 's',
+        product_id: 'p',
+        sku_version: 1,
+        changed_at: '2026-11-04T12:00:00.000Z',
+        variant_id: 'v',
+      },
+    ],
+    [
+      'invalid timestamp',
+      'catalog.sku.deactivated',
+      { sku: 's', product_id: 'p', sku_version: 1, changed_at: 'not-a-time' },
+    ],
+    [
+      'offset timestamp is not canonical UTC',
+      'catalog.product.deactivated',
+      {
+        product_id: 'p',
+        product_version: 1,
+        changed_at: '2026-11-04T12:00:00+01:00',
+      },
+    ],
+  ])('rejects invalid deactivation publication: %s', (_label, name, data) => {
+    expect(() =>
+      envelope(name, data as Record<string, unknown>, randomUUID()),
+    ).toThrow(InvalidCatalogMessage);
+  });
   const result = () => ({
     message_id: randomUUID(),
     schema_version: 1,

@@ -8,6 +8,7 @@ import {
 import { envelope, InvalidCatalogMessage } from './catalog-messages.js';
 
 describe('Confirmed catalog publisher (transport fixture, not live broker evidence)', () => {
+  const changedAt = '2026-01-01T00:00:00.000Z';
   function fixture(writable = true) {
     const channel = new EventEmitter() as EventEmitter & {
       publish: ReturnType<typeof vi.fn>;
@@ -28,7 +29,7 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
     const { channel, publisher } = fixture();
     const message = envelope(
       'catalog.product.deactivated',
-      { product_id: 'p' },
+      { product_id: 'p', product_version: 1, changed_at: changedAt },
       randomUUID(),
     );
     let done = false;
@@ -53,7 +54,11 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
   it('does not mistake basic.return plus a broker ACK for a successful route', async () => {
     const { channel, publisher } = fixture();
     const work = publisher.publish(
-      envelope('catalog.product.deactivated', {}, randomUUID()),
+      envelope(
+        'catalog.product.deactivated',
+        { product_id: 'p', product_version: 1, changed_at: changedAt },
+        randomUUID(),
+      ),
     );
     await Promise.resolve();
     channel.emit('return');
@@ -81,8 +86,21 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
       'po.comandos.x',
       { product_id: 'p', sku: '0001', variant_id: null },
     ],
-    ['catalog.product.deactivated', 'po.eventos.x', { product_id: 'p' }],
-    ['catalog.sku.deactivated', 'po.eventos.x', { sku: '0001' }],
+    [
+      'catalog.product.deactivated',
+      'po.eventos.x',
+      { product_id: 'p', product_version: 1, changed_at: changedAt },
+    ],
+    [
+      'catalog.sku.deactivated',
+      'po.eventos.x',
+      {
+        sku: '0001',
+        product_id: 'p',
+        sku_version: 1,
+        changed_at: changedAt,
+      },
+    ],
     [
       'catalog.master.deactivation.checked',
       'po.resultados.x',
@@ -179,7 +197,18 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
     const { channel, publisher } = fixture(false);
     let done = false;
     const work = publisher
-      .publish(envelope('catalog.sku.deactivated', {}, randomUUID()))
+      .publish(
+        envelope(
+          'catalog.sku.deactivated',
+          {
+            sku: '0001',
+            product_id: 'p',
+            sku_version: 1,
+            changed_at: changedAt,
+          },
+          randomUUID(),
+        ),
+      )
       .then(() => {
         done = true;
       });
@@ -192,7 +221,16 @@ describe('Confirmed catalog publisher (transport fixture, not live broker eviden
     await work;
     expect(done).toBe(true);
     const failed = publisher.publish(
-      envelope('catalog.sku.deactivated', {}, randomUUID()),
+      envelope(
+        'catalog.sku.deactivated',
+        {
+          sku: '0001',
+          product_id: 'p',
+          sku_version: 1,
+          changed_at: changedAt,
+        },
+        randomUUID(),
+      ),
     );
     await Promise.resolve();
     await Promise.resolve();

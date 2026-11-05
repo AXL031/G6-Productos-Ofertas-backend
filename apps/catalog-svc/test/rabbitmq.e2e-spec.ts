@@ -178,7 +178,11 @@ describe.skipIf(!dockerAvailable)(
     it('distinguishes alternate-exchange capture from consumer delivery', async () => {
       const message = envelope(
         'catalog.product.deactivated',
-        { product_id: randomUUID() },
+        {
+          product_id: randomUUID(),
+          product_version: 1,
+          changed_at: new Date().toISOString(),
+        },
         randomUUID(),
         randomUUID(),
       );
@@ -195,7 +199,16 @@ describe.skipIf(!dockerAvailable)(
       try {
         await expect(
           publisher.publish(
-            envelope('catalog.sku.deactivated', { sku: '000' }, randomUUID()),
+            envelope(
+              'catalog.sku.deactivated',
+              {
+                sku: '000',
+                product_id: randomUUID(),
+                sku_version: 1,
+                changed_at: new Date().toISOString(),
+              },
+              randomUUID(),
+            ),
           ),
         ).rejects.toThrow('AMQP_PUBLISH_UNCONFIRMED');
       } finally {
