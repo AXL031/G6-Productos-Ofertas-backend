@@ -22,11 +22,13 @@ import { Decimal } from '../domain/decimal.js';
 import { PROMOTIONS_CLOCK, type PromotionsClock } from '../domain/clock.js';
 import { BoundedCommercialContext } from '../infrastructure/resilience/commercial-deadline.js';
 import { httpContracts } from './http-contract.generated.js';
+import { withHttpClientSignal } from './client-cancellation.js';
 import {
   isUuid,
   PromotionsHttpError,
   queryInput,
   valid,
+  correlationId,
 } from './http-validation.js';
 const iso = (s: string) => new Date(s).toISOString();
 export function promotionDto(p: PromotionQueryRow) {
@@ -121,12 +123,22 @@ export class PromotionsQueryService {
   ) {
     this.facts = new BoundedCommercialContext(facts);
   }
-  async execute(id: string, request: Request): Promise<unknown> {
+  execute(id: string, request: Request): Promise<unknown> {
+    return withHttpClientSignal(request, (signal) =>
+      this.executeQuery(id, request, signal),
+    );
+  }
+  private async executeQuery(
+    id: string,
+    request: Request,
+    signal: AbortSignal,
+  ): Promise<unknown> {
     const contract = httpContracts[id];
     const q = queryInput(request.query, contract);
     if (contract.body && !valid(request.body, contract.body))
       throw new PromotionsHttpError(400, 'VALIDACION');
     const now = this.clock.now().toISOString();
+    const context = { correlationId: correlationId(request), at: now };
     let result: unknown;
     const filter: PageFilter = {
       pagina: Number(q.pagina ?? 1),
@@ -221,7 +233,11 @@ export class PromotionsQueryService {
         };
         const at = id === 'evaluarPromociones' ? (body.at ?? now) : now;
         // External calls precede the short, read-only database transaction.
-        const context = await this.facts.basket(body, at);
+        const basketContext = await this.facts.basket(body, at, signal, {
+          ...context,
+          at,
+        });
+        signal.throwIfAborted();
         const snapshot = await this.persistence.read(async (r) => {
           const active = await r.queries.summaries(
             body.channel_id,
@@ -247,7 +263,7 @@ export class PromotionsQueryService {
         });
         const evaluation = evaluateBasket(
           body,
-          context,
+          basketContext,
           snapshot.promotions,
           snapshot.coupon,
           at,
@@ -291,7 +307,13 @@ export class PromotionsQueryService {
         }
         const product = String(q.productoId),
           channel = String(q.canal);
-        const origin = await this.facts.recommendationOrigin(product, channel);
+        const origin = await this.facts.recommendationOrigin(
+          product,
+          channel,
+          signal,
+          context,
+        );
+        signal.throwIfAborted();
         if (!origin.active || !origin.channelEligible) {
           result = { recommendations: [] };
           break;
@@ -302,6 +324,8 @@ export class PromotionsQueryService {
         const facts = await this.facts.recommendationProducts(
           [...new Set(rules.flatMap((r) => r.items.map((i) => i.productId)))],
           channel,
+          signal,
+          context,
         );
         if (rules.some((r) => r.items.some((i) => !facts.has(i.productId))))
           throw new CommercialDependencyError(

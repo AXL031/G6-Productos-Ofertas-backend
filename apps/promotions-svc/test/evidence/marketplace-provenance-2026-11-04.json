@@ -1,0 +1,11 @@
+{
+  "status": "PASS",
+  "verifiedConsumerCommit": "dec96b80075bc183397271ea2373ef9f9e115986",
+  "originalRunCheckoutHead": "92c16609e82e14a32caf5bac7d5c644206cf80b3",
+  "interpretation": "The run used a modified worktree at the recorded base HEAD. Every compiled consumer source and executed harness file matches this immutable commit byte-for-byte. This is source equivalence verification, not a rerun.",
+  "verifiedSourcePaths": 89,
+  "verifiedRealHarnessFiles": 7,
+  "nativeHarnessVerified": true,
+  "realProvidersMaster": "7f1ffc1f1f490861ef55ed3d84757d05954a2d33",
+  "realProviderChecks": 61
+}

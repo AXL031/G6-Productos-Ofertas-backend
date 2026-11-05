@@ -8,6 +8,7 @@ import {
   CommercialInputError,
   type BasketRequest,
   type CommercialContext,
+  type CommercialReadContext,
 } from '../../domain/commercial-context.js';
 import { Decimal } from '../../domain/decimal.js';
 import { validInstant } from '../../domain/date-time.js';
@@ -28,8 +29,9 @@ export class HttpCommercialContext implements CommercialContext {
     path: string,
     signal: AbortSignal,
     missing = false,
+    correlationId?: string,
   ) {
-    return this.reader.read(operation, path, signal, missing);
+    return this.reader.read(operation, path, signal, missing, correlationId);
   }
   private async bounded<T>(
     operation: string,
@@ -53,7 +55,12 @@ export class HttpCommercialContext implements CommercialContext {
     }
   }
 
-  private async product(id: string, channel: string, signal: AbortSignal) {
+  private async product(
+    id: string,
+    channel: string,
+    signal: AbortSignal,
+    correlationId?: string,
+  ) {
     const raw = await this.read(
       'obtenerProducto',
       '/productos/' +
@@ -62,6 +69,7 @@ export class HttpCommercialContext implements CommercialContext {
         encodeURIComponent(channel),
       signal,
       true,
+      correlationId,
     );
     if (raw === null) return null; // Not commercially visible, never an authoritative admin absence.
     const row = object(raw);
@@ -98,6 +106,7 @@ export class HttpCommercialContext implements CommercialContext {
     channel: string,
     at: string,
     signal: AbortSignal,
+    correlationId?: string,
   ) {
     const raw = await this.read(
       'obtenerPrecioSku',
@@ -109,6 +118,7 @@ export class HttpCommercialContext implements CommercialContext {
         encodeURIComponent(at),
       signal,
       true,
+      correlationId,
     );
     if (raw === null) return null;
     const row = object(raw);
@@ -137,7 +147,12 @@ export class HttpCommercialContext implements CommercialContext {
     return { regular, offer, currency };
   }
 
-  basket(request: BasketRequest, at: string, signal?: AbortSignal) {
+  basket(
+    request: BasketRequest,
+    at: string,
+    signal?: AbortSignal,
+    context?: CommercialReadContext,
+  ) {
     return this.bounded(
       'evaluarPromociones/validarCupon',
       signal,
@@ -166,32 +181,39 @@ export class HttpCommercialContext implements CommercialContext {
           let id = line.product_id;
           if (!id) {
             if (!contexts.has(line.sku)) {
-              const context = object(
+              const skuContext = object(
                 await this.read(
                   'obtenerContextoSku',
                   '/productos/skus/' +
                     encodeURIComponent(line.sku) +
                     '/contexto',
                   bounded,
+                  false,
+                  context?.correlationId,
                 ),
               );
               if (
-                context.sku !== line.sku ||
-                typeof context.isVariant !== 'boolean' ||
-                typeof context.active !== 'boolean' ||
-                typeof context.eligible !== 'boolean' ||
-                !context.active ||
-                !context.eligible
+                skuContext.sku !== line.sku ||
+                typeof skuContext.isVariant !== 'boolean' ||
+                typeof skuContext.active !== 'boolean' ||
+                typeof skuContext.eligible !== 'boolean' ||
+                !skuContext.active ||
+                !skuContext.eligible
               )
                 throw new Error('INVALID_SKU_CONTEXT');
-              contexts.set(line.sku, text(context.productId));
+              contexts.set(line.sku, text(skuContext.productId));
             }
             id = contexts.get(line.sku)!;
           }
           if (!products.has(id))
             products.set(
               id,
-              await this.product(id, request.channel_id, bounded),
+              await this.product(
+                id,
+                request.channel_id,
+                bounded,
+                context?.correlationId,
+              ),
             );
           const product = products.get(id);
           if (!product) throw new Error('SKU_NOT_COMMERCIALLY_VISIBLE');
@@ -203,6 +225,7 @@ export class HttpCommercialContext implements CommercialContext {
               request.channel_id,
               at,
               bounded,
+              context?.correlationId,
             );
             if (!price) throw new Error('BASKET_PRICE_UNAVAILABLE');
             prices.set(line.sku, price);
@@ -227,6 +250,7 @@ export class HttpCommercialContext implements CommercialContext {
     productId: string,
     channelId: string,
     signal?: AbortSignal,
+    context?: CommercialReadContext,
   ) {
     return this.bounded(
       'obtenerRecomendaciones/origen',
@@ -234,7 +258,12 @@ export class HttpCommercialContext implements CommercialContext {
       async (bounded) => {
         channel(channelId);
         text(productId);
-        const p = await this.product(productId, channelId, bounded);
+        const p = await this.product(
+          productId,
+          channelId,
+          bounded,
+          context?.correlationId,
+        );
         return p
           ? { active: true, channelEligible: true, categoryId: p.categoryId }
           : { active: false, channelEligible: false, categoryId: '' };
@@ -246,6 +275,7 @@ export class HttpCommercialContext implements CommercialContext {
     ids: readonly string[],
     channelId: string,
     signal?: AbortSignal,
+    context?: CommercialReadContext,
   ) {
     return this.bounded(
       'obtenerRecomendaciones/productos',
@@ -260,11 +290,12 @@ export class HttpCommercialContext implements CommercialContext {
           > | null
         >();
         const products = new Map<string, string[]>();
-        const at = new Date().toISOString();
+        const at = context?.at ?? new Date().toISOString();
+        instant(at);
         const uniqueIds = [...new Set(ids)];
         uniqueIds.forEach(text);
         const details = await limitedReads(uniqueIds, bounded, (id, signal) =>
-          this.product(id, channelId, signal),
+          this.product(id, channelId, signal, context?.correlationId),
         );
         for (const [index, id] of uniqueIds.entries()) {
           const p = details[index];
@@ -291,6 +322,8 @@ export class HttpCommercialContext implements CommercialContext {
                 '&canal=' +
                 encodeURIComponent(channelId),
               bounded,
+              false,
+              context?.correlationId,
             ),
           );
           for (const value of array(row.items)) {
@@ -320,7 +353,8 @@ export class HttpCommercialContext implements CommercialContext {
         const priceRows = await limitedReads(
           positiveSkus,
           bounded,
-          (sku, signal) => this.price(sku, channelId, at, signal),
+          (sku, signal) =>
+            this.price(sku, channelId, at, signal, context?.correlationId),
         );
         const prices = new Map(
           positiveSkus.map((sku, index) => [sku, priceRows[index]]),

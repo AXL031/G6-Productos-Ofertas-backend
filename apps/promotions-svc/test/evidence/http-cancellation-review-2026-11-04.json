@@ -1,0 +1,89 @@
+{
+  "status": "PASS",
+  "master": "41ce14092f6031eb9cd521e3eaaa8cc24fc6ed4f",
+  "conventionalMerge": "0636427fbf6243eb6aa83581eff62f86d04e786c",
+  "mergeParents": [
+    "20f09d5d83d37d3938cd7ae777061fe3966151bf",
+    "41ce14092f6031eb9cd521e3eaaa8cc24fc6ed4f"
+  ],
+  "runBaseHead": "0636427fbf6243eb6aa83581eff62f86d04e786c",
+  "sourceSha256": {
+    "apps/promotions-svc/src/http/query-service.ts": "36e4d9c0c745fa0f257348e919c1d36c2a32f8ac90aea4da9779c1b081bc6198",
+    "apps/promotions-svc/src/http/client-cancellation.ts": "928dd814bea4dd1be1ec3d1d5410200f0c86158b552fead7ea9783dd80252b25",
+    "apps/promotions-svc/src/http/client-cancellation.spec.ts": "cbf0a24e9938a2b010723cd205bc3d68e649d9c008b0a895a0198cdd7066e91d",
+    "apps/promotions-svc/test/http-cancellation.e2e-spec.ts": "505f93cc25cf14118e4123c4e44b3c2babb9e91ce25c1d32688fad12b5c86a21"
+  },
+  "unit": {
+    "passed": 383,
+    "failed": 0,
+    "pending": 0
+  },
+  "e2e": {
+    "passed": 19,
+    "failed": 0,
+    "pending": 0,
+    "cancellationCases": [
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: evaluate-context",
+        "status": "passed",
+        "durationMs": 404.3604999999998
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: coupon-context",
+        "status": "passed",
+        "durationMs": 63.10119999999961
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: recommend-origin",
+        "status": "passed",
+        "durationMs": 69.99479999999994
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: recommend-candidates",
+        "status": "passed",
+        "durationMs": 73.20290000000023
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: recommend-inventory",
+        "status": "passed",
+        "durationMs": 74.2850999999996
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP closes the upstream socket on client disconnect: recommend-price",
+        "status": "passed",
+        "durationMs": 88.1518000000001
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP keeps an ordinary completed POST alive and returns its result",
+        "status": "passed",
+        "durationMs": 123.61490000000003
+      },
+      {
+        "name": "Client disconnect cancels native outgoing HTTP still times out a hanging upstream while the client remains connected",
+        "status": "passed",
+        "durationMs": 2531.6112000000003
+      }
+    ]
+  },
+  "scope": "real direct client and upstream HTTP sockets, native Nest query/guard/adapters, signed local RS256 JWT; persistence, outbound credential source and commercial data are explicit test fixtures",
+  "guaranteesTested": [
+    "six client disconnect scenarios close outgoing sockets before the 2500ms internal timeout, no follow-up read or retry",
+    "fully received POST remains alive and returns 200/80",
+    "connected client + stalled upstream still yields contractual 503 at internal deadline",
+    "aborted/closed-before-start/normal-finish/failure cleanup and concurrent-request isolation"
+  ],
+  "limitations": [
+    "direct client connection to Promotions; Gateway/browser cancellation propagation not tested",
+    "JWT guard phase and writes/AMQP are outside this query lifetime bridge",
+    "HTTP abort does not imply upstream processing or PostgreSQL query cancellation"
+  ],
+  "preservedHistoricalEvidenceSha256": {
+    "real-services-2026-11-03.json": "7c44d78eac1a6c420740d7eeb0e931cb1a33a374924283df0b82c358283eda7e",
+    "real-services-2026-11-04.json": "f0e0056d4c092158e286b22f3a75d7f437fabad62f476f8a6854506063fd7e8e",
+    "marketplace-contract-2026-11-04.json": "e17c8b834d428004d9e6b6d094d5d868644c4094df521f20f15aea7589bcef6c",
+    "marketplace-native-2026-11-04.json": "5e55cf697dfa6fa0e2b7570a5dc9dcbedf32dfbad40236189b55e07a4b4fa84f",
+    "marketplace-persistence-2026-11-04.json": "2058a458d2b99a428d8d0caee4210c4d1428f749c83715f32fdb2cca13f9f5c5",
+    "marketplace-provenance-2026-11-04.json": "76065024183d1f71bd08b0a5a088197332e34ea782c9343e424b36c760078ba8",
+    "marketplace-real-2026-11-04.json": "6cca99ff966e70daf50bc0af817255bb81bfbef85563dfc1fcd9231f6f5d9f8b"
+  }
+}
