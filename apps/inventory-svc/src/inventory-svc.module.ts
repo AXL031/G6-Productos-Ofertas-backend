@@ -31,6 +31,7 @@ import { DrizzleOutboxRepository } from './repositories/drizzle/drizzle-outbox.r
 import { DrizzleThresholdsRepository } from './repositories/drizzle/drizzle-thresholds.repository.js';
 import { DrizzleIncidentsRepository } from './repositories/drizzle/drizzle-incidents.repository.js';
 import { DrizzleTrasladosRepository } from './repositories/drizzle/drizzle-traslados.repository.js';
+import { DrizzleSkuLifecycleRepository } from './repositories/drizzle/drizzle-sku-lifecycle.repository.js';
 
 import {
   LOCATIONS_REPOSITORY,
@@ -44,11 +45,14 @@ import {
   INCIDENTS_REPOSITORY,
   TRASLADOS_REPOSITORY,
   INBOX_REPOSITORY,
+  SKU_LIFECYCLE_REPOSITORY,
 } from './repositories/interfaces/repository.tokens.js';
 
 import { InventoryAuthGuard } from './auth/inventory-auth.guard.js';
 import { UserAuthGuard } from './auth/user-auth.guard.js';
 import { InventoryWorkersService } from './workers/inventory-workers.service.js';
+import { AbsoluteStockAdjustmentService } from './bulk/absolute-stock-adjustment.service.js';
+import { OfflineReconciliationService } from './conciliacion/offline-reconciliation.service.js';
 
 @Module({
   imports: [],
@@ -78,7 +82,13 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     InventoryWorkersService,
     InventoryCommandService,
     InventoryConsumerService,
+    AbsoluteStockAdjustmentService,
+    OfflineReconciliationService,
     { provide: INBOX_REPOSITORY, useClass: DrizzleInboxRepository },
+    {
+      provide: SKU_LIFECYCLE_REPOSITORY,
+      useClass: DrizzleSkuLifecycleRepository,
+    },
     // Repositorios Drizzle vinculados a sus tokens de interfaz
     {
       provide: LOCATIONS_REPOSITORY,
@@ -131,6 +141,7 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     DrizzleThresholdsRepository,
     DrizzleIncidentsRepository,
     DrizzleTrasladosRepository,
+    DrizzleSkuLifecycleRepository,
   ],
   exports: [
     DatabaseService,
@@ -147,6 +158,8 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     DashboardService,
     IncidenciasService,
     TrasladosService,
+    AbsoluteStockAdjustmentService,
+    OfflineReconciliationService,
     InventoryAuthGuard,
     UserAuthGuard,
     LOCATIONS_REPOSITORY,
@@ -159,6 +172,7 @@ import { InventoryWorkersService } from './workers/inventory-workers.service.js'
     THRESHOLDS_REPOSITORY,
     INCIDENTS_REPOSITORY,
     TRASLADOS_REPOSITORY,
+    SKU_LIFECYCLE_REPOSITORY,
     DrizzleLocationsRepository,
     DrizzleCommercialRoutesRepository,
     DrizzleStockBalanceRepository,

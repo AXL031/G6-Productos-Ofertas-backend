@@ -205,7 +205,7 @@ describe('iniciarTaxonomySvc — fail-closed del arranque real (#34)', () => {
       .spyOn(TaxonomyTokenVerifier.prototype, 'verify')
       .mockResolvedValue({
         kind: 'service',
-        subject: 'test',
+        subject: 'modulo-marketplace',
         scopes: ['catalogo:leer'],
         audiences: ['api-productos'],
       });

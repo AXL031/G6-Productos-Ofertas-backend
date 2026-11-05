@@ -1,4 +1,10 @@
-import { ReadinessController, UnconfiguredDatabase } from './readiness.js';
+import {
+  READINESS_TIMEOUT_MS,
+  ReadinessController,
+  runReadinessCliProbe,
+  UnconfiguredDatabase,
+  withReadinessDeadline,
+} from './readiness.js';
 
 describe('readiness boundary', () => {
   afterEach(() => vi.useRealTimers());
@@ -41,6 +47,79 @@ describe('readiness boundary', () => {
     const assertion = expect(result).rejects.toMatchObject({ status: 503 });
     await vi.advanceTimersByTimeAsync(2000);
     await assertion;
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('uses an explicit two-second functional deadline and handles late rejection', async () => {
+    vi.useFakeTimers();
+    expect(READINESS_TIMEOUT_MS).toBe(2000);
+    let reject!: (error: Error) => void;
+    const work = new Promise<void>((_resolve, rejectWork) => {
+      reject = rejectWork;
+    });
+    const outcome = withReadinessDeadline(work);
+    await vi.advanceTimersByTimeAsync(1999);
+    await expect(
+      Promise.race([outcome, Promise.resolve('pending')]),
+    ).resolves.toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(outcome).resolves.toBe('timed_out');
+    reject(new Error('late dependency failure'));
+    await Promise.resolve();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('returns ready with exit code zero from the CLI probe', async () => {
+    const output: string[] = [];
+    const close = vi.fn().mockResolvedValue(undefined);
+    const exitCode = await runReadinessCliProbe(
+      async (progress) => {
+        progress('database');
+        progress('catalog-read');
+      },
+      close,
+      { marketplaceDemoPreview: false, readDemo: { enabled: true } },
+      (line) => output.push(line),
+    );
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output[0])).toMatchObject({
+      service: 'catalog-svc',
+      status: 'ready',
+      database: 'ready',
+      eligibility: 'not_evaluated_demo',
+    });
+    expect(close).toHaveBeenCalledOnce();
+  });
+
+  it('marks CLI readiness not_ready on timeout and drains the operation before closing', async () => {
+    vi.useFakeTimers();
+    let finish!: () => void;
+    const work = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
+    const output: string[] = [];
+    const close = vi.fn().mockResolvedValue(undefined);
+    let finished = false;
+    const probe = runReadinessCliProbe(
+      () => work,
+      close,
+      { marketplaceDemoPreview: false, readDemo: { enabled: true } },
+      (line) => output.push(line),
+    ).then((code) => {
+      finished = true;
+      return code;
+    });
+
+    await vi.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS);
+    expect(finished).toBe(false);
+    expect(close).not.toHaveBeenCalled();
+    finish();
+    await expect(probe).resolves.toBe(1);
+    expect(JSON.parse(output[0])).toMatchObject({
+      service: 'catalog-svc',
+      status: 'not_ready',
+    });
+    expect(close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 

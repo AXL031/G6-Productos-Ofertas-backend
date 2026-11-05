@@ -1,6 +1,8 @@
 import {
   Injectable,
+  Logger,
   ServiceUnavailableException,
+  type LoggerService,
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
@@ -111,10 +113,15 @@ export function readDatabaseConfig(
 
 @Injectable()
 export class Database implements OnModuleDestroy {
+  private logger: LoggerService = new Logger(Database.name);
   private pool?: pg.Pool;
   private db?: NodePgDatabase;
   private closed = false;
   private env: Readonly<NodeJS.ProcessEnv> = process.env;
+
+  usarLogger(logger: LoggerService): void {
+    this.logger = logger;
+  }
 
   async read<T>(query: (db: NodePgDatabase) => Promise<T>): Promise<T> {
     try {
@@ -125,17 +132,25 @@ export class Database implements OnModuleDestroy {
         // Nunca emitir el error del driver, SQL, parámetros ni configuración.
         this.pool.on('error', () => {
           this.db = undefined;
-          process.stderr.write(
-            JSON.stringify({
-              service: 'taxonomy-svc',
-              code: 'DATABASE_IDLE_FAILURE',
-            }) + '\n',
-          );
+          this.logger.error({
+            event: 'taxonomy.database.idle_connection_failed',
+            service: 'taxonomy-svc',
+            component: 'postgres',
+            state: 'unavailable',
+            reason: 'IDLE_CONNECTION_FAILURE',
+          });
         });
       }
       this.db ??= drizzle(this.pool);
       return await query(this.db);
     } catch {
+      this.logger.error({
+        event: 'taxonomy.database.query_failed',
+        service: 'taxonomy-svc',
+        component: 'postgres',
+        state: 'unavailable',
+        reason: 'POSTGRES_QUERY_FAILURE',
+      });
       throw new ServiceUnavailableException(
         'Servicio temporalmente no disponible',
       );

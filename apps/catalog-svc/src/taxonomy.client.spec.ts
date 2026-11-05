@@ -86,6 +86,20 @@ describe('Taxonomy HTTP boundary', () => {
       status: 422,
     });
   });
+  it('keeps restricted-demo category and brand lookups on anonymous collection routes only', async () => {
+    body = {
+      categories: [{ categoria_id: 'c', name: 'Category', status: 'ACTIVA' }],
+    };
+    await client.category('c', 'trace', { user: false, restrictedDemo: true });
+    expect(path).toBe('/api/v1/categorias');
+    expect(authorization).toBeUndefined();
+    body = {
+      brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }],
+    };
+    await client.brand('b', 'trace', { user: false, restrictedDemo: true });
+    expect(path).toBe('/api/v1/marcas');
+    expect(authorization).toBeUndefined();
+  });
   it('forwards verified service credentials and uses administrative routes for users', async () => {
     body = { brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }] };
     await client.brand('b', 'trace', {
@@ -157,5 +171,34 @@ describe('Taxonomy HTTP boundary', () => {
       status: 503,
       message: 'Servicio temporalmente no disponible',
     });
+  });
+  it.each([
+    [400, 400, 'VALIDACION'],
+    [422, 422, 'MARCA_INVALIDA'],
+  ])(
+    'maps Taxonomy HTTP %i to the Catalog contract',
+    async (remote, statusCode, code) => {
+      status = remote;
+      body = { detail: 'untrusted provider body' };
+      await expect(client.brand('b')).rejects.toMatchObject({
+        status: statusCode,
+        response: { code },
+      });
+      await expect(client.brand('b')).rejects.not.toHaveProperty(
+        'response.detail',
+      );
+    },
+  );
+  it('maps timeout and invalid JSON to a sanitized 503', async () => {
+    vi.stubGlobal('fetch', async () => Promise.reject(new Error('secret')));
+    await expect(client.brand('b')).rejects.toMatchObject({ status: 503 });
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response('{invalid', {
+          headers: { 'content-type': 'application/json' },
+        }),
+    );
+    await expect(client.brand('b')).rejects.toMatchObject({ status: 503 });
   });
 });

@@ -27,12 +27,11 @@ import {
   docsRevision as promotionsSqlRevision,
 } from './support/official-migrations.mjs';
 
-const master = '20146a50d5e627c4749f225543a096edef51adbb';
-const promotions = '33054c365e6497c14f8bf43a1d259846447d6cb8';
-const docs = '40b566976fb94d924116dcd01d41b3276c2bc9e3';
+const master = '7f1ffc1f1f490861ef55ed3d84757d05954a2d33';
+const docs = '80f208978c2c703e2b2d62064112365e7b9e1677';
 let runtime =
   process.env.G6_TEST_RUNTIME_IMAGE ??
-  'g6-promotions-real-test-runtime:20146a5';
+  'g6-promotions-real-test-runtime:7f1ffc1';
 const openssl =
   process.env.G6_TEST_OPENSSL ??
   (process.platform === 'win32' &&
@@ -43,7 +42,7 @@ const openssl =
 const execFileAsync = promisify(execFile);
 const root = process.cwd(),
   cache = resolve('node_modules/.cache/promotions-work');
-const source = join(cache, 'real-svc-20146a5');
+const source = join(cache, 'real-svc-7f1ffc1');
 const support = resolve('apps/promotions-svc/test/support');
 const directory = mkdtempSync(join(tmpdir(), 'g6-cueva-real-'));
 const password = randomUUID(),
@@ -54,7 +53,7 @@ const containers = [],
   ports = new Map();
 const evidence = {
   master,
-  promotions,
+  promotions: {},
   docs,
   promotionsSqlRevision,
   runtime,
@@ -66,7 +65,7 @@ const evidence = {
   blockers: [],
 };
 const output = resolve(
-  'apps/promotions-svc/test/evidence/real-services-2026-11-03.json',
+  'apps/promotions-svc/test/evidence/marketplace-real-2026-11-04.json',
 );
 let admin,
   broker,
@@ -99,6 +98,19 @@ function blob(bytes) {
     .update(bytes)
     .digest('hex');
 }
+function consumerSources() {
+  return Object.fromEntries(
+    git(['ls-files', '--', 'apps/promotions-svc/src'])
+      .split('\n')
+      .filter(Boolean)
+      .map((path) => [
+        path,
+        createHash('sha256')
+          .update(readFileSync(resolve(path)))
+          .digest('hex'),
+      ]),
+  );
+}
 function verifySource() {
   const entries = git([
     'ls-tree',
@@ -111,6 +123,9 @@ function verifySource() {
     'tsconfig.json',
     'tsconfig.build.json',
     'nest-cli.json',
+    'Dockerfile.service',
+    '.dockerignore',
+    'ops/oracle',
   ]).split('\n');
   for (const entry of entries) {
     const match = /^\d+ blob ([a-f0-9]+)\t(.+)$/.exec(entry);
@@ -121,9 +136,10 @@ function verifySource() {
         'SOURCE_CHANGED: ' + match[2],
       );
   }
-  assert.equal(
-    git(['diff', promotions, master, '--', 'apps/promotions-svc']),
-    '',
+  assert.deepEqual(
+    consumerSources(),
+    evidence.promotions.sourceSha256,
+    'current consumer source changed during test',
   );
   assert.ok(!existsSync(join(source, '.env')));
   for (const name of [
@@ -175,6 +191,7 @@ function run(name, image, args, env = {}, mounts = [], port) {
 }
 const mounts = () => [
   `type=bind,source=${join(source, 'dist')},target=/app/dist,readonly`,
+  `type=bind,source=${resolve('dist/apps/promotions-svc')},target=/app/dist/apps/promotions-svc,readonly`,
   `type=bind,source=${support},target=/app/real-test,readonly`,
   `type=bind,source=${directory},target=/test,readonly`,
 ];
@@ -292,8 +309,14 @@ async function check(id, operation) {
     console.log('FAIL ' + id + ': ' + safe(error.message));
   }
 }
-async function probe(operation, path, deadline = 5000) {
-  const env = promotionEnv();
+async function probe(operation, path, deadline = 5000, overrides = {}) {
+  const env = {
+    ...promotionEnv(),
+    ...(['admin-category', 'marketplace-seed'].includes(operation)
+      ? { PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false' }
+      : {}),
+    ...overrides,
+  };
   const args = ['run', '--rm', '--network', network];
   for (const mount of mounts()) args.push('--mount', mount);
   for (const key of Object.keys(env)) args.push('--env', key);
@@ -335,6 +358,23 @@ async function rowCounts() {
     ).rows[0].n;
   }
   return counts;
+}
+async function promotionsRows() {
+  const tables = (
+    await admin.query(
+      "SELECT tablename FROM pg_tables WHERE schemaname='promotions' ORDER BY tablename",
+    )
+  ).rows;
+  const rows = {};
+  for (const { tablename } of tables) {
+    assert.match(tablename, /^[a-z_]+$/);
+    rows[tablename] = (
+      await admin.query(
+        `SELECT to_jsonb(t) AS row FROM promotions."${tablename}" t ORDER BY to_jsonb(t)::text`,
+      )
+    ).rows;
+  }
+  return rows;
 }
 const sqlFiles = [
   [
@@ -378,6 +418,21 @@ async function migrate(schema, content) {
 }
 try {
   mkdirSync(cache, { recursive: true });
+  evidence.promotions = {
+    checkoutHead: git(['rev-parse', 'HEAD']),
+    changedSourcePaths: git([
+      'diff',
+      '--name-only',
+      'HEAD',
+      '--',
+      'apps/promotions-svc/src',
+    ])
+      .split('\n')
+      .filter(Boolean),
+    sourceSha256: consumerSources(),
+    execution:
+      'current checkout compiled and mounted over pinned provider dist; source hashes verified before/after',
+  };
   if (!existsSync(source)) {
     mkdirSync(source);
     const archive = join(directory, 'pinned-source.tar');
@@ -440,6 +495,20 @@ try {
     { cwd: source, timeout: 180000 },
   );
   evidence.build = 'PASS: npm run build:all in immutable snapshot';
+  execute(
+    process.platform === 'win32' ? 'cmd.exe' : 'npm',
+    process.platform === 'win32'
+      ? ['/d', '/s', '/c', 'npm run build:promotions-svc']
+      : ['run', 'build:promotions-svc'],
+    { cwd: root, timeout: 180000 },
+  );
+  assert.equal(
+    blob(readFileSync(resolve('package-lock.json'))),
+    blob(readFileSync(join(source, 'package-lock.json'))),
+    'consumer/provider dependency lock mismatch',
+  );
+  evidence.consumerBuild =
+    'PASS: npm run build:promotions-svc in current checkout';
   console.log(evidence.build);
   stage = 'disposable TLS';
   execute(openssl, [
@@ -637,11 +706,15 @@ try {
     opaqueId = randomUUID(),
     inactiveId = randomUUID(),
     categoryId = randomUUID();
+  const inactiveCategoryId = randomUUID(),
+    missingCategoryId = randomUUID();
   evidence.fixture = {
     productId,
     opaqueId,
     inactiveId,
     categoryId,
+    inactiveCategoryId,
+    missingCategoryId,
     sku: 'SYNTHETIC-REAL',
     opaqueSku: 'SKU %2F + Ñ',
     state:
@@ -660,6 +733,10 @@ try {
   await admin.query(
     "INSERT INTO taxonomy.categories(id,nombre,nivel,orden) VALUES($1,'SYNTHETIC REAL',1,0)",
     [categoryId],
+  );
+  await admin.query(
+    "INSERT INTO taxonomy.categories(id,nombre,nivel,orden,estado) VALUES($1,'SYNTHETIC INACTIVE',1,0,'INACTIVO')",
+    [inactiveCategoryId],
   );
   const locationId = randomUUID();
   await admin.query(
@@ -803,7 +880,28 @@ try {
     for (const bindings of Object.values(app.bindings))
       for (const binding of bindings ?? [])
         assert.equal(binding.HostIp, '127.0.0.1');
+  const marketplaceSeed = (await probe('marketplace-seed', productId)).body;
+  assert.equal(marketplaceSeed.kind, 'fixture-own-promotions-only');
   const beforeCounts = await rowCounts();
+  const beforePromotions = await promotionsRows();
+  const marketplace = (scope) =>
+    token({
+      sub: 'modulo-marketplace',
+      client_id: 'modulo-marketplace',
+      scope,
+    });
+  await check('promotions-real-list-active-campaign', async () => {
+    const r = await request(
+      'promotions-svc',
+      '/api/v1/promociones?canal=MARKETPLACE',
+      marketplace('promociones:leer'),
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.ok(
+      r.body.items.some((p) => p.promotion_id === marketplaceSeed.promotionId),
+    );
+    return r;
+  });
   const contextPath = '/api/v1/productos/skus/SYNTHETIC-REAL/contexto';
   await check('catalog-context-simple-real-pg', async () => {
     const r = await request('catalog-svc', contextPath, token());
@@ -1030,15 +1128,6 @@ try {
       'Taco',
       'Autorizar modulo-productos y validar canal solicitado por Promotions; allowlist sola no resuelve CANAL_CLIENT_MAP.',
     ],
-    [
-      'taxonomy-category-id',
-      'taxonomy-svc',
-      '/api/v1/categorias/' + categoryId,
-      token(),
-      404,
-      'Lopez',
-      'Implementar obtenerCategoriaAdmin normativo por ID con autorizacion contractual.',
-    ],
   ])
     await check('blocker-' + id, async () => {
       const r = await request(service, path, bearer);
@@ -1055,12 +1144,6 @@ try {
         observed: r,
       });
       return r;
-    });
-  const marketplace = (scope) =>
-    token({
-      sub: 'modulo-marketplace',
-      client_id: 'modulo-marketplace',
-      scope,
     });
   await check('pricing-real-catalog-inactive-sku-contract-error', async () => {
     const r = await request(
@@ -1123,13 +1206,157 @@ try {
     return r;
   });
   await check('taxonomy-real-pg-list-control', async () => {
-    const r = await request('taxonomy-svc', '/api/v1/categorias', token());
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias',
+      token({ sub: 'modulo-marketplace', client_id: 'modulo-marketplace' }),
+    );
     assert.equal(r.status, 200);
     assert.ok(
       r.body.categories.some((c) => (c.categoria_id ?? c.id) === categoryId),
     );
+    assert.ok(
+      !r.body.categories.some(
+        (c) => (c.categoria_id ?? c.id) === inactiveCategoryId,
+      ),
+    );
     return r;
   });
+  for (const resource of ['categorias', 'marcas'])
+    await check('taxonomy-read-token-cannot-list-' + resource, async () => {
+      const r = await request('taxonomy-svc', '/api/v1/' + resource, token());
+      assert.equal(r.status, 403);
+      assert.equal(r.body.code, 'SCOPE_INSUFICIENTE');
+      return r;
+    });
+  await check('taxonomy-category-existing-real-pg', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + categoryId,
+      token(),
+    );
+    assert.equal(r.status, 200, JSON.stringify(r.body));
+    assert.deepEqual(r.body, {
+      categoriaId: categoryId,
+      nombre: 'SYNTHETIC REAL',
+      descripcion: null,
+      categoriaPadreId: null,
+      orden: 0,
+      imagenUrl: null,
+      estado: 'ACTIVO',
+      version: 0,
+      slug: null,
+    });
+    assert.match(r.contentType, /^application\/json/);
+    return r;
+  });
+  await check('taxonomy-category-missing-contract-error', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + missingCategoryId,
+      token(),
+    );
+    assert.equal(r.status, 404);
+    assert.equal(r.body.code, 'CATEGORIA_NO_ENCONTRADA');
+    assert.match(r.contentType, /^application\/problem\+json/);
+    return r;
+  });
+  await check('taxonomy-category-inactive-real-pg', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/' + inactiveCategoryId,
+      token(),
+    );
+    assert.equal(r.status, 200);
+    assert.equal(r.body.estado, 'INACTIVO');
+    assert.equal(r.body.categoriaId, inactiveCategoryId);
+    return r;
+  });
+  for (const [name, bearer, status] of [
+    ['anonymous', undefined, 401],
+    [
+      'wrong-client',
+      token({ sub: 'modulo-marketplace', client_id: 'modulo-marketplace' }),
+      403,
+    ],
+    ['wrong-scope', token({ scope: 'precios:leer' }), 403],
+    ['wrong-audience', token({ aud: ['other'] }), 401],
+    ['wrong-issuer', token({ iss: 'https://wrong.invalid' }), 401],
+    ['expired', token({ exp: Math.floor(Date.now() / 1000) - 60 }), 401],
+    ['bad-signature', token({}, true), 401],
+    [
+      'human-without-role',
+      token({ tipo: 'acceso', sub: randomUUID(), roles: [] }),
+      403,
+    ],
+  ])
+    await check('taxonomy-category-auth-' + name, async () => {
+      const r = await request(
+        'taxonomy-svc',
+        '/api/v1/categorias/' + categoryId,
+        bearer,
+      );
+      assert.equal(r.status, status, JSON.stringify(r.body));
+      assert.equal(
+        r.body.code,
+        status === 401 ? 'TOKEN_INVALIDO' : 'SCOPE_INSUFICIENTE',
+      );
+      return r;
+    });
+  await check('taxonomy-category-invalid-id', async () => {
+    const r = await request(
+      'taxonomy-svc',
+      '/api/v1/categorias/not-a-uuid',
+      token(),
+    );
+    assert.equal(r.status, 400);
+    assert.equal(r.body.code, 'VALIDACION');
+    return r;
+  });
+  await check('taxonomy-read-token-cannot-write', async () => {
+    const r = await request('taxonomy-svc', '/api/v1/categorias', token(), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: 'FORBIDDEN-SYNTHETIC' }),
+    });
+    assert.equal(r.status, 403);
+    return r;
+  });
+  for (const [name, id, expected] of [
+    ['active', categoryId, [categoryId]],
+    ['missing', missingCategoryId, []],
+    ['inactive', inactiveCategoryId, []],
+  ])
+    await check('promotions-nest-taxonomy-reference-' + name, async () => {
+      const r = await probe('admin-category', id);
+      assert.equal(r.outcome, 'RETURNED', JSON.stringify(r));
+      assert.deepEqual(r.body, {
+        products: [],
+        skus: [],
+        categories: expected,
+      });
+      assert.equal(
+        r.scope,
+        'native PromotionsSvcModule ADMIN_REFERENCES; no provider overrides',
+      );
+      return r;
+    });
+  await check(
+    'promotions-nest-taxonomy-denied-grant-fails-closed',
+    async () => {
+      const r = await probe('admin-category', categoryId, 5000, {
+        PROMOTIONS_SERVICE_CLIENT_SECRET: secret + '-invalid',
+      });
+      assert.equal(r.outcome, 'REJECTED');
+      assert.equal(r.kind, 'CommercialDependencyError');
+      assert.equal(r.error, 'COMMERCIAL_CONTEXT_UNAVAILABLE');
+      return {
+        ...r,
+        limitation:
+          'denied local issuer grant must not become an absent/active category',
+      };
+    },
+  );
   await check(
     'promotions-independent-passive-readiness-real-pg-and-broker',
     async () => {
@@ -1193,6 +1420,7 @@ try {
     assert.equal(upstream.status, 403);
     assert.match(upstream.correlationId, /^[a-f0-9-]{36}$/i);
     assert.equal(upstream.correlationId, upstream.responseCorrelationId);
+    assert.equal(upstream.correlationId, r.correlationId);
     return {
       ...r,
       verifiedUpstreamFailure: upstream,
@@ -1200,6 +1428,56 @@ try {
         'product_id intentionally reaches the real Catalog product guard: traced 403 maps to 503. This does not prove behavior caused by an inactive SKU or a successful commercial evaluation.',
     };
   });
+  for (const [id, path, scope, extra] of [
+    [
+      'coupon',
+      '/api/v1/cupones/validar',
+      'cupones:validar',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          channel_id: 'MARKETPLACE',
+          coupon_code: marketplaceSeed.code,
+          lines: [
+            { product_id: productId, sku: 'SYNTHETIC-REAL', quantity: 1 },
+          ],
+        }),
+      },
+    ],
+    [
+      'recommendations',
+      '/api/v1/recomendaciones?productoId=' + productId + '&canal=MARKETPLACE',
+      'recomendaciones:leer',
+      {},
+    ],
+  ])
+    await check(
+      'promotions-real-' + id + '-catalog-403-fails-closed',
+      async () => {
+        const beforeTrace = await probe('catalog-transport-evidence', '/');
+        const r = await request(
+          'promotions-svc',
+          path,
+          marketplace(scope),
+          extra,
+        );
+        assert.equal(r.status, 503, JSON.stringify(r.body));
+        assert.equal(r.body.code, 'SERVICIO_NO_DISPONIBLE');
+        const trace = (
+          await probe('catalog-transport-evidence', '/')
+        ).body.slice(beforeTrace.body.length);
+        assert.equal(trace.length, 1);
+        assert.equal(trace[0].status, 403);
+        assert.equal(trace[0].correlationId, r.correlationId);
+        return {
+          ...r,
+          verifiedUpstreamFailure: trace[0],
+          limitation:
+            'real Catalog authorization blocks positive business flow; local signed JWT does not demonstrate a real G7 grant',
+        };
+      },
+    );
   await check('promotions-invalid-inbound-token', async () => {
     const r = await request(
       'promotions-svc',
@@ -1298,10 +1576,15 @@ try {
   });
   await check('read-only-http-does-not-create-business-rows', async () => {
     const afterCounts = await rowCounts();
+    assert.deepEqual(await promotionsRows(), beforePromotions);
     assert.deepEqual(afterCounts, beforeCounts);
     return {
       before: beforeCounts,
       after: afterCounts,
+      promotionsAllRowsUnchanged: true,
+      promotionsRowsSha256: createHash('sha256')
+        .update(JSON.stringify(beforePromotions))
+        .digest('hex'),
       intentionalFixtureMutation:
         'only catalog.products.estado changed BORRADOR -> INACTIVO; no activation confirmations or commercial mutations',
     };

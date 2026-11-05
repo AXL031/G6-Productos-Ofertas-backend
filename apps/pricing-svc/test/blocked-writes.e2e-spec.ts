@@ -5,6 +5,10 @@ import type { App } from 'supertest/types.js';
 import { PricingSvcModule } from '../src/pricing-svc.module.js';
 import { PricingMutations } from '../src/application/pricing-mutations.js';
 import { PricingRepository } from '../src/persistence/pricing.repository.js';
+import {
+  PRICING_FACT_FACTORY,
+  PRICING_WRITE_AUTHORIZER,
+} from '../src/http/pricing-write.controller.js';
 
 // Provider HTTP exclusivamente: no acredita persistencia ni E2E con Gateway.
 describe('Fronteras de escritura bloqueadas por contrato', () => {
@@ -28,6 +32,10 @@ describe('Fronteras de escritura bloqueadas por contrato', () => {
       .useValue({ update, schedule })
       .overrideProvider(PricingRepository)
       .useValue({ transaction })
+      .overrideProvider(PRICING_WRITE_AUTHORIZER)
+      .useValue(async () => '74ed2f19-7e70-4915-a6f6-bbc691b82587')
+      .overrideProvider(PRICING_FACT_FACTORY)
+      .useValue(null)
       .compile();
     app = module.createNestApplication();
     await app.init();

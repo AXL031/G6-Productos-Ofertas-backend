@@ -5,7 +5,7 @@ readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=service-registry.sh
 source "${SCRIPT_DIR}/service-registry.sh"
 
-readonly G6_DEPLOY_EXECUTOR_VERSION=4
+readonly G6_DEPLOY_EXECUTOR_VERSION=5
 readonly G6_SUPPORTED_SERVICE_REGISTRY_VERSION=2
 readonly G6_HTTP_GENERIC_OVERLAY="/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml"
 readonly G6_HTTP_INVENTORY_OVERLAY="/opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml"
@@ -45,6 +45,10 @@ fi
 g6_service_config "$SERVICE_NAME" || fail 'servicio no autorizado'
 [[ "$G6_SERVICE_ENABLED" == true ]] || fail 'servicio registrado pero no habilitado para despliegue'
 [[ "$IMAGE_SHA" =~ ^[0-9a-f]{40}$ ]] || fail 'SHA inválido'
+if [[ "$SERVICE_NAME" == catalog-svc ]]; then
+  command -v jq >/dev/null 2>&1 || fail 'jq no está disponible; no se puede validar la respuesta JSON de readiness de Catalog'
+  command -v timeout >/dev/null 2>&1 || fail 'timeout no está disponible; no se puede acotar la verificación de Catalog'
+fi
 
 IFS= read -r GHCR_USERNAME || fail 'falta usuario GHCR en stdin'
 IFS= read -r GHCR_TOKEN || fail 'falta token GHCR en stdin'
@@ -188,19 +192,72 @@ compose() {
   fi
 }
 
+docker_inspect() {
+  if [[ "$SERVICE_NAME" == catalog-svc ]]; then
+    timeout 2 docker inspect "$@"
+  else
+    docker inspect "$@"
+  fi
+}
+
 container_matches_image_and_is_healthy() {
   local expected_image="$1"
   local actual_image health_status
-  actual_image="$(docker inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
+  actual_image="$(docker_inspect --format '{{.Config.Image}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
   [[ "$actual_image" == "$expected_image" ]] || return 1
-  health_status="$(docker inspect --format '{{.State.Health.Status}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
+  health_status="$(docker_inspect --format '{{.State.Health.Status}}' "$G6_SERVICE_CONTAINER" 2>/dev/null)" || return 1
   [[ "$health_status" == healthy ]]
 }
 
 service_is_healthy() {
   local expected_image="$1"
-  container_matches_image_and_is_healthy "$expected_image" &&
+  container_matches_image_and_is_healthy "$expected_image" || return 1
+  if [[ "$SERVICE_NAME" == catalog-svc ]]; then
+    http_endpoint_is_200 /health
+  else
     curl --fail --silent "http://127.0.0.1:${G6_SERVICE_PORT}/health" >/dev/null
+  fi
+}
+
+http_endpoint_is_200() {
+  local path="$1" body_file status
+  body_file="$(mktemp)" || return 1
+  if ! status="$(curl --silent --show-error --max-time 2 --output "$body_file" \
+    --write-out '%{http_code}' "http://127.0.0.1:${G6_SERVICE_PORT}${path}")"; then
+    rm -f "$body_file"
+    return 1
+  fi
+  rm -f "$body_file"
+  [[ "$status" == 200 ]]
+}
+
+catalog_is_ready() {
+  local body_file status valid
+  command -v jq >/dev/null 2>&1 || return 1
+  body_file="$(mktemp)" || return 1
+  if ! status="$(curl --silent --show-error --max-time 2 --output "$body_file" \
+    --write-out '%{http_code}' "http://127.0.0.1:${G6_SERVICE_PORT}/health/ready")"; then
+    rm -f "$body_file"
+    return 1
+  fi
+  if [[ "$status" != 200 ]] || ! valid="$(timeout 2 jq -e \
+    'type == "object" and .service == "catalog-svc" and .status == "ready"' \
+    "$body_file" 2>/dev/null)"; then
+    rm -f "$body_file"
+    return 1
+  fi
+  rm -f "$body_file"
+  [[ "$valid" == true ]]
+}
+
+service_passes_deployment_gate() {
+  local expected_image="$1"
+  service_is_healthy "$expected_image" || return 1
+  if [[ "$SERVICE_NAME" == catalog-svc ]]; then
+    catalog_is_ready
+  else
+    true
+  fi
 }
 
 if [[ -n "$CURRENT_IMAGE" ]]; then
@@ -215,7 +272,7 @@ fi
 if ! compose "$NEW_IMAGE" up --detach --no-deps; then
   if [[ -n "$CURRENT_IMAGE" ]] && compose "$CURRENT_IMAGE" up --detach --no-deps; then
     for attempt in {1..30}; do
-      if service_is_healthy "$CURRENT_IMAGE"; then
+      if service_passes_deployment_gate "$CURRENT_IMAGE"; then
         printf '%s\n' "$CURRENT_IMAGE" > "${ACTIVE_FILE}.tmp"
         mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
         fail "arranque de nueva imagen falló; restaurada ${CURRENT_IMAGE}"
@@ -231,7 +288,7 @@ fi
 
 healthy=false
 for attempt in {1..30}; do
-  if service_is_healthy "$NEW_IMAGE"; then
+  if service_passes_deployment_gate "$NEW_IMAGE"; then
     healthy=true
     break
   fi
@@ -239,11 +296,11 @@ for attempt in {1..30}; do
 done
 
 if [[ "$healthy" != true ]]; then
-  printf 'G6 deployment: health check falló para %s; iniciando rollback\n' "$NEW_IMAGE" >&2
+  printf 'G6 deployment: health/readiness check falló para %s; iniciando rollback\n' "$NEW_IMAGE" >&2
   if [[ -n "$CURRENT_IMAGE" ]]; then
     if compose "$CURRENT_IMAGE" up --detach --no-deps; then
       for attempt in {1..30}; do
-        if service_is_healthy "$CURRENT_IMAGE"; then
+        if service_passes_deployment_gate "$CURRENT_IMAGE"; then
           printf '%s\n' "$CURRENT_IMAGE" > "${ACTIVE_FILE}.tmp"
           mv "${ACTIVE_FILE}.tmp" "$ACTIVE_FILE"
           fail "nueva imagen no saludable; restaurada ${CURRENT_IMAGE}"
@@ -251,11 +308,11 @@ if [[ "$healthy" != true ]]; then
         sleep 2
       done
     fi
-    fail "health check falló y el rollback a ${CURRENT_IMAGE} no se pudo verificar"
+    fail "health/readiness check falló y el rollback a ${CURRENT_IMAGE} no se pudo verificar"
   fi
   compose "$NEW_IMAGE" rm --stop --force
   rm -f "$ACTIVE_FILE"
-  fail 'health check falló; no había una versión anterior que restaurar'
+  fail 'health/readiness check falló; no había una versión anterior que restaurar'
 fi
 
 printf '%s\n' "$NEW_IMAGE" > "${ACTIVE_FILE}.tmp"

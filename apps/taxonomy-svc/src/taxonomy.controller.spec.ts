@@ -16,6 +16,7 @@ import {
   TaxonomyTokenVerifier,
   readTaxonomySecurityConfig,
   readTaxonomyDemoConfig,
+  readTaxonomyPublicReadConfig,
   TAXONOMY_DEMO_ENABLED,
   TaxonomyAuthGuard,
 } from './taxonomy-auth.js';
@@ -66,6 +67,98 @@ describe('configuración de Seguridad de Taxonomy', () => {
       }),
     } as unknown as import('@nestjs/common').ExecutionContext;
     await expect(guard.canActivate(context)).rejects.toMatchObject({
+      status: 401,
+    });
+  });
+  it('no activa operaciones públicas automáticamente en PUBLIC_READ_ONLY ni concede acceso por IP privada', async () => {
+    // Requisito #3: sin TAXONOMY_PUBLIC_OPERATION_IDS, hay 0 operaciones públicas
+    const emptyPhase1 = readTaxonomyPublicReadConfig({
+      NODE_ENV: 'production',
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+    });
+    expect(emptyPhase1).toEqual({
+      securityMode: 'PUBLIC_READ_ONLY',
+      publicOperations: [],
+    });
+
+    // Requisito #4: provenir de una IP privada (ej. 172.18.0.4 o 10.0.0.5) NO concede acceso
+    const guardSinOperaciones = new TaxonomyAuthGuard(
+      {} as TaxonomyTokenVerifier,
+      false,
+      emptyPhase1,
+    );
+    for (const remoteAddress of [
+      '172.18.0.4',
+      '10.0.0.5',
+      '192.168.1.10',
+      '127.0.0.1',
+    ]) {
+      const ctx = {
+        getHandler: () => ({ name: 'listarCategorias' }),
+        switchToHttp: () => ({
+          getRequest: () => ({
+            headers: {},
+            method: 'GET',
+            path: '/api/v1/categorias',
+            socket: { remoteAddress },
+          }),
+        }),
+      } as unknown as import('@nestjs/common').ExecutionContext;
+      await expect(guardSinOperaciones.canActivate(ctx)).rejects.toMatchObject({
+        status: 401,
+      });
+    }
+
+    // Incluso con ALLOW_DEMO_UNAUTHENTICATED=true en test, una IP privada RFC1918 es rechazada
+    const guardLoopbackOnly = new TaxonomyAuthGuard(
+      {} as TaxonomyTokenVerifier,
+      true,
+    );
+    const privatePeerCtx = {
+      getHandler: () => ({ name: 'listarCategorias' }),
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: {},
+          method: 'GET',
+          path: '/api/v1/categorias',
+          socket: { remoteAddress: '172.18.0.4' },
+        }),
+      }),
+    } as unknown as import('@nestjs/common').ExecutionContext;
+    await expect(
+      guardLoopbackOnly.canActivate(privatePeerCtx),
+    ).rejects.toMatchObject({
+      status: 401,
+    });
+
+    // Solo cuando la operación está explícitamente en TAXONOMY_PUBLIC_OPERATION_IDS en PUBLIC_READ_ONLY
+    const explicitPhase1 = readTaxonomyPublicReadConfig({
+      NODE_ENV: 'production',
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+      TAXONOMY_PUBLIC_OPERATION_IDS: 'listarCategorias',
+    });
+    const guardExplicito = new TaxonomyAuthGuard(
+      {} as TaxonomyTokenVerifier,
+      false,
+      explicitPhase1,
+    );
+    await expect(guardExplicito.canActivate(privatePeerCtx)).resolves.toBe(
+      true,
+    );
+    const unapprovedOpCtx = {
+      getHandler: () => ({ name: 'listarMarcas' }),
+      switchToHttp: () => ({
+        getRequest: () => ({
+          headers: {},
+          method: 'GET',
+          path: '/api/v1/marcas',
+          socket: { remoteAddress: '172.18.0.4' },
+        }),
+      }),
+    } as unknown as import('@nestjs/common').ExecutionContext;
+    await expect(
+      guardExplicito.canActivate(unapprovedOpCtx),
+    ).rejects.toMatchObject({
       status: 401,
     });
   });
@@ -413,7 +506,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const payload = Buffer.from(
       JSON.stringify({
         iss: issuer,
-        sub: 'catalog-svc',
+        sub: 'modulo-marketplace',
         tipo: 'servicio',
         aud: 'api-productos',
         scope: 'catalogo:leer',
@@ -522,10 +615,52 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       server.close((error) => (error ? reject(error) : resolve())),
     );
   });
+  it('aplica la allowlist M2M contractual directamente en Taxonomy', async () => {
+    const categorias = '/api/v1/categorias';
+    const marcas = '/api/v1/marcas';
+    for (const cliente of [
+      'modulo-marketplace',
+      'modulo-chatbot',
+      'modulo-retail',
+    ]) {
+      const autorizacion = 'Bearer ' + token({ sub: cliente });
+      await request(app.getHttpServer())
+        .get(categorias)
+        .set('Authorization', autorizacion)
+        .expect(200);
+      await request(app.getHttpServer())
+        .get(marcas)
+        .set('Authorization', autorizacion)
+        .expect(200);
+    }
+    for (const cliente of [
+      'catalog-svc',
+      'modulo-productos',
+      'otro-servicio',
+    ]) {
+      const autorizacion = 'Bearer ' + token({ sub: cliente });
+      await request(app.getHttpServer())
+        .get(categorias)
+        .set('Authorization', autorizacion)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(marcas)
+        .set('Authorization', autorizacion)
+        .expect(403);
+    }
+    const scopeInsuficiente =
+      'Bearer ' +
+      token({ sub: 'modulo-marketplace', scope: 'catalogo:escribir' });
+    await request(app.getHttpServer())
+      .get(categorias)
+      .set('Authorization', scopeInsuficiente)
+      .expect(403);
+  });
   it('actualizarCategoria valida JWT, cuerpo y conflictos', async () => {
     const path = '/api/v1/categorias/11111111-1111-4111-8111-111111111111';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer())
       .patch(path)
       .send({ nombre: 'X' })
@@ -557,7 +692,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   });
   it('crear y actualizar marcas requieren usuario y aceptan multipart', async () => {
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     const png = readFileSync(
       resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
     );
@@ -668,7 +804,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const path = '/api/v1/categorias';
     const body = { nombre: 'Running', slugConfirmado: 'running' };
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer()).post(path).send(body).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -692,7 +829,8 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const path =
       '/api/v1/categorias/11111111-1111-4111-8111-111111111111/reactivar';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     await request(demoApp.getHttpServer()).post(path).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -716,7 +854,11 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
   it('reactivarMarca exige JWT humano válido incluso con demo activada', async () => {
     const path =
       '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
-    const human = token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+    const human = token({
+      tipo: 'acceso',
+      sub: randomUUID(),
+      roles: ['GESTOR_COMERCIAL'],
+    });
     await request(demoApp.getHttpServer()).post(path).expect(401);
     await request(app.getHttpServer())
       .post(path)
@@ -727,7 +869,12 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .set(
         'Authorization',
         'Bearer ' +
-          token({ tipo: 'acceso', sub: randomUUID(), roles: [], aud: 'wrong' }),
+          token({
+            tipo: 'acceso',
+            sub: randomUUID(),
+            roles: ['GESTOR_COMERCIAL'],
+            aud: 'wrong',
+          }),
       )
       .expect(401);
     await request(app.getHttpServer())
@@ -735,7 +882,12 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .set(
         'Authorization',
         'Bearer ' +
-          token({ tipo: 'acceso', sub: randomUUID(), roles: [], exp: 1 }),
+          token({
+            tipo: 'acceso',
+            sub: randomUUID(),
+            roles: ['GESTOR_COMERCIAL'],
+            exp: 1,
+          }),
       )
       .expect(401);
     const result = await request(app.getHttpServer())
@@ -754,13 +906,14 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
         'Bearer ' +
           token({ tipo: 'acceso', sub: randomUUID(), roles: undefined }),
       )
-      .expect(200);
+      .expect(403);
   });
   it('reactivarMarca retorna Problem Details si la marca no existe o la baja sigue en curso', async () => {
     const path =
       '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
     const human =
-      'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] });
+      'Bearer ' +
+      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
     reactivar.mockResolvedValueOnce({ estado: 'NO_ENCONTRADA' });
     const missing = await request(app.getHttpServer())
       .post(path)
@@ -800,7 +953,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url + '/desconocido')
-        .expect(404);
+        .expect(401);
     },
   );
   it.each([

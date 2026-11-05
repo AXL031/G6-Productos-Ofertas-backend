@@ -14,6 +14,7 @@ const tempDir = mkdtempSync(
   join(root, 'apps/bulk-svc/test/.bulk-joint-v2-local-'),
 );
 const generatedSpec = join(tempDir, 'bulk-joint-v2.e2e-spec.ts');
+const testFilter = process.argv[2] ?? 'BULK-JOINT';
 
 const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consumer, TLS PostgreSQL, result v1 and replay', async () => {
       const productInputValue = createRequest(true);
@@ -51,12 +52,20 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           { name: 'foreign', skuVariant: foreignSku, productVersion: Number(initialParent.catalog_version) + 1, variantVersion: Number(initialForeign.catalog_version) },
           { name: 'stale', skuVariant, productVersion: Number(initialParent.catalog_version) + 1, variantVersion: Number(initialVariant.catalog_version) },
         ].map((item) => ({ ...item, productId: created.product_id, skuBase: productInputValue.skuBase, batch: randomUUID(), correlation: randomUUID() }));
+        const httpCase = {
+          productId: created.product_id,
+          productVersion: Number(initialParent.catalog_version) + 1,
+          variantVersion: Number(initialVariant.catalog_version) + 1,
+          skuBase: productInputValue.skuBase,
+          skuVariant,
+          correlation: randomUUID(),
+        };
         const child = spawn(process.execPath, [resolve('apps/bulk-svc/test/support/bulk-joint-v2-peer.mjs')], {
           env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: 'test' },
           windowsHide: true,
           stdio: ['pipe', 'pipe', 'pipe'],
         });
-        child.stdin.end(JSON.stringify({ build, port: Number(port), ca: caFile, broker: jointBroker.bulkUrl, cases }));
+        child.stdin.end(JSON.stringify({ build, port: Number(port), ca: caFile, broker: jointBroker.bulkUrl, cases, httpCase }));
         const output = [];
         const diagnostics = [];
         child.stdout.setEncoding('utf8');
@@ -74,7 +83,9 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
         expect(exit, 'Real Bulk v2 peer failed: ' + diagnostics.join(' ')).toBe(0);
         const line = output.join('').split('\\n').find((value) => value.startsWith('BULK_JOINT_V2_RESULT:'));
         expect(line).toBeDefined();
-        const results = JSON.parse(line.slice('BULK_JOINT_V2_RESULT:'.length));
+        const peerResults = JSON.parse(line.slice('BULK_JOINT_V2_RESULT:'.length));
+        const results = peerResults.cases;
+        const httpResult = peerResults.http;
         expect(results.map((item) => item.name)).toEqual(['success', 'missing', 'foreign', 'stale']);
         expect(results.map((item) => item.command.schema_version)).toEqual([2, 2, 2, 2]);
         expect(results.map((item) => item.result.data.results[0].code)).toEqual([null, 'VARIANTE_NO_ENCONTRADA', 'VARIANTE_NO_ENCONTRADA', 'VERSION_CONFLICT']);
@@ -86,16 +97,102 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           { domain: 'CATALOGO', status: 'COMPLETED' },
           { domain: 'INVENTARIO', status: 'PENDING' },
         ]));
+        expect(httpResult).toMatchObject({
+          admission: {
+            status: 'QUEUED',
+            template_version: 2,
+            correlation_id: httpCase.correlation,
+          },
+          snapshot: {
+            status: 'PROCESSING',
+            completed_rows: 0,
+            failed_rows: 0,
+            rows: [
+              {
+                status: 'PROCESSING',
+                applied_domains: ['CATALOGO'],
+                failed_domain: null,
+                needs_reconciliation: false,
+              },
+            ],
+          },
+          catalogResultReceipts: 1,
+        });
+        expect(httpResult.storedContentRef).toContain('supabase://bulk-joint-v2-http/imports/');
         const afterParent = (await database.read((db) => db.select().from(products).where(eq(products.id, created.product_id))))[0];
         const afterTarget = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, skuVariant))))[0];
         const afterForeign = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, foreignSku))))[0];
-        expect(afterParent.catalog_version).toBe(initialParent.catalog_version + 1n);
-        expect(afterParent.nombre).toBe('Bulk joint v2 actualizado');
-        expect(afterTarget.catalog_version).toBe(initialVariant.catalog_version + 1n);
+        expect(afterParent.catalog_version).toBe(initialParent.catalog_version + 2n);
+        expect(afterParent.nombre).toBe('Bulk joint v2 HTTP actualizado');
+        expect(afterTarget.catalog_version).toBe(initialVariant.catalog_version + 2n);
         expect(afterForeign.catalog_version).toBe(initialForeign.catalog_version);
         const acceptedCommandId = results[0].command.message_id;
         const catalogReceipts = await database.read((db) => db.select().from(inbox).where(eq(inbox.message_id, acceptedCommandId)));
         expect(catalogReceipts).toHaveLength(1);
+        const gatewayCorrelation = randomUUID();
+        const missingCorrelation = randomUUID();
+        const invalidCorrelation = randomUUID();
+        const gatewayChild = spawn(process.execPath, [resolve('apps/bulk-svc/test/support/bulk-gateway-catalog-peer.mjs')], {
+          env: { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, NODE_ENV: 'test' },
+          windowsHide: true,
+          stdio: ['pipe', 'pipe', 'pipe'],
+        });
+        gatewayChild.stdin.end(JSON.stringify({
+          bulkMain: join(build, 'main.js'),
+          directory: buildDirectory,
+          pgPort: Number(port),
+          ca: caFile,
+          broker: jointBroker.bulkUrl,
+          successCase: {
+            productId: created.product_id,
+            productVersion: Number(afterParent.catalog_version),
+            variantVersion: Number(afterTarget.catalog_version),
+            skuBase: productInputValue.skuBase,
+            skuVariant,
+          },
+          successCorrelation: gatewayCorrelation,
+          missingCorrelation,
+          invalidCorrelation,
+        }));
+        const gatewayOutput = [];
+        const gatewayDiagnostics = [];
+        gatewayChild.stdout.setEncoding('utf8');
+        gatewayChild.stderr.setEncoding('utf8');
+        gatewayChild.stdout.on('data', (data) => gatewayOutput.push(String(data)));
+        gatewayChild.stderr.on('data', (data) => { gatewayDiagnostics.push(String(data)); process.stderr.write(String(data)); });
+        const gatewayExit = await new Promise((done, reject) => {
+          const timer = setTimeout(() => { gatewayChild.kill(); reject(new Error('Disposable Gateway→Bulk→Catalog peer timeout')); }, 90000);
+          gatewayChild.once('error', (error) => { clearTimeout(timer); reject(error); });
+          gatewayChild.once('exit', (code) => { clearTimeout(timer); done(code); });
+        });
+        expect(gatewayExit, 'Real Gateway→Bulk→Catalog peer failed: ' + gatewayDiagnostics.join(' ').slice(-2000)).toBe(0);
+        const gatewayLine = gatewayOutput.join('').split('\\n').find((value) => value.startsWith('BULK_GATEWAY_CATALOG_RESULT:'));
+        expect(gatewayLine).toBeDefined();
+        const gatewayResults = JSON.parse(gatewayLine.slice('BULK_GATEWAY_CATALOG_RESULT:'.length));
+        expect(gatewayResults).toMatchObject({
+          templateCsv: 200,
+          templateXlsx: 200,
+          accepted: 'QUEUED',
+          correlationPreserved: true,
+          outboxCommands: 1,
+          catalogApplied: ['CATALOGO'],
+          inventoryStatus: 'PENDING',
+          reportStatus: 200,
+          reportContainsCatalogFailure: true,
+          invalidTransition: 409,
+          bulkInboxReceipts: 1,
+          authDisabledWithoutToken: 401,
+          invalidFormat: 400,
+          invalidVersion: 422,
+          unknownMethod: 404,
+          upstreamUnavailable: 503,
+          storage: 'local-http-compatible',
+          auth: 'RESTRICTED_DEMO_LOOPBACK_ONLY',
+        });
+        const gatewayCatalogReceipts = await database.read((db) => db.select().from(inbox).where(eq(inbox.message_id, gatewayResults.replayedCommand)));
+        expect(gatewayCatalogReceipts).toHaveLength(1);
+        const afterGatewayReplay = (await database.read((db) => db.select().from(variants).where(eq(variants.sku, skuVariant))))[0];
+        expect(afterGatewayReplay.catalog_version).toBe(afterTarget.catalog_version + 1n);
         console.log('BULK_JOINT_V2_PERSISTED:' + JSON.stringify({
           skuVariant,
           parentVersion: [Number(initialParent.catalog_version), Number(afterParent.catalog_version)],
@@ -103,6 +200,8 @@ const extension = `    it('BULK-JOINT v2: real Bulk CSV producer, Catalog consum
           foreignVariantVersion: [Number(initialForeign.catalog_version), Number(afterForeign.catalog_version)],
           resultCodes: results.map((item) => item.result.data.results[0].code),
           catalogInboxReceiptsAfterReplay: catalogReceipts.length,
+          gatewayE2E: gatewayResults,
+          catalogInboxReceiptsAfterGatewayReplay: gatewayCatalogReceipts.length,
         }));
         await expect.poll(() => jointBroker.bulkQueueStats(), { timeout: 15000, interval: 500 }).toMatch(/po\\.catalogo\\.q\\s+0\\s+0/);
       } finally {
@@ -148,7 +247,7 @@ try {
       resolve(root, 'vitest.config.e2e.ts'),
       generatedSpec,
       '-t',
-      'BULK-JOINT',
+      testFilter,
     ],
     {
       cwd: root,

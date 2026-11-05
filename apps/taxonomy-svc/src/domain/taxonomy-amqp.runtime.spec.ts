@@ -68,9 +68,15 @@ function fixture() {
     consumir: vi.fn().mockResolvedValue(undefined),
     guardarInvalido: vi.fn().mockResolvedValue(undefined),
   };
+  const logger = {
+    error: vi.fn(),
+    warn: vi.fn(),
+    log: vi.fn(),
+  };
   const runtime = new TaxonomyAmqpRuntime(
     store as unknown as TaxonomyMessageStore,
   );
+  runtime.usarLogger(logger);
   runtime.configurar(config);
   const entregar = (obj: unknown, options: Record<string, unknown> = {}) =>
     recibir({
@@ -84,7 +90,7 @@ function fixture() {
       },
       fields: { routingKey: envelope.name, consumerTag: 'test' },
     } as ConsumeMessage);
-  return { runtime, store, consumer, publisher, connection, entregar };
+  return { runtime, store, consumer, publisher, connection, entregar, logger };
 }
 const esperar = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 afterEach(() => {
@@ -93,34 +99,69 @@ afterEach(() => {
 
 describe('Taxonomy AMQP', () => {
   it.each([
+    'taxonomy.product-type-schema.changed',
+    'taxonomy.characteristic-value.updated',
+  ])('publica %s en el exchange contractual', async (name) => {
+    const f = fixture();
+    f.store.publicarUno
+      .mockImplementationOnce(
+        async (publish: (r: Record<string, unknown>) => Promise<void>) => {
+          await publish({
+            event_name: name,
+            message_id: envelope.message_id,
+            correlation_id: envelope.correlation_id,
+            payload: {
+              name,
+              message_id: envelope.message_id,
+              correlation_id: envelope.correlation_id,
+              producer: 'taxonomy-svc',
+              kind: 'event',
+              schema_version: 1,
+              data: {},
+            },
+          });
+          return 'PUBLICADO';
+        },
+      )
+      .mockResolvedValue('VACIO');
+    f.runtime.iniciar();
+    try {
+      await esperar();
+      expect(f.publisher.publish).toHaveBeenCalledWith(
+        'po.eventos.x',
+        name,
+        expect.any(Buffer),
+        expect.objectContaining({
+          mandatory: true,
+          persistent: true,
+          type: name,
+        }),
+        expect.any(Function),
+      );
+    } finally {
+      await f.runtime.onModuleDestroy();
+    }
+  });
+  it.each([
     'PRODUCT_TYPE',
     'CHARACTERISTIC_VALUE',
     'PRODUCT_TYPE_CHARACTERISTIC',
-  ])(
-    'reconoce %s sin aplicar efectos antes de implementar su dominio',
-    async (entityType) => {
-      const checked = parseChecked({
-        ...envelope,
-        data: {
-          ...envelope.data,
-          entity_type: entityType,
-          ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
-            ? {
-                tipo_producto_id: envelope.data.entity_id,
-                caracteristica_id: envelope.data.entity_id,
-              }
-            : {}),
-        },
-      });
-      const store = new TaxonomyMessageStore(
-        {} as ConstructorParameters<typeof TaxonomyMessageStore>[0],
-        {} as ConstructorParameters<typeof TaxonomyMessageStore>[1],
-      );
-      await expect(store.consumir(checked)).rejects.toThrow(
-        'UNSUPPORTED_ENTITY',
-      );
-    },
-  );
+  ])('reconoce el envelope de %s', async (entityType) => {
+    const checked = parseChecked({
+      ...envelope,
+      data: {
+        ...envelope.data,
+        entity_type: entityType,
+        ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+          ? {
+              tipo_producto_id: envelope.data.entity_id,
+              caracteristica_id: envelope.data.entity_id,
+            }
+          : {}),
+      },
+    });
+    expect(checked.data.entity_type).toBe(entityType);
+  });
   it('valida configuración sin exponer credenciales', () => {
     expect(leerAmqp({})).toBeUndefined();
     expect(() =>
@@ -188,7 +229,7 @@ describe('Taxonomy AMQP', () => {
     expect(f.consumer.ack).toHaveBeenCalledOnce();
     await f.runtime.onModuleDestroy();
   });
-  it('pausa tras tres fallos sin ACK ni requeue', async () => {
+  it('pausa tras tres fallos, registra diagnóstico seguro, sin ACK y falla readiness', async () => {
     const f = fixture();
     f.store.consumir.mockRejectedValue(new Error('db'));
     f.runtime.iniciar();
@@ -199,6 +240,48 @@ describe('Taxonomy AMQP', () => {
     expect(f.consumer.ack).not.toHaveBeenCalled();
     expect(f.consumer.cancel).toHaveBeenCalledOnce();
     expect(f.runtime.disponible()).toBe(false);
+    expect(f.logger.error).toHaveBeenCalledExactlyOnceWith({
+      event: 'taxonomy.amqp.consumer_paused',
+      service: 'taxonomy-svc',
+      alert_name: 'taxonomy_amqp_consumer_paused',
+      component: 'consumer',
+      state: 'paused',
+      attempts: 3,
+      reason: 'PERSISTENCE_FAILURE',
+    });
+    expect(JSON.stringify(f.logger.error.mock.calls)).not.toContain('db');
+    await f.runtime.onModuleDestroy();
+  });
+
+  it('recupera un fallo transitorio antes del tercer intento y confirma una sola vez', async () => {
+    const f = fixture();
+    f.store.consumir
+      .mockRejectedValueOnce(new Error('credential=private'))
+      .mockResolvedValueOnce(undefined);
+    f.runtime.iniciar();
+    await esperar();
+    f.entregar(envelope);
+    await new Promise((resolve) => setTimeout(resolve, 350));
+    expect(f.store.consumir).toHaveBeenCalledTimes(2);
+    expect(f.consumer.ack).toHaveBeenCalledOnce();
+    expect(f.runtime.disponible()).toBe(true);
+    expect(f.logger.error).not.toHaveBeenCalled();
+    expect(f.logger.warn.mock.calls.flat()).not.toContain('credential=private');
+    await f.runtime.onModuleDestroy();
+  });
+
+  it('marca la publicación Outbox pendiente con una señal segura y de baja cardinalidad', async () => {
+    const f = fixture();
+    f.store.publicarUno.mockResolvedValueOnce('PENDIENTE');
+    f.runtime.iniciar();
+    await esperar();
+    expect(f.logger.warn).toHaveBeenCalledWith({
+      event: 'taxonomy.amqp.outbox_publish_pending',
+      service: 'taxonomy-svc',
+      component: 'outbox',
+      state: 'pending',
+      reason: 'BROKER_PUBLISH_UNCONFIRMED',
+    });
     await f.runtime.onModuleDestroy();
   });
   it('publica en exchange contractual y espera confirmación', async () => {
@@ -277,6 +360,54 @@ describe('Taxonomy AMQP', () => {
     f.runtime.iniciar();
     await esperar();
     expect(fallo).toBe(true);
+    await f.runtime.onModuleDestroy();
+  });
+
+  it('conserva la publicación Outbox si el broker rechaza el confirm', async () => {
+    const f = fixture();
+    let fallo = false;
+    f.publisher.publish.mockImplementationOnce(
+      (_exchange, _key, _body, _options, callback) => {
+        callback(new Error('password=do-not-log'));
+        return true;
+      },
+    );
+    f.store.publicarUno.mockImplementationOnce(
+      async (publish: (r: Record<string, unknown>) => Promise<void>) => {
+        try {
+          await publish({
+            event_name: 'taxonomy.master.deactivation.check.requested',
+            message_id: envelope.message_id,
+            correlation_id: envelope.correlation_id,
+            payload: {
+              name: 'taxonomy.master.deactivation.check.requested',
+              message_id: envelope.message_id,
+              correlation_id: envelope.correlation_id,
+              producer: 'taxonomy-svc',
+              kind: 'command',
+              schema_version: 1,
+              data: {},
+            },
+          });
+        } catch {
+          fallo = true;
+        }
+        return 'PENDIENTE';
+      },
+    );
+    f.runtime.iniciar();
+    await esperar();
+    expect(fallo).toBe(true);
+    expect(f.logger.warn).toHaveBeenCalledWith({
+      event: 'taxonomy.amqp.outbox_publish_pending',
+      service: 'taxonomy-svc',
+      component: 'outbox',
+      state: 'pending',
+      reason: 'BROKER_PUBLISH_UNCONFIRMED',
+    });
+    expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain(
+      'do-not-log',
+    );
     await f.runtime.onModuleDestroy();
   });
 });

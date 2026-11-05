@@ -278,39 +278,67 @@ export class CatalogQueryRepository {
     tx: CatalogTransaction,
     rows: VariantRow[],
   ): Promise<AdminVariant[]> {
+    if (!rows.length) return [];
+    const ids = rows.map((row) => row.variant_id);
+    const values = await tx
+      .select({
+        variant_id: variantAttributes.variant_id,
+        caracteristica_id: variantAttributes.caracteristica_id,
+        nombre: variantAttributes.nombre_snapshot,
+        valor_id: variantAttributes.valor_id,
+        valor: variantAttributes.valor,
+        identifying: variantAttributes.es_identificador,
+      })
+      .from(variantAttributes)
+      .where(inArray(variantAttributes.variant_id, ids))
+      .orderBy(
+        asc(variantAttributes.variant_id),
+        asc(variantAttributes.caracteristica_id),
+      );
+    const images = await tx
+      .select({ variant_id: variantImages.variant_id, url: variantImages.url })
+      .from(variantImages)
+      .where(inArray(variantImages.variant_id, ids))
+      .orderBy(
+        asc(variantImages.variant_id),
+        asc(variantImages.posicion),
+        asc(variantImages.id),
+      );
+    const profiles = await tx
+      .select({
+        variantId: skuIdentity.variant_id,
+        weight: skuPhysicalProfiles.peso_kg,
+        length: skuPhysicalProfiles.largo_cm,
+        width: skuPhysicalProfiles.ancho_cm,
+        height: skuPhysicalProfiles.alto_cm,
+        updatedAt: skuPhysicalProfiles.updated_at,
+      })
+      .from(skuIdentity)
+      .innerJoin(
+        skuPhysicalProfiles,
+        eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
+      )
+      .where(inArray(skuIdentity.variant_id, ids));
+    const attributesByVariant = new Map<string, typeof values>();
+    for (const value of values) {
+      const group = attributesByVariant.get(value.variant_id) ?? [];
+      group.push(value);
+      attributesByVariant.set(value.variant_id, group);
+    }
+    const imagesByVariant = new Map<string, typeof images>();
+    for (const image of images) {
+      const group = imagesByVariant.get(image.variant_id) ?? [];
+      group.push(image);
+      imagesByVariant.set(image.variant_id, group);
+    }
+    const profileByVariant = new Map(
+      profiles.map((profile) => [profile.variantId, profile]),
+    );
     const items: AdminVariant[] = [];
     for (const row of rows) {
-      const values = await tx
-        .select({
-          caracteristica_id: variantAttributes.caracteristica_id,
-          nombre: variantAttributes.nombre_snapshot,
-          valor_id: variantAttributes.valor_id,
-          valor: variantAttributes.valor,
-          identifying: variantAttributes.es_identificador,
-        })
-        .from(variantAttributes)
-        .where(eq(variantAttributes.variant_id, row.variant_id))
-        .orderBy(asc(variantAttributes.caracteristica_id));
-      const images = await tx
-        .select({ url: variantImages.url })
-        .from(variantImages)
-        .where(eq(variantImages.variant_id, row.variant_id))
-        .orderBy(asc(variantImages.posicion), asc(variantImages.id));
-      const [profile] = await tx
-        .select({
-          weight: skuPhysicalProfiles.peso_kg,
-          length: skuPhysicalProfiles.largo_cm,
-          width: skuPhysicalProfiles.ancho_cm,
-          height: skuPhysicalProfiles.alto_cm,
-          updatedAt: skuPhysicalProfiles.updated_at,
-        })
-        .from(skuIdentity)
-        .innerJoin(
-          skuPhysicalProfiles,
-          eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
-        )
-        .where(eq(skuIdentity.variant_id, row.variant_id))
-        .limit(1);
+      const rowValues = attributesByVariant.get(row.variant_id) ?? [];
+      const rowImages = imagesByVariant.get(row.variant_id) ?? [];
+      const profile = profileByVariant.get(row.variant_id);
       const version = Number(row.catalog_version);
       if (!Number.isSafeInteger(version) || version < 0)
         throw new ServiceUnavailableException();
@@ -340,16 +368,22 @@ export class CatalogQueryRepository {
             }
           : null;
       const attributeProjection = (identifying: boolean): Attribute[] =>
-        values
+        rowValues
           .filter((value) => value.identifying === identifying)
-          .map(({ identifying: _internal, ...attribute }) => attribute);
+          .map(
+            ({
+              variant_id: _variantId,
+              identifying: _internal,
+              ...attribute
+            }) => attribute,
+          );
       items.push({
         variant_id: row.variant_id,
         sku: row.sku,
         status: row.status,
         identifying_attributes: attributeProjection(true),
         non_identifying_attributes: attributeProjection(false),
-        images: images.map((image) => image.url),
+        images: rowImages.map((image) => image.url),
         physical_profile: physicalProfile,
         catalog_version: version,
       });

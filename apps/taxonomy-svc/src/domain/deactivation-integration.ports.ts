@@ -35,7 +35,13 @@ export class DeactivationRecoveryRunner implements OnModuleDestroy {
       this.enCurso = this.ejecutarUnaVez()
         .then(() => undefined)
         .catch(() =>
-          this.logger.error({ event: 'taxonomy.deactivation.recovery_failed' }),
+          this.logger.error({
+            event: 'taxonomy.deactivation.recovery_failed',
+            service: 'taxonomy-svc',
+            component: 'deactivation_recovery',
+            state: 'failed',
+            reason: 'PERSISTENCE_OR_CONFIGURATION_FAILURE',
+          }),
         )
         .finally(() => {
           this.enCurso = undefined;

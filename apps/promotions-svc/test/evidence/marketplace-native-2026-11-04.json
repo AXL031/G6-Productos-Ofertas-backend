@@ -1,0 +1,701 @@
+{
+  "status": "PASS",
+  "scope": "native Promotions module + disposable PostgreSQL/TLS; commercial and G7 facts are EXPLICIT FIXTURES, not real provider or G7 integration",
+  "harnessSha256": "9c562046d856852eb86d9260ee7c01a23df858b37c90e5c8d2cad8abc24822bb",
+  "authenticatedInbound": "local signed RS256 JWT with native JWKS/identity provider",
+  "nativeProviders": [
+    "PromotionsPersistence",
+    "COMMERCIAL_CONTEXT",
+    "service tokens",
+    "JWT/JWKS verifier"
+  ],
+  "overrides": [
+    "test configuration",
+    "isolated PostgreSQL resources",
+    "fixed business clock"
+  ],
+  "fixtures": [
+    "G7 token/JWKS HTTP responses via explicit fetch interception",
+    "commercial upstream HTTP server with synthetic prices, stock and product data"
+  ],
+  "readOnly": {
+    "allPromotionsTablesEqual": true,
+    "beforeRowsSha256": "8750b3148bad0d431732380d3b02f9efd98dda7f80c75efbcfcd0590f21a96c8",
+    "commercialRequestsGetOnly": true,
+    "reservationCommandsSent": 0
+  },
+  "scenarios": [
+    {
+      "operation": "listarPromociones",
+      "path": "/api/v1/promociones?canal=MARKETPLACE",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "c8c74012-e3cc-41b9-8403-f644b5ee63ef",
+      "body": {
+        "items": [
+          {
+            "promotion_id": "b3789a4c-8f9c-4c41-a768-9502de5ce84b",
+            "name": "MARKETPLACE-NATIVE-FIXTURE",
+            "status": "ACTIVA",
+            "valid_from": "2026-10-01T00:00:00.000Z",
+            "valid_until": "2026-12-01T00:00:00.000Z",
+            "channels": ["MARKETPLACE"]
+          },
+          {
+            "promotion_id": "caff0633-a35a-404b-8d79-259d22ba3a1b",
+            "name": "SYNTHETIC'); DROP SCHEMA promotions CASCADE; --",
+            "status": "ACTIVA",
+            "valid_from": "2026-10-01T00:00:00.000Z",
+            "valid_until": "2026-12-01T00:00:00.000Z",
+            "channels": ["MARKETPLACE"]
+          },
+          {
+            "promotion_id": "234f26b0-f45e-43c1-92bd-30d47614f901",
+            "name": "MARKETPLACE-NATIVE-FIXTURE",
+            "status": "ACTIVA",
+            "valid_from": "2026-10-01T00:00:00.000Z",
+            "valid_until": "2026-12-01T00:00:00.000Z",
+            "channels": ["MARKETPLACE"]
+          },
+          {
+            "promotion_id": "b05290ef-1b16-4c94-9d59-082adb05b800",
+            "name": "WRITE-CONCURRENT",
+            "status": "ACTIVA",
+            "valid_from": "2026-10-01T00:00:00.000Z",
+            "valid_until": "2026-12-01T00:00:00.000Z",
+            "channels": ["MARKETPLACE"]
+          }
+        ]
+      },
+      "upstream": []
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "7f9b2192-50bf-4aa1-8ee5-6b899f272f81",
+      "body": {
+        "promotion_id": "b3789a4c-8f9c-4c41-a768-9502de5ce84b",
+        "original_amount": 100,
+        "discount_amount": 35.2,
+        "result_amount": 64.8,
+        "currency": "PEN",
+        "reason": null
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "7f9b2192-50bf-4aa1-8ee5-6b899f272f81"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "7f9b2192-50bf-4aa1-8ee5-6b899f272f81"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "7f9b2192-50bf-4aa1-8ee5-6b899f272f81"
+        }
+      ]
+    },
+    {
+      "operation": "validarCupon",
+      "path": "/api/v1/cupones/validar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "d76cc263-e1e0-4e32-a817-968c7c90ebb2",
+      "body": {
+        "valid": true,
+        "code": null,
+        "benefit": {
+          "promotion_id": "234f26b0-f45e-43c1-92bd-30d47614f901"
+        },
+        "discount_amount": 28,
+        "result_amount": 72,
+        "currency": "PEN"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "d76cc263-e1e0-4e32-a817-968c7c90ebb2"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "d76cc263-e1e0-4e32-a817-968c7c90ebb2"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "d76cc263-e1e0-4e32-a817-968c7c90ebb2"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "4107e7bb-f3e9-4919-912a-6546d240f99d",
+      "body": {
+        "promotion_id": "b3789a4c-8f9c-4c41-a768-9502de5ce84b",
+        "original_amount": 100,
+        "discount_amount": 35.2,
+        "result_amount": 64.8,
+        "currency": "PEN",
+        "reason": null
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "4107e7bb-f3e9-4919-912a-6546d240f99d"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "4107e7bb-f3e9-4919-912a-6546d240f99d"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "4107e7bb-f3e9-4919-912a-6546d240f99d"
+        }
+      ]
+    },
+    {
+      "operation": "validarCupon",
+      "path": "/api/v1/cupones/validar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "3d97e54f-2abf-41c6-ba68-eb50db6f7e6e",
+      "body": {
+        "valid": true,
+        "code": null,
+        "benefit": {
+          "promotion_id": "234f26b0-f45e-43c1-92bd-30d47614f901"
+        },
+        "discount_amount": 28,
+        "result_amount": 72,
+        "currency": "PEN"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "3d97e54f-2abf-41c6-ba68-eb50db6f7e6e"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "3d97e54f-2abf-41c6-ba68-eb50db6f7e6e"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "3d97e54f-2abf-41c6-ba68-eb50db6f7e6e"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "0b087f7d-1665-4757-8638-4fe50e5ac503",
+      "body": {
+        "promotion_id": "b3789a4c-8f9c-4c41-a768-9502de5ce84b",
+        "original_amount": 100,
+        "discount_amount": 35.2,
+        "result_amount": 64.8,
+        "currency": "PEN",
+        "reason": null
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "0b087f7d-1665-4757-8638-4fe50e5ac503"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "0b087f7d-1665-4757-8638-4fe50e5ac503"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "0b087f7d-1665-4757-8638-4fe50e5ac503"
+        }
+      ]
+    },
+    {
+      "operation": "validarCupon",
+      "path": "/api/v1/cupones/validar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "6c6c5e6e-afd9-4936-b202-89282f10f8b7",
+      "body": {
+        "valid": true,
+        "code": null,
+        "benefit": {
+          "promotion_id": "234f26b0-f45e-43c1-92bd-30d47614f901"
+        },
+        "discount_amount": 28,
+        "result_amount": 72,
+        "currency": "PEN"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "6c6c5e6e-afd9-4936-b202-89282f10f8b7"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "6c6c5e6e-afd9-4936-b202-89282f10f8b7"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "6c6c5e6e-afd9-4936-b202-89282f10f8b7"
+        }
+      ]
+    },
+    {
+      "operation": "validarCupon",
+      "path": "/api/v1/cupones/validar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "8f05bcf1-4ae0-4ce9-bda5-d7bd520f35d9",
+      "body": {
+        "valid": false,
+        "code": "CUPON_NO_ENCONTRADO",
+        "benefit": null,
+        "discount_amount": 0,
+        "result_amount": 100,
+        "currency": "PEN"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "8f05bcf1-4ae0-4ce9-bda5-d7bd520f35d9"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "8f05bcf1-4ae0-4ce9-bda5-d7bd520f35d9"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "8f05bcf1-4ae0-4ce9-bda5-d7bd520f35d9"
+        }
+      ]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "path": "/api/v1/recomendaciones?productoId=WIRING-P&canal=MARKETPLACE",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73",
+      "body": {
+        "recommendations": [
+          {
+            "product_id": "WIRING-Q",
+            "type": "CROSS_SELL",
+            "rule_priority": 1,
+            "presentation_order": 1,
+            "current_price": 20,
+            "availability": "DISPONIBLE"
+          }
+        ]
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-Q?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73"
+        },
+        {
+          "path": "/api/v1/inventario/disponibilidad/comercial?skus=WIRING-Q-1%2CWIRING-Q-2&canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "inventario:disponibilidad:leer",
+          "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-1?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-2?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "a0afee14-4c99-439d-b8fd-ec4fdaa46d73"
+        }
+      ]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "path": "/api/v1/recomendaciones?productoId=WIRING-P&canal=MARKETPLACE",
+      "fixtureMode": "unknown-stock",
+      "status": 200,
+      "correlationId": "3fd2bcab-29b0-48a9-b31e-38e2350101cb",
+      "body": {
+        "recommendations": []
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "3fd2bcab-29b0-48a9-b31e-38e2350101cb"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-Q?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "3fd2bcab-29b0-48a9-b31e-38e2350101cb"
+        },
+        {
+          "path": "/api/v1/inventario/disponibilidad/comercial?skus=WIRING-Q-1%2CWIRING-Q-2&canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "inventario:disponibilidad:leer",
+          "correlationId": "3fd2bcab-29b0-48a9-b31e-38e2350101cb"
+        }
+      ]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "path": "/api/v1/recomendaciones?productoId=WIRING-P&canal=MARKETPLACE",
+      "fixtureMode": "missing-price",
+      "status": 200,
+      "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40",
+      "body": {
+        "recommendations": []
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-Q?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40"
+        },
+        {
+          "path": "/api/v1/inventario/disponibilidad/comercial?skus=WIRING-Q-1%2CWIRING-Q-2&canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "inventario:disponibilidad:leer",
+          "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-1?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-2?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "05ddbbcf-a60f-4fc8-9067-1bdc94a16b40"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "missing-price",
+      "status": 503,
+      "correlationId": "0776ab4d-4f59-48b9-8569-5ddbb07d22fd",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "0776ab4d-4f59-48b9-8569-5ddbb07d22fd"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "0776ab4d-4f59-48b9-8569-5ddbb07d22fd"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "0776ab4d-4f59-48b9-8569-5ddbb07d22fd"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "0776ab4d-4f59-48b9-8569-5ddbb07d22fd"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "expired-price",
+      "status": 503,
+      "correlationId": "64326d44-1d1c-4055-af29-2126008679b6",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "64326d44-1d1c-4055-af29-2126008679b6"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "64326d44-1d1c-4055-af29-2126008679b6"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "64326d44-1d1c-4055-af29-2126008679b6"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "64326d44-1d1c-4055-af29-2126008679b6"
+        }
+      ]
+    },
+    {
+      "operation": "validarCupon",
+      "path": "/api/v1/cupones/validar",
+      "fixtureMode": "expired-price",
+      "status": 503,
+      "correlationId": "41eaa9f5-5833-40ea-aafe-13abdf1d72ab",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "41eaa9f5-5833-40ea-aafe-13abdf1d72ab"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "41eaa9f5-5833-40ea-aafe-13abdf1d72ab"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "41eaa9f5-5833-40ea-aafe-13abdf1d72ab"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "41eaa9f5-5833-40ea-aafe-13abdf1d72ab"
+        }
+      ]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "path": "/api/v1/recomendaciones?productoId=WIRING-P&canal=MARKETPLACE",
+      "fixtureMode": "expired-price",
+      "status": 503,
+      "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-Q?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+        },
+        {
+          "path": "/api/v1/inventario/disponibilidad/comercial?skus=WIRING-Q-1%2CWIRING-Q-2&canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "inventario:disponibilidad:leer",
+          "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-1?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-Q-2?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "d70cea0f-88b9-423b-95ef-88b4779e40a2"
+        }
+      ]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "path": "/api/v1/recomendaciones?productoId=WIRING-P&canal=MARKETPLACE",
+      "fixtureMode": "denied",
+      "status": 503,
+      "correlationId": "c84bcd15-6ee2-4de7-bff3-7d949c9f74bc",
+      "body": {
+        "type": "/errores/servicio-no-disponible",
+        "title": "Servicio temporalmente no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "c84bcd15-6ee2-4de7-bff3-7d949c9f74bc"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "c84bcd15-6ee2-4de7-bff3-7d949c9f74bc"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-Q?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "c84bcd15-6ee2-4de7-bff3-7d949c9f74bc"
+        },
+        {
+          "path": "/api/v1/inventario/disponibilidad/comercial?skus=WIRING-Q-1%2CWIRING-Q-2&canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "inventario:disponibilidad:leer",
+          "correlationId": "c84bcd15-6ee2-4de7-bff3-7d949c9f74bc"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 400,
+      "correlationId": "924fc7a6-3b1d-4f1e-b4d0-f638ff08fe87",
+      "body": {
+        "type": "/errores/validacion",
+        "title": "Datos de entrada inválidos",
+        "status": 400,
+        "code": "VALIDACION",
+        "correlationId": "924fc7a6-3b1d-4f1e-b4d0-f638ff08fe87"
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "924fc7a6-3b1d-4f1e-b4d0-f638ff08fe87"
+        }
+      ]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 400,
+      "correlationId": "f91b85d3-fb81-4ca7-b409-624cc71ce0ac",
+      "body": {
+        "type": "/errores/validacion",
+        "title": "Datos de entrada inválidos",
+        "status": 400,
+        "code": "VALIDACION",
+        "correlationId": "f91b85d3-fb81-4ca7-b409-624cc71ce0ac"
+      },
+      "upstream": []
+    },
+    {
+      "operation": "evaluarPromociones",
+      "path": "/api/v1/promociones/evaluar",
+      "fixtureMode": "positive",
+      "status": 200,
+      "correlationId": "2cc84d4d-34f3-40d1-b7f2-70c8f16eff3d",
+      "body": {
+        "promotion_id": "b3789a4c-8f9c-4c41-a768-9502de5ce84b",
+        "original_amount": 100,
+        "discount_amount": 35.2,
+        "result_amount": 64.8,
+        "currency": "PEN",
+        "reason": null
+      },
+      "upstream": [
+        {
+          "path": "/api/v1/productos/skus/WIRING-SKU/contexto",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "2cc84d4d-34f3-40d1-b7f2-70c8f16eff3d"
+        },
+        {
+          "path": "/api/v1/productos/WIRING-P?canal=MARKETPLACE",
+          "method": "GET",
+          "scope": "catalogo:leer",
+          "correlationId": "2cc84d4d-34f3-40d1-b7f2-70c8f16eff3d"
+        },
+        {
+          "path": "/api/v1/precios/skus/WIRING-SKU?canal=MARKETPLACE&at=2026-10-22T12%3A00%3A00.000Z",
+          "method": "GET",
+          "scope": "precios:leer",
+          "correlationId": "2cc84d4d-34f3-40d1-b7f2-70c8f16eff3d"
+        }
+      ]
+    }
+  ]
+}

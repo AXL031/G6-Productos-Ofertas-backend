@@ -20,6 +20,12 @@ import {
 } from './http/catalog-context.js';
 import { CatalogServiceToken } from './http/catalog-token.js';
 import { PricingOutboxRelay } from './messaging/outbox-relay.js';
+import { createPricingPriceChangedFacts } from './messaging/pricing-fact.js';
+import { PricingWriteAuthorization } from './http/pricing-write.authorization.js';
+import { PricingScheduleReconciler } from './messaging/schedule-reconciler.js';
+import { PricingProductInitialization } from './messaging/pricing-initialization.js';
+import { CatalogSkuDeactivated } from './messaging/catalog-sku-deactivated.js';
+import { PricingInboxConsumer } from './messaging/inbox-consumer.js';
 import {
   PRICING_FACT_FACTORY,
   PRICING_WRITE_AUTHORIZER,
@@ -44,6 +50,11 @@ import {
     PricingMutations,
     CommercialPrices,
     PricingOutboxRelay,
+    PricingScheduleReconciler,
+    PricingProductInitialization,
+    CatalogSkuDeactivated,
+    PricingInboxConsumer,
+    PricingWriteAuthorization,
     CatalogContextHttp,
     { provide: PRICING_CATALOG_CONTEXT, useExisting: CatalogContextHttp },
     CatalogServiceToken,
@@ -52,8 +63,13 @@ import {
       useFactory: (tokens: CatalogServiceToken) => () => tokens.get(),
       inject: [CatalogServiceToken],
     },
-    { provide: PRICING_WRITE_AUTHORIZER, useValue: null },
-    { provide: PRICING_FACT_FACTORY, useValue: null },
+    {
+      provide: PRICING_WRITE_AUTHORIZER,
+      useFactory: (authorization: PricingWriteAuthorization) =>
+        authorization.authorize.bind(authorization),
+      inject: [PricingWriteAuthorization],
+    },
+    { provide: PRICING_FACT_FACTORY, useValue: createPricingPriceChangedFacts },
     {
       provide: PRICING_CONFIG,
       useFactory: () => validateEnvironment(process.env),

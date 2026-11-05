@@ -109,12 +109,18 @@ export class InternalHttpReader {
     path: string,
     signal: AbortSignal,
     missing = false,
+    correlationId?: string,
   ): Promise<unknown> {
     signal.throwIfAborted();
+    if (
+      correlationId !== undefined &&
+      !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(correlationId)
+    )
+      throw new Error('INVALID_COMMERCIAL_CORRELATION');
     const spec = internalOperations[operation];
     const headers: Record<string, string> = {
       Accept: 'application/json',
-      'X-Correlation-Id': randomUUID(),
+      'X-Correlation-Id': correlationId ?? randomUUID(),
     };
     if (this.options.mode !== 'RESTRICTED_DEMO') {
       // Own service credentials only. For HTTP aliases, the deployment must first

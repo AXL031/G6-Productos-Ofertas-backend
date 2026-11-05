@@ -1,0 +1,563 @@
+[
+  {
+    "verification": {
+      "statement_1": [
+        {
+          "ok": true,
+          "sku": "ADI-ENT22-AZU-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "5e5176c6-cda5-435d-ba82-24d5b9c69c0e",
+          "sku_identity_id": "1fb83549-de75-4489-a51f-9224648b3b83"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT22-SHORT-GRI-L",
+          "alto_cm": 5,
+          "peso_kg": 0.19,
+          "ancho_cm": 25,
+          "largo_cm": 35,
+          "profile_id": "b4081d92-d36e-4c07-8072-2172d18163c1",
+          "sku_identity_id": "de6fe700-32c2-4354-a3f2-9d3e0ed6c79b"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT22-SHORT-GRI-M",
+          "alto_cm": 4.5,
+          "peso_kg": 0.165,
+          "ancho_cm": 24.2,
+          "largo_cm": 33.7,
+          "profile_id": "98c74310-cfce-492c-8d50-6bd57c6d7b53",
+          "sku_identity_id": "e2485b7a-27fe-4d56-9691-461f1ff8f457"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT22-SHORT-GRI-S",
+          "alto_cm": 4,
+          "peso_kg": 0.145,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "9df76cdd-6bc7-441c-81f8-b209e657378e",
+          "sku_identity_id": "38a2f874-54a1-4195-beab-69d9cda3adb4"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-AZU-L",
+          "alto_cm": 3,
+          "peso_kg": 0.205,
+          "ancho_cm": 24,
+          "largo_cm": 34,
+          "profile_id": "20e61d5f-a503-4409-be5c-dbeb2b123503",
+          "sku_identity_id": "184f8386-11c3-4b18-b37b-f42974ad528b"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-AZU-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "4d047cbd-5828-45e0-9f62-1b4661b29dec",
+          "sku_identity_id": "c64e267e-105c-44c1-9ca4-c785d9eed0f5"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-AZU-S",
+          "alto_cm": 2.5,
+          "peso_kg": 0.17,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "89224e76-0ffb-4ae5-b4f6-fd061a411ea6",
+          "sku_identity_id": "9c2801c5-8a19-477c-af55-0c3b2a6c5bf3"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-BLA-L",
+          "alto_cm": 3,
+          "peso_kg": 0.205,
+          "ancho_cm": 24,
+          "largo_cm": 34,
+          "profile_id": "ded3488b-ffde-4a9d-9e48-c2192502e1d2",
+          "sku_identity_id": "d972b913-90e8-4660-94db-323f5993c782"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-BLA-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "59c80e1d-576f-4e08-987b-1c24d1f0e8e0",
+          "sku_identity_id": "6cc310b7-7a64-4203-a779-994e0060f570"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-ENT26-BLA-S",
+          "alto_cm": 2.5,
+          "peso_kg": 0.17,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "f30f085c-e901-437f-a302-e8e101009c5c",
+          "sku_identity_id": "3b900f1a-e7d6-4414-9377-75154fea9f53"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-MESSI-JI8291-05",
+          "alto_cm": 22,
+          "peso_kg": 0.42,
+          "ancho_cm": 22,
+          "largo_cm": 22,
+          "profile_id": "fc90b312-b1ff-4cc1-8770-d9b682c7eff2",
+          "sku_identity_id": "5e226593-924b-4ee2-9d4b-0eac22c2616e"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-PRED-IG7760-MUL-38",
+          "alto_cm": 12,
+          "peso_kg": 0.82,
+          "ancho_cm": 20,
+          "largo_cm": 32,
+          "profile_id": "966662f4-89fa-46ff-bfa8-41fa8c09b2d7",
+          "sku_identity_id": "4fbdd519-3dd7-4512-aa84-3ad3a1d4a987"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-PRED-IG7760-MUL-40",
+          "alto_cm": 12.5,
+          "peso_kg": 0.87,
+          "ancho_cm": 22,
+          "largo_cm": 34,
+          "profile_id": "c39a6511-f4d1-457d-93fa-1441a8803461",
+          "sku_identity_id": "fea91919-d38f-4a45-9584-e2fc8e4d4e5b"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-PRED-IG7760-MUL-42",
+          "alto_cm": 13,
+          "peso_kg": 0.93,
+          "ancho_cm": 23,
+          "largo_cm": 35,
+          "profile_id": "7feb7138-6422-4322-a107-fe8fab041d73",
+          "sku_identity_id": "9f1b8f46-f568-45e7-9e11-6280feb48445"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-PRED-IG7760-MUL-43",
+          "alto_cm": 13,
+          "peso_kg": 0.97,
+          "ancho_cm": 24,
+          "largo_cm": 36,
+          "profile_id": "4efb91ab-e8fc-4aa9-981b-fa5415dc99d6",
+          "sku_identity_id": "61578bef-98ea-433b-99fe-0bffc23b2ed1"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RF3-GRI-38",
+          "alto_cm": 12,
+          "peso_kg": 0.85,
+          "ancho_cm": 20,
+          "largo_cm": 32,
+          "profile_id": "d9ea1a8e-71fc-4e06-82ea-8cd7960ea1ba",
+          "sku_identity_id": "5fbdfbb6-2c5d-44fb-a896-27e2e44405c9"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RF3-GRI-39",
+          "alto_cm": 12,
+          "peso_kg": 0.88,
+          "ancho_cm": 21,
+          "largo_cm": 33,
+          "profile_id": "9bf83347-e650-4629-9850-5ab268f63e33",
+          "sku_identity_id": "43ba45b9-c161-4387-a1c9-db2b1f17afc2"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RUNX-JD9558-NEG-EU3436",
+          "alto_cm": 3,
+          "peso_kg": 0.08,
+          "ancho_cm": 12,
+          "largo_cm": 20,
+          "profile_id": "645d0aa4-7f62-48f1-aad0-28384cfd7112",
+          "sku_identity_id": "d308eb05-3ca5-4c6c-845c-8bcde8415516"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RUNX-JD9558-NEG-EU3739",
+          "alto_cm": 3,
+          "peso_kg": 0.09,
+          "ancho_cm": 13,
+          "largo_cm": 21,
+          "profile_id": "5b2e4be1-44f6-44ef-ba74-2fc3d3963cf0",
+          "sku_identity_id": "c6150f1e-6a0f-4d2e-8694-70a2bb169b22"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-RUNX-JD9558-NEG-EU4042",
+          "alto_cm": 3,
+          "peso_kg": 0.1,
+          "ancho_cm": 14,
+          "largo_cm": 22,
+          "profile_id": "00ac6000-aabd-45ec-8202-c2d7cba466d2",
+          "sku_identity_id": "bf316fa4-e011-4b2b-b322-b801cd0dfe78"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JG5832-NEG-L",
+          "alto_cm": 3,
+          "peso_kg": 0.205,
+          "ancho_cm": 24,
+          "largo_cm": 34,
+          "profile_id": "a2cadada-772f-4e3c-8019-846695241211",
+          "sku_identity_id": "3e05d962-d3aa-4e06-9b91-d1fce3b3da4b"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JG5832-NEG-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "cb7adbb5-580d-4e9a-8763-a8c3cb5bd0fa",
+          "sku_identity_id": "fb57e5d6-5478-469c-a7b8-42ec14c7bb47"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JG5832-NEG-S",
+          "alto_cm": 2.5,
+          "peso_kg": 0.17,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "0cae7f7b-16a7-40bb-bb02-f4e96bc07a3f",
+          "sku_identity_id": "eb4eb0a0-579b-4373-9865-f6a1cc737fbe"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JH3407-AZU-L",
+          "alto_cm": 4,
+          "peso_kg": 0.185,
+          "ancho_cm": 22,
+          "largo_cm": 31,
+          "profile_id": "7e951f90-1228-4214-a5cd-f8846da7dbbb",
+          "sku_identity_id": "e0d8eb63-e96b-4d0f-8329-5816b1ac2743"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JH3407-AZU-M",
+          "alto_cm": 3.5,
+          "peso_kg": 0.165,
+          "ancho_cm": 21,
+          "largo_cm": 29,
+          "profile_id": "fe43cb37-64ce-404d-b7b2-6914ea28a919",
+          "sku_identity_id": "c357588a-6309-4f98-85b4-be134c2d3344"
+        },
+        {
+          "ok": true,
+          "sku": "ADI-SQUA25-JH3407-AZU-S",
+          "alto_cm": 3,
+          "peso_kg": 0.145,
+          "ancho_cm": 20,
+          "largo_cm": 27,
+          "profile_id": "45fa0d0e-9c29-4714-83ab-c717de29ed82",
+          "sku_identity_id": "4061ac24-5c79-428b-936f-aa09082660cd"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-ACADEMY-HV4386-05",
+          "alto_cm": 22,
+          "peso_kg": 0.43,
+          "ancho_cm": 22,
+          "largo_cm": 22,
+          "profile_id": "8c724984-09f1-4e19-b48c-59e9daecfce7",
+          "sku_identity_id": "0a2c61dd-2a1c-4078-9bd3-594026e415e2"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-BLA-EU3438",
+          "alto_cm": 3,
+          "peso_kg": 0.08,
+          "ancho_cm": 12,
+          "largo_cm": 20,
+          "profile_id": "48a34220-9102-4372-8444-9bb88092a9b3",
+          "sku_identity_id": "f3e13e01-d48a-4f60-9fa1-c68502cb8903"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-BLA-EU3842",
+          "alto_cm": 3,
+          "peso_kg": 0.09,
+          "ancho_cm": 13,
+          "largo_cm": 21,
+          "profile_id": "b58cfb5d-16ae-4050-a124-aed01d18f777",
+          "sku_identity_id": "d8a4059a-550a-4599-ac59-c976c08f6c1e"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-BLA-EU4246",
+          "alto_cm": 3,
+          "peso_kg": 0.1,
+          "ancho_cm": 14,
+          "largo_cm": 22,
+          "profile_id": "e2ec8481-4b2c-4751-8dae-e12b7e9ca286",
+          "sku_identity_id": "aa622e76-f1b9-4503-bc12-1d3572185e14"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-NEG-EU3438",
+          "alto_cm": 3,
+          "peso_kg": 0.08,
+          "ancho_cm": 12,
+          "largo_cm": 20,
+          "profile_id": "5294178c-cc07-4dcf-afa7-55410c6ae65a",
+          "sku_identity_id": "14ca68bf-486c-428e-92cb-66d9aa884f02"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-NEG-EU3842",
+          "alto_cm": 3,
+          "peso_kg": 0.09,
+          "ancho_cm": 13,
+          "largo_cm": 21,
+          "profile_id": "78cc9fb5-5356-427e-b423-33a1a97db718",
+          "sku_identity_id": "2b04fca8-2f47-480b-9109-2e1c4cde3999"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-EVP-FQ0327-NEG-EU4246",
+          "alto_cm": 3,
+          "peso_kg": 0.1,
+          "ancho_cm": 14,
+          "largo_cm": 22,
+          "profile_id": "87467b46-98ab-4bb0-be8e-d9b05d003c00",
+          "sku_identity_id": "afec6d91-f830-4063-96fa-741f912d7a8a"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-M-BV6855-NEG-L",
+          "alto_cm": 4,
+          "peso_kg": 0.185,
+          "ancho_cm": 22,
+          "largo_cm": 31,
+          "profile_id": "71230c64-8cb2-4981-bd26-fcf1b8f9054f",
+          "sku_identity_id": "2a770e47-3ee9-45c6-a8ee-7f82fc168aad"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-M-BV6855-NEG-M",
+          "alto_cm": 3.5,
+          "peso_kg": 0.165,
+          "ancho_cm": 21,
+          "largo_cm": 29,
+          "profile_id": "1c17b676-77e0-433d-adc6-21c969bb5428",
+          "sku_identity_id": "8cd5c256-775a-4470-8fe4-70e48fca848c"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-M-BV6855-NEG-S",
+          "alto_cm": 3,
+          "peso_kg": 0.145,
+          "ancho_cm": 20,
+          "largo_cm": 27,
+          "profile_id": "bc0d322b-1c1c-4c12-87f7-d388d012eb32",
+          "sku_identity_id": "5282426e-61f6-4168-8d61-2b7fd79ee2c0"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-W-BV6860-NEG-L",
+          "alto_cm": 4,
+          "peso_kg": 0.185,
+          "ancho_cm": 22,
+          "largo_cm": 31,
+          "profile_id": "b38184c5-07cf-4801-a194-bc27b7fcc550",
+          "sku_identity_id": "77e10e3d-3d74-45a1-ac7e-8d62374c04ba"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-W-BV6860-NEG-M",
+          "alto_cm": 3.5,
+          "peso_kg": 0.165,
+          "ancho_cm": 21,
+          "largo_cm": 29,
+          "profile_id": "4a8e103b-fbed-41f5-90e1-f87f868bf32e",
+          "sku_identity_id": "c074170e-4fe9-47ac-8ba0-a734da153cf9"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-W-BV6860-NEG-S",
+          "alto_cm": 3,
+          "peso_kg": 0.145,
+          "ancho_cm": 20,
+          "largo_cm": 27,
+          "profile_id": "dacd61eb-9466-4ae8-85f7-53b5ecae1d51",
+          "sku_identity_id": "91b99924-f0b5-473b-b1f7-c38e22f393a0"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-W-BV6860-NEG-XL",
+          "alto_cm": 4,
+          "peso_kg": 0.21,
+          "ancho_cm": 23,
+          "largo_cm": 33,
+          "profile_id": "c52d3925-26bf-46af-a862-90c2051c0d2a",
+          "sku_identity_id": "448631bc-619a-4588-a10a-f410ad75cc76"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK3-W-BV6860-NEG-XS",
+          "alto_cm": 3,
+          "peso_kg": 0.13,
+          "ancho_cm": 18,
+          "largo_cm": 25,
+          "profile_id": "9c901f22-ce44-4188-9826-f2cc5aea3038",
+          "sku_identity_id": "fab810b3-cd46-43b8-b0e3-b0e562ce6354"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK7-BV6708-NEG-L",
+          "alto_cm": 3,
+          "peso_kg": 0.205,
+          "ancho_cm": 24,
+          "largo_cm": 34,
+          "profile_id": "4f176770-cb59-49fd-ba18-fb823fa8fde3",
+          "sku_identity_id": "41288821-165f-4c22-9373-97be7cc15dd9"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK7-BV6708-NEG-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "5d18d7ea-8a9b-478e-82ea-5c9b14015c32",
+          "sku_identity_id": "e416d7cd-b3dd-47ae-bf89-6ec9faeabfdc"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PARK7-BV6708-NEG-S",
+          "alto_cm": 2.5,
+          "peso_kg": 0.17,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "a17db305-1852-447e-a1d3-a7eccd2a425d",
+          "sku_identity_id": "aa979ff0-574f-413c-8cca-cf615592f7be"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-PITCH-05",
+          "alto_cm": 22,
+          "peso_kg": 0.43,
+          "ancho_cm": 22,
+          "largo_cm": 22,
+          "profile_id": "92425dd0-f7be-47ee-9030-ee6612b35503",
+          "sku_identity_id": "eb4d35ac-41c0-4e6e-a059-5dc35d850a57"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-REV7-NEG-41",
+          "alto_cm": 13,
+          "peso_kg": 0.95,
+          "ancho_cm": 22,
+          "largo_cm": 34,
+          "profile_id": "95846f2a-9eaa-4604-ba7c-a47d9508ca1e",
+          "sku_identity_id": "0265b4f7-4ca3-455c-a416-de32eb341494"
+        },
+        {
+          "ok": true,
+          "sku": "NIK-REV7-NEG-42",
+          "alto_cm": 13,
+          "peso_kg": 0.98,
+          "ancho_cm": 23,
+          "largo_cm": 35,
+          "profile_id": "a4f85851-c95a-41e2-b33c-1fde64ffdf66",
+          "sku_identity_id": "0ece3ef9-cede-4159-85b5-1768b63ab748"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-ORBITA-084641-05",
+          "alto_cm": 22,
+          "peso_kg": 0.43,
+          "ancho_cm": 22,
+          "largo_cm": 22,
+          "profile_id": "c6b93f7b-6ee7-4882-b6bf-9885311b2b2e",
+          "sku_identity_id": "91286dbf-c52d-426e-bf6a-d71457156341"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-SC-782244-BLA-L",
+          "alto_cm": 3,
+          "peso_kg": 0.205,
+          "ancho_cm": 24,
+          "largo_cm": 34,
+          "profile_id": "fe9d14c4-dcf1-47e3-9cda-2b2535e2cc77",
+          "sku_identity_id": "2959ed50-1360-4368-aa4b-5f2cad69a5ea"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-SC-782244-BLA-M",
+          "alto_cm": 3,
+          "peso_kg": 0.185,
+          "ancho_cm": 23,
+          "largo_cm": 32,
+          "profile_id": "42716853-515e-4b6e-b0e0-27e98d34b6a3",
+          "sku_identity_id": "8b314e37-b2c1-4115-9b0f-f23af5f06881"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-SC-782244-BLA-S",
+          "alto_cm": 2.5,
+          "peso_kg": 0.17,
+          "ancho_cm": 22,
+          "largo_cm": 30,
+          "profile_id": "1256bb0d-4f71-4140-9eee-d9cba90bab4f",
+          "sku_identity_id": "2d6881c1-928d-4f57-b1e2-42000169dcf4"
+        },
+        {
+          "ok": true,
+          "sku": "PUM-ULP-NEG-42",
+          "alto_cm": 13,
+          "peso_kg": 0.93,
+          "ancho_cm": 23,
+          "largo_cm": 35,
+          "profile_id": "9b6b71d5-d9c0-42b5-8e84-d5422573f37a",
+          "sku_identity_id": "72c5c4f2-f9cb-40c1-a017-b48a0a4b79cb"
+        },
+        {
+          "ok": true,
+          "sku": "UA-TECH20-1326413-NEG-L",
+          "alto_cm": 1.7,
+          "peso_kg": 0.149,
+          "ancho_cm": 20.5,
+          "largo_cm": 31,
+          "profile_id": "428ff15e-3a2b-456f-befb-0fce89dd5507",
+          "sku_identity_id": "eebd5a28-9329-4eb0-a8b3-e12b4e9d6a22"
+        },
+        {
+          "ok": true,
+          "sku": "UA-TECH20-1326413-NEG-M",
+          "alto_cm": 1.6,
+          "peso_kg": 0.138,
+          "ancho_cm": 20,
+          "largo_cm": 30,
+          "profile_id": "a17cdb61-dbc2-4b03-bb07-7f83e10a349c",
+          "sku_identity_id": "4f527966-baef-4f82-baca-c37610252713"
+        },
+        {
+          "ok": true,
+          "sku": "UA-TECH20-1326413-NEG-S",
+          "alto_cm": 1.5,
+          "peso_kg": 0.125,
+          "ancho_cm": 19,
+          "largo_cm": 28,
+          "profile_id": "a75a8046-0584-4d4a-9210-608d0f7f0d5c",
+          "sku_identity_id": "ccf4e328-f61d-42e3-b5d3-94d33c84bfd5"
+        }
+      ],
+      "statement_2": [
+        {
+          "perfiles_en_bases_no_vendibles": 0
+        }
+      ]
+    }
+  }
+]

@@ -77,8 +77,11 @@ export class PricingReadGuard implements CanActivate {
   async authorize(
     token: string,
     commercial = false,
-    serviceScope: 'precios:leer' | 'catalogo:leer' = 'precios:leer',
-  ): Promise<void> {
+    serviceScope:
+      | 'precios:leer'
+      | 'catalogo:leer'
+      | 'tokens:introspeccion' = 'precios:leer',
+  ): Promise<Record<string, unknown>> {
     if (!this.config.auth)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     try {
@@ -156,10 +159,11 @@ export class PricingReadGuard implements CanActivate {
           ].includes(claims.sub)
         )
           throw new PricingHttpError(403, 'SCOPE_INSUFICIENTE');
-        return;
+        return claims;
       }
       if (!(claims.roles as string[]).includes('GESTOR_COMERCIAL'))
         throw new PricingHttpError(403, 'SCOPE_INSUFICIENTE');
+      return claims;
     } catch (error) {
       if (error instanceof PricingHttpError) throw error;
       throw new PricingHttpError(401, 'TOKEN_INVALIDO');

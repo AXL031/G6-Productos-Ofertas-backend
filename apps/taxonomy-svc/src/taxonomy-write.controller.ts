@@ -11,7 +11,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { TaxonomyUserGuard } from './taxonomy-auth.js';
+import { TaxonomyUserGuard, TaxonomyCommercialGuard } from './taxonomy-auth.js';
 import { BrandReactivationService } from './domain/brand-reactivation.service.js';
 import { CategoryReactivationService } from './domain/category-reactivation.service.js';
 import { CategoryCreateService } from './domain/category-create.service.js';
@@ -23,6 +23,10 @@ import {
   BrandWriteService,
   type EntradaMarca,
 } from './domain/brand-write.service.js';
+import {
+  MasterDeactivationRequestService,
+  type SolicitudMaestra,
+} from './domain/master-deactivation-request.service.js';
 import { validarLogo } from './domain/brand-logo.js';
 import { esPaisIso } from './domain/iso-country.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
@@ -36,9 +40,11 @@ export class TaxonomyWriteController {
     private readonly crearCategorias: CategoryCreateService,
     private readonly marcas: BrandWriteService,
     private readonly actualizarCategorias: CategoryUpdateService,
+    private readonly bajas: MasterDeactivationRequestService,
   ) {}
 
   @Patch('categorias/:categoriaId')
+  @UseGuards(TaxonomyCommercialGuard)
   async actualizarCategoria(
     @Param('categoriaId') id: string,
     @Body() body: unknown,
@@ -212,6 +218,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('marcas')
+  @UseGuards(TaxonomyCommercialGuard)
   @UseInterceptors(
     FileInterceptor('logo', {
       limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 9 },
@@ -247,6 +254,7 @@ export class TaxonomyWriteController {
   }
 
   @Patch('marcas/:marcaId')
+  @UseGuards(TaxonomyCommercialGuard)
   @UseInterceptors(
     FileInterceptor('logo', {
       limits: { fileSize: 5 * 1024 * 1024, files: 1, fields: 8, parts: 9 },
@@ -297,6 +305,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('categorias')
+  @UseGuards(TaxonomyCommercialGuard)
   async crearCategoria(
     @Body() body: unknown,
     @Headers('x-correlation-id') correlationId?: string,
@@ -381,6 +390,7 @@ export class TaxonomyWriteController {
   }
 
   @Post('marcas/:marcaId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(200)
   async reactivarMarca(
     @Param('marcaId') marcaId: string,
@@ -405,7 +415,74 @@ export class TaxonomyWriteController {
     return result.marca;
   }
 
+  @Post('categorias/:categoriaId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(202)
+  async solicitarDesactivacionCategoria(
+    @Param('categoriaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    if (!esUuid(id) || (correlationId !== undefined && !esUuid(correlationId)))
+      throw ProblemDetailsException.validacion('Identificador inválido.');
+    return this.solicitarBaja(
+      { tipo: 'CATEGORY', id },
+      correlationId,
+      'CATEGORIA_NO_ENCONTRADA',
+    );
+  }
+
+  @Post('marcas/:marcaId/desactivar')
+  @UseGuards(TaxonomyCommercialGuard)
+  @HttpCode(202)
+  async solicitarDesactivacionMarca(
+    @Param('marcaId') id: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    if (!esUuid(id) || (correlationId !== undefined && !esUuid(correlationId)))
+      throw ProblemDetailsException.validacion('Identificador inválido.');
+    return this.solicitarBaja(
+      { tipo: 'BRAND', id },
+      correlationId,
+      'MARCA_NO_ENCONTRADA',
+    );
+  }
+
+  private async solicitarBaja(
+    solicitud: SolicitudMaestra,
+    correlationId: string | undefined,
+    codigoNoEncontrado: 'CATEGORIA_NO_ENCONTRADA' | 'MARCA_NO_ENCONTRADA',
+  ) {
+    const resultado = await this.bajas.solicitar(solicitud, correlationId);
+    if (resultado.estado === 'CATEGORIA_CON_HIJOS')
+      throw new ProblemDetailsException({
+        type: '/errores/categoria-con-subcategorias-activas',
+        title: 'Categoría con subcategorías activas',
+        status: 409,
+        code: 'CATEGORIA_CON_SUBCATEGORIAS_ACTIVAS',
+      });
+    if (resultado.estado === 'NO_ENCONTRADA')
+      throw new ProblemDetailsException({
+        type: `/errores/${codigoNoEncontrado.toLowerCase().replace(/_/g, '-')}`,
+        title: 'Recurso no encontrado',
+        status: 404,
+        code: codigoNoEncontrado,
+      });
+    if (resultado.estado === 'CONFLICTO')
+      throw new ProblemDetailsException({
+        type: '/errores/baja-maestra-en-proceso',
+        title: 'Baja maestra en proceso',
+        status: 409,
+        code: 'BAJA_MAESTRA_EN_PROCESO',
+      });
+    return {
+      operation_id: resultado.operation_id,
+      correlation_id: resultado.correlation_id,
+      status: resultado.status,
+    };
+  }
+
   @Post('categorias/:categoriaId/reactivar')
+  @UseGuards(TaxonomyCommercialGuard)
   @HttpCode(200)
   async reactivarCategoria(
     @Param('categoriaId') categoriaId: string,

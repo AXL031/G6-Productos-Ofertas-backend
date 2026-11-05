@@ -1,0 +1,50 @@
+{
+  "docs": "4d285c5ffb91611b60385e0fab5a7295c95e3ed6",
+  "openapi": "0.6.0-rc.3",
+  "yamlSha256": "012d9e7ea1a6b25b8e89e4074179325aff56ff2f95106571fa3b00cb4229ee80",
+  "checks": [
+    {
+      "operation": "listarPromociones",
+      "status": "PASS",
+      "method": "GET",
+      "path": "/api/v1/promociones",
+      "scope": "promociones:leer",
+      "clients": ["modulo-marketplace", "modulo-chatbot", "modulo-retail"]
+    },
+    {
+      "operation": "evaluarPromociones",
+      "status": "PASS",
+      "method": "POST",
+      "path": "/api/v1/promociones/evaluar",
+      "scope": "promociones:evaluar",
+      "clients": ["modulo-marketplace", "modulo-chatbot", "modulo-retail"]
+    },
+    {
+      "operation": "validarCupon",
+      "status": "PASS",
+      "method": "POST",
+      "path": "/api/v1/cupones/validar",
+      "scope": "cupones:validar",
+      "clients": ["modulo-marketplace", "modulo-chatbot", "modulo-retail"]
+    },
+    {
+      "operation": "obtenerRecomendaciones",
+      "status": "PASS",
+      "method": "GET",
+      "path": "/api/v1/recomendaciones",
+      "scope": "recomendaciones:leer",
+      "clients": ["modulo-marketplace", "modulo-chatbot", "modulo-retail"]
+    }
+  ],
+  "recommendationScopeRegistration": {
+    "operationClients": [
+      "modulo-marketplace",
+      "modulo-chatbot",
+      "modulo-retail"
+    ],
+    "pendingRegistrationClients": ["modulo-chatbot"],
+    "notListedInPendingRegistry": ["modulo-marketplace", "modulo-retail"],
+    "status": "BLOCKED_G7_REGISTRATION_EVIDENCE",
+    "interpretation": "Operation allowlist and pending registration inventory differ. Preserve operation authorization; neither entry proves a real grant. Marco/G7 must reconcile and provide verifiable grants for Marketplace."
+  }
+}

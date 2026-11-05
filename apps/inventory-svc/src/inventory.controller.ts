@@ -53,27 +53,6 @@ const CANAL_CLIENT_MAP: Record<string, string> = {
   RETAIL: KNOWN_CLIENTS.RETAIL,
 };
 
-/**
- * Identidades internas de G6 autorizadas a consultar canales comerciales
- * concretos sin suplantar al cliente comercial del canal. El client_id
- * identifica al servicio consumidor; `canal` identifica el contexto comercial.
- * H4: modulo-productos solo MARKETPLACE. Sin comodines ni acceso general.
- */
-const CANALES_CLIENTE_INTERNO: Readonly<
-  Record<string, readonly CanalComercial[]>
-> = {
-  [KNOWN_CLIENTS.PRODUCTOS]: ['MARKETPLACE'],
-};
-
-function canalAutorizadoParaCliente(
-  canal: CanalComercial,
-  clientId: string | undefined,
-): boolean {
-  if (CANAL_CLIENT_MAP[canal] === clientId) return true;
-  return Boolean(
-    clientId && CANALES_CLIENTE_INTERNO[clientId]?.includes(canal),
-  );
-}
 
 function parseSkusQuery(skusQuery?: string | string[]): string[] {
   if (typeof skusQuery === 'string') {
@@ -100,6 +79,7 @@ function assertCanalDelCliente(
   clientId: string | undefined,
   correlationId?: string,
   commercialDemo = false,
+  allowProductsMarketplace = false,
 ): void {
   const expectedClient =
     typeof canal === 'string' && Object.hasOwn(CANAL_CLIENT_MAP, canal)
@@ -111,10 +91,20 @@ function assertCanalDelCliente(
       correlationId,
     );
   }
-  if (
-    !commercialDemo &&
-    !canalAutorizadoParaCliente(canal as CanalComercial, clientId)
-  ) {
+  if (clientId === KNOWN_CLIENTS.PRODUCTOS) {
+    if (
+      !allowProductsMarketplace ||
+      canal !== 'MARKETPLACE' ||
+      commercialDemo
+    ) {
+      throw ProblemDetailsException.scopeInsuficiente(
+        'modulo-productos solo puede consultar el GET comercial para MARKETPLACE',
+        correlationId,
+      );
+    }
+    return;
+  }
+  if (!commercialDemo && expectedClient !== clientId) {
     throw ProblemDetailsException.scopeInsuficiente(
       `El canal '${canal}' no corresponde al cliente autenticado '${clientId ?? ''}'`,
       correlationId,
@@ -321,6 +311,7 @@ export class InventoryController {
       req.clientId,
       correlationId,
       isCommercialDemoRequest(req),
+      true,
     );
 
     return this.disponibilidadService.consultarDisponibilidadComercial(

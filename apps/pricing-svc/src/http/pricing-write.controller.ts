@@ -25,8 +25,12 @@ import {
   parsePriceUpdateRequest,
 } from './pricing-write.dto.js';
 import { wireMoney, wireVersion } from './pricing-reads.js';
+import {
+  PRICING_CATALOG_CONTEXT,
+  type PricingCatalogContext,
+} from './commercial-prices.js';
 
-type WriteOperation =
+export type WriteOperation =
   | 'actualizarPrecioSku'
   | 'actualizarPrecioBaseProducto'
   | 'programarPrecioSku'
@@ -45,8 +49,9 @@ export type PricingFactFactory = (
     correlationId: string;
     at: Date;
     operation: WriteOperation;
+    productId?: string;
   },
-) => PriceFact;
+) => PriceFact | readonly PriceFact[];
 @Controller('api/v1/precios')
 @UseGuards(PricingReadGuard)
 @UseFilters(PricingHttpFilter)
@@ -59,12 +64,50 @@ export class PricingWriteController {
     @Optional()
     @Inject(PRICING_FACT_FACTORY)
     private readonly fact?: PricingFactFactory,
+    @Optional()
+    @Inject(PRICING_CATALOG_CONTEXT)
+    private readonly catalog?: PricingCatalogContext,
   ) {}
+
+  private async validateSkuContext(
+    sku: string,
+    correlationId: string,
+  ): Promise<string> {
+    if (!this.catalog)
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
+    try {
+      context = await this.catalog.resolve(sku, correlationId);
+    } catch {
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    }
+    if (context === null)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    if (
+      !context ||
+      context.sku !== sku ||
+      typeof context.productId !== 'string' ||
+      !context.productId.trim() ||
+      typeof context.isVariant !== 'boolean' ||
+      typeof context.active !== 'boolean' ||
+      typeof context.eligible !== 'boolean'
+    )
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    if (!context.active || !context.eligible)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    return context.productId;
+  }
   private async prerequisites(
     operation: WriteOperation,
     authorization: string | undefined,
     response: Response,
-  ) {
+  ): Promise<{
+    actor: string;
+    operation: WriteOperation;
+    at: Date;
+    correlationId: string;
+    productId?: string;
+  }> {
     if (!this.authorize || !this.fact)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     const actor = await this.authorize(operation, authorization);
@@ -110,6 +153,11 @@ export class PricingWriteController {
       authorization,
       response,
     );
+    if ('sku' in target)
+      metadata.productId = await this.validateSkuContext(
+        target.sku,
+        metadata.correlationId,
+      );
     const { channelId, expectedVersion, input } = parsePriceUpdateRequest(body);
     const result = await this.mutations.update(
       target,
@@ -178,15 +226,22 @@ export class PricingWriteController {
       authorization,
       response,
     );
+    if ('sku' in target)
+      metadata.productId = await this.validateSkuContext(
+        target.sku,
+        metadata.correlationId,
+      );
     const { channelId, input } = parsePriceScheduleRequest(body);
     const result = await this.mutations.schedule(
       target,
       channelId,
       { ...input, usuarioId: metadata.actor },
       metadata.at,
-      (before, after) => {
-        wireVersion(after.priceVersion);
-        return this.fact!(before, after, metadata);
+      undefined,
+      {
+        productId:
+          'productId' in target ? target.productId : metadata.productId!,
+        correlationId: metadata.correlationId,
       },
     );
     return {

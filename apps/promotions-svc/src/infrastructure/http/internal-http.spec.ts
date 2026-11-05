@@ -25,6 +25,42 @@ async function fixture(
 }
 
 describe('Internal HTTP credential boundary (PR143)', () => {
+  it('preserves a validated request correlation and rejects invalid metadata before credentials', async () => {
+    const trace = '11111111-1111-4111-8111-111111111111';
+    await fixture(
+      (request, response) => {
+        expect(request.headers['x-correlation-id']).toBe(trace);
+        response
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end('{}');
+      },
+      async (origin) => {
+        const tokens = vi.fn(async () => 'own-token');
+        const reader = new InternalHttpReader({
+          origin,
+          getServiceAccessToken: tokens,
+        });
+        await reader.read(
+          'obtenerProducto',
+          '/productos/P',
+          new AbortController().signal,
+          false,
+          trace,
+        );
+        expect(tokens).toHaveBeenCalledTimes(1);
+        await expect(
+          reader.read(
+            'obtenerProducto',
+            '/productos/P',
+            new AbortController().signal,
+            false,
+            'bad\r\nheader',
+          ),
+        ).rejects.toThrow('INVALID_COMMERCIAL_CORRELATION');
+        expect(tokens).toHaveBeenCalledTimes(1);
+      },
+    );
+  });
   it.each([
     'http://example.org',
     'http://10.0.0.7:3001',

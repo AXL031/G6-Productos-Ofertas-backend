@@ -43,4 +43,18 @@ export class ProblemDetailsException extends HttpException {
       detail: detalle,
     });
   }
+
+  static funcional(
+    code: string,
+    status: number,
+    detalle: string,
+  ): ProblemDetailsException {
+    return new ProblemDetailsException({
+      type: `/errores/${code.toLowerCase().replaceAll('_', '-')}`,
+      title: 'Solicitud de taxonomía rechazada',
+      status,
+      code,
+      detail: detalle,
+    });
+  }
 }

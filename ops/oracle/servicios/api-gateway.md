@@ -10,6 +10,10 @@
 | Oracle (19-oct-2026) | Desplegado; Docker `unhealthy`; `/health` 200; readiness falla por Catalog `not_ready`, cobertura `partial`. `/api/v1/categorias` 200 vía Gateway. |
 | Código | HEAD auditado `9205eb455c4965a82ccb9fc4714cf976e4c059b0`; sin rama personal del Gateway. CI exacto verde run `39342273073`. Código `apps/api-gateway/`. |
 
+## Política de seguridad progresiva H4
+
+Consultar [política operativa](../H4-MODO-DEMO-AUTH-REVERSIBLE.md). `G6_SECURITY_MODE` está propuesto, no implementado. Los flags `GATEWAY_DEMO_NO_AUTH_ENABLED`, `G6_READ_ONLY_DEMO_ENABLED` y `GATEWAY_PUBLIC_OPERATION_IDS` conservan su semántica actual; ninguno registra por sí solo la aprobación pública de Docs. El corte de la matriz consultada tiene cero operaciones `PUBLICA_APROBADA`. Caddy debe enrutar únicamente a Gateway; el acceso anónimo requiere autorización exacta por `operationId`, método y ruta y validación independiente del servicio.
+
 ## B. Configuración runtime
 
 | Variable | Uso / requisito | Suministro / secreto | Consumidor y bootstrap |
@@ -30,7 +34,7 @@ HTTPS: Caddy→Gateway por `g6-edge`. Upstreams HTTP solo por `g6-http` y solo s
 
 ## D. HTTP / seguridad
 
-Proxy/rutas autorizadas por `apps/api-gateway/src/routing/contract-routes.ts`, OpenAPI official `0.6.0-rc.1` (docs origin/master SHA `c36bd9a...`) y configuración. No anunciar rutas no incluidas. `/health` es liveness. Compose healthcheck ejecuta `node dist/apps/api-gateway/readiness.js`; auditoría falló al depender de Catalog. La ruta pública GET categorías fue probada; auth negativa 401 en otras rutas no es smoke funcional. JWT/JWKS y scopes del contrato prevalecen; no crear allowlist de operaciones públicas por intuición.
+Proxy/rutas autorizadas por `apps/api-gateway/src/routing/contract-routes.ts`, OpenAPI Docs `0.6.0-rc.3` consultado en SHA `a7778ec1a22811c1213a94ef096ab905911342cc` y configuración. No anunciar rutas no incluidas. `/health` es liveness. Compose healthcheck ejecuta `node dist/apps/api-gateway/readiness.js`; la auditoría de octubre falló al depender de Catalog. La respuesta anónima 200 de GET categorías es una observación histórica, no aprobación pública vigente; la matriz Docs consultada tiene cero `PUBLICA_APROBADA`. Respuestas 401 en otras rutas tampoco son smoke funcional. JWT/JWKS y scopes del contrato prevalecen; no crear allowlist de operaciones públicas por intuición.
 
 ## E. RabbitMQ
 
@@ -50,7 +54,7 @@ Readiness bloqueada por Catalog al corte auditado. Antes de release, issue/owner
 
 ### Evidencia complementaria 2026-10-20
 
-El tag Oracle inspeccionado por SSH seguía siendo `api-gateway:9205eb455c4965a82ccb9fc4714cf976e4c059b0`; Docker reportó `healthy`. El bundle de readiness del healthcheck alternó `ready` y `not_ready`, siempre con `coverage=partial`; las rutas de demo públicas dieron 200 (detalles/tiempos en [ESTADO_ACTUAL.md](../ESTADO_ACTUAL.md)). Una solicitud interna a `http://127.0.0.1:3000/health/ready` respondió 404: no declarar que existe ese endpoint HTTP; el healthcheck de imagen invoca un bundle local. El run CI exacto del SHA Gateway es `39038657868`; el run `39342273073` pertenece a `castilla` SHA `83240f2` y no es evidencia CI de este Gateway.
+El tag Oracle inspeccionado por SSH el 2026-10-20 era `api-gateway:9205eb455c4965a82ccb9fc4714cf976e4c059b0`; Docker reportó `healthy`. El bundle de readiness del healthcheck alternó `ready` y `not_ready`, siempre con `coverage=partial`; algunas rutas respondieron 200 anónimas en esa observación histórica (detalles/tiempos en [ESTADO_ACTUAL.md](../ESTADO_ACTUAL.md)). Esas respuestas no son autorización vigente: el corte consultado de la matriz Docs tiene cero `PUBLICA_APROBADA`. Una solicitud interna a `http://127.0.0.1:3000/health/ready` respondió 404: no declarar que existe ese endpoint HTTP; el healthcheck de imagen invoca un bundle local. El run CI exacto del SHA Gateway es `39038657868`; el run `39342273073` pertenece a `castilla` SHA `83240f2` y no es evidencia CI de este Gateway.
 
 ## G1 Marketplace H4 — límite de esta ficha
 

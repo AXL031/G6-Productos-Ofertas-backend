@@ -15,6 +15,9 @@ const REPOSITORIO_CON_FALLO: TaxonomyRepository & TaxonomyReadinessIndicator = {
   async findCategoriasActivas(): Promise<never[]> {
     throw new Error('select * from taxonomy.categories: conexion rechazada');
   },
+  async findCategoriaAdmin(): Promise<never> {
+    throw new Error('select from taxonomy.categories: conexion rechazada');
+  },
   async findMarcasActivas(): Promise<never[]> {
     throw new Error('select * from taxonomy.brands: conexion rechazada');
   },

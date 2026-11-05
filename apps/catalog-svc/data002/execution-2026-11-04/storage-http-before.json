@@ -1,0 +1,166 @@
+{
+  "checked_at": "2026-11-04T04:42:39.190073+00:00",
+  "objects": [
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada-h57505-gris.jpg",
+      "status": 200,
+      "bytes": 28278,
+      "sha256": "e62c138cb4baa40fcb0106c4359d27a52aced988858582198d32ed5d74365a91",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada22-azul.jpg",
+      "status": 200,
+      "bytes": 22913,
+      "sha256": "05a192e8a2218714aef0efb8e89f993010a29af110dcf138de2461a5d9f0a58d",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2506-azul.avif",
+      "status": 200,
+      "bytes": 58451,
+      "sha256": "ddc23e238342f229d660b7ce2d53eadc39eca6e2ed225e51358b138237ed5a9b",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada26-jz2508-blanco.avif",
+      "status": 200,
+      "bytes": 13459,
+      "sha256": "378ea7a6db603277c1c81a444424a3a17bfd4d7db1fd8bcfc93346f9a554d859",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-messi-ji8291.jpg",
+      "status": 200,
+      "bytes": 215822,
+      "sha256": "f64f17799226028d005835f2d4dc7afc8874ad14f89a5a8b02da72b7ac2b374a",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-predator-ig7760-multicolor.jpg",
+      "status": 200,
+      "bytes": 17693,
+      "sha256": "17856ca958be95f6a1045ad9e0b5f61ede41b9b1e9ecc37f28f9a730cc2a3086",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runfalcon3-gris.jpg",
+      "status": 200,
+      "bytes": 162486,
+      "sha256": "27b511dcd523792dd19060758cacfd67c3baee9ebe9525306fde519388eef4ee",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runxcushioned-jd9558-negro.jpg",
+      "status": 200,
+      "bytes": 30170,
+      "sha256": "d528412f6e2f6f4dc684942bbb2f51bb547cc46ee1e1df3e6e02234b6b85e487",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jg5832-negro.jpg",
+      "status": 200,
+      "bytes": 131640,
+      "sha256": "231cb9fb17447ea6cf94c7a0ec5ce12e94c7668301674436ee1bf1518d70570c",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-squadra-jh3407-celeste.jpg",
+      "status": 200,
+      "bytes": 174019,
+      "sha256": "a9cb536ab4411836b98ff18ff447119edc192c0f1232e76a66fcfb305e7c354e",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-academy-hv4386-100.jpg",
+      "status": 200,
+      "bytes": 199603,
+      "sha256": "24af0eab78b7186c393142ab11a85699ece03b6226a1065ddc710856c53490d6",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-010-negro.jpg",
+      "status": 200,
+      "bytes": 439630,
+      "sha256": "ba89d2324a2eb60e304a497b0d3dc3f9601c049cf99e511e52fb5d1157654dc2",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-everyday-plus-fq0327-100-blanco.jpg",
+      "status": 200,
+      "bytes": 309745,
+      "sha256": "db336e87878235dcb3c75ac7afb91b029d3dcc5d1dcceccd73f3654e33d53fda",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6855-010-negro.jpg",
+      "status": 200,
+      "bytes": 294926,
+      "sha256": "277908183c9c9c6cbbb4ea3d99ce6deafbca1b80f5cebe749bbda55a388f2f5b",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park3-bv6860-010-mujer.jpg",
+      "status": 200,
+      "bytes": 50020,
+      "sha256": "b2c7096b409b75c893aa133443b0c62e2c6d65a59dc83c30bb2c043d635a3806",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-park7-bv6708-010-negro.webp",
+      "status": 200,
+      "bytes": 19786,
+      "sha256": "f580bed1deb62ad387fbc5458332e286d2d0e52812876c05a077e62efdc03f78",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-pitch-talla.jpg",
+      "status": 200,
+      "bytes": 50440,
+      "sha256": "3fce61b9042e0a7b0191aecbdb40eebdb44fb0079c76e1387265e7073c6d4f8f",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-revolution7-negro.jpg",
+      "status": 200,
+      "bytes": 186120,
+      "sha256": "d88aac3a63fa649e186ee2bb6df5039370c60e5c1b66d6f64dde061260cda3a9",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-cristal-782244-02-blanco.avif",
+      "status": 200,
+      "bytes": 7969,
+      "sha256": "42b9f68e1134a59b9346b03be00a888fd491559b330901f44e400a68fd93443d",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-mancity-780338-01-celeste.avif",
+      "status": 200,
+      "bytes": 11208,
+      "sha256": "06240e62a8af6afdce561de364da78128dadb99d4ae8b5f4bd23d8f6fb9e7787",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-orbita-084641-02-naranja.jpg",
+      "status": 200,
+      "bytes": 220267,
+      "sha256": "295c659f4882b9242fb95f3c2ab6f7f1c9b554695b3a2d12b187804ebf015ded",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-ultra-play-negro.jpg",
+      "status": 200,
+      "bytes": 121619,
+      "sha256": "8a3d508bca48dcf4663a3ed8b61536bb126c91ca211cf72db0145803222c2021",
+      "matches_approved": true
+    },
+    {
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/ua-tech2-1326413-001-negro.avif",
+      "status": 200,
+      "bytes": 93788,
+      "sha256": "a2b9263308390f03319f2b1dca465eb0238243251001a290770dfdb93f967f5d",
+      "matches_approved": true
+    }
+  ]
+}

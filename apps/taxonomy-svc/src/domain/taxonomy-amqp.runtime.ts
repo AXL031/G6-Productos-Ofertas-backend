@@ -1,4 +1,9 @@
-import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  type LoggerService,
+  type OnModuleDestroy,
+} from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import {
   connect,
@@ -37,7 +42,7 @@ export function leerAmqp(env: Readonly<NodeJS.ProcessEnv>): Config | undefined {
 
 @Injectable()
 export class TaxonomyAmqpRuntime implements OnModuleDestroy {
-  private readonly logger = new Logger(TaxonomyAmqpRuntime.name);
+  private logger: LoggerService = new Logger(TaxonomyAmqpRuntime.name);
   private config?: Config;
   private connection?: ChannelModel;
   private consumer?: Channel;
@@ -48,6 +53,11 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
   private paused = false;
   private deliveries = new Set<Promise<void>>();
   constructor(private readonly store: TaxonomyMessageStore) {}
+
+  /** Reemplazable en pruebas sin alterar el logger central del bootstrap. */
+  usarLogger(logger: LoggerService): void {
+    this.logger = logger;
+  }
   configurar(env: Readonly<NodeJS.ProcessEnv>): void {
     this.config = leerAmqp(env);
   }
@@ -63,7 +73,13 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
       if (this.stopped || this.paused || this.cycle) return;
       this.cycle = this.ejecutar()
         .catch(() => {
-          this.logger.warn({ event: 'taxonomy.amqp.unavailable' });
+          this.logger.warn({
+            event: 'taxonomy.amqp.unavailable',
+            service: 'taxonomy-svc',
+            component: 'runtime',
+            state: 'unavailable',
+            reason: 'CONNECTION_OR_CHANNEL_FAILURE',
+          });
         })
         .finally(() => {
           this.cycle = undefined;
@@ -130,6 +146,15 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
       const estado = await this.store.publicarUno((row) =>
         this.publicar(row, this.publisher!),
       );
+      if (estado === 'PENDIENTE') {
+        this.logger.warn({
+          event: 'taxonomy.amqp.outbox_publish_pending',
+          service: 'taxonomy-svc',
+          component: 'outbox',
+          state: 'pending',
+          reason: 'BROKER_PUBLISH_UNCONFIRMED',
+        });
+      }
       if (estado === 'VACIO') break;
     }
   }
@@ -201,7 +226,15 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
       }
     }
     this.paused = true;
-    this.logger.error({ event: 'taxonomy.amqp.consumer_paused' });
+    this.logger.error({
+      event: 'taxonomy.amqp.consumer_paused',
+      service: 'taxonomy-svc',
+      alert_name: 'taxonomy_amqp_consumer_paused',
+      component: 'consumer',
+      state: 'paused',
+      attempts: 3,
+      reason: 'PERSISTENCE_FAILURE',
+    });
     // La entrega permanece sin ACK; el cierre devuelve el mensaje al broker.
     await channel.cancel(delivery.fields.consumerTag).catch(() => undefined);
   }
@@ -211,6 +244,8 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
   ): Promise<void> {
     const routes: Record<string, string> = {
       'taxonomy.category.updated': 'po.eventos.x',
+      'taxonomy.product-type-schema.changed': 'po.eventos.x',
+      'taxonomy.characteristic-value.updated': 'po.eventos.x',
       'taxonomy.master.deactivation.check.requested': 'po.comandos.x',
       'taxonomy.master.deactivated': 'po.eventos.x',
       'taxonomy.master.deactivation.rejected': 'po.resultados.x',
