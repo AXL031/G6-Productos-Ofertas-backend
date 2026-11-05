@@ -7,12 +7,15 @@ import { InventoryCommandService } from './inventory-command.service.js';
 import { OutboxService } from '../outbox/outbox.service.js';
 import { InMemoryDatabaseMock } from '../../test/in-memory-database.mock.js';
 import { ReservationsService } from '../reservations/reservations.service.js';
+import { DisponibilidadService } from '../disponibilidad/disponibilidad.service.js';
+import { catalogPr185SkuDeactivatedEvent } from '../../test/catalog-pr185.fixture.js';
 
 describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () => {
   let service: InventoryCommandService;
   let db: InMemoryDatabaseMock;
   let outbox: OutboxService;
   let reservations: ReservationsService;
+  let availability: DisponibilidadService;
   const location = '9129b578-631e-1735-8427-b683fb524380';
   const message = () => ({
     message_id: randomUUID(),
@@ -31,7 +34,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
   });
 
   beforeEach(async () => {
-    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'false');
     const module = await Test.createTestingModule({
       imports: [InventorySvcModule],
     }).compile();
@@ -40,9 +43,11 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     service = module.get(InventoryCommandService);
     outbox = module.get(OutboxService);
     reservations = module.get(ReservationsService);
+    availability = module.get(DisponibilidadService);
   });
 
   it('mantiene deshabilitado el handler de baja por defecto sin confirmar el mensaje', async () => {
+    delete process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED;
     const event = {
       message_id: randomUUID(),
       operation_id: randomUUID(),
@@ -59,7 +64,6 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
         changed_at: new Date().toISOString(),
       },
     };
-    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'false');
     await expect(service.process(event)).rejects.toMatchObject({
       reason: 'FEATURE_DISABLED',
     });
@@ -251,25 +255,62 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     expect(db.outbox).toHaveLength(0);
   });
 
-  it('procesa catalog.sku.deactivated rc.4 con inbox transaccional y sin tocar stock', async () => {
+  it('acepta el envelope de Catalog PR #185 y evita reservas y disponibilidad positiva tras la baja', async () => {
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
     const changedAt = new Date().toISOString();
-    const deactivation = {
-      message_id: randomUUID(),
-      operation_id: randomUUID(),
-      correlation_id: randomUUID(),
+    const sku = 'SKU-DESACTIVADO';
+    const productId = randomUUID();
+    const deactivation = catalogPr185SkuDeactivatedEvent({
+      sku,
+      productId,
+      skuVersion: 3,
+      changedAt,
+    });
+    expect(deactivation).toMatchObject({
       schema_version: 1,
-      occurred_at: changedAt,
       kind: 'event',
       producer: 'catalog-svc',
       name: 'catalog.sku.deactivated',
+      causation_id: null,
       data: {
-        sku: 'SKU-DESACTIVADO',
-        product_id: randomUUID(),
+        product_id: productId,
+        sku,
         sku_version: 3,
         changed_at: changedAt,
       },
-    };
+    });
+    expect(deactivation.message_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(deactivation.operation_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(deactivation.correlation_id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
+    );
+    expect(Number.isFinite(Date.parse(deactivation.occurred_at))).toBe(true);
+    db.commercialRoutes.push({
+      id: 'route-catalog-pr185',
+      channel_id: 'MARKETPLACE',
+      mode: 'ENVIO_DOMICILIO',
+      fulfillment_ref: 'LIMA_METROPOLITANA',
+      location_id: location,
+      active: true,
+    });
+    db.stockBalance.push({
+      sku_id: sku,
+      location_id: location,
+      on_hand: 9,
+      reserved: 0,
+      blocked: 0,
+      available: 9,
+      stock_version: 0,
+    });
     const beforeStock = structuredClone(db.stockBalance);
+    expect(
+      await availability.consultarDisponibilidadComercial([sku], 'MARKETPLACE'),
+    ).toEqual({ items: [{ sku, status: 'DISPONIBLE' }] });
+
     expect(await service.process(deactivation)).toEqual({ duplicate: false });
     expect(db.inbox[0]).toMatchObject({
       message_type: 'catalog.sku.deactivated',
@@ -278,14 +319,17 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     });
     expect(db.skuLifecycle).toEqual([
       {
-        sku_id: 'SKU-DESACTIVADO',
-        product_id: deactivation.data.product_id,
+        sku_id: sku,
+        product_id: productId,
         sku_version: 3,
         active: false,
         changed_at: changedAt,
       },
     ]);
     expect(db.stockBalance).toEqual(beforeStock);
+    expect(
+      await availability.consultarDisponibilidadComercial([sku], 'MARKETPLACE'),
+    ).toEqual({ items: [{ sku, status: 'INDETERMINADO' }] });
     expect(db.outbox).toHaveLength(0);
     expect(db.kardex).toHaveLength(0);
     await reservations.solicitarReserva(
@@ -295,7 +339,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
         channel_id: 'MARKETPLACE',
         lines: [
           {
-            sku: 'SKU-DESACTIVADO',
+            sku,
             quantity: 1,
             location_id: location,
           },
@@ -306,34 +350,34 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
       'modulo-ventas',
     );
     expect(db.operations.at(-1)?.result_code).toBe('SKU_INACTIVO');
-    expect(
-      db.stockBalance.some((row) => row.sku_id === 'SKU-DESACTIVADO'),
-    ).toBe(false);
+    expect(db.stockBalance.find((row) => row.sku_id === sku)).toMatchObject({
+      on_hand: 9,
+      reserved: 0,
+      blocked: 0,
+      stock_version: 0,
+    });
   });
 
-  it('mantiene bloqueado el payload publicado por Catalog PR #185 hasta homologar schema_version 1', async () => {
-    // Catalog PR #185 emits product_id, variant_id and sku in this event.
-    // AsyncAPI rc.4 instead requires product_id, sku, sku_version and
-    // changed_at, with no extra properties.
-    const catalogPr185Event = {
-      message_id: randomUUID(),
-      schema_version: 1,
-      occurred_at: new Date().toISOString(),
-      correlation_id: randomUUID(),
-      operation_id: randomUUID(),
-      causation_id: null,
-      producer: 'catalog-svc',
-      kind: 'event',
-      name: 'catalog.sku.deactivated',
+  it('rechaza el payload legado de Catalog master anterior a PR #185', async () => {
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
+    // Catalog master a74b954 emitted {product_id, variant_id, sku}. Retain
+    // this guard so a legacy producer is never mistaken for an rc.4 delivery.
+    const legacyMasterEvent = {
+      ...catalogPr185SkuDeactivatedEvent({
+        sku: 'SKU-CATALOG-LEGADO',
+        productId: randomUUID(),
+        skuVersion: 1,
+        changedAt: new Date().toISOString(),
+      }),
       data: {
         product_id: randomUUID(),
         variant_id: randomUUID(),
-        sku: 'SKU-CATALOG-PR185',
+        sku: 'SKU-CATALOG-LEGADO',
       },
     };
     const beforeStock = structuredClone(db.stockBalance);
 
-    await expect(service.process(catalogPr185Event)).rejects.toMatchObject({
+    await expect(service.process(legacyMasterEvent)).rejects.toMatchObject({
       reason: 'INVALID_MESSAGE',
     });
     expect(db.inbox).toHaveLength(0);
@@ -342,6 +386,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
   });
 
   it('deduplica message_id y no reactiva ni retrocede la versión por replay antiguo', async () => {
+    vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
     const changedAt = new Date().toISOString();
     const deactivation = {
       message_id: randomUUID(),
@@ -387,6 +432,7 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
   ])(
     'rechaza envelopes de desactivación incompatibles sin persistirlos: %j',
     async (override) => {
+      vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
       const changedAt = new Date().toISOString();
       await expect(
         service.process({
