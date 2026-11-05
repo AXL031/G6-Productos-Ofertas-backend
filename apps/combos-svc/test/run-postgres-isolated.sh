@@ -50,7 +50,11 @@ if [[ -n "${COMBOS_TEST_EVIDENCE_DIR:-}" && -e "$COMBOS_TEST_EVIDENCE_DIR" ]]; t
   exit 1
 fi
 
-harness_id="$(cat /proc/sys/kernel/random/uuid | tr -d '-')"
+if [[ -r /proc/sys/kernel/random/uuid ]]; then
+  harness_id="$(cat /proc/sys/kernel/random/uuid | tr -d '-')"
+else
+  harness_id="$(node -e 'process.stdout.write(require("node:crypto").randomUUID().replaceAll("-", ""))')"
+fi
 suffix="${harness_id:0:12}"
 pg_container="g6-combos-it-$suffix"
 rabbit_container="g6-combos-rabbit-it-$suffix"

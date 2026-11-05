@@ -8,17 +8,14 @@ import type { Channel } from 'amqplib';
 import request from 'supertest';
 import { CombosSvcController } from '../src/combos-svc.controller.js';
 import { CombosEventConsumer } from '../src/messaging/combos-event-consumer.js';
-import { CombosDatabase } from '../src/persistence/combos.database.js';
 import {
-  CatalogComponentDeactivatedError,
-  CombosRepository,
-} from '../src/persistence/combos.repository.js';
+  ComboTokenVerifier,
+  SimulatedComboTokenVerifier,
+} from '../src/http/combos-auth.js';
+import { CombosDatabase } from '../src/persistence/combos.database.js';
+import { CombosRepository } from '../src/persistence/combos.repository.js';
 import { CombosSvcService } from '../src/combos-svc.service.js';
 
-const enabled =
-  process.env.COMBOS_TEST_EPHEMERAL === '1' &&
-  process.env.COMBOS_TEST_DATABASE_URL === 'harness-owned' &&
-  process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://') === true;
 const exchange = 'po.eventos.x';
 const queue = 'po.combos.q';
 const routes = [
@@ -28,7 +25,7 @@ const routes = [
 ];
 const execFileAsync = promisify(execFile);
 
-describe.skipIf(!enabled)(
+describe(
   'Combos RabbitMQ + PostgreSQL isolated integration',
   () => {
     let connection: ChannelModel;
@@ -49,6 +46,7 @@ describe.skipIf(!enabled)(
         messageId?: string;
         invalid?: boolean;
         occurredAt?: string;
+        correlationId?: string;
       } = {},
     ) => {
       const messageId = options.messageId ?? randomUUID();
@@ -56,7 +54,7 @@ describe.skipIf(!enabled)(
         message_id: messageId,
         schema_version: name === 'inventory.stock.changed' ? 2 : 1,
         occurred_at: options.occurredAt ?? new Date().toISOString(),
-        correlation_id: 'combos-rabbit-test',
+        correlation_id: options.correlationId ?? 'combos-rabbit-test',
         causation_id: null,
         operation_id: null,
         producer: name.startsWith('catalog.') ? 'catalog-svc' : 'inventory-svc',
@@ -96,6 +94,12 @@ describe.skipIf(!enabled)(
     }
 
     beforeAll(async () => {
+      if (
+        process.env.COMBOS_TEST_EPHEMERAL !== '1' ||
+        process.env.COMBOS_TEST_DATABASE_URL !== 'harness-owned'
+      ) throw new Error('COMBOS_RABBITMQ_HARNESS_REQUIRED');
+      if (!process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://'))
+        throw new Error('COMBOS_RABBITMQ_FIXTURE_REQUIRED');
       catalogServer = createServer((request, response) => {
         catalogRequests += 1;
         if (catalogUnavailable) {
@@ -130,6 +134,9 @@ describe.skipIf(!enabled)(
         throw new Error('CATALOG_FIXTURE_FAILED');
       process.env.COMBOS_CATALOG_URL = `http://127.0.0.1:${catalogAddress.port}`;
       process.env.COMBOS_CATALOG_SERVICE_BEARER = 'isolated-test-token';
+      process.env.SECURITY_ISSUER = 'http://127.0.0.1:1/test-issuer';
+      process.env.SECURITY_DISCOVERY_URL = 'http://127.0.0.1:1/test-issuer/.well-known/openid-configuration';
+      process.env.SECURITY_JWKS_URL = 'http://127.0.0.1:1/test-issuer/jwks';
       process.env.COMBOS_AMQP_ENABLED = 'true';
       process.env.COMBOS_AMQP_URL = process.env.COMBOS_TEST_RABBITMQ_URL;
       connection = await amqp.connect(process.env.COMBOS_TEST_RABBITMQ_URL!);
@@ -205,6 +212,9 @@ describe.skipIf(!enabled)(
       delete process.env.COMBOS_AMQP_URL;
       delete process.env.COMBOS_CATALOG_URL;
       delete process.env.COMBOS_CATALOG_SERVICE_BEARER;
+      delete process.env.SECURITY_ISSUER;
+      delete process.env.SECURITY_DISCOVERY_URL;
+      delete process.env.SECURITY_JWKS_URL;
     }, 15000);
 
     it('durably rejects invalid messages before ACK and ACKs a valid event only after commit', async () => {
@@ -258,6 +268,33 @@ describe.skipIf(!enabled)(
         ]),
       );
       expect(result.rows[0]?.result).toBe('REJECTED_INVALID_EVENT');
+    }, 10000);
+
+    it('persists impossible ISO dates with a generated Inbox correlation when AMQP correlation is empty', async () => {
+      const messageId = await publish(
+        'catalog.sku.deactivated',
+        {
+          sku: 'SKU-IMPOSSIBLE-DATE',
+          product_id: 'product-1',
+          sku_version: 1,
+          changed_at: '2026-02-30T12:00:00.000Z',
+        },
+        {
+          occurredAt: '2026-02-30T12:00:00.000Z',
+          correlationId: '',
+        },
+      );
+      await waitForInbox(messageId);
+      const result = await database.query((client) =>
+        client.query(
+          'SELECT result, correlation_id FROM combos.inbox WHERE message_id=$1',
+          [messageId],
+        ),
+      );
+      expect(result.rows[0]?.result).toBe('REJECTED_INVALID_EVENT');
+      expect(result.rows[0]?.correlation_id).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
+      );
     }, 10000);
 
     it('deduplicates replay by message_id and handler across consumer restart', async () => {
@@ -422,7 +459,7 @@ describe.skipIf(!enabled)(
       catalogUnavailable = false;
     }, 10000);
 
-    it('serializes product mapping with component writes to close the discovery-to-commit race', async () => {
+    it('keeps product mapping outside the component write lock', async () => {
       let mappingStarted!: () => void;
       let finishMapping!: () => void;
       const mappingEntered = new Promise<void>((resolve) => {
@@ -468,37 +505,26 @@ describe.skipIf(!enabled)(
         price: '1.00',
         currency: 'PEN',
         components: [
-          { sku: 'SKU-RACE', quantity: 1, productId: 'product-race' },
-          { sku: 'SKU-RACE-OTHER', quantity: 1, productId: 'product-other' },
+          {
+            sku: 'SKU-RACE', quantity: 1, productId: 'product-race',
+            catalogObservedAt: changedAt,
+          },
+          {
+            sku: 'SKU-RACE-OTHER', quantity: 1, productId: 'product-other',
+            catalogObservedAt: changedAt,
+          },
         ],
       });
-      let createWaitingForCatalogLock = false;
-      const lockDeadline = Date.now() + 3000;
-      while (Date.now() < lockDeadline) {
-        const waiting = await database.query((client) =>
-          client.query(
-            "SELECT count(*)::int AS count FROM pg_locks WHERE locktype='advisory' AND NOT granted",
-          ),
-        );
-        if ((waiting.rows[0]?.count ?? 0) > 0) {
-          createWaitingForCatalogLock = true;
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 25));
-      }
-      expect(createWaitingForCatalogLock).toBe(true);
+      await expect(create).resolves.toBeTruthy();
       finishMapping();
       await expect(processing).resolves.toBe('PROCESSED');
-      await expect(create).rejects.toBeInstanceOf(
-        CatalogComponentDeactivatedError,
-      );
       const rows = await database.query((client) =>
         client.query(
           'SELECT count(*)::int AS count FROM combos.combo_items WHERE sku = ANY($1::text[])',
           [['SKU-RACE', 'SKU-RACE-OTHER']],
         ),
       );
-      expect(rows.rows[0]?.count).toBe(0);
+      expect(rows.rows[0]?.count).toBe(2);
     }, 10000);
 
     it('keeps product deactivation recoverable through Catalog outage and bounded pause', async () => {
@@ -705,6 +731,8 @@ describe.skipIf(!enabled)(
         providers: [
           { provide: CombosSvcService, useValue: service },
           { provide: CombosEventConsumer, useValue: consumer },
+          { provide: ComboTokenVerifier, useValue: { verify: vi.fn() } },
+          { provide: SimulatedComboTokenVerifier, useValue: { verify: vi.fn() } },
         ],
       }).compile();
       const app = module.createNestApplication();

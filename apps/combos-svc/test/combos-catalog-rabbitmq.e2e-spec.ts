@@ -19,11 +19,6 @@ import {
 } from '../src/integrations/catalog-sku-context.client.js';
 import { CombosSvcService } from '../src/combos-svc.service.js';
 
-const enabled =
-  process.env.COMBOS_TEST_EPHEMERAL === '1' &&
-  process.env.COMBOS_TEST_DATABASE_URL === 'harness-owned' &&
-  process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://') === true &&
-  typeof process.env.COMBOS_TEST_CATALOG_PASSWORD === 'string';
 const exchange = 'po.eventos.x';
 const queue = 'po.combos.q';
 const routes = [
@@ -40,7 +35,17 @@ const ineligibleBaseSku = 'SKU-CATALOG-INELIGIBLE-BASE';
 const opaqueSku = 'SKU /?%# ñ';
 const execPath = resolve(process.cwd(), 'dist/apps/catalog-svc/main.js');
 
-describe.skipIf(!enabled)(
+describe('Combos isolated E2E fixture preflight', () => {
+  it('receives the runner-owned database, broker and Catalog credentials', () => {
+    expect(process.env.COMBOS_TEST_EPHEMERAL).toBe('1');
+    expect(process.env.COMBOS_TEST_DATABASE_URL).toBe('harness-owned');
+    expect(process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://')).toBe(true);
+    expect(process.env.COMBOS_TEST_CATALOG_PASSWORD).toBeTruthy();
+    expect(process.env.PGSSLROOTCERT).toBeTruthy();
+  });
+});
+
+describe(
   'Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integration',
   () => {
     const signingKey = generateKeyPairSync('rsa', { modulusLength: 2048 });
@@ -72,6 +77,9 @@ describe.skipIf(!enabled)(
       'COMBOS_AMQP_URL',
       'COMBOS_CATALOG_URL',
       'COMBOS_CATALOG_SERVICE_BEARER',
+      'SECURITY_ISSUER',
+      'SECURITY_DISCOVERY_URL',
+      'SECURITY_JWKS_URL',
     ];
 
     const makeToken = (
@@ -358,6 +366,14 @@ describe.skipIf(!enabled)(
     }
 
     beforeAll(async () => {
+      if (
+        process.env.COMBOS_TEST_EPHEMERAL !== '1' ||
+        process.env.COMBOS_TEST_DATABASE_URL !== 'harness-owned'
+      ) throw new Error('COMBOS_CATALOG_HARNESS_REQUIRED');
+      if (
+        !process.env.COMBOS_TEST_RABBITMQ_URL?.startsWith('amqp://') ||
+        !process.env.COMBOS_TEST_CATALOG_PASSWORD
+      ) throw new Error('COMBOS_CATALOG_RABBITMQ_FIXTURES_REQUIRED');
       if (!process.env.COMBOS_TEST_CATALOG_PASSWORD)
         throw new Error('CATALOG_TEST_ROLE_PASSWORD_REQUIRED');
       if (
@@ -399,6 +415,9 @@ describe.skipIf(!enabled)(
         response.writeHead(404).end('{}');
       });
       issuer = await listen(jwksServer);
+      process.env.SECURITY_ISSUER = issuer;
+      process.env.SECURITY_DISCOVERY_URL = `${issuer}/.well-known/openid-configuration`;
+      process.env.SECURITY_JWKS_URL = `${issuer}/jwks`;
 
       const port = await freePort();
       catalogOrigin = `http://127.0.0.1:${port}`;

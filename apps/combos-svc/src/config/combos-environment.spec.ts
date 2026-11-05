@@ -11,6 +11,9 @@ describe('readCombosEnvironment', () => {
   const base = (): NodeJS.ProcessEnv => ({
     COMBOS_SVC_PORT: '3007',
     COMBOS_SVC_HOST: '127.0.0.1',
+    SECURITY_ISSUER: 'https://identity.example',
+    SECURITY_DISCOVERY_URL: 'https://identity.example/.well-known/openid-configuration',
+    SECURITY_JWKS_URL: 'https://identity.example/jwks',
     PGHOST: 'localhost',
     PGPORT: '5432',
     PGDATABASE: 'combos_test',
@@ -87,5 +90,56 @@ describe('readCombosEnvironment', () => {
         COMBOS_RESTRICTED_DEMO_GATEWAY_IPS: 'trusted.invalid',
       }),
     ).toThrow(/COMBOS_RESTRICTED_DEMO_GATEWAY_IPS/);
+  });
+
+  it('rejects invalid AMQP flags and partial M2M identity configuration', () => {
+    expect(() =>
+      readCombosEnvironment({ ...base(), COMBOS_AMQP_ENABLED: 'yes' }),
+    ).toThrow(/COMBOS_AMQP_ENABLED/);
+    expect(() =>
+      readCombosEnvironment({
+        ...base(),
+        COMBOS_AMQP_ENABLED: 'true',
+        COMBOS_AMQP_URL: 'amqp://guest:guest@localhost:5672/',
+      }),
+    ).toThrow(/COMBOS_AMQP_URL/);
+    expect(() =>
+      readCombosEnvironment({
+        ...base(),
+        COMBOS_G7_TOKEN_URL: 'https://identity.example/token',
+      }),
+    ).toThrow(/COMBOS_G7_TOKEN_URL/);
+  });
+
+  it('validates private upstream URLs and complete identity discovery configuration', () => {
+    expect(() =>
+      readCombosEnvironment({
+        ...base(),
+        COMBOS_CATALOG_URL: 'https://catalog.example',
+        COMBOS_PRICING_URL: 'http://evil.example',
+      }),
+    ).toThrow(/COMBOS_PRICING_URL/);
+    const partialIdentity = base();
+    delete partialIdentity.SECURITY_DISCOVERY_URL;
+    delete partialIdentity.SECURITY_JWKS_URL;
+    expect(() => readCombosEnvironment({
+      ...partialIdentity,
+      SECURITY_ISSUER: 'https://identity.example',
+    })).toThrow(/SECURITY_ISSUER/);
+  });
+
+  it('validates progressive security mode and independent simulated issuer configuration', () => {
+    expect(readCombosEnvironment(base()).securityMode).toBe('G7_AUTHENTICATED');
+    expect(() => readCombosEnvironment({ ...base(), G6_SECURITY_MODE: 'DEMO' })).toThrow(/G6_SECURITY_MODE/);
+    expect(() => readCombosEnvironment({ ...base(), G6_SECURITY_MODE: 'SIMULATED_AUTH' })).toThrow(/COMBOS_SIMULATED_ISSUER/);
+    const simulated = {
+      ...base(),
+      G6_SECURITY_MODE: 'SIMULATED_AUTH',
+      COMBOS_SIMULATED_ISSUER: 'https://demo.example',
+      COMBOS_SIMULATED_DISCOVERY_URL: 'https://demo.example/.well-known/openid-configuration',
+      COMBOS_SIMULATED_JWKS_URL: 'https://demo.example/jwks',
+    };
+    expect(readCombosEnvironment(simulated).securityMode).toBe('SIMULATED_AUTH');
+    expect(() => readCombosEnvironment({ ...simulated, COMBOS_SIMULATED_ISSUER: 'https://identity.example' })).toThrow(/independent from G7/);
   });
 });

@@ -146,6 +146,7 @@ try {
   $env:COMBOS_TEST_CWD = $folder
   $env:COMBOS_TEST_RABBITMQ_URL = "amqp://combos_test:${rabbitPassword}@127.0.0.1:${rabbitPort}/%2f"
   $env:COMBOS_TEST_RABBITMQ_CONTAINER = $rabbitContainer
+  Write-Output "HARNESS_FIXTURES: isolated=$($env:COMBOS_TEST_EPHEMERAL -eq '1') database=$($env:COMBOS_TEST_DATABASE_URL -eq 'harness-owned') rabbit=$($env:COMBOS_TEST_RABBITMQ_URL.StartsWith('amqp://')) catalogCredential=$([bool]$env:COMBOS_TEST_CATALOG_PASSWORD)"
   $env:PGPORT = $port; $env:PGDATABASE = 'combos_test'; $env:PGUSER = 'postgres'; $env:PGPASSWORD = $password
   $env:PGHOST = '127.0.0.1'; $env:PGSSLMODE = 'verify-full'; $env:PGSSLROOTCERT = $env:COMBOS_TEST_CA
   Push-Location $repoRoot
@@ -155,7 +156,7 @@ try {
   $testArguments = @($testTarget, '--maxWorkers=1', '--no-file-parallelism')
   if ($TestNamePattern) { $testArguments += @('--testNamePattern', $TestNamePattern) }
   $testReport = Join-Path $folder 'vitest-results.json'
-  $testArguments += @('--reporter=json', "--outputFile=$testReport")
+  $testArguments += @('--reporter=json', '--reporter=default', "--outputFile=$testReport")
   try {
     & npm.cmd run test:e2e -- @testArguments
     if ($LASTEXITCODE -ne 0) { throw 'Fallaron las pruebas E2E de Combos.' }
