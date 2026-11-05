@@ -30,7 +30,40 @@ const catalogPass = randomBytes(20).toString('hex');
 const tmp = mkdtempSync(join(tmpdir(), 'g6-cross-e2e-'));
 const key = join(tmp, 'server.key'),
   cert = join(tmp, 'server.crt');
-const docs = resolve('../G6-Productos-Ofertas-docs/datos');
+const docsCheckout = () => {
+  const candidates = [
+    process.env.G6_E2E_DOCS_PATH,
+    '../G6-Productos-Ofertas-docs',
+    '../docs',
+  ].filter((candidate) => typeof candidate === 'string' && candidate.trim());
+  for (const candidate of candidates) {
+    const root = resolve(candidate);
+    if (
+      !existsSync(join(root, '.git')) &&
+      !existsSync(join(root, '.git', 'HEAD'))
+    )
+      continue;
+    const gitRoot = spawnSync(
+      'git',
+      ['-C', root, 'rev-parse', '--show-toplevel'],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    if (gitRoot.error || gitRoot.status !== 0) continue;
+    const checkoutRoot = resolve(gitRoot.stdout.trim());
+    if (
+      checkoutRoot !== root ||
+      !existsSync(
+        join(root, 'datos/taxonomy/migrations/0001_create_taxonomy.sql'),
+      ) ||
+      !existsSync(
+        join(root, 'datos/catalog-svc/migrations/0001_create_catalog.sql'),
+      )
+    )
+      continue;
+    return root;
+  }
+  return undefined;
+};
 const reportPath = resolve(
   process.env.G6_E2E_EVIDENCE_PATH ??
     'apps/taxonomy-svc/test/e2e-catalog/evidence-latest.json',
@@ -108,16 +141,22 @@ const row = async (query, params = []) =>
 try {
   process.env.NODE_ENV = 'test';
   report.taxonomySha = git('rev-parse', 'HEAD');
+  const docsRoot = docsCheckout();
+  if (!docsRoot)
+    throw new Error(
+      'Falta un checkout Git de Docs con las migraciones normativas de Taxonomy y Catalog',
+    );
+  const docs = join(docsRoot, 'datos');
   report.docsSha = git(
     '-C',
-    resolve('../G6-Productos-Ofertas-docs'),
+    docsRoot,
     'rev-parse',
     'HEAD',
   );
   if (
     git(
       '-C',
-      resolve('../G6-Productos-Ofertas-docs'),
+      docsRoot,
       'status',
       '--porcelain',
       '--',
@@ -484,6 +523,7 @@ try {
     PGPASSWORD: password,
     G6_EXPECTED_ROLE: 'catalog_app',
     G6_DATABASE_SCHEMA: 'catalog',
+    CATALOG_AMQP_ENABLED: 'true',
     PORT: String(await freePort()),
     RABBITMQ_URL: catalogUrl,
     CATALOG_AMQP_PRODUCER_USERS: JSON.stringify({

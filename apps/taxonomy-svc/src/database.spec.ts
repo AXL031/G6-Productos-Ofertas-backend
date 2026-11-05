@@ -69,6 +69,10 @@ describe('taxonomy PostgreSQL configuration and lifecycle', () => {
     await expect(database.read(async () => true)).rejects.toMatchObject({
       status: 503,
     });
+    await expect(database.verifyIdentity()).rejects.toMatchObject({
+      status: 503,
+      message: 'Servicio temporalmente no disponible',
+    });
   });
   it('sanitizes driver/callback failures', async () => {
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);

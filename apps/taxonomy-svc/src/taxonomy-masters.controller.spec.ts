@@ -214,7 +214,19 @@ describe('autorización HTTP de escritura de maestros', () => {
     crear: vi.fn().mockResolvedValue({ nombre: 'Calzado' }),
     listar: vi.fn().mockResolvedValue({ items: [] }),
     obtenerEsquema: vi.fn().mockResolvedValue({ caracteristicas: [] }),
+    obtener: vi.fn().mockResolvedValue({
+      tipoProductoId: '11111111-1111-4111-8111-111111111111',
+      estado: 'ACTIVO',
+    }),
   };
+  const caracteristicaService = {
+    obtener: vi.fn().mockResolvedValue({
+      caracteristicaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Color',
+      estado: 'ACTIVO',
+    }),
+  };
+  const valoresService = { listar: vi.fn().mockResolvedValue([]) };
   beforeAll(async () => {
     const module = await Test.createTestingModule({
       controllers: [TaxonomyMastersController],
@@ -223,10 +235,10 @@ describe('autorización HTTP de escritura de maestros', () => {
         TaxonomyCommercialGuard,
         { provide: TaxonomyTokenVerifier, useValue: { verify: verificar } },
         { provide: ProductTypeService, useValue: tipoService },
-        { provide: CharacteristicValueService, useValue: {} },
+        { provide: CharacteristicValueService, useValue: valoresService },
         { provide: ProductTypeCharacteristicService, useValue: {} },
         { provide: MasterDeactivationRequestService, useValue: {} },
-        { provide: CharacteristicService, useValue: {} },
+        { provide: CharacteristicService, useValue: caracteristicaService },
         {
           provide: DeactivationIntentService,
           useValue: { obtenerOperacion: vi.fn() },
@@ -234,11 +246,24 @@ describe('autorización HTTP de escritura de maestros', () => {
       ],
     }).compile();
     app = module.createNestApplication();
+    app.useGlobalFilters(new ProblemDetailsFilter());
     await app.init();
   });
   afterAll(async () => app.close());
-  beforeEach(() => verificar.mockReset());
-  it('limita modulo-productos a las dos lecturas autorizadas', async () => {
+  beforeEach(() => {
+    verificar.mockReset();
+    tipoService.obtener.mockReset().mockResolvedValue({
+      tipoProductoId: '11111111-1111-4111-8111-111111111111',
+      estado: 'ACTIVO',
+    });
+    caracteristicaService.obtener.mockReset().mockResolvedValue({
+      caracteristicaId: '11111111-1111-4111-8111-111111111111',
+      nombre: 'Color',
+      estado: 'ACTIVO',
+    });
+    valoresService.listar.mockReset().mockResolvedValue([]);
+  });
+  it('limita modulo-productos a las lecturas autorizadas', async () => {
     const get = () =>
       request(app.getHttpServer()).get('/api/v1/tipos-producto');
     await get().expect(401);
@@ -269,16 +294,21 @@ describe('autorización HTTP de escritura de maestros', () => {
       .get(`/api/v1/tipos-producto/${id}/caracteristicas`)
       .set('Authorization', 'Bearer servicio')
       .expect(200);
-    for (const path of [
-      `/api/v1/tipos-producto/${id}`,
-      `/api/v1/caracteristicas/${id}/valores`,
-    ]) {
-      verificar.mockResolvedValueOnce(service);
-      await request(app.getHttpServer())
-        .get(path)
-        .set('Authorization', 'Bearer servicio')
-        .expect(403);
-    }
+    verificar.mockResolvedValueOnce(service);
+    await request(app.getHttpServer())
+      .get(`/api/v1/tipos-producto/${id}`)
+      .set('Authorization', 'Bearer servicio')
+      .expect(200);
+    verificar.mockResolvedValueOnce(service);
+    await request(app.getHttpServer())
+      .get(`/api/v1/caracteristicas/${id}`)
+      .set('Authorization', 'Bearer servicio')
+      .expect(200);
+    verificar.mockResolvedValueOnce(service);
+    await request(app.getHttpServer())
+      .get(`/api/v1/caracteristicas/${id}/valores`)
+      .set('Authorization', 'Bearer servicio')
+      .expect(200, []);
     verificar.mockResolvedValueOnce({ ...service, subject: 'catalog-svc' });
     await get().set('Authorization', 'Bearer servicio').expect(403);
     verificar.mockResolvedValueOnce({
@@ -287,6 +317,30 @@ describe('autorización HTTP de escritura de maestros', () => {
       roles: [],
     });
     await get().set('Authorization', 'Bearer humano').expect(200);
+  });
+  it('permite al gestor consultar detalles y deniega el detalle de característica a otros usuarios', async () => {
+    const id = '11111111-1111-4111-8111-111111111111';
+    const gestor = {
+      kind: 'user',
+      subject: id,
+      audiences: ['api-productos'],
+      roles: ['GESTOR_COMERCIAL'],
+    } as const;
+    verificar.mockResolvedValueOnce(gestor);
+    await request(app.getHttpServer())
+      .get(`/api/v1/caracteristicas/${id}`)
+      .set('Authorization', 'Bearer gestor')
+      .expect(200);
+    verificar.mockResolvedValueOnce({ ...gestor, roles: [] });
+    await request(app.getHttpServer())
+      .get(`/api/v1/caracteristicas/${id}`)
+      .set('Authorization', 'Bearer usuario')
+      .expect(403);
+    verificar.mockResolvedValueOnce(gestor);
+    await request(app.getHttpServer())
+      .get(`/api/v1/tipos-producto/${id}`)
+      .set('Authorization', 'Bearer gestor')
+      .expect(200);
   });
   it('requiere bearer y rol comercial en escritura', async () => {
     const post = () =>
@@ -309,6 +363,17 @@ describe('autorización HTTP de escritura de maestros', () => {
     });
     await post().set('Authorization', 'Bearer servicio').expect(403);
     verificar.mockResolvedValueOnce({
+      kind: 'service',
+      subject: 'modulo-productos',
+      audiences: ['api-productos'],
+      scopes: ['catalogo:leer'],
+    });
+    await request(app.getHttpServer())
+      .patch('/api/v1/caracteristicas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', 'Bearer servicio')
+      .send({ nombre: 'Nuevo', version: 0 })
+      .expect(403);
+    verificar.mockResolvedValueOnce({
       kind: 'user',
       audiences: ['api-productos'],
       roles: ['GESTOR_COMERCIAL'],
@@ -316,5 +381,38 @@ describe('autorización HTTP de escritura de maestros', () => {
     tipoService.crear.mockResolvedValueOnce({ nombre: 'Calzado' });
     const response = await post().set('Authorization', 'Bearer gestor');
     expect(response.status).toBe(201);
+  });
+  it('rechaza token expirado o con firma inválida y conserva 404 contractual', async () => {
+    for (const token of ['Bearer expirado', 'Bearer firma-invalida']) {
+      verificar.mockRejectedValueOnce(new TaxonomyTokenRejected());
+      await request(app.getHttpServer())
+        .get('/api/v1/tipos-producto/11111111-1111-4111-8111-111111111111')
+        .set('Authorization', token)
+        .expect(401);
+    }
+    const service = {
+      kind: 'service',
+      subject: 'modulo-productos',
+      audiences: ['api-productos'],
+      scopes: ['catalogo:leer'],
+    };
+    tipoService.obtener.mockResolvedValueOnce(null);
+    verificar.mockResolvedValueOnce(service);
+    const tipoInexistente = await request(app.getHttpServer())
+      .get('/api/v1/tipos-producto/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', 'Bearer servicio');
+    expect(tipoInexistente.status).toBe(404);
+    expect(tipoInexistente.headers['content-type']).toContain(
+      'application/problem+json',
+    );
+    caracteristicaService.obtener.mockResolvedValueOnce(null);
+    verificar.mockResolvedValueOnce(service);
+    const caracteristicaInexistente = await request(app.getHttpServer())
+      .get('/api/v1/caracteristicas/11111111-1111-4111-8111-111111111111')
+      .set('Authorization', 'Bearer servicio');
+    expect(caracteristicaInexistente.status).toBe(404);
+    expect(caracteristicaInexistente.headers['content-type']).toContain(
+      'application/problem+json',
+    );
   });
 });
