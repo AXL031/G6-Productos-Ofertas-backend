@@ -574,6 +574,126 @@ describe('GET /api/v1/tipos-producto por Gateway, Taxonomy y PostgreSQL real', (
     expect((await json(audienceResponse)).items).toHaveLength(2);
   });
 
+  it('autoriza directamente las lecturas maestras por rol humano y conserva la frontera de servicio', async () => {
+    const characteristicId = randomUUID();
+    const routes = [
+      '/api/v1/tipos-producto',
+      '/api/v1/tipos-producto/11111111-1111-4111-8111-111111111111',
+      `/api/v1/caracteristicas/${characteristicId}/valores`,
+      '/api/v1/tipos-producto/11111111-1111-4111-8111-111111111111/caracteristicas',
+    ];
+    await admin!.query(
+      "INSERT INTO taxonomy.characteristics (id, nombre, tipo) VALUES ($1, $2, 'LISTA')",
+      [characteristicId, `Color ${characteristicId}`],
+    );
+    await admin!.query(
+      'INSERT INTO taxonomy.characteristic_values (caracteristica_id, nombre) VALUES ($1, $2)',
+      [characteristicId, 'Rojo'],
+    );
+
+    try {
+      const manager = createToken(issuerPrivateKey);
+      for (const path of routes) {
+        const response = await fetch(`${taxonomyUrl}${path}`, {
+          headers: { authorization: `Bearer ${manager}` },
+        });
+        status(response, 200);
+      }
+
+      const client = createToken(issuerPrivateKey, { roles: ['CLIENTE'] });
+      for (const path of routes) {
+        const response = await fetch(`${taxonomyUrl}${path}`, {
+          headers: { authorization: `Bearer ${client}` },
+        });
+        status(response, 403);
+      }
+
+      const authorizedService = createToken(issuerPrivateKey, {
+        tipo: 'servicio',
+        sub: 'modulo-productos',
+        client_id: 'modulo-productos',
+        aud: ['api-productos'],
+        scope: 'catalogo:leer',
+        roles: [],
+      });
+      for (const path of routes) {
+        const response = await fetch(`${taxonomyUrl}${path}`, {
+          headers: { authorization: `Bearer ${authorizedService}` },
+        });
+        status(response, 200);
+      }
+      for (const path of routes) {
+        const response = await fetch(`${gatewayUrl}${path}`, {
+          headers: { authorization: `Bearer ${authorizedService}` },
+        });
+        status(response, 403);
+      }
+
+      const invalidServices: Array<{
+        claims: Record<string, unknown>;
+        expected: number;
+      }> = [
+        { claims: { aud: undefined }, expected: 401 },
+        { claims: { aud: ['audiencia-invalida'] }, expected: 401 },
+        { claims: { scope: 'catalogo:escribir' }, expected: 403 },
+        {
+          claims: {
+            sub: 'cliente-no-autorizado',
+            client_id: 'cliente-no-autorizado',
+          },
+          expected: 403,
+        },
+      ];
+      for (const { claims, expected } of invalidServices) {
+        const invalidService = createToken(issuerPrivateKey, {
+          tipo: 'servicio',
+          sub: 'modulo-productos',
+          client_id: 'modulo-productos',
+          aud: ['api-productos'],
+          scope: 'catalogo:leer',
+          roles: [],
+          ...claims,
+        });
+        for (const path of routes) {
+          const response = await fetch(`${taxonomyUrl}${path}`, {
+            headers: { authorization: `Bearer ${invalidService}` },
+          });
+          status(response, expected);
+        }
+      }
+
+      const invalidHumanTokens = [
+        createToken(issuerPrivateKey, {
+          exp: Math.floor(Date.now() / 1000) - 1,
+        }),
+        createToken(issuerPrivateKey, {
+          iss: 'https://issuer-invalido.test/',
+        }),
+      ];
+      const validHuman = createToken(issuerPrivateKey);
+      const tokenParts = validHuman.split('.');
+      invalidHumanTokens.push(
+        `${tokenParts[0]}.${tokenParts[1]}.${tokenParts[2]![0] === 'A' ? 'B' : 'A'}${tokenParts[2]!.slice(1)}`,
+      );
+      for (const invalidToken of invalidHumanTokens) {
+        for (const path of routes) {
+          const response = await fetch(`${taxonomyUrl}${path}`, {
+            headers: { authorization: `Bearer ${invalidToken}` },
+          });
+          status(response, 401);
+        }
+      }
+    } finally {
+      await admin!.query(
+        'DELETE FROM taxonomy.characteristic_values WHERE caracteristica_id = $1',
+        [characteristicId],
+      );
+      await admin!.query('DELETE FROM taxonomy.characteristics WHERE id = $1', [
+        characteristicId,
+      ]);
+    }
+  });
+
   it('rechaza 403 al usuario sin GESTOR_COMERCIAL antes del upstream', async () => {
     outgoing = [];
     const token = createToken(issuerPrivateKey, { roles: ['LECTOR'] });
