@@ -34,7 +34,7 @@ HTTPS: Caddy→Gateway por `g6-edge`. Upstreams HTTP solo por `g6-http` y solo s
 
 ## D. HTTP / seguridad
 
-Proxy/rutas autorizadas por `apps/api-gateway/src/routing/contract-routes.ts`, OpenAPI official `0.6.0-rc.1` (docs origin/master SHA `c36bd9a...`) y configuración. No anunciar rutas no incluidas. `/health` es liveness. Compose healthcheck ejecuta `node dist/apps/api-gateway/readiness.js`; auditoría falló al depender de Catalog. La ruta pública GET categorías fue probada; auth negativa 401 en otras rutas no es smoke funcional. JWT/JWKS y scopes del contrato prevalecen; no crear allowlist de operaciones públicas por intuición.
+Proxy/rutas autorizadas por `apps/api-gateway/src/routing/contract-routes.ts`, OpenAPI Docs `0.6.0-rc.3` consultado en SHA `a7778ec1a22811c1213a94ef096ab905911342cc` y configuración. No anunciar rutas no incluidas. `/health` es liveness. Compose healthcheck ejecuta `node dist/apps/api-gateway/readiness.js`; la auditoría de octubre falló al depender de Catalog. La respuesta anónima 200 de GET categorías es una observación histórica, no aprobación pública vigente; la matriz Docs consultada tiene cero `PUBLICA_APROBADA`. Respuestas 401 en otras rutas tampoco son smoke funcional. JWT/JWKS y scopes del contrato prevalecen; no crear allowlist de operaciones públicas por intuición.
 
 ## E. RabbitMQ
 
@@ -54,7 +54,7 @@ Readiness bloqueada por Catalog al corte auditado. Antes de release, issue/owner
 
 ### Evidencia complementaria 2026-10-20
 
-El tag Oracle inspeccionado por SSH seguía siendo `api-gateway:9205eb455c4965a82ccb9fc4714cf976e4c059b0`; Docker reportó `healthy`. El bundle de readiness del healthcheck alternó `ready` y `not_ready`, siempre con `coverage=partial`; las rutas de demo públicas dieron 200 (detalles/tiempos en [ESTADO_ACTUAL.md](../ESTADO_ACTUAL.md)). Una solicitud interna a `http://127.0.0.1:3000/health/ready` respondió 404: no declarar que existe ese endpoint HTTP; el healthcheck de imagen invoca un bundle local. El run CI exacto del SHA Gateway es `39038657868`; el run `39342273073` pertenece a `castilla` SHA `83240f2` y no es evidencia CI de este Gateway.
+El tag Oracle inspeccionado por SSH el 2026-10-20 era `api-gateway:9205eb455c4965a82ccb9fc4714cf976e4c059b0`; Docker reportó `healthy`. El bundle de readiness del healthcheck alternó `ready` y `not_ready`, siempre con `coverage=partial`; algunas rutas respondieron 200 anónimas en esa observación histórica (detalles/tiempos en [ESTADO_ACTUAL.md](../ESTADO_ACTUAL.md)). Esas respuestas no son autorización vigente: el corte consultado de la matriz Docs tiene cero `PUBLICA_APROBADA`. Una solicitud interna a `http://127.0.0.1:3000/health/ready` respondió 404: no declarar que existe ese endpoint HTTP; el healthcheck de imagen invoca un bundle local. El run CI exacto del SHA Gateway es `39038657868`; el run `39342273073` pertenece a `castilla` SHA `83240f2` y no es evidencia CI de este Gateway.
 
 ## G1 Marketplace H4 — límite de esta ficha
 

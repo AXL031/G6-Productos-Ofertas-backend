@@ -2,7 +2,7 @@
 
 ## A. Identidad
 
-Owner Lopez; HEAD `origin/lopez` contrastado `4e099f5c04d7ba17a100b669c6a85f4eae6f90ec`. Puerto 3006 / `TAXONOMY_SVC_PORT`; schema `taxonomy`. Proyecto/contenedor `g6-taxonomy-svc`, Compose genérico, runtime `/etc/g6-taxonomy-svc/runtime.env`, estado `/var/lib/g6-productos-ofertas/taxonomy-svc`. Oracle 19-oct: desplegado; readiness 200 y categorías vía Gateway 200.
+Owner Lopez. `4e099f5c04d7ba17a100b669c6a85f4eae6f90ec` es la revisión histórica consignada en la ficha anterior. La revisión `f1d35ed26cdacf3e93687d6acab1c04e8cdb4d03` se integró en PR #131 (merge `a74b9547263e426eeeed2b5b2c69cb3faa5e4670`); ampliaciones posteriores de entidades/reglas se integraron, entre otras, en PR #178 (merge `606e36ce668b46b01a8681ea6028d93e0b02f7e5`). Código de referencia actual: Backend `master` `921fcfa443499f0af9dc63360f664da7f4001d5d`. La auditoría Oracle del 19-oct observó la imagen `97ca576282e93e8b35f4bc33b5cbcb972e63caef`, distinta del código actual de `master`; esa observación no establece qué imagen está activa hoy. En ese corte se observó readiness 200 y categorías vía Gateway 200. Código integrado e imagen/despliegue son estados independientes.
 
 ## Política de seguridad progresiva H4
 
@@ -23,19 +23,19 @@ Dockerfile genérico fija `NODE_ENV=production` y `TAXONOMY_SVC_HOST=0.0.0.0`; C
 
 ## C. Dependencias
 
-PostgreSQL schema taxonomy, readiness ejecuta consultas de lectura categories/brands. `g6-http` alias `taxonomy-svc`; Catalog depende de Taxonomy por HTTP privado. Oracle GET categorías y readiness sí observados; no probaron otros upstreams. Sin conexión AMQP probada desde VM.
+PostgreSQL schema taxonomy, readiness ejecuta consultas de lectura categories/brands. `g6-http` alias `taxonomy-svc`; Catalog depende de Taxonomy por HTTP privado. GET de categorías y readiness se observaron en Oracle en el corte 19-oct; no probaron otros upstreams ni el runtime de hoy. Sin conexión AMQP probada desde VM en ese corte.
 
 ## D. HTTP / seguridad
 
-OpenAPI docs origin/master SHA `c36bd9a...`, rc.1 tag Taxonomía. Código actual `taxonomy.controller.ts` incluye `GET /api/v1/categorias` y `GET /api/v1/marcas`; revisar rutas extra contra OpenAPI. `/health/readiness` y `/health/ready` ambos 200 observados; `GET /api/v1/categorias` 200 vía Gateway, la única ruta de negocio probada externamente al alcance auditado. JWT/scopes según contrato; no deducir permiso público.
+La revisión normativa Docs `master` consultada al corte de esta actualización es `a7778ec1a22811c1213a94ef096ab905911342cc` (OpenAPI `0.6.0-rc.3`, AsyncAPI `0.6.0-rc.4`); la referencia `c36bd9a...` / rc.1 es histórica. Backend `master` incorpora operaciones HTTP de lectura/escritura y reglas de dominio posteriores a la primera revisión de la ficha (incluidas las líneas de trabajo de PR #131 y #178); cotejar cada `operationId` con OpenAPI y las pruebas del SHA candidato. Las respuestas `/health/readiness`, `/health/ready` y categorías 200 son observaciones de la auditoría del 19-oct, no verificación del runtime actual. JWT/scopes según contrato; no deducir permiso público.
 
 ## E. RabbitMQ
 
-Infra física user `g6_taxonomia` permite write sobre exchanges base y read `po.taxonomia.q`, pero app runtime AMQP no acreditada por evidencia actual. AsyncAPI gobierna eventos; no habilitar publisher hasta comparar nombres y conectar red aprobada. No retry/DLX.
+Backend `master` contiene implementación de mensajería Taxonomy, incluida la línea de trabajo de outbox/publicación integrada en PR #173 y cambios posteriores de PR #178. Esto prueba presencia de código, no conexión u operación del broker en Oracle. La evidencia física de 19-oct no demuestra una conexión runtime; AsyncAPI, topología, red, identidad y permisos deben verificarse antes de habilitarla. No inferir retry/DLX ni homologación.
 
 ## F. Persistencia
 
-Schema `taxonomy`; readiness de lectura observada a PostgreSQL. Rol/migraciones y permisos se deben contrastar con DDL del SHA; consultas de read master data; no DDL al bootstrap. Tests DB real aislados desde script CI taxonomy integration.
+Schema `taxonomy`; readiness de lectura a PostgreSQL observada en el corte 19-oct. Rol/migraciones y permisos se deben contrastar con DDL del SHA; consultas de read master data; no DDL al bootstrap. Tests DB real aislados desde script CI taxonomy integration.
 
 ## G. Pruebas y aceptación
 
