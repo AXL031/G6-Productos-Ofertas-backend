@@ -175,6 +175,17 @@ export class DisposableCatalogBroker {
   get bulkUrl(): string {
     return 'amqp://bulk-joint:' + this.password + this.base;
   }
+  peerUrl(peer: 'pricing' | 'inventory'): string {
+    return 'amqp://' + peer + '-joint:' + this.password + this.base;
+  }
+  async observeResults(): Promise<string> {
+    const queue = 'catalog-block-a-observation';
+    await this.channel!.assertQueue(queue, { durable: false });
+    await this.channel!.bindQueue(queue, 'po.resultados.x', '#');
+    // Inventory emits a stock fact as well as the initialization result.
+    await this.channel!.bindQueue(queue, 'po.eventos.x', '#');
+    return queue;
+  }
   bulkQueueStats(): string {
     return this.command([
       'exec',

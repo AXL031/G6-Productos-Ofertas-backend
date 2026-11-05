@@ -1,0 +1,107 @@
+{
+  "consulted": "2026-11-05",
+  "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
+  "ref": "master",
+  "sources": [
+    {
+      "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+      "blob": "8372b2f4ee72e5e073865778519cb332c1902f5d",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md",
+      "blob": "8653d68ebc2c82e5c4dfcddacf01aaef1a0fe18c",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-003-gestion-productos-crud.md",
+      "blob": "b736587d476a45d37338f627f718f45b8e52aee0",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-004-gestion-variantes-skus.md",
+      "blob": "56227784e6d96f37aed3029c90a547628e012f11",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-004-gestion-variantes-skus.md"
+    },
+    {
+      "path": "contratos/http/openapi.yaml",
+      "blob": "6ff062c563d381d4bcf7976f223590b400ace4ec",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml"
+    },
+    {
+      "path": "contratos/eventos/asyncapi.yaml",
+      "blob": "a3e9d518fad68546d3f42b44f4fa77011fa15d66",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/asyncapi.yaml"
+    },
+    {
+      "path": "arquitectura/decisiones/REGISTRO_DEC_F.md",
+      "blob": "8d698a9b932d3746de1b98fe5a00a8d60d64f5b6",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/REGISTRO_DEC_F.md"
+    },
+    {
+      "path": "arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md",
+      "blob": "a7a334dca4f3ae85416ef3bc6146004c19daad67",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md"
+    },
+    {
+      "path": "arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md",
+      "blob": "37c905b510454c3684d5b35e02513b3d35112a40",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_G2_G6_H4_2026-11-02.md",
+      "blob": "000205a4830831deba23634451198d8f283185a9",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_G2_G6_H4_2026-11-02.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md",
+      "blob": "adf3d2ebe9c6eb3789748db6861bc394ca8450d4",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md"
+    },
+    {
+      "path": "integraciones/MATRIZ_INTERMODULAR_BACKEND.md",
+      "blob": "ff2daa31a95b1dfbbe3027a3dc0cb94f1f6fe269",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ_INTERMODULAR_BACKEND.md"
+    },
+    {
+      "path": "datos/catalog-svc/physical-model.md",
+      "blob": "097ca340c970149eb525abd2942dda2e5fc9a8c7",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/catalog-svc/physical-model.md"
+    },
+    {
+      "path": "contratos/http/catalogo-errores.md",
+      "blob": "f6feabe315bf0d532df9b533c98ee1b18f775c40",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/catalogo-errores.md"
+    },
+    {
+      "path": "contratos/pruebas/pruebas-contrato.md",
+      "blob": "39a0df34621c31e0498d066a8909766347d70530",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/pruebas/pruebas-contrato.md"
+    },
+    {
+      "path": "integraciones/ALINEACION_MARKETPLACE.md",
+      "blob": "7fa6e341be45a6c273a9e22e15bf8a223545da07",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ALINEACION_MARKETPLACE.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_G1_G6_H4_2026-10-20.md",
+      "blob": "567268977050cfbc69e483b104dc9d7f10792910",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md"
+    },
+    {
+      "path": "datos/inventory-svc/migration.sql",
+      "blob": "ca464fd912e0a76c767ffd5af9c5d83bba92ce42",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/inventory-svc/migration.sql"
+    },
+    {
+      "path": "datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql",
+      "blob": "78a3c025ad1ae6f7a13072f2f24092e4a60e3f43",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql"
+    },
+    {
+      "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+      "blob": "d600d6bd399677a0995683448bcf2fccedfb8ed1",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
+    }
+  ]
+}

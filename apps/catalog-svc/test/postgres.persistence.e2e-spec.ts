@@ -21,7 +21,7 @@ import {
 import { tmpdir } from 'node:os';
 import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { DisposableCatalogBroker } from './support/disposable-catalog-broker.js';
 import { LegacyDemoList } from './support/legacy-demo-list.js';
 import { CatalogGatewayHarness } from './support/catalog-gateway-harness.js';
@@ -304,6 +304,373 @@ describe.skipIf(!dockerAvailable)(
         tiene_variantes: false,
       };
     }
+
+    it('BLOCK-A1: historical absence is 503 on HTTP read and 409 on retry, without manufacturing a preparation', async () => {
+      const http = new CatalogGatewayHarness();
+      await http.start(persistenceSettings, { timeoutMs: 300000 });
+      try {
+        const historical = '00000000-0000-4000-8000-000000000049';
+        const before = await requested(historical);
+        expect(before).toEqual([]);
+        const read = await http.call(
+          'GET',
+          '/productos/' + historical + '/preparacion',
+        );
+        expect(read.status).toBe(503);
+        expect(read.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+        for (const dependencia of ['PRICING', 'INVENTARIO']) {
+          const retry = await http.call(
+            'POST',
+            '/productos/' + historical + '/preparacion/reintentar',
+            { dependencia },
+          );
+          expect(retry.status).toBe(409);
+          expect(retry.body.code).toBe('PREPARACION_NO_REINTENTABLE');
+        }
+        expect(await requested(historical)).toEqual(before);
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(activationChecks)
+              .where(eq(activationChecks.product_id, historical)),
+          ),
+        ).toEqual([]);
+        const created = await http.call('POST', '/productos', createRequest());
+        expect(created.status).toBe(201);
+        const id = String(created.body.product_id);
+        expect(created.body.status).toBe('BORRADOR');
+        expect(
+          (await requested(id)).map((row) => row.event_name).sort(),
+        ).toEqual([
+          'inventory.sku.initialization.requested',
+          'pricing.product.initialization.requested',
+        ]);
+        const preparation = await http.call(
+          'GET',
+          '/productos/' + id + '/preparacion',
+        );
+        expect(preparation.status).toBe(200);
+        expect(preparation.body).toMatchObject({
+          pricing: { status: 'PENDING', manual_retry_allowed: false },
+          inventario: { status: 'PENDING', manual_retry_allowed: false },
+        });
+        // This fixture remains PENDING here; no completion or publication is fabricated.
+      } finally {
+        await http.close();
+      }
+    }, 90000);
+
+    it('BLOCK-A2: real Pricing completes; real Inventory results lacking authenticated producer are quarantined (ownership blocker)', async () => {
+      const peerDirectory = join(directory, 'preparation-peers');
+      mkdirSync(peerDirectory);
+      writeFileSync(join(peerDirectory, 'package.json'), '{"type":"module"}');
+      symlinkSync(
+        resolve('node_modules'),
+        join(peerDirectory, 'node_modules'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const sqlAdmin = (input: string) =>
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          input,
+        );
+      const initial = readFileSync(
+        resolve('apps/catalog-svc/test/fixtures/inventory-initial.sql'),
+        'utf8',
+      );
+      const incremental = readFileSync(
+        resolve('apps/catalog-svc/test/fixtures/inventory-operations.sql'),
+        'utf8',
+      );
+      // Pin copied normative files by Git blob identity, normalizing checkout CRLF.
+      for (const [source, expected] of [
+        [initial, 'ca464fd912e0a76c767ffd5af9c5d83bba92ce42'],
+        [incremental, '78a3c025ad1ae6f7a13072f2f24092e4a60e3f43'],
+      ]) {
+        const bytes = Buffer.from(source.replaceAll('\r\n', '\n'));
+        expect(
+          createHash('sha1')
+            .update('blob ' + bytes.length + '\0')
+            .update(bytes)
+            .digest('hex'),
+        ).toBe(expected);
+      }
+      sqlAdmin(`CREATE ROLE po_pricing_owner NOLOGIN;
+CREATE ROLE pricing_app LOGIN PASSWORD 'isolated-pricing-password';
+CREATE SCHEMA pricing AUTHORIZATION po_pricing_owner;
+CREATE SCHEMA extensions;
+CREATE EXTENSION btree_gist WITH SCHEMA extensions;
+GRANT USAGE ON SCHEMA extensions TO po_pricing_owner;
+SET ROLE po_pricing_owner;
+${readFileSync(resolve('apps/pricing-svc/test/fixtures/pricing.sql'), 'utf8')}
+${readFileSync(resolve('apps/pricing-svc/migrations/0002_schedule_effective_events.sql'), 'utf8')}
+RESET ROLE;`);
+      sqlAdmin(initial);
+      sqlAdmin('BEGIN;\n' + incremental + '\nCOMMIT;');
+      sqlAdmin(
+        readFileSync(
+          resolve(
+            'apps/inventory-svc/migrations/20261104_0001_lifecycle_offline_reconciliation.sql',
+          ),
+          'utf8',
+        ),
+      );
+      sqlAdmin(`CREATE ROLE inventory_fixture_app LOGIN PASSWORD 'isolated-inventory-password';
+REVOKE ALL ON SCHEMA inventory FROM PUBLIC;
+GRANT USAGE ON SCHEMA inventory TO inventory_fixture_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA inventory TO inventory_fixture_app;
+GRANT USAGE ON ALL SEQUENCES IN SCHEMA inventory TO inventory_fixture_app;
+INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable', 'TIENDA');`);
+      const peers: ReturnType<typeof spawn>[] = [];
+      const broker = new DisposableCatalogBroker();
+      const http = new CatalogGatewayHarness();
+      let runtime: CatalogAmqpRuntime | undefined;
+      try {
+        await broker.start();
+        const observation = await broker.observeResults();
+        await http.start(persistenceSettings, { timeoutMs: 300000 });
+        const call = async (
+          method: string,
+          path: string,
+          body: unknown,
+          status: number,
+        ) => {
+          const response = await http.call(method, path, body);
+          expect(
+            response.status,
+            method + ' ' + path + ': ' + JSON.stringify(response.body),
+          ).toBe(status);
+          return response.body;
+        };
+        // Start after setup and before Catalog relay; these are unmodified service modules.
+        for (const peer of ['pricing', 'inventory'] as const) {
+          const build = join(peerDirectory, peer);
+          command(process.execPath, [
+            resolve('node_modules/typescript/bin/tsc'),
+            '-p',
+            resolve('apps/' + peer + '-svc/tsconfig.app.json'),
+            '--outDir',
+            build,
+            '--tsBuildInfoFile',
+            join(peerDirectory, peer + '.tsbuildinfo'),
+          ]);
+          const env: NodeJS.ProcessEnv = {
+            PATH: process.env.PATH,
+            SystemRoot: process.env.SystemRoot,
+            NODE_ENV: 'test',
+            PGHOST: '127.0.0.1',
+            PGPORT: port,
+            PGDATABASE: 'postgres',
+            PGUSER:
+              peer === 'pricing' ? 'pricing_app' : 'inventory_fixture_app',
+            PGPASSWORD: 'isolated-' + peer + '-password',
+            PGSSLMODE: 'verify-full',
+            PGSSLROOTCERT: caFile,
+            DATABASE_URL:
+              'postgresql://' +
+              (peer === 'pricing' ? 'pricing_app' : 'inventory_fixture_app') +
+              ':isolated-' +
+              peer +
+              '-password@127.0.0.1:' +
+              port +
+              '/postgres',
+            PRICING_SVC_PORT: '3002',
+            PRICING_AMQP_URL: broker.peerUrl('pricing'),
+            PRICING_PRICE_CHANGED_PUBLISH_ENABLED: 'false',
+            RABBITMQ_URL: broker.peerUrl('inventory'),
+            INVENTORY_WORKER_INTERVAL_MS: '250',
+          };
+          const child = spawn(
+            process.execPath,
+            [resolve('apps/catalog-svc/test/support/preparation-peer.mjs')],
+            {
+              cwd: peerDirectory,
+              env,
+              windowsHide: true,
+              stdio: ['pipe', 'pipe', 'pipe'],
+            },
+          );
+          peers.push(child);
+          let ready = false;
+          child.stdout.on('data', (chunk) => {
+            if (String(chunk).includes('PREPARATION_PEER_READY')) ready = true;
+          });
+          child.stderr.resume();
+          child.stdin.end(JSON.stringify({ peer, build }));
+          await expect
+            .poll(() => ready && child.exitCode === null, { timeout: 30000 })
+            .toBe(true);
+        }
+        const simple = await call('POST', '/productos', createRequest(), 201);
+        const parent = await call(
+          'POST',
+          '/productos',
+          createRequest(true),
+          201,
+        );
+        const child = await call(
+          'POST',
+          '/productos/' + parent.product_id + '/variantes',
+          {
+            sku: '000-BLOCK-A-' + randomUUID(),
+            atributosIdentificadores: [
+              { caracteristica_id: 'size', nombre: 'Size', valor: 'M' },
+            ],
+            imagenUrl: 'https://example.test/variant',
+            perfilFisico: fullProfile,
+          },
+          201,
+        );
+        for (const id of [
+          String(simple.product_id),
+          String(parent.product_id),
+        ]) {
+          const prep = await call(
+            'GET',
+            '/productos/' + id + '/preparacion',
+            undefined,
+            200,
+          );
+          expect(prep.pricing.status).toBe('PENDING');
+          await call('POST', '/productos/' + id + '/activar', {}, 422);
+        }
+        expect(
+          (await requested(String(parent.product_id)))
+            .map((row) => row.event_name)
+            .sort(),
+        ).toEqual([
+          'inventory.sku.initialization.requested',
+          'pricing.product.initialization.requested',
+        ]);
+        runtime = new CatalogAmqpRuntime(
+          new CatalogMessageService(database),
+          broker.settings,
+        );
+        runtime.onModuleInit();
+        for (const id of [
+          String(simple.product_id),
+          String(parent.product_id),
+        ]) {
+          await expect
+            .poll(
+              async () => {
+                const prep = await http.call(
+                  'GET',
+                  '/productos/' + id + '/preparacion',
+                );
+                return prep.body.pricing.status;
+              },
+              { timeout: 30000 },
+            )
+            .toBe('COMPLETED');
+        }
+        // Inspect messages emitted by the real peers, never fabricated results.
+        const inventoryResults = [];
+        while (inventoryResults.length < 2) {
+          const wire = await broker.next(observation);
+          const envelope = JSON.parse(
+            wire.content.toString('utf8'),
+          ) as CatalogEnvelope;
+          if (
+            envelope.name !== 'inventory.sku.initialization.completed' ||
+            ![simple.product_id, parent.product_id].includes(
+              envelope.data.product_id,
+            )
+          )
+            continue;
+          inventoryResults.push(envelope);
+          // Known foreign-owner defect: publisher has no AMQP userId.
+          expect(wire.properties.userId).toBeUndefined();
+          expect(envelope.data.status).toBe('INITIALIZED');
+          const request = (
+            await requested(String(envelope.data.product_id))
+          ).find((row) => row.message_id === envelope.causation_id);
+          expect(request).toBeDefined();
+          expect(envelope.operation_id).toBe(request!.operation_id);
+          expect(envelope.correlation_id).toBe(request!.correlation_id);
+        }
+        expect(
+          inventoryResults.map((result) => result.data.sku).sort(),
+        ).toEqual([simple.sku_base, child.sku].sort());
+        // Catalog must fail closed; a real Inventory commit does not prove Catalog readiness.
+        const quarantinedIds = new Set<string>();
+        while (quarantinedIds.size < 2) {
+          const quarantined = await broker.next('po.catalogo.q.dlq');
+          const result = JSON.parse(
+            quarantined.content.toString(),
+          ) as CatalogEnvelope;
+          expect(result.producer).toBe('inventory-svc');
+          expect(quarantined.properties.headers?.['x-catalog-failure']).toBe(
+            'INVALID_OR_BLOCKED_CONTRACT',
+          );
+          if (
+            [simple.product_id, parent.product_id].includes(
+              result.data.product_id,
+            )
+          )
+            quarantinedIds.add(result.message_id);
+        }
+        const prep = await call(
+          'GET',
+          '/productos/' + simple.product_id + '/preparacion',
+          undefined,
+          200,
+        );
+        expect(prep.inventario).toMatchObject({
+          status: 'PENDING',
+          manual_retry_allowed: false,
+        });
+        await call(
+          'POST',
+          '/productos/' + simple.product_id + '/activar',
+          {},
+          422,
+        );
+        await call(
+          'POST',
+          '/productos/' +
+            parent.product_id +
+            '/variantes/' +
+            child.variant_id +
+            '/activar',
+          {},
+          422,
+        );
+        await call(
+          'POST',
+          '/productos/' + simple.product_id + '/preparacion/reintentar',
+          { dependencia: 'PRICING' },
+          409,
+        );
+      } finally {
+        await runtime?.onModuleDestroy();
+        for (const child of peers) {
+          child.kill('SIGTERM');
+          const deadline = Date.now() + 10000;
+          while (
+            child.exitCode === null &&
+            child.signalCode === null &&
+            Date.now() < deadline
+          )
+            await pause(50);
+          if (child.exitCode === null && child.signalCode === null)
+            child.kill('SIGKILL');
+        }
+        await http.close();
+        await broker.close();
+      }
+    }, 240000);
 
     it('enumerates Marketplace preview snapshots beyond 100 with real PostgreSQL and complete Pricing', async () => {
       const marker = 'PREVIEW-PAGES-' + randomUUID();
