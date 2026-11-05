@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { and, eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 import {
   changePrice,
   schedulePrice,
@@ -48,6 +48,7 @@ export class PricingMutations {
     fact: PriceFactSource,
   ) {
     return this.repository.transaction(async (tx) => {
+      await this.lockSkuAndRejectDeactivated(tx, target);
       const loaded = await this.loadMaybe(tx, target, channelId);
       if (!loaded) {
         requireRule(expectedVersion === 0n, 'PRECIO_NO_ENCONTRADO');
@@ -148,6 +149,7 @@ export class PricingMutations {
     eventContext?: { productId: string; correlationId: string },
   ) {
     return this.repository.transaction(async (tx) => {
+      await this.lockSkuAndRejectDeactivated(tx, target);
       const { row, definition } = await this.load(tx, target, channelId);
       const plan = schedulePrice(definition, input, now);
       // Registrar intención futura y reservar su snapshot/version no equivale
@@ -175,6 +177,25 @@ export class PricingMutations {
         .returning();
       return { definition: plan, scheduled };
     });
+  }
+
+  private async lockSkuAndRejectDeactivated(
+    tx: PricingTransaction,
+    target: Target,
+  ): Promise<void> {
+    if (target.sku === undefined) return;
+    await tx.execute(
+      sql`SELECT pg_advisory_xact_lock(hashtextextended(${'sku-deactivation:' + target.sku}, 0))`,
+    );
+    const accepted = await tx.execute<{ accepted: boolean }>(sql`
+      SELECT EXISTS (
+        SELECT 1 FROM pricing.inbox
+        WHERE handler = 'pricing.catalog-sku-deactivated.v1'
+          AND result = 'APPLIED'
+          AND payload->'data'->>'sku' = ${target.sku}
+      ) AS accepted
+    `);
+    requireRule(!accepted.rows[0]?.accepted, 'PRECIO_NO_ENCONTRADO');
   }
 
   private async loadMaybe(

@@ -47,6 +47,7 @@ export class PricingInboxConsumer
   private channel?: Channel;
   private consumerTag?: string;
   private starting?: Promise<void>;
+  private readonly inFlight = new Set<Promise<void>>();
   private reconnectTimer?: ReturnType<typeof setTimeout>;
   private url?: string;
   private readonly logger = new Logger(PricingInboxConsumer.name);
@@ -61,7 +62,7 @@ export class PricingInboxConsumer
   onApplicationBootstrap(): void {
     if (this.config.amqpUrl) {
       this.url = this.config.amqpUrl;
-      this.starting = this.start(this.url);
+      void this.start(this.url);
     }
   }
 
@@ -75,30 +76,65 @@ export class PricingInboxConsumer
     } catch {
       // Closing the channel requeues any delivery that was not ACKed.
     }
+    await Promise.allSettled(this.inFlight);
     await this.channel?.close().catch(() => undefined);
     await this.connection?.close().catch(() => undefined);
     this.available = false;
   }
 
-  private async start(url: string): Promise<void> {
+  private start(url: string): Promise<void> {
+    if (this.stopped || this.paused) return Promise.resolve();
+    if (this.starting) return this.starting;
+    const starting = this.open(url).finally(() => {
+      if (this.starting === starting) this.starting = undefined;
+    });
+    this.starting = starting;
+    return starting;
+  }
+
+  private async open(url: string): Promise<void> {
+    let connection: ChannelModel | undefined;
+    let channel: Channel | undefined;
     try {
-      this.connection = await connect(url, { timeout: 2500 });
-      this.connection.on('error', () => {
-        this.available = false;
+      connection = await connect(url, { timeout: 2500 });
+      this.connection = connection;
+      connection.on('error', () => {
+        if (this.connection === connection) this.available = false;
       });
-      this.connection.on('close', () => this.scheduleReconnect());
-      this.channel = await this.connection.createChannel();
-      this.channel.on('error', () => {
-        this.available = false;
+      connection.on('close', () => {
+        if (this.connection === connection) {
+          this.connection = undefined;
+          this.channel = undefined;
+          this.consumerTag = undefined;
+          this.available = false;
+          this.scheduleReconnect();
+        }
       });
-      await this.channel.checkExchange('po.comandos.x');
-      await this.channel.checkExchange('po.eventos.x');
-      await this.channel.checkQueue(QUEUE);
-      await this.channel.prefetch(20);
-      const subscription = await this.channel.consume(
+      channel = await connection.createChannel();
+      this.channel = channel;
+      channel.on('error', () => {
+        if (this.channel === channel) this.available = false;
+      });
+      channel.on('close', () => {
+        if (this.channel === channel) {
+          this.channel = undefined;
+          this.consumerTag = undefined;
+          this.available = false;
+          if (this.connection === connection) {
+            this.connection = undefined;
+            void connection?.close().catch(() => undefined);
+          }
+          this.scheduleReconnect();
+        }
+      });
+      await channel.checkExchange('po.comandos.x');
+      await channel.checkExchange('po.eventos.x');
+      await channel.checkQueue(QUEUE);
+      await channel.prefetch(20);
+      const subscription = await channel.consume(
         QUEUE,
         (message) => {
-          if (message) void this.process(message);
+          if (message) this.track(this.process(channel!, message));
         },
         { noAck: false },
       );
@@ -106,8 +142,10 @@ export class PricingInboxConsumer
       this.available = true;
     } catch {
       this.available = false;
-      await this.channel?.close().catch(() => undefined);
-      await this.connection?.close().catch(() => undefined);
+      if (this.channel === channel) this.channel = undefined;
+      if (this.connection === connection) this.connection = undefined;
+      await channel?.close().catch(() => undefined);
+      await connection?.close().catch(() => undefined);
       if (!this.stopped)
         this.logger.error(
           'Consumidor AMQP de Pricing no disponible; adquisición pausada.',
@@ -121,13 +159,25 @@ export class PricingInboxConsumer
     this.available = false;
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = undefined;
-      this.starting = this.start(this.url!);
+      void this.start(this.url!);
     }, 3000);
     this.reconnectTimer.unref();
   }
 
-  private async process(message: ConsumeMessage): Promise<void> {
-    if (this.paused || !this.channel) return;
+  private track(operation: Promise<void>): void {
+    this.inFlight.add(operation);
+    void operation
+      .catch(() => {
+        void this.pause('PROCESSING_UNHANDLED');
+      })
+      .finally(() => this.inFlight.delete(operation));
+  }
+
+  private async process(
+    owner: Channel,
+    message: ConsumeMessage,
+  ): Promise<void> {
+    if (this.paused || this.stopped) return;
     if (message.content.length > MAX_MESSAGE_BYTES) {
       await this.pause('MESSAGE_TOO_LARGE');
       return;
@@ -148,7 +198,11 @@ export class PricingInboxConsumer
         } else {
           throw new Error('PRICING_UNSUPPORTED_MESSAGE');
         }
-        this.channel.ack(message);
+        try {
+          owner.ack(message);
+        } catch {
+          /* Broker requeues after channel loss; Inbox makes replay safe. */
+        }
         return;
       } catch (error) {
         if (
@@ -158,7 +212,11 @@ export class PricingInboxConsumer
           try {
             const value: unknown = JSON.parse(message.content.toString('utf8'));
             if (await this.recordInvalidEnvelope(value)) {
-              this.channel.ack(message);
+              try {
+                owner.ack(message);
+              } catch {
+                /* Broker requeues after channel loss. */
+              }
               return;
             }
           } catch {

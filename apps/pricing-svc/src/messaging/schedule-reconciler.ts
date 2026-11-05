@@ -6,7 +6,7 @@ import {
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { createHash } from 'node:crypto';
-import { and, asc, eq, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import {
   contains,
   type PriceDefinition,
@@ -53,6 +53,7 @@ export class PricingScheduleReconciler
   private stopped = false;
   private timer?: ReturnType<typeof setTimeout>;
   private active?: Promise<void>;
+  private readonly observedManualSchedules = new Set<string>();
   private readonly logger = new Logger(PricingScheduleReconciler.name);
 
   constructor(
@@ -88,6 +89,35 @@ export class PricingScheduleReconciler
     now = new Date(),
   ): Promise<{ activated: number; historical: number }> {
     return this.repository.transaction(async (tx) => {
+      const legacyPending = await tx
+        .select({ id: scheduledPrices.id })
+        .from(scheduledPrices)
+        .innerJoin(
+          priceValidities,
+          eq(priceValidities.id, scheduledPrices.validityId),
+        )
+        .where(
+          and(
+            eq(scheduledPrices.status, 'SCHEDULED'),
+            lte(priceValidities.validFrom, now),
+            or(
+              isNull(scheduledPrices.productId),
+              isNull(scheduledPrices.correlationId),
+              sql`btrim(${scheduledPrices.productId}) = ''`,
+            ),
+            or(
+              sql`${priceValidities.validUntil} IS NULL`,
+              sql`${priceValidities.validUntil} > ${now}`,
+            ),
+          ),
+        );
+      for (const row of legacyPending) {
+        if (this.observedManualSchedules.has(row.id)) continue;
+        this.observedManualSchedules.add(row.id);
+        this.logger.warn(
+          `Programación heredada requiere reconciliación manual (${row.id}).`,
+        );
+      }
       const due = await tx
         .select({
           scheduled: scheduledPrices,
@@ -105,6 +135,10 @@ export class PricingScheduleReconciler
             and(
               eq(scheduledPrices.status, 'SCHEDULED'),
               lte(priceValidities.validFrom, now),
+              or(
+                lte(priceValidities.validUntil, now),
+                sql`${scheduledPrices.productId} IS NOT NULL AND btrim(${scheduledPrices.productId}) <> '' AND ${scheduledPrices.correlationId} IS NOT NULL`,
+              ),
             ),
             and(
               eq(scheduledPrices.status, 'ACTIVE'),
@@ -149,7 +183,7 @@ export class PricingScheduleReconciler
               ),
             ),
           )
-          .for('update', { skipLocked: true });
+          .for('update');
         if (!current) continue;
         if (current.scheduled.status === 'ACTIVE') {
           if (

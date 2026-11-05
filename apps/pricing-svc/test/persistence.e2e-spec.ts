@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -558,6 +559,281 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       expect(
         await deactivation.consume(Buffer.from(JSON.stringify(invalid))),
       ).toBe('REJECTED');
+    });
+
+    it('espera una fila bloqueada y solo registra APPLIED tras cancelar todas las programaciones', async () => {
+      const sku = 'LOCKED-DEACTIVATE-' + randomUUID();
+      const productId = randomUUID();
+      const now = new Date('2034-01-01T00:00:00Z');
+      const future = new Date('2035-01-01T00:00:00Z');
+      const { schedule } = await repository.transaction(async (tx) => {
+        const target = await create(tx, { sku });
+        await tx
+          .update(prices)
+          .set({ priceVersion: 2n })
+          .where(eq(prices.id, target.definition.id));
+        await tx
+          .update(priceValidities)
+          .set({ validUntil: future })
+          .where(eq(priceValidities.id, target.validity.id));
+        const [validity] = await tx
+          .insert(priceValidities)
+          .values({
+            ...snapshot(target.definition.id, 2n),
+            validFrom: future,
+            validUntil: null,
+          })
+          .returning();
+        const [schedule] = await tx
+          .insert(scheduledPrices)
+          .values({
+            priceId: target.definition.id,
+            validityId: validity.id,
+            productId,
+            correlationId: randomUUID(),
+            tipoPrecio: 'REGULAR',
+            importe: '99.99',
+          })
+          .returning();
+        return { schedule };
+      });
+      const message = {
+        message_id: randomUUID(),
+        schema_version: 1,
+        occurred_at: now.toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'event',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: productId,
+          sku_version: 2,
+          changed_at: now.toISOString(),
+        },
+      };
+      const blocker = await postgres.admin!.connect();
+      await blocker.query('BEGIN');
+      await blocker.query(
+        'SELECT id FROM pricing.scheduled_prices WHERE id = $1 FOR UPDATE',
+        [schedule.id],
+      );
+      try {
+        const processing = deactivation.consume(
+          Buffer.from(JSON.stringify(message)),
+        );
+        let settled = false;
+        void processing.finally(() => {
+          settled = true;
+        });
+        for (let attempt = 0; attempt < 40; attempt++) {
+          const waiting = await postgres.admin!.query(
+            "SELECT count(*)::int AS n FROM pg_stat_activity WHERE wait_event_type = 'Lock'",
+          );
+          if (waiting.rows[0].n > 0) break;
+          await new Promise((resolve) => setTimeout(resolve, 25));
+        }
+        expect(settled).toBe(false);
+        expect(
+          await database.db
+            .select()
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.messageId, message.message_id),
+                eq(inbox.result, 'APPLIED'),
+              ),
+            ),
+        ).toHaveLength(0);
+        await blocker.query('COMMIT');
+        expect(await processing).toBe('APPLIED');
+      } finally {
+        await blocker.query('ROLLBACK').catch(() => undefined);
+        blocker.release();
+      }
+      expect(
+        await database.db
+          .select()
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, schedule.id)),
+      ).toMatchObject([{ status: 'CANCELLED' }]);
+      expect(
+        await database.db
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, message.message_id),
+              eq(inbox.result, 'APPLIED'),
+            ),
+          ),
+      ).toHaveLength(1);
+    });
+
+    it('bloquea cambios y nuevas programaciones SKU después de una baja persistida y conserva el precio base', async () => {
+      const sku = 'RESTRICT-AFTER-DEACTIVATE-' + randomUUID();
+      const productId = randomUUID();
+      const now = new Date();
+      const future = new Date(now.getTime() + 3600000);
+      await repository.transaction(async (tx) => {
+        const skuPrice = await create(tx, { sku });
+        await tx
+          .update(priceValidities)
+          .set({ validFrom: new Date(now.getTime() - 60000) })
+          .where(eq(priceValidities.id, skuPrice.validity.id));
+        await create(tx, { productId });
+      });
+      const message = {
+        message_id: randomUUID(),
+        schema_version: 1,
+        occurred_at: now.toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'event',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: productId,
+          sku_version: 1,
+          changed_at: now.toISOString(),
+        },
+      };
+      expect(
+        await deactivation.consume(Buffer.from(JSON.stringify(message))),
+      ).toBe('APPLIED');
+      const before = await repository.findDefinition({ sku }, null);
+      await expect(
+        mutations.update(
+          { sku },
+          null,
+          {
+            precioRegular: 110,
+            accionPrecioOferta: 'ELIMINAR',
+            currency: 'PEN',
+            motivoCambio: 'posterior a baja',
+            usuarioId: actor,
+          },
+          1n,
+          now,
+          [],
+        ),
+      ).rejects.toMatchObject({ code: 'PRECIO_NO_ENCONTRADO' });
+      await expect(
+        mutations.schedule(
+          { sku },
+          null,
+          {
+            tipoPrecio: 'REGULAR',
+            importe: '110.00',
+            currency: 'PEN',
+            motivoCambio: 'posterior a baja',
+            usuarioId: actor,
+            validFrom: future,
+            validUntil: null,
+          },
+          now,
+        ),
+      ).rejects.toMatchObject({ code: 'PRECIO_NO_ENCONTRADO' });
+      expect(await repository.findDefinition({ sku }, null)).toEqual(before);
+      expect(
+        await repository.findDefinition({ productId }, null),
+      ).toBeDefined();
+    });
+
+    it('serializa programación y baja concurrentes: prevalece el lock y no sobrevive trabajo elegible', async () => {
+      const sku = 'RACE-DEACTIVATE-' + randomUUID();
+      const productId = randomUUID();
+      const changedAt = new Date();
+      const validFrom = new Date(changedAt.getTime() + 60000);
+      await repository.transaction(async (tx) => {
+        const row = await create(tx, { sku });
+        await tx
+          .update(priceValidities)
+          .set({ validFrom: new Date(changedAt.getTime() - 60000) })
+          .where(eq(priceValidities.id, row.validity.id));
+        const [base] = await tx
+          .insert(prices)
+          .values({ productId })
+          .returning();
+        await tx.insert(priceValidities).values({
+          ...snapshot(base.id),
+          validFrom: new Date(changedAt.getTime() - 60000),
+        });
+      });
+      const message = {
+        message_id: randomUUID(),
+        schema_version: 1,
+        occurred_at: changedAt.toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'event',
+        name: 'catalog.sku.deactivated',
+        data: {
+          sku,
+          product_id: productId,
+          sku_version: 1,
+          changed_at: changedAt.toISOString(),
+        },
+      };
+      const write = mutations.schedule(
+        { sku },
+        null,
+        {
+          tipoPrecio: 'REGULAR',
+          importe: '110.00',
+          currency: 'PEN',
+          motivoCambio: 'carrera controlada',
+          usuarioId: actor,
+          validFrom,
+          validUntil: null,
+        },
+        changedAt,
+      );
+      const removal = deactivation.consume(
+        Buffer.from(JSON.stringify(message)),
+      );
+      const [writeResult, removalResult] = await Promise.allSettled([
+        write,
+        removal,
+      ]);
+      expect(removalResult).toMatchObject({
+        status: 'fulfilled',
+        value: 'APPLIED',
+      });
+      if (writeResult.status === 'rejected')
+        expect(writeResult.reason).toMatchObject({
+          code: 'PRECIO_NO_ENCONTRADO',
+        });
+      const schedules = await database.db
+        .select({ status: scheduledPrices.status })
+        .from(scheduledPrices)
+        .innerJoin(prices, eq(prices.id, scheduledPrices.priceId))
+        .where(eq(prices.sku, sku));
+      expect(schedules.every(({ status }) => status === 'CANCELLED')).toBe(
+        true,
+      );
+      const definition = await repository.findDefinition({ sku }, null);
+      expect([1n, 2n]).toContain(definition?.priceVersion);
+      expect(
+        await repository.findDefinition({ productId }, null),
+      ).toBeDefined();
+      expect(
+        await database.db
+          .select()
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, message.message_id),
+              eq(inbox.result, 'APPLIED'),
+            ),
+          ),
+      ).toHaveLength(1);
     });
 
     it('PATCH SKU conserva canal textual y rechaza canales invalidos sin efectos', async () => {
@@ -1767,6 +2043,95 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       ).toMatchObject({ items: [{ schedule: { status: 'HISTORICAL' } }] });
     });
 
+    it('activa una vencida válida detrás de más de 25 registros incompatibles y emite el hecho una sola vez', async () => {
+      const now = new Date('2036-01-01T00:00:00Z');
+      const ids: string[] = [];
+      await repository.transaction(async (tx) => {
+        for (let index = 0; index < 26; index++) {
+          const target = await create(tx, {
+            productId: `legacy-${randomUUID()}`,
+          });
+          const validFrom = new Date(now.getTime() - (3600000 + index));
+          await tx
+            .update(priceValidities)
+            .set({ validFrom })
+            .where(eq(priceValidities.id, target.validity.id));
+          const [schedule] = await tx
+            .insert(scheduledPrices)
+            .values({
+              priceId: target.definition.id,
+              validityId: target.validity.id,
+              productId: null,
+              correlationId: null,
+              tipoPrecio: 'REGULAR',
+              importe: '99.99',
+              status: 'SCHEDULED',
+            })
+            .returning();
+          ids.push(schedule.id);
+        }
+      });
+      const productId = randomUUID();
+      const future = new Date(now.getTime() - 1000);
+      await repository.transaction(async (tx) => {
+        const [price] = await tx
+          .insert(prices)
+          .values({ productId })
+          .returning();
+        await tx.insert(priceValidities).values({
+          priceId: price.id,
+          precioRegular: '99.99',
+          precioOferta: null,
+          currency: 'PEN',
+          validFrom: new Date(now.getTime() - 60000),
+          validUntil: null,
+          priceVersion: 1n,
+          motivoCambio: 'antes',
+          usuarioId: actor,
+        });
+      });
+      const correlationId = randomUUID();
+      const result = await mutations.schedule(
+        { productId },
+        null,
+        {
+          tipoPrecio: 'OFERTA',
+          importe: '70.00',
+          currency: 'PEN',
+          motivoCambio: 'válida vencida',
+          usuarioId: actor,
+          validFrom: future,
+          validUntil: null,
+        },
+        new Date(now.getTime() - 30000),
+        undefined,
+        { productId, correlationId },
+      );
+      const scheduleId = result.scheduled.id;
+      expect((await reconciler.runOnce(now)).activated).toBeGreaterThanOrEqual(
+        1,
+      );
+      await reconciler.runOnce(now);
+      expect(
+        await database.db
+          .select()
+          .from(scheduledPrices)
+          .where(eq(scheduledPrices.id, scheduleId)),
+      ).toMatchObject([{ status: 'ACTIVE' }]);
+      expect(
+        await database.db
+          .select()
+          .from(outbox)
+          .where(eq(outbox.correlationId, correlationId)),
+      ).toHaveLength(1);
+      expect(
+        await database.db
+          .select()
+          .from(scheduledPrices)
+          .where(inArray(scheduledPrices.id, ids)),
+      ).toHaveLength(26);
+    });
+
     it('HTTP no confunde falta de permisos DB con precio ausente y se recupera', async () => {
       await postgres.admin!.query(
         'REVOKE SELECT ON pricing.prices FROM pricing_app',
@@ -1917,6 +2282,48 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
             .where(eq(table.messageId, messageId)),
         ).toHaveLength(0);
       }
+    });
+
+    it('rechaza readiness en esquema 0001 y permite aplicar 0002 repetidamente sin cambios incoherentes', async () => {
+      const migration = await readFile(
+        new URL(
+          '../migrations/0002_schedule_effective_events.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      );
+      const baseline = await postgres.admin!.query<{ column_name: string }>(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema='pricing' AND table_name='scheduled_prices'
+          AND column_name IN ('product_id','correlation_id')
+      `);
+      expect(baseline.rows.map((row) => row.column_name).sort()).toEqual([
+        'correlation_id',
+        'product_id',
+      ]);
+      await postgres.admin!.query(
+        'ALTER TABLE pricing.scheduled_prices DROP COLUMN product_id, DROP COLUMN correlation_id',
+      );
+      expect(await database.check()).toBe(false);
+      await postgres.admin!.query('BEGIN');
+      try {
+        await postgres.admin!.query(migration);
+        await postgres.admin!.query(migration);
+        await postgres.admin!.query('COMMIT');
+      } catch (error) {
+        await postgres.admin!.query('ROLLBACK');
+        throw error;
+      }
+      expect(await database.check()).toBe(true);
+      const columns = await postgres.admin!.query<{ column_name: string }>(`
+        SELECT column_name FROM information_schema.columns
+        WHERE table_schema='pricing' AND table_name='scheduled_prices'
+          AND column_name IN ('product_id','correlation_id')
+      `);
+      expect(columns.rows.map((row) => row.column_name).sort()).toEqual([
+        'correlation_id',
+        'product_id',
+      ]);
     });
 
     it('restricciones diferidas fallan en COMMIT y revierten también Outbox', async () => {

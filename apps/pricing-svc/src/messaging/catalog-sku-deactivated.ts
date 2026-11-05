@@ -170,7 +170,7 @@ export class CatalogSkuDeactivated {
               gte(priceValidities.validFrom, changedAt!),
             ),
           )
-          .for('update', { skipLocked: true });
+          .for('update');
         for (const row of affected) {
           const [schedule] = await tx
             .select({ validityId: scheduledPrices.validityId })

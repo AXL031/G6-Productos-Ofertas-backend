@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import { PricingDatabase } from '../src/persistence/pricing.database.js';
 import {
@@ -29,6 +29,7 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
     let database: PricingDatabase;
     let consumer: PricingInboxConsumer;
     let repository: PricingRepository;
+    let initialization: PricingProductInitialization;
 
     async function waitFor(check: () => Promise<boolean>, timeoutMs = 8000) {
       const deadline = Date.now() + timeoutMs;
@@ -56,9 +57,10 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       config.amqpUrl = broker.url;
       database = new PricingDatabase(config);
       repository = new PricingRepository(database);
+      initialization = new PricingProductInitialization(repository);
       consumer = new PricingInboxConsumer(
         config,
-        new PricingProductInitialization(repository),
+        initialization,
         new CatalogSkuDeactivated(repository),
         repository,
       );
@@ -238,7 +240,7 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       });
     });
 
-    it('registra y confirma Bulk como BLOQUEADO_CONTRATO sin inventar resultado', async () => {
+    it('conserva Bulk como BLOQUEADO_CONTRATO en Inbox sin tratar ACK como resultado de negocio', async () => {
       const messageId = randomUUID();
       const command = {
         message_id: messageId,
@@ -269,6 +271,153 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
         [command.operation_id],
       );
       expect(fakeResults.rows[0].count).toBe(0);
+      const disposition = await postgres.admin!.query(
+        `SELECT message_id, event_name, correlation_id, payload, result
+         FROM pricing.inbox WHERE message_id=$1 AND handler='pricing.bulk.price.apply.v1'`,
+        [messageId],
+      );
+      expect(disposition.rows).toEqual([
+        {
+          message_id: command.message_id,
+          event_name: command.name,
+          correlation_id: command.correlation_id,
+          payload: command,
+          result: 'BLOCKED_CONTRACT',
+        },
+      ]);
+      await send('po.comandos.x', command.name, command);
+      await delay(200);
+      const replay = await postgres.admin!.query(
+        `SELECT count(*)::int AS count FROM pricing.inbox
+         WHERE message_id=$1 AND handler='pricing.bulk.price.apply.v1' AND result='BLOCKED_CONTRACT'`,
+        [messageId],
+      );
+      expect(replay.rows[0].count).toBe(1);
     });
+
+    it('recupera entrega en vuelo tras corte y reconexión sin ACK sobre el canal nuevo', async () => {
+      let entered!: () => void;
+      let release!: () => void;
+      const enteredWork = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const original = initialization.consume.bind(initialization);
+      let calls = 0;
+      const spy = vi
+        .spyOn(initialization, 'consume')
+        .mockImplementation(async (raw) => {
+          calls++;
+          if (calls === 1) {
+            entered();
+            await hold;
+          }
+          return original(raw);
+        });
+      const messageId = randomUUID();
+      const operationId = randomUUID();
+      const command = {
+        message_id: messageId,
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: operationId,
+        producer: 'catalog-svc',
+        kind: 'command',
+        name: 'pricing.product.initialization.requested',
+        data: {
+          product_id: randomUUID(),
+          sku_base: 'RECOVERY-' + messageId,
+          precio_regular: 49.95,
+          moneda: 'PEN',
+          channel_id: null,
+          motivo_cambio: 'ALTA_PRODUCTO',
+        },
+      };
+      await send('po.comandos.x', command.name, command);
+      await enteredWork;
+      await broker.pause();
+      await waitFor(async () => !consumer.available, 15000);
+      await broker.resume();
+      await waitFor(async () => consumer.available, 15000);
+      release();
+      await waitFor(async () => {
+        const result = await postgres.admin!.query(
+          "SELECT count(*)::int AS count FROM pricing.inbox WHERE message_id=$1 AND handler='pricing.product.initialization.v1'",
+          [messageId],
+        );
+        return result.rows[0].count === 1 && calls >= 2;
+      }, 20000);
+      const resultCount = await postgres.admin!.query(
+        "SELECT count(*)::int AS count FROM pricing.outbox WHERE operation_id=$1 AND kind='result'",
+        [operationId],
+      );
+      expect(resultCount.rows[0].count).toBe(1);
+      expect(calls).toBeGreaterThanOrEqual(2);
+      spy.mockRestore();
+      await broker.reconnect();
+      expect(
+        (await broker.channel!.checkQueue('po.pricing.q')).consumerCount,
+      ).toBe(1);
+    }, 45000);
+
+    it('el cierre espera una entrega pendiente y termina después de su ACK durable', async () => {
+      let entered!: () => void;
+      let release!: () => void;
+      const enteredWork = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const hold = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const original = initialization.consume.bind(initialization);
+      const spy = vi
+        .spyOn(initialization, 'consume')
+        .mockImplementation(async (raw) => {
+          entered();
+          await hold;
+          return original(raw);
+        });
+      const messageId = randomUUID();
+      const command = {
+        message_id: messageId,
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'command',
+        name: 'pricing.product.initialization.requested',
+        data: {
+          product_id: randomUUID(),
+          sku_base: 'SHUTDOWN-' + messageId,
+          precio_regular: 39.95,
+          moneda: 'PEN',
+          channel_id: null,
+          motivo_cambio: 'ALTA_PRODUCTO',
+        },
+      };
+      await send('po.comandos.x', command.name, command);
+      await enteredWork;
+      let closed = false;
+      const closing = consumer.onApplicationShutdown().then(() => {
+        closed = true;
+      });
+      await delay(100);
+      expect(closed).toBe(false);
+      release();
+      await closing;
+      expect(closed).toBe(true);
+      const result = await postgres.admin!.query(
+        "SELECT count(*)::int AS count FROM pricing.inbox WHERE message_id=$1 AND handler='pricing.product.initialization.v1'",
+        [messageId],
+      );
+      expect(result.rows[0].count).toBe(1);
+      spy.mockRestore();
+    }, 20000);
   },
 );
