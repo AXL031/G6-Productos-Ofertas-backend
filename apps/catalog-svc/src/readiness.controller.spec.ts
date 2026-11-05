@@ -29,7 +29,7 @@ describe('Catalog readiness modes', () => {
     vi.mocked(repository.checkDemoReadAccess).mockResolvedValue(undefined);
   });
 
-  it('demo readiness checks Catalog and Pricing once without eligibility or a full price scan', async () => {
+  it('preview readiness checks Catalog and Pricing without a commercial list', async () => {
     const controller = new ReadinessController(
       database,
       commercial,
@@ -47,7 +47,7 @@ describe('Catalog readiness modes', () => {
     expect(commercial.list).not.toHaveBeenCalled();
   });
 
-  it('demo readiness fails closed when Pricing is unavailable', async () => {
+  it('preview readiness fails closed when Pricing is unavailable', async () => {
     vi.mocked(pricing.checkReady).mockRejectedValue(new Error('Pricing down'));
     const controller = new ReadinessController(
       database,
@@ -77,7 +77,27 @@ describe('Catalog readiness modes', () => {
     expect(pricing.checkReady).not.toHaveBeenCalled();
   });
 
-  it('checks internal catalog reads when both demo flags are enabled', async () => {
+  it('read-only demo checks only Catalog relations, without Pricing or a commercial list', async () => {
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      {
+        marketplaceDemoPreview: false,
+        readDemo: { enabled: true },
+      } as CatalogConfig,
+      undefined,
+      repository,
+    );
+    await expect(controller.ready()).resolves.toMatchObject({
+      status: 'ready',
+    });
+    expect(database.verifyIdentity).toHaveBeenCalledOnce();
+    expect(repository.checkDemoReadAccess).toHaveBeenCalledOnce();
+    expect(commercial.list).not.toHaveBeenCalled();
+    expect(pricing.checkReady).not.toHaveBeenCalled();
+  });
+
+  it('read-only demo takes precedence over Marketplace preview when both are enabled', async () => {
     const controller = new ReadinessController(
       database,
       commercial,
@@ -85,15 +105,15 @@ describe('Catalog readiness modes', () => {
         marketplaceDemoPreview: true,
         readDemo: { enabled: true },
       } as CatalogConfig,
-      pricing,
+      undefined,
       repository,
     );
     await expect(controller.ready()).resolves.toMatchObject({
       status: 'ready',
     });
-    expect(commercial.list).toHaveBeenCalledOnce();
+    expect(repository.checkDemoReadAccess).toHaveBeenCalledOnce();
+    expect(commercial.list).not.toHaveBeenCalled();
     expect(pricing.checkReady).not.toHaveBeenCalled();
-    expect(repository.checkDemoReadAccess).not.toHaveBeenCalled();
   });
 
   it('fails readiness closed when the Catalog database is unavailable', async () => {
@@ -103,14 +123,17 @@ describe('Catalog readiness modes', () => {
     const controller = new ReadinessController(
       database,
       commercial,
-      { marketplaceDemoPreview: true } as CatalogConfig,
+      {
+        marketplaceDemoPreview: false,
+        readDemo: { enabled: true },
+      } as CatalogConfig,
       pricing,
       repository,
     );
     await expect(controller.ready()).rejects.toBeInstanceOf(
       ServiceUnavailableException,
     );
-    expect(pricing.checkReady).not.toHaveBeenCalled();
+    expect(repository.checkDemoReadAccess).not.toHaveBeenCalled();
   });
 
   it('demo readiness fails closed when a required Catalog SELECT fails', async () => {
@@ -128,6 +151,48 @@ describe('Catalog readiness modes', () => {
       ServiceUnavailableException,
     );
     expect(pricing.checkReady).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a required table is missing', '42P01'],
+    ['the runtime role lacks SELECT', '42501'],
+  ])('fails closed when %s', async (_reason, code) => {
+    vi.mocked(repository.checkDemoReadAccess).mockRejectedValue(
+      Object.assign(new Error('Catalog read check failed'), { code }),
+    );
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      {
+        marketplaceDemoPreview: false,
+        readDemo: { enabled: true },
+      } as CatalogConfig,
+      undefined,
+      repository,
+    );
+    await expect(controller.ready()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(commercial.list).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when AMQP is required but not ready in read-only demo', async () => {
+    const controller = new ReadinessController(
+      database,
+      commercial,
+      {
+        marketplaceDemoPreview: false,
+        readDemo: { enabled: true },
+      } as CatalogConfig,
+      undefined,
+      repository,
+      { required: true, ready: false } as CatalogAmqpRuntime,
+    );
+    await expect(controller.ready()).rejects.toBeInstanceOf(
+      ServiceUnavailableException,
+    );
+    expect(repository.checkDemoReadAccess).not.toHaveBeenCalled();
+    expect(commercial.list).not.toHaveBeenCalled();
   });
 
   it('requires an enabled AMQP transport to be subscribed and recovered', async () => {
