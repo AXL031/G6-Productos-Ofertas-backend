@@ -41,10 +41,19 @@ describe('PricingReadiness', () => {
         }),
       );
       vi.mocked(pool.query).mockImplementationOnce(async () => ({ rows: [] }));
+      vi.mocked(pool.query).mockImplementationOnce(async () => ({
+        rows: [{ compatible: true }],
+      }));
       expect(await readiness.check()).toBe(true);
-      expect(pool.query).toHaveBeenCalledWith(
-        'SELECT 1 FROM pricing.prices, pricing.price_validities, pricing.scheduled_prices, pricing.bulk_price_jobs, pricing.bulk_price_rows, pricing.outbox LIMIT 0',
+      expect(pool.query).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("column_name='correlation_id'"),
       );
+      vi.mocked(pool.query).mockImplementationOnce(async () => ({ rows: [] }));
+      vi.mocked(pool.query).mockImplementationOnce(async () => ({
+        rows: [{ compatible: false }],
+      }));
+      expect(await readiness.check()).toBe(false);
       vi.mocked(pool.query).mockRejectedValueOnce(
         new Error('fixture-sensitive-value'),
       );
@@ -106,8 +115,11 @@ describe('PricingReadiness', () => {
       const readiness = new PricingReadiness(database, config);
       const pool = vi.mocked(Pool).mock.instances.at(-1)!;
       vi.mocked(pool.query).mockImplementationOnce(async () => ({ rows: [] }));
+      vi.mocked(pool.query).mockImplementationOnce(async () => ({
+        rows: [{ compatible: true }],
+      }));
       expect(await readiness.check()).toBe(true);
-      expect(pool.query).toHaveBeenCalledOnce();
+      expect(pool.query).toHaveBeenCalledTimes(2);
       vi.mocked(pool.query).mockRejectedValueOnce(new Error('DB unavailable'));
       expect(await readiness.check()).toBe(false);
       await database.onApplicationShutdown();

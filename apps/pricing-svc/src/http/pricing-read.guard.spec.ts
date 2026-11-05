@@ -60,8 +60,12 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
   });
 
   it('acepta la firma real y el rol canónico; el cache permite lecturas dentro de su TTL', async () => {
-    await expect(guard.authorize(identity.token())).resolves.toBeUndefined();
-    await expect(guard.authorize(identity.token())).resolves.toBeUndefined();
+    await expect(guard.authorize(identity.token())).resolves.toMatchObject({
+      roles: ['GESTOR_COMERCIAL'],
+    });
+    await expect(guard.authorize(identity.token())).resolves.toMatchObject({
+      roles: ['GESTOR_COMERCIAL'],
+    });
   });
   it.each([
     { exp: 0 },
@@ -129,7 +133,9 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
       });
       await verifier.authorize(source.token());
       await source.stop();
-      await expect(verifier.authorize(source.token())).resolves.toBeUndefined();
+      await expect(verifier.authorize(source.token())).resolves.toMatchObject({
+        roles: ['GESTOR_COMERCIAL'],
+      });
       const clock = Date.now();
       vi.spyOn(Date, 'now').mockReturnValue(clock + 61000);
       await expect(verifier.authorize(source.token())).rejects.toMatchObject({
