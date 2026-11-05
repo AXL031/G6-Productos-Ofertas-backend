@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 readonly TEMP_ROOT="$(mktemp -d)"
+readonly REQUIRE_DOCKER_RUNTIME="${G6_REQUIRE_DOCKER_RUNTIME:-false}"
 readonly STAGED_OPS="${TEMP_ROOT}/opt/g6-productos-ofertas/lib"
 readonly MOCK_BIN="${TEMP_ROOT}/bin"
 readonly STATE_ROOT="${TEMP_ROOT}/var/lib"
@@ -34,6 +35,20 @@ trap cleanup_test EXIT
 fail() {
   printf 'FALLO: %s\n' "$1" >&2
   exit 1
+}
+
+[[ "$REQUIRE_DOCKER_RUNTIME" == true || "$REQUIRE_DOCKER_RUNTIME" == false ]] ||
+  fail 'G6_REQUIRE_DOCKER_RUNTIME debe ser true o false'
+
+docker_host_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$path"
+  elif command -v wslpath >/dev/null 2>&1 && [[ "$path" == /mnt/* ]]; then
+    wslpath -m "$path"
+  else
+    printf '%s\n' "$path"
+  fi
 }
 
 source "${REPO_ROOT}/ops/oracle/service-registry.sh"
@@ -95,7 +110,9 @@ touch "${TEMP_ROOT}/opt/g6-productos-ofertas/shared/docker-compose.service.yml"
 printf '%s\n' 'DATABASE_URL=test-only' > "${TEMP_ROOT}/etc/g6-inventory/runtime.env"
 : > "${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env"
 cp "${REPO_ROOT}/docker-compose.inventory.yml" "${TEMP_ROOT}/docker-compose.inventory.yml"
-sed -i "s|/etc/g6-inventory/runtime.env|${TEMP_ROOT}/etc/g6-inventory/runtime.env|g" \
+INVENTORY_RUNTIME_ENV_DOCKER_PATH="$(docker_host_path "${TEMP_ROOT}/etc/g6-inventory/runtime.env")"
+CATALOG_RUNTIME_ENV_DOCKER_PATH="$(docker_host_path "${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env")"
+sed -i "s|/etc/g6-inventory/runtime.env|${INVENTORY_RUNTIME_ENV_DOCKER_PATH}|g" \
   "${TEMP_ROOT}/docker-compose.inventory.yml"
 
 validate_compose_files() {
@@ -104,7 +121,7 @@ validate_compose_files() {
     [[ -n "$service" && "$service" != \#* && "$service" != inventory-svc ]] || continue
     config="$(env G6_SERVICE_IMAGE="ghcr.io/example/${service}:0123456789012345678901234567890123456789" \
       G6_SERVICE_CONTAINER="g6-${service}" G6_SERVICE_PORT="$port" G6_SERVICE_PORT_ENV="$port_env" \
-      G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env" \
+      G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="$CATALOG_RUNTIME_ENV_DOCKER_PATH" \
       docker compose --project-name "g6-${service}" \
         --file "${REPO_ROOT}/ops/oracle/docker-compose.service.yml" \
         --file "${REPO_ROOT}/ops/oracle/docker-compose.service.http.yml" config --format yaml)" ||
@@ -155,12 +172,13 @@ REQUIRED_COMPOSE_ENV
       --file "${REPO_ROOT}/ops/oracle/docker-compose.inventory.http.yml" config --quiet >/dev/null 2>&1; then
     fail 'Compose aceptó la ausencia de INVENTORY_IMAGE'
   fi
-  printf 'CORRECTO: Compose base y opt-in validados; aliases únicos, healthchecks y puertos loopback conservados\n'
+  printf 'CORRECTO: docker compose config validado para los nueve servicios y overlays; aliases, healthchecks y puertos loopback conservados\n'
 }
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   validate_compose_files
 else
+  [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] || fail 'Docker Compose es obligatorio pero no está disponible'
   printf 'NO EJECUTADO: docker compose config no está disponible en este entorno\n'
 fi
 
@@ -679,6 +697,8 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     [[ -n "$(docker ps -aq --filter label=com.docker.compose.project="$RUNTIME_PROJECT_TAXONOMY")" ]] ||
     docker network inspect "${RUNTIME_PROJECT_CATALOG}_default" >/dev/null 2>&1 ||
     docker network inspect "${RUNTIME_PROJECT_TAXONOMY}_default" >/dev/null 2>&1; then
+    [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] ||
+      fail 'los recursos Docker requeridos para aliases reales ya existen; no se modificaron'
     printf 'NO EJECUTADO: recursos Docker de los proyectos del registro ya existen; se evita tocarlos\n'
   else
     candidate_network="g6-h5-${BASHPID}"
@@ -767,6 +787,8 @@ RUNTIME_COMPOSE
     printf 'CORRECTO: preflight real aceptó ambos miembros; se detuvo luego en el gate de imagen antes de login/pull/up\n'
   fi
 else
+  [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] ||
+    fail 'Docker, Compose, daemon e inventory-svc:ci son obligatorios para validar aliases reales'
   printf 'NO EJECUTADO: Docker daemon e imagen inventory-svc:ci requeridos para verificar aliases runtime\n'
 fi
 
