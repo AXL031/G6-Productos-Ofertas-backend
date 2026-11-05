@@ -4,6 +4,10 @@
 
 Owner Lopez; HEAD `origin/lopez` contrastado `4e099f5c04d7ba17a100b669c6a85f4eae6f90ec`. Puerto 3006 / `TAXONOMY_SVC_PORT`; schema `taxonomy`. Proyecto/contenedor `g6-taxonomy-svc`, Compose genérico, runtime `/etc/g6-taxonomy-svc/runtime.env`, estado `/var/lib/g6-productos-ofertas/taxonomy-svc`. Oracle 19-oct: desplegado; readiness 200 y categorías vía Gateway 200.
 
+## Política de seguridad progresiva H4
+
+Taxonomy se prepara junto con Catalog como primer candidato de revisión, sin autorización de exposición o despliegue. Ver [política operativa](../H4-MODO-DEMO-AUTH-REVERSIBLE.md). `G6_SECURITY_MODE` no está implementado. `ALLOW_DEMO_UNAUTHENTICATED` solo permite demo en desarrollo/test; no habilita lectura pública Oracle. La respuesta anónima de categorías indicada abajo es evidencia histórica del corte auditado, no aprobación vigente. Publicación requiere aprobación exacta, evidencia de no mutación/sensibilidad y pruebas ligadas al SHA.
+
 ## B. Configuración runtime
 
 | Variable | Requisito | Bootstrap |

@@ -10,6 +10,10 @@
 | Oracle (19-oct-2026) | Desplegado; Docker `unhealthy`; `/health` 200; readiness falla por Catalog `not_ready`, cobertura `partial`. `/api/v1/categorias` 200 vía Gateway. |
 | Código | HEAD auditado `9205eb455c4965a82ccb9fc4714cf976e4c059b0`; sin rama personal del Gateway. CI exacto verde run `39342273073`. Código `apps/api-gateway/`. |
 
+## Política de seguridad progresiva H4
+
+Consultar [política operativa](../H4-MODO-DEMO-AUTH-REVERSIBLE.md). `G6_SECURITY_MODE` está propuesto, no implementado. Los flags `GATEWAY_DEMO_NO_AUTH_ENABLED`, `G6_READ_ONLY_DEMO_ENABLED` y `GATEWAY_PUBLIC_OPERATION_IDS` conservan su semántica actual; ninguno registra por sí solo la aprobación pública de Docs. El corte de la matriz consultada tiene cero operaciones `PUBLICA_APROBADA`. Caddy debe enrutar únicamente a Gateway; el acceso anónimo requiere autorización exacta por `operationId`, método y ruta y validación independiente del servicio.
+
 ## B. Configuración runtime
 
 | Variable | Uso / requisito | Suministro / secreto | Consumidor y bootstrap |

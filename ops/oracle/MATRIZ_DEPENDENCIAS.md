@@ -10,7 +10,7 @@ Fuentes físicas: auditoría Oracle solo lectura `2026-10-19 22:32:52–22:36:19
 | price-audit-svc | 3003, loopback | pendiente de membresía/despliegue | no | No consta implementación DB en master | contrato requiere confirmar por operación; no hay configuración confirmada en master | ningún upstream confirmado | no demostrado |
 | promotions-svc | 3004, loopback | pendiente | no | rama `cueva` contempla PostgreSQL schema promotions | código de rama usa English names; incompatibilidad; no alcanzable | eventos de inventario según rama `cueva`; no desplegado | no demostrado |
 | inventory-svc | 3005, loopback | overlay opt-in versionado | no | PostgreSQL; env PG*/URL y CA en rama `taco` | rama `taco` candidata, Rabbit aislado y nombres/permiso pendiente | posibles eventos, no autorizar rutas HTTP sin contrato | no demostrado |
-| taxonomy-svc | 3006, loopback | sí, `taxonomy-svc` | no | schema `taxonomy`, PostgreSQL con readiness lectura; CA ro | contrato puede especificar eventos; implementación master no debe presumirse | Catalog consume por HTTP privado cuando conectados; readiness observada 200 | `/api/v1/categorias` comprobada por Gateway; alcance limitado |
+| taxonomy-svc | 3006, loopback | sí, `taxonomy-svc` | no | schema `taxonomy`, PostgreSQL con readiness lectura; CA ro | contrato puede especificar eventos; implementación master no debe presumirse | Catalog consume por HTTP privado cuando conectados; readiness observada 200 | `/api/v1/categorias` comprobada por Gateway en corte histórico; cualquier acceso anónimo actual requiere aprobación exacta según política H4 |
 | combos-svc | 3007, loopback | pendiente | no | no consta DB en scaffold actual | no consta en `castilla` | no consta | no demostrado |
 | bulk-svc | 3008, loopback | pendiente | no | no consta DB en scaffold actual | no consta en `castilla` | no consta | no demostrado |
 
@@ -18,7 +18,7 @@ Fuentes físicas: auditoría Oracle solo lectura `2026-10-19 22:32:52–22:36:19
 
 **Acceso a RabbitMQ:** no existe ruta autorizada observada entre `g6-http` y `g6-po_g6_backend`; host AMQP está ligado a loopback y no debe exponerse públicamente. El único estado seguro es “inaccesible desde nuevos contenedores / mecanismo no aprobado”. Para desbloquear, owner de plataforma/Marco debe decidir y autorizar una red privada segmentada/adjunción controlada, alias, vhost y credenciales/permisos mínimos por servicio; después probar el camino desde contenedor. Ningún documento autoriza conectar redes ahora.
 
-**Publicación externa:** puertos de servicios están enlazados a loopback. HTTPS pasa por Caddy en `g6-edge` a Gateway. No publicar 3000–3008 ni 5672/15672 globalmente. La captura auditada probó TCP 22/80/443 alcanzables y 3000/5672 en timeout desde el auditor; NSG OCI no fue inspeccionado.
+**Publicación externa:** puertos de servicios están enlazados a loopback. HTTPS público pasa por Caddy en `g6-edge` al Gateway. Las lecturas con aprobación `PUBLICA_APROBADA` no requieren VPN/Tailscale/allowlist IP del visitante; la matriz Docs consultada tiene cero aprobadas en su corte. No publicar 3000–3008 ni 5672/15672 globalmente. La captura auditada probó TCP 22/80/443 alcanzables y 3000/5672 en timeout desde el auditor; NSG OCI no fue inspeccionado. Caddy no concede identidad/permisos y no debe enrutar directamente a servicios.
 
 Estado por servicio, SHA auditado, Docker health y HTTP probados se resumen en [`ESTADO_ACTUAL.md`](ESTADO_ACTUAL.md). Para preparar un servicio, revisar también su Compose efectivo y autorización individual en el momento de release.
 

@@ -4,6 +4,10 @@
 
 Owner Poma; HEAD de `origin/poma` contrastado: `a81f2d5fa735d7353b5df0ec0f095abac489e5d3` (pendiente, no integrado). Puerto 3001 / `CATALOG_SVC_PORT`. Schema `catalog`. Proyecto/contenedor `g6-catalog-svc`; Compose genérico; `/etc/g6-catalog-svc/runtime.env`; estado `/var/lib/g6-productos-ofertas/catalog-svc`. En Oracle al corte 19-oct estaba desplegado y Docker healthy, pero `/health/ready` devolvía 503. Esa readiness general es independiente de las respuestas de demo descritas abajo.
 
+## Política de seguridad progresiva H4
+
+Catalog se prepara junto con Taxonomy como primer candidato de revisión, sin autorización de exposición o despliegue. Ver [política operativa](../H4-MODO-DEMO-AUTH-REVERSIBLE.md). `G6_SECURITY_MODE` no está implementado. `G6_READ_ONLY_DEMO_ENABLED` y `GATEWAY_DEMO_NO_AUTH_ENABLED` mantienen sus defaults/semántica descritos en la política; `CATALOG_DEMO_GATEWAY_IPS` corresponde a la modalidad restringida existente. La observación HTTPS anónima de abajo es evidencia histórica del comportamiento observado en su fecha, no aprobación vigente de esos operationIds. Publicación requiere fila aprobada, evidencia y SHA.
+
 ## B. Configuración runtime
 
 | Variable | Uso | Fuente/secreto | Consumidor / validación |
