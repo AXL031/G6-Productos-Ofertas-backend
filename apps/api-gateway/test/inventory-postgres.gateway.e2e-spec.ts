@@ -436,26 +436,21 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
       windowsHide: true,
     });
     try {
-      // Caracterización temporal: Taco debe cambiar ambos expects a 503
-      // SERVICIO_NO_DISPONIBLE cuando Inventory corrija la clasificación.
       const providerResponse = await request(inventoryOrigin)
         .get(`${commercial}?skus=${enoughSku}&canal=MARKETPLACE`)
         .set('Authorization', `Bearer ${token('modulo-productos')}`)
-        .expect(500);
-      expect(providerResponse.body.code).toBe('ERROR_INTERNO');
+        .expect(503);
+      expect(providerResponse.body.code).toBe('SERVICIO_NO_DISPONIBLE');
       const response = await request(gateway)
         .get(`${commercial}?skus=${enoughSku}&canal=MARKETPLACE`)
         .set('Authorization', `Bearer ${token('modulo-productos')}`)
-        .expect(500);
-      expect(response.body.code).toBe('ERROR_INTERNO');
+        .expect(503);
+      expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
       expect(response.headers['content-type']).toContain(
         'application/problem+json',
       );
       expect(response.text).not.toMatch(
         /ECONNREFUSED|127\.0\.0\.1|inventory_gateway_e2e|postgresql:\/\//i,
-      );
-      console.warn(
-        '[inventory-gateway-e2e] DEFECT INVENTORY: caída real de PostgreSQL devolvió 500/ERROR_INTERNO; se esperaba 503/SERVICIO_NO_DISPONIBLE.',
       );
     } finally {
       execFileSync('docker', ['start', postgres.name], {
