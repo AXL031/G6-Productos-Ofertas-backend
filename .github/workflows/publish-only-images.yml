@@ -9,7 +9,13 @@ on:
         type: choice
         options:
           - api-gateway
+          - bulk-svc
           - catalog-svc
+          - combos-svc
+          - inventory-svc
+          - price-audit-svc
+          - pricing-svc
+          - promotions-svc
           - taxonomy-svc
       sha:
         description: SHA de 40 caracteres, punta vigente de master con CI exitosa
@@ -21,7 +27,11 @@ permissions: {}
 jobs:
   publish:
     name: Publicar ${{ inputs.service }} por SHA
-    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && github.actor == 'mrcastilla8' && github.triggering_actor == 'mrcastilla8'
+    if: >-
+      github.repository == 'Taller-SW-Web/G6-Productos-Ofertas-backend' &&
+      github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' &&
+      (github.actor == 'mrcastilla8' || github.actor == 'AXL031') &&
+      (github.triggering_actor == 'mrcastilla8' || github.triggering_actor == 'AXL031')
     runs-on: ubuntu-latest
     permissions:
       actions: read
