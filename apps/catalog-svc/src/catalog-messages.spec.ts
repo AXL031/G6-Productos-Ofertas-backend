@@ -126,6 +126,50 @@ describe('Catalog preparation message contract and retry identity', () => {
   it('validates typed results and preserves SKU identity', () => {
     expect(parseCatalogMessage(result()).data.sku).toBe('0000123');
   });
+  it('requires real Pricing receipt identifiers before accepting COMPLETED', () => {
+    const message = {
+      ...result(),
+      producer: 'pricing-svc',
+      name: 'pricing.product.initialization.completed',
+      data: {
+        product_id: randomUUID(),
+        sku_base: '000-price',
+        status: 'READY',
+        completed_at: new Date().toISOString(),
+        price_version: 1,
+        vigencia_id: randomUUID(),
+        code: null,
+      },
+    };
+    expect(parseCatalogMessage(message)).toEqual(message);
+    for (const patch of [
+      { price_version: null },
+      { price_version: undefined },
+      { price_version: 0 },
+      { vigencia_id: null },
+      { vigencia_id: undefined },
+      { vigencia_id: '' },
+    ])
+      expect(() =>
+        parseCatalogMessage({
+          ...message,
+          data: { ...message.data, ...patch },
+        }),
+      ).toThrow(InvalidCatalogMessage);
+    expect(
+      parseCatalogMessage({
+        ...message,
+        name: 'pricing.product.initialization.rejected',
+        data: {
+          ...message.data,
+          status: 'REJECTED',
+          price_version: null,
+          vigencia_id: null,
+          code: 'VALIDACION',
+        },
+      }).data.status,
+    ).toBe('REJECTED');
+  });
   it.each([false, true])(
     'accepts the real Inventory v2 result with the same typed payload; rejected=%s',
     (rejected) => {

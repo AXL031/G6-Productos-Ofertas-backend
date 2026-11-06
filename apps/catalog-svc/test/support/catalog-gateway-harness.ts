@@ -22,6 +22,10 @@ import {
   CATALOG_MARKETPLACE_PREVIEW,
 } from '../../src/catalog-read-demo.js';
 import { CATALOG_PREPARATION_CONFIG } from '../../src/catalog-messages.js';
+import {
+  HISTORICAL_RECOVERY_CAPABILITIES,
+  readHistoricalRecoveryCapabilities,
+} from '../../src/historical-recovery.service.js';
 
 /** Real Gateway in a separate process and real Catalog guards/use cases.
  * G7/JWKS and Taxonomy are explicit HTTP fixtures. Database is either the
@@ -66,6 +70,7 @@ export class CatalogGatewayHarness {
     database?: PostgresSettings,
     preparation: { timeoutMs?: number } = {},
     restrictedDemo = false,
+    historicalSubjects: readonly string[] = [],
   ): Promise<void> {
     try {
       this.upstream = createServer((req, res) => {
@@ -184,6 +189,13 @@ export class CatalogGatewayHarness {
         throw new Error('Fixture did not bind loopback');
       this.origin = 'http://127.0.0.1:' + address.port;
       const module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(HISTORICAL_RECOVERY_CAPABILITIES)
+        .useValue(
+          readHistoricalRecoveryCapabilities({
+            CATALOG_HISTORICAL_RECOVERY_ALLOWED_SUBJECTS:
+              historicalSubjects.join(','),
+          }),
+        )
         .overrideProvider(CATALOG_SECURITY_CONFIG)
         .useValue({
           issuer: this.origin,

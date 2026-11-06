@@ -1,5 +1,56 @@
 # Bloque A — preparación, integración y consultas
 
+## Estado vigente — continuación autorizada de #194
+
+Esta sección prevalece sobre los diagnósticos históricos conservados abajo.
+Marco aprobó la operación histórica candidata y la semántica monetaria,
+confirmadas explícitamente por el usuario en el chat. No se infiere publicación
+de OpenAPI/AsyncAPI ni se inventa el discriminador de Pricing.
+
+| Área | Implementación / evidencia nueva | Pendiente específico |
+| --- | --- | --- |
+| A1 propia | Operación candidata recuperar-historica, userBearer/GESTOR_COMERCIAL, capacidad interna default cerrado, selección explícita, ledger inmutable, fingerprint, locks y PENDING+Outbox atómicos | Publicar/revisar DTO candidato; pruebas PostgreSQL nuevas en CI |
+| A1 Pricing | Puerto interno aislado sin adaptador registrado; selección Pricing falla cerrada sin efectos; ALTA_PRODUCTO conserva importe obligatorio | BLOCKED_CONTRACT solo emisión histórica: Vera/Marco deben publicar discriminador/ubicación/versión en SPEC-013/AsyncAPI y entregar SHA |
+| A2 Inventory Taco | Prueba bilateral apunta exactamente a 8adcb6e2937580d289b9d20a1c7437473428aa8b, usuario g6_inventario y publicador real | Ese SHA todavía infiere ubicación; no acredita #199 |
+| A2 sin ubicación | Prueba independiente sobre master 167090af6d4ae93adbde54b6741dd994d91bf70b, que incluye #199 | Ese SHA no acredita userId; falta SHA único de Taco con ambas correcciones |
+| A3 | Se conservan y vuelven a ejecutar consultas, barcodes, elegibilidad, JWT y regresiones existentes | Autenticación G7/homologación/despliegue separados |
+
+Detalle completo del HTTP propuesto, persistencia y decisiones pendientes:
+[CONTRATO_CANDIDATO](CONTRATO-CANDIDATO-RECUPERACION-HISTORICA.md).
+Migration 0004 es aditiva y candidata: solo pruebas aisladas, sin Supabase.
+El consumidor ahora exige identificadores de vigencia/versionado al aceptar
+Pricing COMPLETED y conserva REJECTED como terminal; no fabrica confirmaciones.
+
+Taco entregó PR #176, HEAD 8adcb6e, CI 42148293659 (18/18 jobs success
+consultados). Se incorpora como evidencia de Inventory, no como prueba bilateral
+Catalog. #199 está fusionada (merge a9c19ded7f6ac6e7714cf8d84244a396bdec0559).
+El usuario confirmó que todavía no existe un SHA verificado con ambas mejoras.
+Las dos fuentes se exportan sin modificaciones a directorios descartables y
+se compilan por separado. No se mezclan archivos, no se hace merge de taco,
+no se sustituye el publicador real ni se altera producerUsers para aceptar fraude.
+
+Nuevos escenarios preparados para CI: A1 401/403/default cerrado, 202 real con
+ledger/check/Outbox, replay, conflicto, concurrencia, selección de variantes,
+rollback total, estados terminales y Pricing BLOCKED_CONTRACT sin efectos.
+A2 completed/rejected auténticos, userId/messageId/correlation/operation/causation/
+schema, rechazo broker de userId falso, cuarentena de identidad incorrecta,
+reentrega por Outbox Inventory real, replay de operación y saldos multiubicación.
+El caso #199 sin ubicación se ejecuta separadamente, sin atribuirlo a 8adcb6e.
+Los resultados Docker nuevos permanecen NO EJECUTADOS hasta la CI del candidato;
+585 unitarias de Catalog y 2238 unitarias generales pasaron localmente.
+E2E Catalog: 169 PASS / 116 SKIP por infraestructura; la nueva suite HTTP
+sin base añade 3 PASS de autorización con JWT/JWKS firmado y modo demo cerrado.
+E2E general: FAIL — Docker no disponible localmente (ENOENT en
+apps/bulk-svc/test/bulk-postgres-outage.e2e-spec.ts:265), con 931 PASS / 328 SKIP.
+Typecheck, lint, formato y compilaciones Catalog/general: PASS local.
+Las dos fuentes Inventory también se exportaron y compilaron localmente: PASS;
+esto no constituye evidencia bilateral ejecutada.
+No se declara COMPLETE:
+faltan E2E histórico Pricing+Inventory y activación contractual histórica de
+simple, padre y variantes con el contrato compartido.
+
+## Antecedente de la primera iteración — no es estado vigente
+
 Rama `poma`. Base auditada: `15941b6fa3e6f00e595995abca4b328da65ff73f`.
 Refs #12, #23, #45, #46, #48, #51. Corte: 2026-11-05.
 

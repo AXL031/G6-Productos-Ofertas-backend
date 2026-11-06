@@ -23,6 +23,11 @@ import { basename, isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { DisposableCatalogBroker } from './support/disposable-catalog-broker.js';
+import {
+  pinnedInventorySource,
+  INVENTORY_BILATERAL_SHA,
+  INVENTORY_NO_LOCATION_SHA,
+} from './support/pinned-peer-source.js';
 import { LegacyDemoList } from './support/legacy-demo-list.js';
 import { CatalogGatewayHarness } from './support/catalog-gateway-harness.js';
 import { CommercialService } from '../src/commercial.service.js';
@@ -38,6 +43,11 @@ import {
 } from '../src/catalog-mutation.service.js';
 import type { CatalogMasterClient } from '../src/catalog-master.client.js';
 import { CatalogMessageService } from '../src/catalog-message.service.js';
+import {
+  HistoricalRecoveryService,
+  readHistoricalRecoveryCapabilities,
+} from '../src/historical-recovery.service.js';
+import { historicalRequests } from '../src/historical-recovery.schema.js';
 import { CatalogQueryRepository } from '../src/catalog-query.repository.js';
 import {
   activeAttempt,
@@ -247,6 +257,26 @@ describe.skipIf(!dockerAvailable)(
         ],
         `CREATE ROLE po_catalog_owner NOLOGIN;\nCREATE ROLE catalog_app LOGIN PASSWORD 'isolated-runtime-password';\nCREATE SCHEMA catalog AUTHORIZATION po_catalog_owner;\nCREATE SCHEMA foreign_context;\nCREATE TABLE foreign_context.private_probe (value text);\nINSERT INTO foreign_context.private_probe VALUES ('isolated');\nSET ROLE po_catalog_owner;\n${migration}\n${barcodeMigration}\nINSERT INTO catalog.products (id,nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes) VALUES ('00000000-0000-4000-8000-000000000049','Historical','Before migration','historic-category','historic-type','historic-brand','historic-00049','historic-00049',false);\n${readFileSync(resolve('apps/catalog-svc/migrations/0003_product_publication_history.sql'), 'utf8')}`,
       );
+      command(
+        'docker',
+        [
+          'exec',
+          '-i',
+          container,
+          'psql',
+          '-U',
+          'postgres',
+          '-v',
+          'ON_ERROR_STOP=1',
+        ],
+        'SET ROLE po_catalog_owner;\n' +
+          readFileSync(
+            resolve(
+              'apps/catalog-svc/migrations/0004_historical_preparation_requests.sql',
+            ),
+            'utf8',
+          ),
+      );
       port = command('docker', ['port', container, '5432/tcp'])
         .split(':')
         .at(-1)!;
@@ -361,7 +391,369 @@ describe.skipIf(!dockerAvailable)(
       }
     }, 90000);
 
-    it('BLOCK-A2: real Pricing completes; real Inventory results lacking authenticated producer are quarantined (ownership blocker)', async () => {
+    it('BLOCK-A1-CANDIDATE: human capability, atomic historical Inventory admission, receipt replay and isolated Pricing contract block', async () => {
+      const subject = '00000000-0000-4000-8000-000000000050';
+      const denied = new CatalogGatewayHarness();
+      await denied.start(persistenceSettings);
+      try {
+        const response = await denied.call(
+          'POST',
+          '/productos/' + randomUUID() + '/preparacion/recuperar-historica',
+          { solicitudId: randomUUID(), dependencias: ['INVENTARIO'] },
+          denied.token(),
+          true,
+        );
+        expect(response.status).toBe(403);
+      } finally {
+        await denied.close();
+      }
+      const http = new CatalogGatewayHarness();
+      await http.start(persistenceSettings, {}, false, [subject]);
+      try {
+        const historical = await transactions.run((tx) =>
+          repository.insertProduct(tx, productInput('HIST-' + randomUUID())),
+        );
+        const path =
+          '/productos/' + historical.id + '/preparacion/recuperar-historica';
+        const input = {
+          solicitudId: randomUUID(),
+          dependencias: ['INVENTARIO'],
+        };
+        expect((await http.call('POST', path, input, null, true)).status).toBe(
+          401,
+        );
+        expect(
+          (
+            await http.call(
+              'POST',
+              path,
+              input,
+              http.token({ roles: [] }),
+              true,
+            )
+          ).status,
+        ).toBe(403);
+        expect(
+          (
+            await http.call(
+              'POST',
+              path,
+              input,
+              http.token({ sub: randomUUID() }),
+              true,
+            )
+          ).status,
+        ).toBe(403);
+        const blockedId = randomUUID();
+        const blocked = await http.call(
+          'POST',
+          path,
+          { solicitudId: blockedId, dependencias: ['PRICING', 'INVENTARIO'] },
+          http.token(),
+          true,
+        );
+        expect(blocked.status).toBe(503);
+        expect(blocked.body).toMatchObject({
+          code: 'SERVICIO_NO_DISPONIBLE',
+        });
+        expect(await requested(historical.id)).toEqual([]);
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(historicalRequests)
+              .where(eq(historicalRequests.request_id, blockedId)),
+          ),
+        ).toEqual([]);
+        const [first, replay] = await Promise.all([
+          http.call('POST', path, input, http.token(), true),
+          http.call('POST', path, input, http.token(), true),
+        ]);
+        expect(first.status).toBe(202);
+        expect(replay.status).toBe(202);
+        expect(first.body).toEqual(replay.body);
+        expect(first.body).toMatchObject({
+          operation_id: input.solicitudId,
+          status: 'ACCEPTED',
+          preparaciones: [
+            {
+              dependencia: 'INVENTARIO',
+              sku: historical.sku_base,
+              variant_id: null,
+            },
+          ],
+        });
+        const messages = await requested(historical.id);
+        expect(messages).toHaveLength(1);
+        expect(messages[0]).toMatchObject({
+          event_name: 'inventory.sku.initialization.requested',
+          causation_id: input.solicitudId,
+          published_at: null,
+          payload: {
+            sku: historical.sku_base,
+            product_id: historical.id,
+            variant_id: null,
+          },
+        });
+        expect(messages[0].payload).not.toHaveProperty('default_location_id');
+        expect(messages[0].payload).not.toHaveProperty('precio_regular');
+        const checks = await database.read((db) =>
+          db
+            .select()
+            .from(activationChecks)
+            .where(eq(activationChecks.product_id, historical.id)),
+        );
+        expect(checks).toHaveLength(1);
+        expect(checks[0]).toMatchObject({
+          state: 'PENDING',
+          dependency: 'INVENTORY',
+          operation_id: first.body.preparaciones[0].operation_id,
+        });
+        expect(
+          (
+            await http.call(
+              'POST',
+              path,
+              { ...input, solicitudId: randomUUID() },
+              http.token(),
+              true,
+            )
+          ).status,
+        ).toBe(409);
+        const other = await transactions.run((tx) =>
+          repository.insertProduct(tx, productInput('HIST-' + randomUUID())),
+        );
+        const conflict = await http.call(
+          'POST',
+          '/productos/' + other.id + '/preparacion/recuperar-historica',
+          input,
+          http.token(),
+          true,
+        );
+        expect(conflict.status).toBe(409);
+        expect(conflict.body.code).toBe('IDEMPOTENCY_CONFLICT');
+        const contenders = await Promise.all([
+          http.call(
+            'POST',
+            '/productos/' + other.id + '/preparacion/recuperar-historica',
+            { ...input, solicitudId: randomUUID() },
+            http.token(),
+            true,
+          ),
+          http.call(
+            'POST',
+            '/productos/' + other.id + '/preparacion/recuperar-historica',
+            { ...input, solicitudId: randomUUID() },
+            http.token(),
+            true,
+          ),
+        ]);
+        expect(contenders.map((item) => item.status).sort()).toEqual([
+          202, 409,
+        ]);
+        expect(await requested(other.id)).toHaveLength(1);
+        const receiptPrivileges = await database.read((db) =>
+          db.execute(sql`
+          SELECT has_table_privilege(current_user,'catalog.historical_preparation_requests','UPDATE') AS can_update,
+            has_table_privilege(current_user,'catalog.historical_preparation_requests','DELETE') AS can_delete
+        `),
+        );
+        expect(receiptPrivileges.rows[0]).toMatchObject({
+          can_update: false,
+          can_delete: false,
+        });
+      } finally {
+        await http.close();
+      }
+    }, 90000);
+
+    it('BLOCK-A1-CANDIDATE: selected physical variants only, complete rollback and terminal outcomes are preserved', async () => {
+      const subject = randomUUID();
+      const service = new HistoricalRecoveryService(
+        transactions,
+        repository,
+        readHistoricalRecoveryCapabilities({
+          CATALOG_HISTORICAL_RECOVERY_ALLOWED_SUBJECTS: subject,
+        }),
+      );
+      const operator = { subject, correlationId: randomUUID() };
+      // Ordinary creation is reused to build an isolated legacy snapshot. Remove
+      // only fixture coordination as schema owner, never shared data or business states.
+      const parent = await mutationService().createProduct(
+        createRequest(true),
+        actor,
+      );
+      const children = [];
+      for (const size of ['A', 'B'])
+        children.push(
+          await mutationService().createVariant(
+            parent.product_id,
+            {
+              sku: 'HIST-V-' + randomUUID(),
+              atributosIdentificadores: [
+                { caracteristica_id: 'size', nombre: 'Size', valor: size },
+              ],
+              imagenUrl: 'https://example.test/variant',
+              perfilFisico: fullProfile,
+            },
+            actor,
+          ),
+        );
+      const admin = (query: string) =>
+        command(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          query,
+        );
+      admin(
+        "DELETE FROM catalog.activation_checks WHERE product_id='" +
+          parent.product_id +
+          "'; DELETE FROM catalog.outbox WHERE payload->>'product_id'='" +
+          parent.product_id +
+          "';",
+      );
+      const selected = {
+        solicitudId: randomUUID(),
+        dependencias: ['INVENTARIO'],
+        variantIds: [children[0].variant_id],
+      };
+      const receipt = await service.recover(
+        parent.product_id,
+        selected,
+        operator,
+      );
+      expect(receipt.preparaciones).toMatchObject([
+        {
+          sku: children[0].sku,
+          variant_id: children[0].variant_id,
+          dependencia: 'INVENTARIO',
+        },
+      ]);
+      expect(await requested(parent.product_id)).toHaveLength(1);
+      expect((await requested(parent.product_id))[0].payload.sku).not.toBe(
+        parent.sku_base,
+      );
+      await expect(
+        service.recover(
+          parent.product_id,
+          { ...selected, solicitudId: randomUUID(), variantIds: [] },
+          operator,
+        ),
+      ).rejects.toMatchObject({ status: 400 });
+      await expect(
+        service.recover(
+          parent.product_id,
+          {
+            ...selected,
+            solicitudId: randomUUID(),
+            variantIds: [randomUUID()],
+          },
+          operator,
+        ),
+      ).rejects.toMatchObject({ status: 404 });
+      await expect(
+        service.recover(
+          parent.product_id,
+          {
+            ...selected,
+            solicitudId: randomUUID(),
+            variantIds: children.map((child) => child.variant_id),
+          },
+          operator,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      expect(await requested(parent.product_id)).toHaveLength(1);
+      const messages = new CatalogMessageService(database);
+      const original = (await requested(parent.product_id))[0];
+      expect(await messages.consume(resultFor(original, true))).toBe('APPLIED');
+      expect(await messages.consume(resultFor(original))).toBe('TERMINAL');
+      await expect(
+        service.recover(
+          parent.product_id,
+          { ...selected, solicitudId: randomUUID() },
+          operator,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      const secondRequest = {
+        solicitudId: randomUUID(),
+        dependencias: ['INVENTARIO'],
+        variantIds: [children[1].variant_id],
+      };
+      // A failure on the receipt (after checks and Outbox writes) must roll back all.
+      admin(
+        "CREATE FUNCTION catalog.block_historical_fixture() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated receipt failure'; END $$; CREATE TRIGGER block_historical_fixture BEFORE INSERT ON catalog.historical_preparation_requests FOR EACH ROW EXECUTE FUNCTION catalog.block_historical_fixture();",
+      );
+      try {
+        await expect(
+          service.recover(parent.product_id, secondRequest, operator),
+        ).rejects.toBeDefined();
+      } finally {
+        admin(
+          'DROP TRIGGER block_historical_fixture ON catalog.historical_preparation_requests; DROP FUNCTION catalog.block_historical_fixture();',
+        );
+      }
+      expect(await requested(parent.product_id)).toHaveLength(1);
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(historicalRequests)
+            .where(
+              eq(historicalRequests.request_id, secondRequest.solicitudId),
+            ),
+        ),
+      ).toEqual([]);
+      const second = await service.recover(
+        parent.product_id,
+        secondRequest,
+        operator,
+      );
+      expect(second.preparaciones[0].sku).toBe(children[1].sku);
+      const completed = (await requested(parent.product_id)).find(
+        (row) => row.payload.sku === children[1].sku,
+      )!;
+      expect(await messages.consume(resultFor(completed))).toBe('APPLIED');
+      await expect(
+        service.recover(
+          parent.product_id,
+          { ...secondRequest, solicitudId: randomUUID() },
+          operator,
+        ),
+      ).rejects.toMatchObject({ status: 409 });
+      const active = await mutationService().createProduct(
+        createRequest(),
+        actor,
+      );
+      await complete(active.product_id);
+      await mutationService().state(
+        active.product_id,
+        undefined,
+        'activate',
+        {},
+        actor,
+      );
+      await expect(
+        service.recover(
+          active.product_id,
+          { solicitudId: randomUUID(), dependencias: ['INVENTARIO'] },
+          operator,
+        ),
+      ).rejects.toMatchObject({
+        status: 409,
+        response: { code: 'CAMBIO_ESTRUCTURAL_NO_PERMITIDO' },
+      });
+    }, 90000);
+
+    it('BLOCK-A2: pinned Inventory authenticates results, preserves balances and replays; #199 semantics are verified separately', async () => {
       const peerDirectory = join(directory, 'preparation-peers');
       mkdirSync(peerDirectory);
       writeFileSync(join(peerDirectory, 'package.json'), '{"type":"module"}');
@@ -369,6 +761,10 @@ describe.skipIf(!dockerAvailable)(
         resolve('node_modules'),
         join(peerDirectory, 'node_modules'),
         process.platform === 'win32' ? 'junction' : 'dir',
+      );
+      const inventorySource = pinnedInventorySource(
+        peerDirectory,
+        INVENTORY_BILATERAL_SHA,
       );
       const sqlAdmin = (input: string) =>
         command(
@@ -421,7 +817,10 @@ RESET ROLE;`);
       sqlAdmin(
         readFileSync(
           resolve(
-            'apps/inventory-svc/migrations/20261104_0001_lifecycle_offline_reconciliation.sql',
+            join(
+              inventorySource,
+              'apps/inventory-svc/migrations/20261104_0001_lifecycle_offline_reconciliation.sql',
+            ),
           ),
           'utf8',
         ),
@@ -432,8 +831,29 @@ GRANT USAGE ON SCHEMA inventory TO inventory_fixture_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA inventory TO inventory_fixture_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA inventory TO inventory_fixture_app;
 INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable', 'TIENDA');`);
+      sqlAdmin(
+        "INSERT INTO inventory.locations(code,name,type,active) VALUES ('block-a-second', 'Disposable second', 'TIENDA',false);",
+      );
+      const inspect = (query: string): unknown =>
+        JSON.parse(
+          command(
+            'docker',
+            [
+              'exec',
+              '-i',
+              container,
+              'psql',
+              '-U',
+              'postgres',
+              '-At',
+              '-v',
+              'ON_ERROR_STOP=1',
+            ],
+            query,
+          ),
+        );
       const peers: ReturnType<typeof spawn>[] = [];
-      const broker = new DisposableCatalogBroker();
+      const broker = new DisposableCatalogBroker('g6_inventario');
       const http = new CatalogGatewayHarness();
       let runtime: CatalogAmqpRuntime | undefined;
       try {
@@ -453,17 +873,20 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           ).toBe(status);
           return response.body;
         };
-        // Start after setup and before Catalog relay; these are unmodified service modules.
-        for (const peer of ['pricing', 'inventory'] as const) {
-          const build = join(peerDirectory, peer);
+        // Inventory runs unmodified from its exact SHA in a separate process.
+        const startPeer = async (
+          peer: 'pricing' | 'inventory',
+          source = process.cwd(),
+        ) => {
+          const build = join(peerDirectory, peer + '-' + peers.length);
           command(process.execPath, [
             resolve('node_modules/typescript/bin/tsc'),
             '-p',
-            resolve('apps/' + peer + '-svc/tsconfig.app.json'),
+            resolve(source, 'apps/' + peer + '-svc/tsconfig.app.json'),
             '--outDir',
             build,
             '--tsBuildInfoFile',
-            join(peerDirectory, peer + '.tsbuildinfo'),
+            join(peerDirectory, peer + '-' + peers.length + '.tsbuildinfo'),
           ]);
           const env: NodeJS.ProcessEnv = {
             PATH: process.env.PATH,
@@ -505,7 +928,10 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           await expect
             .poll(() => ready && child.exitCode === null, { timeout: 30000 })
             .toBe(true);
-        }
+          return child;
+        };
+        await startPeer('pricing');
+        const inventoryPeer = await startPeer('inventory', inventorySource);
         const simple = await call('POST', '/productos', createRequest(), 201);
         const parent = await call(
           'POST',
@@ -526,6 +952,18 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           },
           201,
         );
+        sqlAdmin(
+          "INSERT INTO inventory.stock_balance(sku_id,location_id,on_hand,reserved,blocked,stock_version) SELECT '" +
+            String(simple.sku_base) +
+            "', id, 9, 2, 1, 5 FROM inventory.locations;",
+        );
+        const balances = (sku: string) =>
+          inspect(
+            "SELECT coalesce(jsonb_agg(to_jsonb(b) ORDER BY location_id),'[]') FROM inventory.stock_balance b WHERE sku_id='" +
+              sku +
+              "';",
+          );
+        const originalBalances = balances(String(simple.sku_base));
         for (const id of [
           String(simple.product_id),
           String(parent.product_id),
@@ -586,8 +1024,12 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           inventoryResults.push(envelope);
           expect(envelope.schema_version).toBe(2);
           expect(parseCatalogMessage(envelope)).toEqual(envelope);
-          // Known foreign-owner defect: publisher has no AMQP userId.
-          expect(wire.properties.userId).toBeUndefined();
+          expect(wire.properties.userId).toBe('g6_inventario');
+          expect(
+            broker.settings.connection!.producerUsers['inventory-svc'],
+          ).toBe('g6_inventario');
+          expect(wire.properties.messageId).toBe(envelope.message_id);
+          expect(wire.properties.correlationId).toBe(envelope.correlation_id);
           expect(envelope.data.status).toBe('INITIALIZED');
           const request = (
             await requested(String(envelope.data.product_id))
@@ -599,24 +1041,38 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         expect(
           inventoryResults.map((result) => result.data.sku).sort(),
         ).toEqual([simple.sku_base, child.sku].sort());
-        // Catalog must fail closed; a real Inventory commit does not prove Catalog readiness.
-        const quarantinedIds = new Set<string>();
-        while (quarantinedIds.size < 2) {
-          const quarantined = await broker.next('po.catalogo.q.dlq');
-          const result = JSON.parse(
-            quarantined.content.toString(),
-          ) as CatalogEnvelope;
-          expect(result.producer).toBe('inventory-svc');
-          expect(quarantined.properties.headers?.['x-catalog-failure']).toBe(
-            'INVALID_OR_BLOCKED_CONTRACT',
-          );
-          if (
-            [simple.product_id, parent.product_id].includes(
-              result.data.product_id,
-            )
+        await expect
+          .poll(
+            async () =>
+              (
+                await http.call(
+                  'GET',
+                  '/productos/' + simple.product_id + '/preparacion',
+                )
+              ).body.inventario.status,
+            { timeout: 30000 },
           )
-            quarantinedIds.add(result.message_id);
-        }
+          .toBe('COMPLETED');
+        await expect
+          .poll(
+            async () =>
+              (
+                await http.call(
+                  'GET',
+                  '/productos/' + parent.product_id + '/preparacion',
+                )
+              ).body.variantes[0].inventario.status,
+            { timeout: 30000 },
+          )
+          .toBe('COMPLETED');
+        expect(balances(String(simple.sku_base))).toEqual(originalBalances);
+        expect(
+          inspect(
+            "SELECT count(*)::integer FROM inventory.outbox WHERE event_type='inventory.stock.changed' AND payload->'data'->>'sku'='" +
+              String(simple.sku_base) +
+              "';",
+          ),
+        ).toBe(0);
         const prep = await call(
           'GET',
           '/productos/' + simple.product_id + '/preparacion',
@@ -624,14 +1080,14 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           200,
         );
         expect(prep.inventario).toMatchObject({
-          status: 'PENDING',
+          status: 'COMPLETED',
           manual_retry_allowed: false,
         });
         await call(
           'POST',
           '/productos/' + simple.product_id + '/activar',
           {},
-          422,
+          200,
         );
         await call(
           'POST',
@@ -641,13 +1097,267 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             child.variant_id +
             '/activar',
           undefined,
-          422,
+          200,
+        );
+        expect(
+          (
+            await database.read((db) =>
+              db
+                .select()
+                .from(products)
+                .where(eq(products.id, String(parent.product_id))),
+            )
+          )[0].estado,
+        ).toBe('BORRADOR');
+        await call(
+          'POST',
+          '/productos/' + parent.product_id + '/activar',
+          {},
+          200,
         );
         await call(
           'POST',
           '/productos/' + simple.product_id + '/preparacion/reintentar',
           { dependencia: 'PRICING' },
           409,
+        );
+        const first = inventoryResults.find(
+          (result) => result.data.sku === simple.sku_base,
+        )!;
+        const request = (await requested(String(simple.product_id))).find(
+          (row) => row.event_name.startsWith('inventory.'),
+        )!;
+        const asCommand = (messageId: string) => ({
+          message_id: messageId,
+          schema_version: request.schema_version,
+          occurred_at: request.occurred_at.toISOString(),
+          correlation_id: request.correlation_id,
+          operation_id: request.operation_id,
+          causation_id: request.causation_id,
+          producer: 'catalog-svc',
+          kind: 'command',
+          name: request.event_name,
+          data: request.payload,
+        });
+        const nextResult = async (
+          matches: (message: CatalogEnvelope) => boolean,
+        ) => {
+          const deadline = Date.now() + 30000;
+          while (Date.now() < deadline) {
+            const wire = await broker.next(observation);
+            const message = JSON.parse(
+              wire.content.toString(),
+            ) as CatalogEnvelope;
+            if (matches(message)) return { wire, message };
+          }
+          throw new Error('Pinned peer result not observed');
+        };
+        // Exact delivery duplicate followed by an operation replay with a new transport ID.
+        await broker.commandEnvelope(asCommand(request.message_id));
+        const replayId = randomUUID();
+        await broker.commandEnvelope(asCommand(replayId));
+        const replay = await nextResult(
+          (message) => message.causation_id === replayId,
+        );
+        expect(replay.wire.properties.userId).toBe('g6_inventario');
+        expect(replay.message.data).toEqual(first.data);
+        expect(replay.message.operation_id).toBe(first.operation_id);
+        expect(
+          inspect(
+            "SELECT count(*)::integer FROM inventory.inventory_operations WHERE operation_id='" +
+              String(first.operation_id) +
+              "';",
+          ),
+        ).toBe(1);
+        expect(balances(String(simple.sku_base))).toEqual(originalBalances);
+        expect(
+          inspect(
+            "SELECT count(*)::integer FROM inventory.outbox WHERE event_type='inventory.stock.changed' AND payload->'data'->>'sku'='" +
+              String(simple.sku_base) +
+              "';",
+          ),
+        ).toBe(0);
+        // Re-publication uses Inventory's actual durable Outbox and actual publisher.
+        sqlAdmin(
+          "UPDATE inventory.outbox SET status='PENDING', published_at=NULL WHERE event_id='" +
+            first.message_id +
+            "';",
+        );
+        const repeated = await nextResult(
+          (message) => message.message_id === first.message_id,
+        );
+        expect(repeated.wire.properties.userId).toBe('g6_inventario');
+        expect(repeated.message).toEqual(first);
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(eq(inbox.message_id, first.message_id)),
+          ),
+        ).toHaveLength(1);
+        const forged = { ...first, message_id: randomUUID() };
+        expect(await broker.brokerRejectsFalseUser(forged)).toBe(true);
+        await broker.wrongIdentityResult(forged);
+        const quarantined = await broker.next('po.catalogo.q.dlq');
+        expect(JSON.parse(quarantined.content.toString()).message_id).toBe(
+          forged.message_id,
+        );
+        expect(quarantined.properties.headers?.['x-catalog-failure']).toBe(
+          'INVALID_OR_BLOCKED_CONTRACT',
+        );
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(eq(inbox.message_id, forged.message_id)),
+          ),
+        ).toEqual([]);
+        // This exact Taco SHA still rejects no-location initialization when none are active.
+        sqlAdmin('UPDATE inventory.locations SET active=false;');
+        const rejectedProduct = await call(
+          'POST',
+          '/productos',
+          createRequest(),
+          201,
+        );
+        await expect
+          .poll(
+            async () =>
+              (
+                await http.call(
+                  'GET',
+                  '/productos/' + rejectedProduct.product_id + '/preparacion',
+                )
+              ).body.inventario.status,
+            { timeout: 30000 },
+          )
+          .toBe('REJECTED');
+        const rejectedResult = await nextResult(
+          (message) =>
+            message.name === 'inventory.sku.initialization.rejected' &&
+            message.data.product_id === rejectedProduct.product_id,
+        );
+        expect(rejectedResult.wire.properties.userId).toBe('g6_inventario');
+        expect(rejectedResult.message.data.code).toBe(
+          'UBICACION_NO_ENCONTRADA',
+        );
+        expect(rejectedResult.wire.properties.messageId).toBe(
+          rejectedResult.message.message_id,
+        );
+        expect(rejectedResult.wire.properties.correlationId).toBe(
+          rejectedResult.message.correlation_id,
+        );
+        const rejectionRequest = (
+          await requested(String(rejectedProduct.product_id))
+        ).find((row) => row.event_name.startsWith('inventory.'))!;
+        expect(rejectedResult.message.operation_id).toBe(
+          rejectionRequest.operation_id,
+        );
+        expect(rejectedResult.message.causation_id).toBe(
+          rejectionRequest.message_id,
+        );
+        expect(
+          (
+            await call(
+              'GET',
+              '/productos/' + rejectedProduct.product_id + '/preparacion',
+              undefined,
+              200,
+            )
+          ).inventario,
+        ).toMatchObject({
+          status: 'REJECTED',
+          code: 'UBICACION_NO_ENCONTRADA',
+          manual_retry_allowed: false,
+        });
+        await call(
+          'POST',
+          '/productos/' + rejectedProduct.product_id + '/activar',
+          {},
+          422,
+        );
+        await call(
+          'POST',
+          '/productos/' +
+            rejectedProduct.product_id +
+            '/preparacion/reintentar',
+          { dependencia: 'INVENTARIO' },
+          409,
+        );
+
+        // #199 is tested from its own immutable master SHA, never overlaid onto Taco.
+        inventoryPeer.kill('SIGTERM');
+        await expect
+          .poll(
+            () =>
+              inventoryPeer.exitCode !== null ||
+              inventoryPeer.signalCode !== null,
+            { timeout: 10000 },
+          )
+          .toBe(true);
+        const noLocationSource = pinnedInventorySource(
+          peerDirectory,
+          INVENTORY_NO_LOCATION_SHA,
+        );
+        await startPeer('inventory', noLocationSource);
+        await runtime.onModuleDestroy();
+        runtime = undefined;
+        sqlAdmin('UPDATE inventory.locations SET active=true;');
+        const existing199 = await call(
+          'POST',
+          '/productos',
+          createRequest(),
+          201,
+        );
+        sqlAdmin(
+          "INSERT INTO inventory.stock_balance(sku_id,location_id,on_hand,reserved,blocked,stock_version) SELECT '" +
+            String(existing199.sku_base) +
+            "', id, 11, 3, 2, 7 FROM inventory.locations;",
+        );
+        const before199 = balances(String(existing199.sku_base));
+        const empty199 = await call('POST', '/productos', createRequest(), 201);
+        runtime = new CatalogAmqpRuntime(
+          new CatalogMessageService(database),
+          broker.settings,
+        );
+        runtime.onModuleInit();
+        for (const item of [existing199, empty199]) {
+          const result199 = await nextResult(
+            (message) =>
+              message.name === 'inventory.sku.initialization.completed' &&
+              message.data.product_id === item.product_id,
+          );
+          expect(result199.message.data.status).toBe('INITIALIZED');
+          expect(result199.wire.properties.userId).toBeUndefined();
+          const dlq = await broker.next('po.catalogo.q.dlq');
+          expect(JSON.parse(dlq.content.toString()).message_id).toBe(
+            result199.message.message_id,
+          );
+          expect(
+            inspect(
+              "SELECT count(*)::integer FROM inventory.outbox WHERE event_type='inventory.stock.changed' AND payload->'data'->>'sku'='" +
+                String(item.sku_base) +
+                "';",
+            ),
+          ).toBe(0);
+        }
+        expect(balances(String(existing199.sku_base))).toEqual(before199);
+        expect(balances(String(empty199.sku_base))).toEqual([]);
+        expect(
+          (
+            await call(
+              'GET',
+              '/productos/' + existing199.product_id + '/preparacion',
+              undefined,
+              200,
+            )
+          ).inventario.status,
+        ).toBe('PENDING');
+        console.log('BLOCK_A2_PINNED_IDENTITY_PASS=' + INVENTORY_BILATERAL_SHA);
+        console.log(
+          'BLOCK_A2_SEPARATE_NO_LOCATION_PASS=' + INVENTORY_NO_LOCATION_SHA,
         );
       } finally {
         await runtime?.onModuleDestroy();
@@ -2621,7 +3331,11 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         data: {
           product_id: row.payload.product_id,
           ...(pricing
-            ? { sku_base: row.payload.sku_base }
+            ? {
+                sku_base: row.payload.sku_base,
+                price_version: rejected ? null : 1,
+                vigencia_id: rejected ? null : randomUUID(),
+              }
             : {
                 sku: row.payload.sku,
                 variant_id: row.payload.variant_id ?? null,

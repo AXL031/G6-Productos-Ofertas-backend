@@ -2,6 +2,10 @@ import { readPostgresSettings, type PostgresSettings } from './database.js';
 import { readTaxonomyConfig, type TaxonomyConfig } from './taxonomy-config.js';
 import { readHttpConfig } from './http-config.js';
 import {
+  readHistoricalRecoveryCapabilities,
+  type HistoricalRecoveryCapabilities,
+} from './historical-recovery.service.js';
+import {
   readCatalogReadDemo,
   type CatalogReadDemo,
 } from './catalog-read-demo.js';
@@ -35,11 +39,14 @@ export class CatalogConfig {
   readonly preparation: CatalogPreparationConfig;
   readonly readDemo: CatalogReadDemo;
   readonly marketplaceDemoPreview: boolean;
+  readonly historicalRecoveryCapabilities: HistoricalRecoveryCapabilities;
   readonly pricingOrigin?: string;
   readonly serviceCredentials?: CatalogServiceCredentials;
 
   constructor(env: Record<string, string | undefined>) {
     this.readDemo = readCatalogReadDemo(env);
+    this.historicalRecoveryCapabilities =
+      readHistoricalRecoveryCapabilities(env);
     const errors: string[] = [];
     const environment = env.NODE_ENV;
     if (!['development', 'test', 'production'].includes(environment ?? '')) {

@@ -103,5 +103,45 @@
       "blob": "d600d6bd399677a0995683448bcf2fccedfb8ed1",
       "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
     }
-  ]
+  ],
+  "continuation": {
+    "consulted": "2026-11-05",
+    "scope": "Continuación A1 candidata y A2 bilateral",
+    "sources": [
+      {
+        "path": "contratos/http/openapi.yaml",
+        "blob": "6ff062c563d381d4bcf7976f223590b400ace4ec",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml"
+      },
+      {
+        "path": "contratos/eventos/asyncapi.yaml",
+        "blob": "a3e9d518fad68546d3f42b44f4fa77011fa15d66",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/asyncapi.yaml"
+      },
+      {
+        "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+        "blob": "8372b2f4ee72e5e073865778519cb332c1902f5d",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-003-gestion-productos-crud.md"
+      },
+      {
+        "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+        "blob": "d600d6bd399677a0995683448bcf2fccedfb8ed1",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
+      },
+      {
+        "path": "arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md",
+        "blob": "37c905b510454c3684d5b35e02513b3d35112a40",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md"
+      }
+    ],
+    "authorization": "Decisiones escritas de Marco confirmadas por el usuario en el chat; DTO HTTP candidato autorizado para #194 DRAFT; discriminador Pricing no definido",
+    "inventory": {
+      "bilateralSha": "8adcb6e2937580d289b9d20a1c7437473428aa8b",
+      "pr": 176,
+      "ci": 42148293659,
+      "noLocationSha": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+      "mergedPr": 199,
+      "combinedSha": null
+    }
+  }
 }
