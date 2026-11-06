@@ -241,7 +241,9 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     !UUID.test(String(value.correlation_id)) ||
     (value.schema_version !== 1 &&
       !(
-        value.name === 'catalog.bulk.upsert.requested' &&
+        (value.name === 'catalog.bulk.upsert.requested' ||
+          value.name === 'inventory.sku.initialization.completed' ||
+          value.name === 'inventory.sku.initialization.rejected') &&
         value.schema_version === 2
       )) ||
     typeof value.occurred_at !== 'string' ||
@@ -320,7 +322,12 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
           (d.price_version != null &&
             (!Number.isSafeInteger(d.price_version) ||
               (d.price_version as number) < 1)) ||
-          (d.vigencia_id != null && typeof d.vigencia_id !== 'string')
+          (d.vigencia_id != null && typeof d.vigencia_id !== 'string') ||
+          (completed &&
+            (!Number.isSafeInteger(d.price_version) ||
+              Number(d.price_version) < 1 ||
+              typeof d.vigencia_id !== 'string' ||
+              !d.vigencia_id))
         : typeof d.sku !== 'string' ||
           !d.sku ||
           (d.variant_id != null && typeof d.variant_id !== 'string'))
