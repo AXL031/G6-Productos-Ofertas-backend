@@ -9,7 +9,7 @@ de OpenAPI/AsyncAPI ni se inventa el discriminador de Pricing.
 
 | Área | Implementación / evidencia nueva | Pendiente específico |
 | --- | --- | --- |
-| A1 propia | Operación candidata recuperar-historica, userBearer/GESTOR_COMERCIAL, capacidad interna default cerrado, selección explícita, ledger inmutable, fingerprint, locks y PENDING+Outbox atómicos | Publicar/revisar DTO candidato; pruebas PostgreSQL nuevas en CI |
+| A1 propia | Operación candidata recuperar-historica, userBearer/GESTOR_COMERCIAL, capacidad interna default cerrado, selección explícita, ledger inmutable, fingerprint, locks y PENDING+Outbox atómicos; pruebas PostgreSQL PASS | Publicar/revisar DTO candidato; activación histórica integrada pendiente de Pricing |
 | A1 Pricing | Puerto interno aislado sin adaptador registrado; selección Pricing falla cerrada sin efectos; ALTA_PRODUCTO conserva importe obligatorio | BLOCKED_CONTRACT solo emisión histórica: Vera/Marco deben publicar discriminador/ubicación/versión en SPEC-013/AsyncAPI y entregar SHA |
 | A2 Inventory Taco | Prueba bilateral apunta exactamente a 8adcb6e2937580d289b9d20a1c7437473428aa8b, usuario g6_inventario y publicador real | Ese SHA todavía infiere ubicación; no acredita #199 |
 | A2 sin ubicación | Prueba independiente sobre master 167090af6d4ae93adbde54b6741dd994d91bf70b, que incluye #199 | Ese SHA no acredita userId; falta SHA único de Taco con ambas correcciones |
@@ -71,11 +71,34 @@ master 5da12790b56af998cb853c76148f73e2e9c0c207; no se hizo merge local.
 
 Los marcadores de logs acreditan ambos SHA Inventory por separado. Los escenarios
 de saldos y replay utilizan publicador real, no fixtures con userId añadido.
-La validación completa de imágenes/agregadores se registra en la PR al terminar.
-Una ampliación posterior comprueba explícitamente admisión HTTP histórica
-Inventory-only → resultado auténtico → check COMPLETED del producto histórico;
-su ejecución queda pendiente de la CI del nuevo HEAD. No completa Pricing ni
-acredita activación histórica del agregado.
+La ampliación posterior b7e6b91d267cf2e06e4a55f6c9a7aa7fd68f5ba9 comprobó
+explícitamente admisión HTTP histórica Inventory-only → consumidor/publicador
+auténticos → check COMPLETED del producto histórico. PASS, sin fabricar Pricing.
+No acredita activación histórica del agregado ni E2E histórico de variantes
+con ambos peers. La selección de variantes histórica sí pasa las pruebas internas.
+
+### CI completa del candidato funcional b7e6b91
+
+[Run 42161018091](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42161018091):
+SUCCESS, 18/18 jobs. HEAD b7e6b91d267cf2e06e4a55f6c9a7aa7fd68f5ba9,
+checkout PR 46fdf0a3a53f4ad72d40d4c2652b8ad5442120bd contra
+master 5da12790b56af998cb853c76148f73e2e9c0c207.
+
+- Unitarias: 2312 PASS / 71 SKIP.
+- E2E: 1054 PASS / 200 SKIP; 97 PostgreSQL Catalog PASS, sin omisiones.
+- [Job E2E aprobado](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42161018091/job/127708675506):
+  A1, A2 de ambos SHA separados, histórico Inventory-only y Bulk 2 PASS.
+- Typecheck, lint, formato, compilación, imágenes, smokes y agregadores: PASS.
+- Primer intento E2E, job 127706506201: FAIL antes de pruebas por preflight
+  Docker/OpenSSL. Bulk sí pasó allí. Reintento de jobs fallidos sin cambios de
+  código, condiciones ni exclusiones: PASS. Se conserva el fallo original.
+- El run anterior 42160422132 terminó CANCELLED por el push de la ampliación,
+  después de pasar E2E/unitarias; no se cuenta como CI completa aprobada.
+
+Este registro identifica el candidato funcional ejecutado. La PR #194 enlaza
+el SHA final de documentación y su CI correspondiente sin atribuir a un SHA
+resultados ejecutados en otro. Estado global PARTIAL: faltan contrato/SHA Vera,
+SHA Taco con userId + #199 y E2E/activación históricos simple, padre y variantes.
 
 ## Antecedente de la primera iteración — no es estado vigente
 
