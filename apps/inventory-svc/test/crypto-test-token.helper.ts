@@ -21,6 +21,7 @@ export interface CreateCryptographicTokenOptions {
   clientId?: string;
   sub?: string;
   aud?: string | string[];
+  includeAudience?: boolean;
   iss?: string;
   tipo?: string;
   scope?: string;
@@ -49,7 +50,9 @@ export function createCryptographicJwt(
 
   const payload: Record<string, unknown> = {
     iss: options.iss ?? TEST_ISSUER,
-    aud: options.aud !== undefined ? options.aud : EXPECTED_AUDIENCE,
+    ...(options.includeAudience === false
+      ? {}
+      : { aud: options.aud !== undefined ? options.aud : EXPECTED_AUDIENCE }),
     tipo: options.tipo ?? EXPECTED_TOKEN_TYPE,
     sub: options.sub ?? options.clientId ?? 'modulo-ventas',
     client_id: options.clientId ?? options.sub ?? 'modulo-ventas',

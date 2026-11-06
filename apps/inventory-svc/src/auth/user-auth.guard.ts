@@ -9,7 +9,7 @@ import {
 
 /**
  * Guard de operador humano (`userBearer`). Valida la firma criptográfica
- * (RS256) con el material de confianza de G7, `exp` y `aud`, y —cuando el
+ * (RS256) con el material de confianza configurado, `exp` y `tipo=acceso`, y —cuando el
  * endpoint declara `x-required-local-capability`— comprueba la capacidad en los
  * claims del token. No exige `tipo=servicio`.
  */

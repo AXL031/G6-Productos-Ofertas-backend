@@ -199,11 +199,6 @@ export class GatewayIdentity {
         !claims.roles.every((role) => typeof role === 'string')
       )
         throw new GatewayFailure(401, 'TOKEN_INVALIDO');
-      if (this.settings.securityMode === 'SIMULATED_AUTH') {
-        const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-        if (!audiences.includes('api-productos'))
-          throw new GatewayFailure(401, 'TOKEN_INVALIDO');
-      }
       // Arquitectura §1.2.1: the canonical human actor in G6 is Gestor Comercial.
       if (!claims.roles.includes(route.role ?? 'GESTOR_COMERCIAL'))
         throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
@@ -252,10 +247,11 @@ export class GatewayIdentity {
       if (
         serviceClaims.tipo !== 'servicio' ||
         serviceClaims.sub !== 'modulo-productos' ||
-        !serviceAudiences.includes('api-productos') ||
-        !serviceScopes.includes('tokens:introspeccion')
+        !serviceAudiences.includes('api-seguridad')
       )
-        throw new Error('Invalid client token claims');
+        throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      if (!serviceScopes.includes('tokens:introspeccion'))
+        throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
 
       const response = await fetch(
         new URL('/api/v1/auth/introspeccion', new URL(issuer).origin),
@@ -274,6 +270,10 @@ export class GatewayIdentity {
       if (response.status === 401) {
         await response.body?.cancel();
         throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      }
+      if (response.status === 403) {
+        await response.body?.cancel();
+        throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
       }
       const result = await this.jsonResponse(response, 65536);
       if (!object(result) || typeof result.activo !== 'boolean')

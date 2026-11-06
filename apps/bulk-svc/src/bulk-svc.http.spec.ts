@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { createSign, generateKeyPairSync } from 'node:crypto';
+import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { BulkSvcController } from './bulk-svc.controller.js';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
@@ -322,9 +322,11 @@ describe('Bulk export HTTP authentication (isolated signed-key boundary)', () =>
       const header = encode({ alg: 'RS256', typ: 'JWT' });
       const claims = encode({
         iss: 'bulk-http-test-issuer',
-        sub: 'isolated-http-test-subject',
-        aud: 'api-productos',
+        sub: '00000000-0000-4000-8000-000000000001',
+        tipo: 'acceso',
+        iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 600,
+        jti: randomUUID(),
         roles,
       });
       const signer = createSign('RSA-SHA256');

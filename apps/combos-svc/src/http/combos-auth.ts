@@ -278,8 +278,6 @@ export class ComboTokenVerifier {
           claims.nbf > now))
     )
       throw new ComboTokenRejected();
-    const audiences = audienceList(claims.aud);
-    if (!audiences?.includes(AUDIENCE)) throw new ComboTokenRejected();
     if (claims.tipo === 'acceso') {
       const roles = stringList(claims.roles);
       if (!USER_ID.test(claims.sub) || !roles) throw new ComboTokenRejected();
@@ -288,10 +286,12 @@ export class ComboTokenVerifier {
         subject: claims.sub,
         roles,
         scopes: [],
-        audiences,
+        audiences: [],
       };
     }
     if (claims.tipo === 'servicio') {
+      const audiences = audienceList(claims.aud);
+      if (!audiences?.includes(AUDIENCE)) throw new ComboTokenRejected();
       const scopes = stringList(claims.scope);
       if (!scopes) throw new ComboTokenRejected();
       return {

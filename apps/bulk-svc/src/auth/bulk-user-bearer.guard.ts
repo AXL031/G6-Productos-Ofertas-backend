@@ -129,27 +129,27 @@ export class BulkUserBearerGuard implements CanActivate {
     } catch {
       throw new UnauthorizedException('TOKEN_INVALIDO');
     }
-    const aud = claims.aud;
+    const now = Math.floor(Date.now() / 1000);
     if (
       claims.iss !== issuer ||
+      claims.tipo !== 'acceso' ||
       typeof claims.sub !== 'string' ||
-      !claims.sub ||
-      typeof claims.exp !== 'number' ||
-      claims.exp <= Date.now() / 1000 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        claims.sub,
+      ) ||
+      !Number.isSafeInteger(claims.iat) ||
+      (claims.iat as number) > now ||
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.exp as number) <= now ||
+      typeof claims.jti !== 'string' ||
+      !claims.jti.trim() ||
       (claims.nbf !== undefined &&
-        (typeof claims.nbf !== 'number' ||
-          !Number.isFinite(claims.nbf) ||
-          claims.nbf > Date.now() / 1000)) ||
-      !(
-        aud === 'api-productos' ||
-        (Array.isArray(aud) && aud.includes('api-productos'))
-      )
+        (!Number.isSafeInteger(claims.nbf) || (claims.nbf as number) > now)) ||
+      !Array.isArray(claims.roles) ||
+      !claims.roles.every((role) => typeof role === 'string')
     )
       throw new UnauthorizedException('TOKEN_INVALIDO');
-    if (
-      !Array.isArray(claims.roles) ||
-      !claims.roles.includes('GESTOR_COMERCIAL')
-    )
+    if (!(claims.roles as string[]).includes('GESTOR_COMERCIAL'))
       throw new ForbiddenException('SCOPE_INSUFICIENTE');
     return true;
   }

@@ -364,12 +364,7 @@ export class CatalogTokenVerifier {
 
     if (claims.tipo === 'acceso') {
       const roles = strings(claims.roles);
-      const tokenAudiences = audiences(claims.aud);
-      if (
-        !UUID_PATTERN.test(claims.sub) ||
-        !roles ||
-        !tokenAudiences?.includes(SECURITY_AUDIENCE)
-      )
+      if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new CatalogTokenRejected();
       return { kind: 'user', subject: claims.sub, roles };
     }

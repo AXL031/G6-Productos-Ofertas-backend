@@ -525,6 +525,88 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     cleanupOwnedResources();
   }, 30_000);
 
+  it('PUBLIC_READ_ONLY sirve disponibilidad comercial sin filtrar stock ni mutar y protege POST', async () => {
+    const previousMode = process.env.G6_SECURITY_MODE;
+    const previousPublicOperations = process.env.INVENTORY_PUBLIC_OPERATION_IDS;
+    let app: INestApplication | undefined;
+    const sku = await seedStock();
+    const route = await database.query<{ id: string }>(
+      `INSERT INTO inventory.commercial_fulfillment_routes
+        (channel_id, mode, fulfillment_ref, location_id, active)
+       VALUES ('MARKETPLACE', 'ENVIO_DOMICILIO', $1, $2, true) RETURNING id`,
+      [`phase1-${randomUUID()}`, locationId],
+    );
+    const snapshot = async () => {
+      const result = await database.query<{ value: string }>(
+        `SELECT jsonb_build_object(
+          'stock', (SELECT to_jsonb(s) FROM inventory.stock_balance s WHERE s.sku_id=$1 AND s.location_id=$2),
+          'reservations', (SELECT count(*) FROM inventory.reservations),
+          'operations', (SELECT count(*) FROM inventory.inventory_operations),
+          'kardex', (SELECT count(*) FROM inventory.kardex),
+          'outbox', (SELECT count(*) FROM inventory.outbox),
+          'inbox', (SELECT count(*) FROM inventory.inbox)
+        )::text AS value`,
+        [sku, locationId],
+      );
+      return result.rows[0]?.value;
+    };
+    process.env.G6_SECURITY_MODE = 'PUBLIC_READ_ONLY';
+    process.env.INVENTORY_PUBLIC_OPERATION_IDS =
+      'consultarDisponibilidadComercial';
+    try {
+      const module = await Test.createTestingModule({
+        imports: [InventorySvcModule],
+      })
+        .overrideProvider(InventoryWorkersService)
+        .useValue({})
+        .compile();
+      app = module.createNestApplication();
+      app.useGlobalFilters(new ProblemDetailsFilter());
+      await app.listen(0, '127.0.0.1');
+      const origin = await app.getUrl();
+      const before = await snapshot();
+      const read = await request(origin)
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .expect(200);
+      expect(read.body).toEqual({
+        items: [{ sku, status: 'DISPONIBLE' }],
+      });
+      expect(JSON.stringify(read.body)).not.toMatch(
+        /on_hand|reserved|blocked|available|location_id|stock_version/,
+      );
+      await request(origin)
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO' },
+          lines: [{ sku, quantity: 2 }],
+        })
+        .expect(401);
+      await request(origin)
+        .get(`/api/v1/inventario/disponibilidad?skus=${sku}`)
+        .expect(401);
+      expect(await snapshot()).toBe(before);
+    } finally {
+      await app?.close();
+      await database.query(
+        `DELETE FROM inventory.commercial_fulfillment_routes WHERE id=$1`,
+        [route.rows[0]?.id],
+      );
+      await database.query(
+        `DELETE FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      if (previousMode === undefined) delete process.env.G6_SECURITY_MODE;
+      else process.env.G6_SECURITY_MODE = previousMode;
+      if (previousPublicOperations === undefined)
+        delete process.env.INVENTORY_PUBLIC_OPERATION_IDS;
+      else
+        process.env.INVENTORY_PUBLIC_OPERATION_IDS = previousPublicOperations;
+    }
+  }, 60_000);
+
   async function withProductionPostgresTls(
     databaseUrl: string,
     caPath: string,

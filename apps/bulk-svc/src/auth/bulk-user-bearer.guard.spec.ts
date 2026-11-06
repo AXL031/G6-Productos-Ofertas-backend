@@ -143,8 +143,10 @@ describe('Bulk H4 userBearer and reversible demo policy', () => {
     const claims = encode({
       iss: issuer,
       sub: randomUUID(),
-      aud: 'api-productos',
+      tipo: 'acceso',
+      iat: Math.floor(Date.now() / 1000),
       exp: Math.floor(Date.now() / 1000) + 60,
+      jti: randomUUID(),
       roles: ['GESTOR_COMERCIAL'],
     });
     const signer = createSign('RSA-SHA256');

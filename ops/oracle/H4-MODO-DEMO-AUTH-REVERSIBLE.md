@@ -50,7 +50,7 @@ Casos que necesitan revisión específica:
 
 ## 5. Fase 2 — `SIMULATED_AUTH`
 
-Usa JWT firmados por un emisor de demostración independiente de G7, con claves privadas exclusivas y separadas. Debe contemplar identidades técnicas por módulo y humanas de prueba, roles, scopes, audiencias, permisos por operación, matriz declarativa y casos positivos/negativos con errores 401/403 del contrato. No se usará IP, URL, `Origin`, `Referer`, `X-Forwarded-For` ni headers manipulables como identidad principal.
+Usa JWT RS256 firmados por un emisor de demostración independiente de G7, con claves privadas exclusivas y separadas. Los JWT humanos reproducen el perfil G7 (`sub`, `tipo=acceso`, issuer, expiración y roles requeridos) y no inventan un claim `aud`; los JWT de servicio conservan la audiencia de la API destinataria y el scope por operación. Debe contemplar identidades técnicas por módulo y humanas de prueba, permisos por operación, matriz declarativa y casos positivos/negativos con errores 401/403 del contrato. No se usará IP, URL, `Origin`, `Referer`, `X-Forwarded-For` ni headers manipulables como identidad principal.
 
 El emisor y sus tokens no se presentan como G7, no comparten claves privadas de G7 y nunca se aceptan en Fase 3. Las credenciales privadas se suministran como secretos runtime, nunca en este repositorio ni en el PR documental.
 

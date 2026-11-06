@@ -77,16 +77,22 @@ describe('Gateway identity from G6/G7 contracts', () => {
       tipo: 'acceso',
       sub: '11111111-1111-1111-1111-111111111111',
       roles: ['GESTOR_COMERCIAL'],
-      aud: 'api-productos',
+      aud: undefined,
       scope: undefined,
     });
     await simulated.authorize(product, `Bearer ${simulatedUser}`);
     await expect(
       simulated.authorize(
         product,
-        `Bearer ${signed.token({ ...JSON.parse(Buffer.from(simulatedUser.split('.')[1], 'base64url').toString()), aud: undefined })}`,
+        `Bearer ${signed.token({
+          iss: simIssuer,
+          tipo: 'acceso',
+          sub: '11111111-1111-1111-1111-111111111111',
+          roles: ['GESTOR_COMERCIAL'],
+          aud: undefined,
+        })}`,
       ),
-    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    ).resolves.toBeUndefined();
     await expect(
       simulated.authorize(
         product,
@@ -95,7 +101,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
           tipo: 'acceso',
           sub: '11111111-1111-1111-1111-111111111111',
           roles: ['CLIENTE'],
-          aud: 'api-productos',
+          aud: undefined,
         })}`,
       ),
     ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
@@ -227,6 +233,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
     )!;
     let serviceToken = '';
     let introspectionResponse: unknown = { activo: true };
+    let introspectionStatus = 200;
     const calls: Array<{
       path: string;
       authorization?: string;
@@ -256,9 +263,10 @@ describe('Gateway identity from G6/G7 contracts', () => {
             scopes: ['tokens:introspeccion'],
           }),
         );
-      else if (request.url === '/api/v1/auth/introspeccion')
+      else if (request.url === '/api/v1/auth/introspeccion') {
+        response.statusCode = introspectionStatus;
         response.end(JSON.stringify(introspectionResponse));
-      else {
+      } else {
         response.statusCode = 404;
         response.end('{}');
       }
@@ -280,7 +288,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
       iss: `${origin}/issuer`,
       tipo: 'servicio',
       sub: 'modulo-productos',
-      aud: ['api-productos'],
+      aud: ['api-seguridad'],
       scope: 'tokens:introspeccion',
     });
     const identity = new GatewayIdentity({
@@ -310,10 +318,47 @@ describe('Gateway identity from G6/G7 contracts', () => {
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
       ).rejects.toMatchObject({ status: 401 });
+      introspectionResponse = { activo: true };
+      introspectionStatus = 401;
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+      introspectionStatus = 403;
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+      introspectionStatus = 503;
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
+      introspectionStatus = 200;
       introspectionResponse = {};
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
       ).rejects.toMatchObject({ status: 503 });
+
+      introspectionResponse = { activo: true };
+      serviceToken = signed.token({
+        iss: `${origin}/issuer`,
+        tipo: 'servicio',
+        sub: 'modulo-productos',
+        aud: ['api-productos'],
+        scope: 'tokens:introspeccion',
+      });
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+      const invalidSignature = signed.token({
+        iss: `${origin}/issuer`,
+        tipo: 'servicio',
+        sub: 'modulo-productos',
+        aud: ['api-seguridad'],
+        scope: 'tokens:introspeccion',
+      });
+      serviceToken = `${invalidSignature.slice(0, invalidSignature.lastIndexOf('.') + 1)}AAAA`;
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
