@@ -654,6 +654,144 @@ integration('BulkPersistenceRepository with PostgreSQL 17 migration', () => {
     }
   }, 30_000);
 
+  it('retains and later serves an artifact when reconciliation reads before the pending PostgreSQL commit', async () => {
+    const previousBucket = process.env.BULK_STORAGE_BUCKET;
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';
+    const pendingPool = new Pool({ connectionString: testUrl, max: 2 });
+    const pendingRepository = new BulkPersistenceRepository(
+      drizzle(pendingPool, { schema: bulkSchema, logger: false }),
+    );
+    const suffix = randomUUID().replaceAll('-', '');
+    const fn = `bulk.delay_manifest_${suffix}`;
+    const trigger = `delay_manifest_trigger_${suffix}`;
+    const stored = new Map<string, Buffer>();
+    const removed: string[] = [];
+    const refs: string[] = [];
+    const storage = {
+      put: async (bytes: Buffer, _contentType: string, path: string) => {
+        const ref = `supabase://bulk-private-test/${path}`;
+        refs.push(ref);
+        stored.set(ref, Buffer.from(bytes));
+        return ref;
+      },
+      get: async (ref: string) => stored.get(ref) ?? null,
+      remove: async (ref: string) => {
+        removed.push(ref);
+        stored.delete(ref);
+      },
+    };
+    const observedAt = new Date().toISOString();
+    const page = { items: [], nextCursor: null, observedAt, version: 'v1' };
+    const source: BulkExportSource = {
+      catalog: async () => page,
+      pricing: async () => page,
+      inventory: async () => page,
+    };
+    await pendingPool.query(`CREATE FUNCTION ${fn}() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN
+        IF NEW.role = 'RESULTADO_EXPORTACION' THEN PERFORM pg_sleep(2.0); END IF;
+        RETURN NEW;
+      END
+    $$`);
+    await pendingPool.query(
+      `CREATE TRIGGER ${trigger} BEFORE INSERT ON bulk.file_manifests FOR EACH ROW EXECUTE FUNCTION ${fn}()`,
+    );
+    const complete =
+      pendingRepository.completeExportJob.bind(pendingRepository);
+    let pendingCommit: ReturnType<
+      typeof pendingRepository.completeExportJob
+    > | null = null;
+    const completeSpy = vi
+      .spyOn(pendingRepository, 'completeExportJob')
+      .mockImplementationOnce(async (...args) => {
+        pendingCommit = complete(...args);
+        await vi.waitFor(
+          async () => {
+            const activeInsert = await pendingPool.query(
+              `SELECT count(*)::int AS count FROM pg_stat_activity
+               WHERE pid <> pg_backend_pid() AND state = 'active'
+                 AND query ILIKE '%INSERT INTO%file_manifests%'`,
+            );
+            expect(activeInsert.rows[0]?.count).toBe(1);
+          },
+          { timeout: 5_000, interval: 20 },
+        );
+        // The PG statement is deliberately blocked inside the trigger. The
+        // wrapper loses its response while the real transaction is still live.
+        throw new Error(
+          'response lost while PostgreSQL transaction is pending',
+        );
+      });
+    const referenceReads: boolean[] = [];
+    const isReferenced =
+      pendingRepository.isExportArtifactReferenced.bind(pendingRepository);
+    const referenceSpy = vi
+      .spyOn(pendingRepository, 'isExportArtifactReferenced')
+      .mockImplementation(async (ref) => {
+        const result = await isReferenced(ref);
+        referenceReads.push(result);
+        return result;
+      });
+    const service = new BulkExportService(
+      pendingRepository,
+      storage as never,
+      source,
+    );
+    try {
+      const accepted = await service.create('CSV');
+      await vi.waitFor(() => expect(referenceReads).toEqual([false]), {
+        timeout: 5_000,
+      });
+      const ref = refs[0]!;
+      expect(removed).toEqual([]);
+      expect(stored.has(ref)).toBe(true);
+      const reconciliation = await pendingPool.query(
+        `SELECT result, payload FROM bulk.inbox
+         WHERE message_id = $1 AND handler = 'bulk.export-artifact-reconciliation'`,
+        [ref],
+      );
+      expect(reconciliation.rows[0]).toMatchObject({
+        result: 'PENDING_RECONCILIATION',
+        payload: {
+          export_id: accepted.export_id,
+          content_ref: ref,
+          reason: 'COMPLETION_OUTCOME_UNCERTAIN',
+        },
+      });
+
+      service.onModuleDestroy();
+      await pendingCommit;
+      const deadline = Date.now() + 5_000;
+      let job = await pendingRepository.findExportJobByExportId(
+        accepted.export_id,
+      );
+      while (job?.status !== 'COMPLETED' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 25));
+        job = await pendingRepository.findExportJobByExportId(
+          accepted.export_id,
+        );
+      }
+      expect(job?.status).toBe('COMPLETED');
+      expect(job.outputFileId).toBeTruthy();
+      const downloaded = await service.download(accepted.export_id);
+      expect(downloaded.manifest.contentRef).toBe(ref);
+      expect(await storage.get(ref)).toBeInstanceOf(Buffer);
+      expect(removed).toEqual([]);
+    } finally {
+      service.onModuleDestroy();
+      completeSpy.mockRestore();
+      referenceSpy.mockRestore();
+      await pendingCommit?.catch(() => undefined);
+      await pendingPool.query(
+        `DROP TRIGGER IF EXISTS ${trigger} ON bulk.file_manifests`,
+      );
+      await pendingPool.query(`DROP FUNCTION IF EXISTS ${fn}()`);
+      await pendingPool.end();
+      if (previousBucket === undefined) delete process.env.BULK_STORAGE_BUCKET;
+      else process.env.BULK_STORAGE_BUCKET = previousBucket;
+    }
+  }, 30_000);
+
   it('cleans an export artifact only after PostgreSQL confirms the manifest transaction rolled back', async () => {
     const previousBucket = process.env.BULK_STORAGE_BUCKET;
     process.env.BULK_STORAGE_BUCKET = 'bulk-private-test';

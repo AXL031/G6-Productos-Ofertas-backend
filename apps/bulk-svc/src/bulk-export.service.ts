@@ -9,6 +9,7 @@ import {
 import { randomUUID } from 'node:crypto';
 import { mapBulkPersistenceError } from './domain/bulk.errors.js';
 import { BulkDomainError } from './domain/bulk.domain-error.js';
+import { isConfirmedTransactionRollback } from './persistence/bulk.persistence.errors.js';
 import { BulkPersistenceRepository } from './persistence/bulk.repository.js';
 import { BulkStorageService } from './storage/bulk-storage.service.js';
 import {
@@ -24,6 +25,13 @@ import {
 } from './export/bulk-export-format.js';
 
 export type ExportFormat = 'CSV' | 'XLSX';
+
+class ExportCompletionOutcomeUncertainError extends Error {
+  constructor(cause: unknown) {
+    super('La transacción de finalización requiere conciliación.', { cause });
+    this.name = 'ExportCompletionOutcomeUncertainError';
+  }
+}
 
 /**
  * Durable worker. Contract-approved source adapters can be bound without
@@ -178,7 +186,15 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
     this.scheduled.add(exportId);
     setImmediate(() => {
       void this.process(exportId)
-        .catch(() => this.retry(exportId))
+        .catch((error: unknown) => {
+          if (error instanceof ExportCompletionOutcomeUncertainError) {
+            this.logger.warn(
+              `La exportación ${exportId} queda sin reintento hasta que venza su lease; el objeto permanece para conciliación.`,
+            );
+            return;
+          }
+          this.retry(exportId);
+        })
         .finally(() => this.scheduled.delete(exportId));
     });
   }
@@ -307,10 +323,28 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
           snapshot,
         );
       } catch (error) {
-        // A lost PostgreSQL response is ambiguous: the transaction may have
-        // committed. Reconcile from a fresh durable read before considering
-        // removal; an unavailable database always means retain for later.
-        await this.removeUnpublishedArtifact(exportId, fence, file.contentRef);
+        if (isConfirmedTransactionRollback(error)) {
+          // An acknowledged database rejection is terminal for that attempt;
+          // cleanup still requires a fresh durable reference check.
+          await this.removeUnpublishedArtifact(
+            exportId,
+            fence,
+            file.contentRef,
+          );
+        } else {
+          // A connection loss or unknown failure can arrive while COMMIT is
+          // still in flight. A negative read is not proof of rollback.
+          await this.preserveUncertainArtifact(
+            exportId,
+            fence,
+            file.contentRef,
+          );
+          // Do not retry against a row whose original completion may still be
+          // executing. Recovery can reclaim only after the DB lease expires.
+          this.failureFences.delete(exportId);
+          this.retryCounts.delete(exportId);
+          throw new ExportCompletionOutcomeUncertainError(error);
+        }
         throw error;
       }
       this.failureFences.delete(exportId);
@@ -354,6 +388,42 @@ export class BulkExportService implements OnModuleInit, OnModuleDestroy {
     } catch {
       this.logger.warn(
         `No se pudo reconciliar el objeto de la exportación ${exportId}; se conserva para conciliación: ${contentRef}`,
+      );
+    }
+  }
+
+  private async preserveUncertainArtifact(
+    exportId: string,
+    fence: string,
+    contentRef: string,
+  ): Promise<void> {
+    try {
+      if (await this.repository.isExportArtifactReferenced(contentRef)) {
+        this.logger.log(
+          `La exportación ${exportId} ya tiene referencia durable; se conserva el objeto ${contentRef}.`,
+        );
+        return;
+      }
+      this.logger.warn(
+        `La referencia ${contentRef} aún no aparece en PostgreSQL, pero el resultado de COMMIT es incierto; se conserva para conciliación.`,
+      );
+    } catch {
+      this.logger.error(
+        `PostgreSQL no está disponible para conciliar ${contentRef}; se conserva para revisión operativa.`,
+      );
+    }
+    try {
+      await this.repository.recordExportArtifactForReconciliation({
+        exportId,
+        fence,
+        contentRef,
+        reason: 'COMPLETION_OUTCOME_UNCERTAIN',
+      });
+    } catch {
+      // If PostgreSQL itself is unreachable, this log is the remaining
+      // existing operational signal; the object is still never removed.
+      this.logger.error(
+        `No se pudo persistir el registro de conciliación de ${contentRef}; el objeto se conserva.`,
       );
     }
   }

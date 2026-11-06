@@ -11,8 +11,14 @@ function required(value, name) {
 }
 
 async function main() {
-  const [messageId, reason, bindingEvidence, consumerEvidence] =
-    process.argv.slice(2);
+  const [
+    messageId,
+    operatorIdentity,
+    approvalReference,
+    reason,
+    bindingEvidence,
+    consumerEvidence,
+  ] = process.argv.slice(2);
   const environment = parseBulkEnvironment(process.env);
   if (!environment.databaseUrl)
     throw new Error(
@@ -33,6 +39,8 @@ async function main() {
     );
     const result = await repository.reactivateParkedCatalogOutbox({
       messageId: required(messageId, 'message_id'),
+      operatorIdentity: required(operatorIdentity, 'identidad_operador'),
+      approvalReference: required(approvalReference, 'referencia_aprobacion'),
       reason: required(reason, 'motivo'),
       bindingEvidence: required(bindingEvidence, 'evidencia_binding'),
       consumerEvidence: required(consumerEvidence, 'evidencia_consumidor'),

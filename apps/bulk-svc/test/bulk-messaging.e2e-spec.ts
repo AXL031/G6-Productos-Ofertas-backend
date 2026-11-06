@@ -258,9 +258,11 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       await alternateBroker.bindCatalogCommand('catalog.bulk.upsert.requested');
       const recoveryInput = {
         messageId,
+        operatorIdentity: 'auditor-rabbitmq-fixture',
+        approvalReference: 'fixture-approval:bulk-recovery-01',
         reason: 'auditoría de integración RabbitMQ desechable',
         bindingEvidence:
-          'binding po.comandos.x -> po.catalog.q verificado en fixture',
+          'cola po.catalogo.q; binding po.comandos.x -> po.catalogo.q con catalog.bulk.upsert.requested verificado en fixture',
         consumerEvidence: 'cola Catalog activa y entrega consumida por prueba',
       };
       const recoveries = await Promise.all([
@@ -282,7 +284,9 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
         result: 'REACTIVATED',
         payload: {
           message_id: messageId,
-          actor: expect.any(String),
+          database_principal: expect.any(String),
+          operator_identity: recoveryInput.operatorIdentity,
+          approval_reference: recoveryInput.approvalReference,
           reason: recoveryInput.reason,
           binding_evidence: recoveryInput.bindingEvidence,
           consumer_evidence: recoveryInput.consumerEvidence,
@@ -339,6 +343,8 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     await expect(
       repository.reactivateParkedCatalogOutbox({
         messageId,
+        operatorIdentity: 'auditor-rabbitmq-fixture',
+        approvalReference: 'fixture-approval:bulk-recovery-02',
         reason: 'resultado durable verificado',
         bindingEvidence: 'no aplica; comando ya recibió resultado',
         consumerEvidence: 'no aplica; resultado en replay durable',

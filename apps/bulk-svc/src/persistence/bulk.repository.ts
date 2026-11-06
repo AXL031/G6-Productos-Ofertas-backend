@@ -1613,6 +1613,37 @@ export class BulkPersistenceRepository {
     }
   }
 
+  /** Stores an uncertain completion's object reference in the existing Inbox ledger. */
+  async recordExportArtifactForReconciliation(input: {
+    exportId: string;
+    fence: string;
+    contentRef: string;
+    reason: string;
+  }): Promise<void> {
+    try {
+      await this.db
+        .insert(inbox)
+        .values({
+          messageId: input.contentRef,
+          handler: 'bulk.export-artifact-reconciliation',
+          eventName: 'bulk.export.artifact.reconciliation-required',
+          correlationId: input.exportId,
+          payload: {
+            export_id: input.exportId,
+            claim_token: input.fence,
+            content_ref: input.contentRef,
+            reason: input.reason,
+          },
+          result: 'PENDING_RECONCILIATION',
+        })
+        .onConflictDoNothing({
+          target: [inbox.messageId, inbox.handler],
+        });
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
   async transitionExportJob(
     exportId: string,
     from: BulkJobStatus[],
@@ -1849,15 +1880,27 @@ export class BulkPersistenceRepository {
   /** Reactivates one parked Catalog command after externally verified topology. */
   async reactivateParkedCatalogOutbox(input: {
     messageId: string;
+    operatorIdentity: string;
+    approvalReference: string;
     reason: string;
     bindingEvidence: string;
     consumerEvidence: string;
   }): Promise<'REACTIVATED' | 'RESULT_ALREADY_RECORDED' | 'NOT_PARKED'> {
+    const operatorIdentity = input.operatorIdentity.trim();
+    const approvalReference = input.approvalReference.trim();
     const reason = input.reason.trim();
     const bindingEvidence = input.bindingEvidence.trim();
     const consumerEvidence = input.consumerEvidence.trim();
-    if (!reason || !bindingEvidence || !consumerEvidence)
-      inconsistent('Recovery requires reason and binding/consumer evidence');
+    if (
+      !operatorIdentity ||
+      !approvalReference ||
+      !reason ||
+      !bindingEvidence ||
+      !consumerEvidence
+    )
+      inconsistent(
+        'Recovery requires operator, approval, reason, and binding/consumer evidence',
+      );
     try {
       return await this.db.transaction(async (tx) => {
         const [message] = await tx
@@ -1905,7 +1948,9 @@ export class BulkPersistenceRepository {
             correlationId: message.correlationId,
             payload: {
               message_id: message.messageId,
-              actor: principal.actor,
+              database_principal: principal.actor,
+              operator_identity: operatorIdentity,
+              approval_reference: approvalReference,
               reason,
               binding_evidence: bindingEvidence,
               consumer_evidence: consumerEvidence,
