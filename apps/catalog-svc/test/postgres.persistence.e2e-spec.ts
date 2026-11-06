@@ -1652,9 +1652,11 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           const seedPrice = (productId: string) => {
             const price = randomUUID(),
               validity = randomUUID();
-            sqlAdmin(`INSERT INTO pricing.prices(id,product_id,sku,channel_id,price_version) VALUES ('${price}','${productId}',NULL,NULL,3);
+            sqlAdmin(`BEGIN;
+              INSERT INTO pricing.prices(id,product_id,sku,channel_id,price_version) VALUES ('${price}','${productId}',NULL,NULL,3);
               INSERT INTO pricing.price_validities(id,price_id,precio_regular,currency,valid_from,price_version,motivo_cambio,usuario_id)
-              VALUES ('${validity}','${price}',125.50,'USD',now()-interval '1 day',3,'CARGA_HISTORICA','isolated-history');`);
+              VALUES ('${validity}','${price}',125.50,'USD',now()-interval '1 day',3,'CARGA_HISTORICA','isolated-history');
+              COMMIT;`);
             return { price, validity };
           };
           const originalSimple = seedPrice(legacySimple.product_id);
@@ -1669,9 +1671,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           sqlAdmin(
             'ALTER TABLE pricing.price_validities DROP CONSTRAINT ck_price_validities_no_overlap;',
           );
-          extraValidity = randomUUID();
-          sqlAdmin(`INSERT INTO pricing.price_validities(id,price_id,precio_regular,currency,valid_from,price_version,motivo_cambio)
-            VALUES ('${extraValidity}','${ambiguous.price}',150,'USD',now()-interval '2 hours',4,'ISOLATED_AMBIGUITY');`);
+          const overlappingValidity = randomUUID();
+          extraValidity = ambiguous.validity;
+          sqlAdmin(`BEGIN;
+            UPDATE pricing.prices SET price_version=4 WHERE id='${ambiguous.price}';
+            INSERT INTO pricing.price_validities(id,price_id,precio_regular,currency,valid_from,price_version,motivo_cambio)
+            VALUES ('${overlappingValidity}','${ambiguous.price}',150,'USD',now()-interval '2 hours',4,'ISOLATED_AMBIGUITY');
+            COMMIT;`);
           const referenceSkus = [
             legacySimple.sku_base,
             ...legacyVariants.map((v) => v.sku),
