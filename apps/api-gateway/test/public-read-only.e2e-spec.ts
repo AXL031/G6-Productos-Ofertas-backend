@@ -225,6 +225,9 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
       const response = await request(gateway!.getHttpServer())
         .get(path)
         .expect(200);
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /on_hand|reserved|blocked|available|location_id|stock_version|cost_price|supplier|internal_margin|costo_interno/i,
+      );
       if (path.includes('/productos/'))
         expect(response.body.marca.name).toBe('Visible brand');
     }
