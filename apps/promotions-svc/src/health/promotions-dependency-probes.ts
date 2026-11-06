@@ -103,6 +103,8 @@ export function nativePromotionsDependencyProbes(
         };
         signal.addEventListener('abort', abort, { once: true });
         try {
+          if (!config.settings.rabbitmqUrl)
+            throw new Error('AMQP_NOT_CONFIGURED');
           connection = await connect(config.settings.rabbitmqUrl, {
             timeout: 750,
           });

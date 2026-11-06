@@ -1,16 +1,18 @@
 import { readFileSync } from 'node:fs';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
 
 export const PRICING_CONFIG = Symbol('PRICING_CONFIG');
 
 export interface PricingConfig {
+  securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  publicOperations: readonly string[];
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
   databaseUrl: string;
   databaseSsl: false | ConnectionOptions;
   auth?: { issuer: string; jwksUrl: string };
-  demoNoAuthEnabled?: boolean;
   amqpUrl?: string;
   priceChangedPublishingEnabled?: boolean;
   catalogUrl?: string;
@@ -30,26 +32,29 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       'NODE_ENV debe ser development, test o production.',
     );
   }
-  const demoFlag = env.GATEWAY_DEMO_NO_AUTH_ENABLED ?? 'false';
-  const productionConfirmed = env.PRICING_DEMO_PRODUCTION_CONFIRMED ?? 'false';
+  const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
   if (
-    !['true', 'false'].includes(demoFlag) ||
-    !['true', 'false'].includes(productionConfirmed)
-  ) {
-    throw new InvalidPricingConfig(
-      'GATEWAY_DEMO_NO_AUTH_ENABLED y PRICING_DEMO_PRODUCTION_CONFIRMED deben ser true/false.',
-    );
-  }
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
+    throw new InvalidPricingConfig('G6_SECURITY_MODE inválido.');
+  const publicOperations = (env.PRICING_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
   if (
-    demoFlag === 'true' &&
-    nodeEnv === 'production' &&
-    productionConfirmed !== 'true'
-  ) {
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    throw new InvalidPricingConfig('PRICING_PUBLIC_OPERATION_IDS inválido.');
+  if (
+    env.GATEWAY_DEMO_NO_AUTH_ENABLED === 'true' ||
+    env.PRICING_DEMO_PRODUCTION_CONFIRMED === 'true'
+  )
     throw new InvalidPricingConfig(
-      'Demo en production requiere PRICING_DEMO_PRODUCTION_CONFIRMED=true.',
+      'Los bypasses demo heredados están deshabilitados; use G6_SECURITY_MODE.',
     );
-  }
-  const demoNoAuthEnabled = demoFlag === 'true';
   const priceChangedFlag = env.PRICING_PRICE_CHANGED_PUBLISH_ENABLED ?? 'false';
   if (!['true', 'false'].includes(priceChangedFlag))
     throw new InvalidPricingConfig(
@@ -146,12 +151,24 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
   }
   url.search = '';
   let auth: PricingConfig['auth'];
+  const authIssuer =
+    securityMode === 'SIMULATED_AUTH'
+      ? env.SIMULATED_AUTH_ISSUER
+      : env.AUTH_ISSUER;
+  const authJwksUrl =
+    securityMode === 'SIMULATED_AUTH'
+      ? env.SIMULATED_AUTH_JWKS_URL
+      : env.AUTH_JWKS_URL;
   if (
-    !demoNoAuthEnabled &&
-    (env.AUTH_ISSUER !== undefined || env.AUTH_JWKS_URL !== undefined)
-  ) {
+    securityMode === 'SIMULATED_AUTH' &&
+    (!authIssuer || !authJwksUrl || authIssuer === env.AUTH_ISSUER)
+  )
+    throw new InvalidPricingConfig(
+      'SIMULATED_AUTH requiere issuer y JWKS independientes de G7.',
+    );
+  if (authIssuer !== undefined || authJwksUrl !== undefined) {
     try {
-      for (const value of [env.AUTH_ISSUER, env.AUTH_JWKS_URL]) {
+      for (const value of [authIssuer, authJwksUrl]) {
         if (!value || value !== value.trim()) throw new Error();
         const endpoint = new URL(value);
         if (
@@ -167,7 +184,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
         )
           throw new Error();
       }
-      auth = { issuer: env.AUTH_ISSUER!, jwksUrl: env.AUTH_JWKS_URL! };
+      auth = { issuer: authIssuer!, jwksUrl: authJwksUrl! };
     } catch {
       throw new InvalidPricingConfig(
         'AUTH_ISSUER y AUTH_JWKS_URL deben ser URLs seguras válidas.',
@@ -181,7 +198,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
   ) {
     try {
       const endpoint = new URL(env.PRICING_SERVICE_TOKEN_URL!);
-      const issuer = new URL(env.AUTH_ISSUER!);
+      const issuer = new URL(authIssuer!);
       const testLoopback =
         nodeEnv === 'test' &&
         endpoint.protocol === 'http:' &&
@@ -195,7 +212,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
         endpoint.pathname !== '/api/v1/auth/token' ||
         endpoint.origin !== issuer.origin ||
         (endpoint.protocol !== 'https:' && !testLoopback) ||
-        (!demoNoAuthEnabled && !auth)
+        !auth
       )
         throw new Error();
       serviceToken = {
@@ -214,9 +231,8 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       const endpoint = new URL(env.PRICING_CATALOG_URL);
       const privateHttp =
         endpoint.protocol === 'http:' &&
-        ((demoNoAuthEnabled && endpoint.hostname === 'catalog-svc') ||
-          (nodeEnv === 'test' &&
-            ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname)));
+        nodeEnv === 'test' &&
+        ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname);
       if (
         env.PRICING_CATALOG_URL !== env.PRICING_CATALOG_URL.trim() ||
         endpoint.username ||
@@ -244,6 +260,8 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       'La publicación de cambios de precio requiere PRICING_AMQP_URL.',
     );
   return {
+    securityMode: securityMode as PricingConfig['securityMode'],
+    publicOperations: Object.freeze(publicOperations),
     nodeEnv,
     port,
     databaseUrl: url.toString(),
@@ -255,7 +273,6 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
     ...(catalogUrl ? { catalogUrl } : {}),
     ...(serviceToken ? { serviceToken } : {}),
     ...(auth ? { auth } : {}),
-    ...(demoNoAuthEnabled ? { demoNoAuthEnabled: true } : {}),
   };
 }
 

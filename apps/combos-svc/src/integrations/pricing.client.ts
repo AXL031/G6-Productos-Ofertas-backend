@@ -1,3 +1,4 @@
+import { usePublicDependencyReads } from '../phase1-public-reads.js';
 import {
   BearerProvider,
   FetchLike,
@@ -132,8 +133,12 @@ export class PricingClient {
     const operationSignal = options.signal
       ? AbortSignal.any([totalSignal, options.signal])
       : totalSignal;
-    let bearer = await this.serviceBearer(operationSignal);
-    if (!bearer) throw new IntegrationFailure('PRICING', 'AUTH_NOT_CONFIGURED');
+    const publicRead = usePublicDependencyReads();
+    let bearer = publicRead
+      ? undefined
+      : await this.serviceBearer(operationSignal);
+    if (!publicRead && !bearer)
+      throw new IntegrationFailure('PRICING', 'AUTH_NOT_CONFIGURED');
     const results: ResolvedSkuPrice[] = [];
     const groups: string[][] = [];
     const batchable = skus.filter((sku) => !sku.includes(','));
@@ -160,7 +165,7 @@ export class PricingClient {
             redirect: 'error',
             headers: {
               accept: 'application/json',
-              authorization: `Bearer ${bearer}`,
+              ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
               'x-correlation-id': correlationId,
             },
             signal: AbortSignal.any([
@@ -176,7 +181,12 @@ export class PricingClient {
               : 'NETWORK_FAILURE',
           );
         }
-        if (response.status !== 401 || attempt > 0 || !this.invalidateBearer)
+        if (
+          publicRead ||
+          response.status !== 401 ||
+          attempt > 0 ||
+          !this.invalidateBearer
+        )
           break;
         await response.body?.cancel();
         this.invalidateBearer();

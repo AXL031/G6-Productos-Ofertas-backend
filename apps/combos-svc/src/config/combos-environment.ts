@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { isAbsolute } from 'node:path';
 import { isIP } from 'node:net';
 import { checkServerIdentity } from 'node:tls';
@@ -48,6 +49,15 @@ export function readCombosEnvironment(
     )
   )
     errors.push('G6_SECURITY_MODE');
+  const publicOperations = (env.COMBOS_PUBLIC_READ_OPERATIONS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    errors.push('COMBOS_PUBLIC_READ_OPERATIONS');
   const demoEnabled = env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true';
   const demoGatewayIps = (env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS ?? '')
     .split(',')
@@ -91,6 +101,11 @@ export function readCombosEnvironment(
     (env.COMBOS_G7_CLIENT_SECRET === undefined)
   )
     errors.push('COMBOS_G7_TOKEN_URL/COMBOS_G7_CLIENT_SECRET');
+  if (
+    (env.COMBOS_SIMULATED_TOKEN_URL === undefined) !==
+    (env.COMBOS_SIMULATED_CLIENT_SECRET === undefined)
+  )
+    errors.push('COMBOS_SIMULATED_TOKEN_URL/COMBOS_SIMULATED_CLIENT_SECRET');
   const securityValues = [
     env.SECURITY_ISSUER,
     env.SECURITY_DISCOVERY_URL,
@@ -138,6 +153,7 @@ export function readCombosEnvironment(
     'COMBOS_CATALOG_URL',
     'COMBOS_PRICING_URL',
     'COMBOS_G7_TOKEN_URL',
+    'COMBOS_SIMULATED_TOKEN_URL',
     'SECURITY_ISSUER',
     'SECURITY_DISCOVERY_URL',
     'SECURITY_JWKS_URL',

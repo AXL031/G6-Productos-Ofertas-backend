@@ -1,6 +1,8 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { createVerify } from 'node:crypto';
+import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
 import {
   REQUIRED_SCOPE_KEY,
   ALLOWED_CLIENTS_KEY,
@@ -12,7 +14,6 @@ import {
 } from './auth.constants.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import { UserAuthGuard } from './user-auth.guard.js';
-import { authorizeCommercialDemo } from './commercial-demo.js';
 
 export interface DecodedTokenPayload {
   sub?: string;
@@ -22,6 +23,7 @@ export interface DecodedTokenPayload {
   scopes?: string[];
   exp?: number;
   iat?: number;
+  nbf?: number;
   iss?: string;
   tipo?: string;
   [key: string]: unknown;
@@ -49,8 +51,21 @@ export class InventoryAuthGuard implements CanActivate {
     );
   }
 
-  canActivate(context: ExecutionContext): boolean {
-    if (authorizeCommercialDemo(context, this.reflector)) return true;
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+    if (
+      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
+    )
+      throw ProblemDetailsException.tokenInvalido('G6_SECURITY_MODE inválido');
+    const request = context.switchToHttp().getRequest();
+    const publicOperations = (process.env.INVENTORY_PUBLIC_OPERATION_IDS ?? '')
+      .split(',')
+      .map((id: string) => id.trim())
+      .filter(Boolean);
+    if (isPhase1PublicRead(request, mode, publicOperations)) {
+      request.inventoryPublicRead = true;
+      return true;
+    }
     const requiredScope = this.reflector.getAllAndOverride<string | undefined>(
       REQUIRED_SCOPE_KEY,
       [context.getHandler(), context.getClass()],
@@ -60,7 +75,6 @@ export class InventoryAuthGuard implements CanActivate {
       string[] | undefined
     >(ALLOWED_CLIENTS_KEY, [context.getHandler(), context.getClass()]);
 
-    const request = context.switchToHttp().getRequest();
     const correlationId =
       request.headers['x-correlation-id'] || request.headers['correlation-id'];
 
@@ -88,7 +102,20 @@ export class InventoryAuthGuard implements CanActivate {
     }
 
     // Verificación criptográfica con material de confianza de G7
-    const payload = this.verifyAndDecodeToken(rawToken, correlationId);
+    const issuer =
+      mode === 'SIMULATED_AUTH'
+        ? process.env.SIMULATED_AUTH_ISSUER
+        : getConfiguredIssuer();
+    const publicKey = await this.selectedPublicKey(
+      rawToken,
+      mode === 'SIMULATED_AUTH',
+      correlationId,
+    );
+    const payload = this.verifyAndDecodeToken(
+      rawToken,
+      correlationId,
+      publicKey,
+    );
 
     const allowUserBearer = this.reflector.getAllAndOverride<boolean>(
       ALLOW_USER_BEARER_KEY,
@@ -97,7 +124,10 @@ export class InventoryAuthGuard implements CanActivate {
     if (allowUserBearer && payload.tipo !== EXPECTED_TOKEN_TYPE) {
       // El guard global permanece activo; la vía humana valida firma, issuer,
       // expiración, audience, identidad y rol antes de autorizar la lectura.
-      return new UserAuthGuard(this.reflector).canActivate(context);
+      return new UserAuthGuard(this.reflector).canActivate(context, {
+        publicKey: publicKey!,
+        issuer: issuer!,
+      });
     }
 
     // 1. Verificación de expiración (exp)
@@ -115,8 +145,19 @@ export class InventoryAuthGuard implements CanActivate {
       );
     }
 
+    for (const claim of [payload.iat, payload.nbf]) {
+      if (
+        claim !== undefined &&
+        (!Number.isSafeInteger(claim) || claim > nowSec)
+      )
+        throw ProblemDetailsException.tokenInvalido(
+          'Token JWT todavía no válido',
+          correlationId,
+        );
+    }
+
     // 2. Comparar el issuer exacto publicado por el discovery de G7.
-    const expectedIssuer = getConfiguredIssuer();
+    const expectedIssuer = issuer;
     if (!expectedIssuer) {
       throw ProblemDetailsException.tokenInvalido(
         'Issuer de G7 no configurado; se rechazan tokens hasta provisionar el discovery oficial',
@@ -193,6 +234,7 @@ export class InventoryAuthGuard implements CanActivate {
   private verifyAndDecodeToken(
     rawToken: string,
     correlationId?: string,
+    trustedKey?: string | null,
   ): DecodedTokenPayload {
     const parts = rawToken.split('.');
     if (parts.length !== 3) {
@@ -232,7 +274,7 @@ export class InventoryAuthGuard implements CanActivate {
     }
 
     // Obtener clave pública de confianza
-    const publicKey = InventoryAuthGuard.getTrustedPublicKey();
+    const publicKey = trustedKey ?? InventoryAuthGuard.getTrustedPublicKey();
     if (!publicKey) {
       throw ProblemDetailsException.tokenInvalido(
         'Material de confianza de G7 no disponible para verificación criptográfica',
@@ -273,6 +315,43 @@ export class InventoryAuthGuard implements CanActivate {
     } catch {
       throw ProblemDetailsException.tokenInvalido(
         'No se pudo decodificar el payload del token JWT',
+        correlationId,
+      );
+    }
+  }
+
+  private async selectedPublicKey(
+    rawToken: string,
+    simulated: boolean,
+    correlationId?: string,
+  ): Promise<string | null> {
+    if (!simulated && process.env.G7_JWT_JWKS_URL === undefined)
+      return InventoryAuthGuard.getTrustedPublicKey();
+    try {
+      if (
+        simulated &&
+        (!process.env.SIMULATED_AUTH_ISSUER ||
+          process.env.SIMULATED_AUTH_ISSUER === process.env.G7_JWT_ISSUER)
+      )
+        throw new Error();
+      return await trustedJwksPublicKey(
+        rawToken,
+        simulated
+          ? process.env.SIMULATED_AUTH_JWKS_URL
+          : process.env.G7_JWT_JWKS_URL,
+        process.env.NODE_ENV,
+      );
+    } catch (error) {
+      if (error instanceof JwksUnavailable)
+        throw new ProblemDetailsException({
+          type: '/errores/servicio-no-disponible',
+          title: 'Servicio no disponible',
+          status: 503,
+          code: 'SERVICIO_NO_DISPONIBLE',
+          correlationId,
+        });
+      throw ProblemDetailsException.tokenInvalido(
+        'Token JWT inválido',
         correlationId,
       );
     }

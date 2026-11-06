@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
@@ -6,6 +7,8 @@ import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
 export const PRICE_AUDIT_CONFIG = Symbol('PRICE_AUDIT_CONFIG');
 
 export interface AuditConfig {
+  publicOperations?: readonly string[];
+  securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
   hotRetentionMonths: number;
@@ -31,6 +34,22 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
       'NODE_ENV debe ser development, test o production.',
     );
   }
+  const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
+    throw new InvalidAuditConfig('G6_SECURITY_MODE inválido.');
+  const publicOperations = (env.PRICE_AUDIT_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    throw new InvalidAuditConfig('PRICE_AUDIT_PUBLIC_OPERATION_IDS inválido.');
   const rawPort = env.PRICE_AUDIT_SVC_PORT ?? env.PORT;
   const port = Number(rawPort);
   if (
@@ -122,9 +141,26 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
   }
   url.search = '';
   let auth: AuditConfig['auth'];
-  {
+  if (
+    securityMode !== 'PUBLIC_READ_ONLY' ||
+    env.AUTH_ISSUER !== undefined ||
+    env.AUTH_JWKS_URL !== undefined
+  ) {
     try {
-      for (const value of [env.AUTH_ISSUER, env.AUTH_JWKS_URL]) {
+      const issuer =
+        securityMode === 'SIMULATED_AUTH'
+          ? env.SIMULATED_AUTH_ISSUER
+          : env.AUTH_ISSUER;
+      const jwksUrl =
+        securityMode === 'SIMULATED_AUTH'
+          ? env.SIMULATED_AUTH_JWKS_URL
+          : env.AUTH_JWKS_URL;
+      if (
+        securityMode === 'SIMULATED_AUTH' &&
+        (!issuer || !jwksUrl || issuer === env.AUTH_ISSUER)
+      )
+        throw new Error();
+      for (const value of [issuer, jwksUrl]) {
         if (!value || value !== value.trim()) throw new Error();
         const endpoint = new URL(value);
         if (
@@ -140,7 +176,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
         )
           throw new Error();
       }
-      auth = { issuer: env.AUTH_ISSUER!, jwksUrl: env.AUTH_JWKS_URL! };
+      auth = { issuer: issuer!, jwksUrl: jwksUrl! };
     } catch {
       throw new InvalidAuditConfig(
         'AUTH_ISSUER y AUTH_JWKS_URL deben ser URLs seguras válidas.',
@@ -171,6 +207,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
       'La retención debe expresarse con enteros positivos.',
     );
   return {
+    securityMode: securityMode as AuditConfig['securityMode'],
     ...(env.AUDIT_EXPORT_DIRECTORY
       ? { exportDirectory: env.AUDIT_EXPORT_DIRECTORY }
       : {}),
@@ -178,6 +215,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
     ...(env.PRICE_AUDIT_AMQP_URL === undefined
       ? {}
       : { amqpUrl: validateAmqpUrl(env.PRICE_AUDIT_AMQP_URL, nodeEnv) }),
+    publicOperations: Object.freeze(publicOperations),
     hotRetentionMonths,
     archiveRetentionYears,
     nodeEnv,

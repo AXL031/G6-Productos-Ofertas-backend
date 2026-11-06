@@ -10,6 +10,9 @@ export function createSignedIdentity(settings: GatewaySettings) {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', {
     modulusLength: 2048,
   });
+  const publicKeyPem = String(
+    publicKey.export({ type: 'spki', format: 'pem' }),
+  );
   const key = {
     ...publicKey.export({ format: 'jwk' }),
     kid: 'isolated-test-key',
@@ -29,6 +32,7 @@ export function createSignedIdentity(settings: GatewaySettings) {
     identity: new IsolatedIdentity(settings),
     verifier,
     key,
+    publicKeyPem,
     token(
       overrides: Record<string, unknown> = {},
       headerOverrides: Record<string, unknown> = {},

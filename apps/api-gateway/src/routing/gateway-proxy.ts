@@ -4,6 +4,7 @@ import { finished } from 'node:stream/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CONTRACT_ROUTES } from './contract-routes.js';
+import { PHASE1_INTERNAL_READ_ROUTES } from './phase1-internal-read-routes.js';
 import {
   GatewayFailure,
   GatewayIdentity,
@@ -25,8 +26,9 @@ const routes = [...CONTRACT_ROUTES].sort(
 export function matchContractRoute(
   method: string,
   path: string,
+  includePhase1Internal = false,
 ): ContractRoute | undefined {
-  if (/\\|%2f|%5c|%00/i.test(path)) return undefined;
+  if (/\\|%00/i.test(path)) return undefined;
   const actual = path.split('/');
   try {
     if (actual.some((value) => ['.', '..'].includes(decodeURIComponent(value))))
@@ -34,14 +36,21 @@ export function matchContractRoute(
   } catch {
     return undefined;
   }
-  return routes.find(
+  return [
+    ...routes,
+    ...(includePhase1Internal ? PHASE1_INTERNAL_READ_ROUTES : []),
+  ].find(
     (route) =>
       route.method === method &&
       route.path.split('/').length === actual.length &&
       route.path
         .split('/')
         .every((part, i) =>
-          part.startsWith('{') ? actual[i].length > 0 : part === actual[i],
+          part.startsWith('{')
+            ? actual[i].length > 0 &&
+              ((part === '{sku}' && method === 'GET') ||
+                !/%2f|%5c/i.test(actual[i]))
+            : part === actual[i],
         ),
   );
 }
@@ -124,7 +133,12 @@ export class GatewayProxy {
 
   async forward(req: Request, res: Response): Promise<void> {
     const path = req.originalUrl.split('?')[0];
-    const route = matchContractRoute(req.method, path);
+    const route = matchContractRoute(
+      req.method,
+      path,
+      this.settings.securityMode === 'PUBLIC_READ_ONLY' &&
+        this.settings.publicOperations.includes('obtenerContextoSku'),
+    );
     if (!route) {
       res.status(404).end();
       return;

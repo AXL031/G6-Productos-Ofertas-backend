@@ -6,7 +6,6 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { Pool } from 'pg';
-import { isIP } from 'node:net';
 import {
   BULK_ENVIRONMENT,
   BULK_READINESS_POOL,
@@ -76,7 +75,7 @@ export class BulkReadinessService implements OnModuleDestroy {
     return (await this.probe()).ready;
   }
 
-  async probe(remoteAddress?: string): Promise<BulkReadinessResult> {
+  async probe(): Promise<BulkReadinessResult> {
     if (!this.config.databaseUrl || !this.pool)
       return { ready: false, reason: 'DATABASE_NOT_CONFIGURED' };
     try {
@@ -87,8 +86,6 @@ export class BulkReadinessService implements OnModuleDestroy {
     }
 
     if (!this.amqpUrl) {
-      if (this.isAuthorizedDemoPeer(remoteAddress))
-        return { ready: true, reason: 'AUTHORIZED_DEMO' };
       return {
         ready: false,
         reason:
@@ -109,21 +106,6 @@ export class BulkReadinessService implements OnModuleDestroy {
     if (workerStates.some((state) => state !== 'READY'))
       return { ready: false, reason: 'AMQP_TEMPORARY_UNAVAILABLE' };
     return { ready: true, reason: 'READY' };
-  }
-
-  private isAuthorizedDemoPeer(remoteAddress?: string): boolean {
-    const peer = remoteAddress?.replace(/^::ffff:/, '');
-    if (
-      process.env.GATEWAY_DEMO_NO_AUTH_ENABLED !== 'true' ||
-      !peer ||
-      isIP(peer) === 0
-    )
-      return false;
-    const allowlist = (process.env.BULK_DEMO_GATEWAY_IPS ?? '')
-      .split(',')
-      .map((ip) => ip.trim())
-      .filter(Boolean);
-    return allowlist.includes(peer);
   }
 
   async onModuleDestroy(): Promise<void> {
