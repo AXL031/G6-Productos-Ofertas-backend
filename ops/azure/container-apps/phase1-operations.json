@@ -2,7 +2,7 @@
   "sourceBranch": "integracion/h4-fase1-completa",
   "sourceSha": "bff05f8f856031807786cf10a501c5a45af07928",
   "authorization": "User explicitly requested temporary anonymous access including administrative/internal reads using synthetic academic data on 2026-11-06. This records the instruction, not independently verified normative approval.",
-  "status": "IMPLEMENTED_SELECTION_NOT_CLOUD_CERTIFIED",
+  "status": "DEPLOYED_HTTP_PARTIAL_NOT_FULLY_CERTIFIED",
   "totalCandidates": 66,
   "selectedGet": 59,
   "selectedPost": 6,
@@ -13,8 +13,19 @@
       "method": "GET",
       "path": "/api/v1/productos/skus/{sku}/contexto",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "obtenerContextoSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/skus/ADI-ENT22-AZU-M/contexto",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30980,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -22,8 +33,19 @@
       "method": "GET",
       "path": "/api/v1/productos",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "listarProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 4580,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -31,8 +53,19 @@
       "method": "GET",
       "path": "/api/v1/productos/{productoId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "obtenerProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 5828,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -40,8 +73,19 @@
       "method": "GET",
       "path": "/api/v1/categorias",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategorias",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 28823,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -49,8 +93,19 @@
       "method": "GET",
       "path": "/api/v1/marcas",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 834,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -58,8 +113,19 @@
       "method": "GET",
       "path": "/api/v1/precios",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "consultarPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios?skus=ADI-ENT22-AZU-M&canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30859,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -67,8 +133,19 @@
       "method": "GET",
       "path": "/api/v1/precios/skus/{sku}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-AZU-M?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 9655,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -76,8 +153,19 @@
       "method": "GET",
       "path": "/api/v1/promociones",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "listarPromociones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30243,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -85,8 +173,19 @@
       "method": "POST",
       "path": "/api/v1/promociones/evaluar",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "evaluarPromociones",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/evaluar",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 6893,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -94,8 +193,19 @@
       "method": "POST",
       "path": "/api/v1/cupones/validar",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "validarCupon",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/validar",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 1561,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -103,8 +213,19 @@
       "method": "GET",
       "path": "/api/v1/recomendaciones",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "obtenerRecomendaciones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones?productoId=32a4172c-81b2-b643-1d0f-ae66f627f2ef&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 534,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "combos-svc",
@@ -112,8 +233,19 @@
       "method": "GET",
       "path": "/api/v1/combos/{comboId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "combos-svc",
+        "operationId": "obtenerCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/447daba6-1bd8-5c0c-bd70-ff4fec7de249",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30257,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -121,8 +253,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/disponibilidad",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_400_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidad",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad?skus=ADI-ENT22-AZU-M",
+        "httpStatus": 400,
+        "error": null,
+        "errorCode": "VALIDACION",
+        "elapsedMs": 459,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -130,8 +273,19 @@
       "method": "POST",
       "path": "/api/v1/productos/datos-fisicos/consulta",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "consultarDatosFisicos",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/datos-fisicos/consulta",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 884,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -139,8 +293,19 @@
       "method": "POST",
       "path": "/api/v1/seo/categorias/slug/resolver",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugCategoriaCreacion",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/categorias/slug/resolver",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 513,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -148,8 +313,19 @@
       "method": "GET",
       "path": "/api/v1/seo/{slug}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/ent22-inka-athletics",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 308,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -157,8 +333,19 @@
       "method": "GET",
       "path": "/api/v1/seo/resoluciones/{slugAnterior}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugAnterior",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/resoluciones/g6-azure-slug-anterior-inexistente",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 336,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -166,8 +353,19 @@
       "method": "GET",
       "path": "/api/v1/productos/por-slug/{slug}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "obtenerProductoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 962,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -175,8 +373,19 @@
       "method": "GET",
       "path": "/api/v1/productos/{productoId}/preparacion",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "obtenerPreparacionProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/preparacion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 921,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -184,8 +393,19 @@
       "method": "GET",
       "path": "/api/v1/productos/{productoId}/variantes",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "listarVariantesProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1019,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -193,8 +413,19 @@
       "method": "GET",
       "path": "/api/v1/productos/{productoId}/variantes/{variantId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "obtenerVariante",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes/35133a17-114a-381e-090a-87446d5fc701",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 617,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "combos-svc",
@@ -202,8 +433,19 @@
       "method": "GET",
       "path": "/api/v1/combos",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "combos-svc",
+        "operationId": "listarCombosAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1542,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "combos-svc",
@@ -211,8 +453,19 @@
       "method": "GET",
       "path": "/api/v1/combos/{comboId}/disponibilidad",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "combos-svc",
+        "operationId": "consultarDisponibilidadCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/447daba6-1bd8-5c0c-bd70-ff4fec7de249/disponibilidad",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 632,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -220,8 +473,19 @@
       "method": "GET",
       "path": "/api/v1/cupones",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "listarCupones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 977,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -229,8 +493,19 @@
       "method": "GET",
       "path": "/api/v1/cupones/{cuponId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "obtenerCuponAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/6d86380f-5f55-4b9f-9bc4-5e3cf2bfc903",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 607,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -238,8 +513,19 @@
       "method": "GET",
       "path": "/api/v1/promociones/{promocionId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "obtenerPromocionAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 741,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -247,8 +533,19 @@
       "method": "GET",
       "path": "/api/v1/recomendaciones/reglas",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "listarReglasRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 732,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -256,8 +553,19 @@
       "method": "GET",
       "path": "/api/v1/recomendaciones/reglas/{reglaId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "obtenerReglaRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "REGLA_RECOMENDACION_NO_ENCONTRADA",
+        "elapsedMs": 518,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -265,8 +573,19 @@
       "method": "GET",
       "path": "/api/v1/categorias/arbol",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerArbolCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/arbol",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 301,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -274,8 +593,19 @@
       "method": "GET",
       "path": "/api/v1/categorias/{categoriaId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 310,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -283,8 +613,19 @@
       "method": "GET",
       "path": "/api/v1/caracteristicas",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarCaracteristicas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 601,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -292,8 +633,19 @@
       "method": "GET",
       "path": "/api/v1/caracteristicas/{caracteristicaId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/acee6db1-ba1c-f020-caf8-f439b09556ff",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 283,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -301,8 +653,19 @@
       "method": "GET",
       "path": "/api/v1/caracteristicas/{caracteristicaId}/valores",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarValoresCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/acee6db1-ba1c-f020-caf8-f439b09556ff/valores",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 332,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -310,8 +673,19 @@
       "method": "GET",
       "path": "/api/v1/tipos-producto",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarTiposProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 446,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -319,8 +693,19 @@
       "method": "GET",
       "path": "/api/v1/tipos-producto/{tipoProductoId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 276,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -328,8 +713,19 @@
       "method": "GET",
       "path": "/api/v1/tipos-producto/{tipoProductoId}/caracteristicas",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerEsquemaTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 990,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -337,8 +733,19 @@
       "method": "GET",
       "path": "/api/v1/marcas/{marcaId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerMarcaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/d05cc621-2d16-faa3-f620-19fb3173737c",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 315,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -346,8 +753,19 @@
       "method": "GET",
       "path": "/api/v1/taxonomia/operaciones/{operationId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerOperacionMaestra",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/taxonomia/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "OPERACION_MAESTRA_NO_ENCONTRADA",
+        "elapsedMs": 284,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -355,8 +773,19 @@
       "method": "GET",
       "path": "/api/v1/categorias/{categoriaId}/seo",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 295,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -364,8 +793,19 @@
       "method": "GET",
       "path": "/api/v1/categorias/{categoriaId}/seo/historial",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarHistorialSlugCategoria",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo/historial",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 353,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -373,8 +813,19 @@
       "method": "GET",
       "path": "/api/v1/precios/skus/{sku}/programaciones",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-AZU-M/programaciones",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "PRECIO_NO_ENCONTRADO",
+        "elapsedMs": 530,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -391,8 +842,19 @@
       "method": "GET",
       "path": "/api/v1/precios/importaciones/{batchId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "obtenerImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 458,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -400,8 +862,19 @@
       "method": "GET",
       "path": "/api/v1/precios/importaciones/{batchId}/reporte",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "descargarReporteImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 391,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "price-audit-svc",
@@ -409,8 +882,19 @@
       "method": "GET",
       "path": "/api/v1/auditoria-precios",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "price-audit-svc",
+        "operationId": "listarAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 1162,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "price-audit-svc",
@@ -418,8 +902,19 @@
       "method": "GET",
       "path": "/api/v1/auditoria-precios/{auditId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "price-audit-svc",
+        "operationId": "obtenerAuditoriaPrecio",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 431,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "price-audit-svc",
@@ -427,8 +922,19 @@
       "method": "GET",
       "path": "/api/v1/auditoria-precios/exportaciones/{exportId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "price-audit-svc",
+        "operationId": "obtenerExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 405,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "price-audit-svc",
@@ -436,8 +942,19 @@
       "method": "GET",
       "path": "/api/v1/auditoria-precios/exportaciones/{exportId}/archivo",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "price-audit-svc",
+        "operationId": "descargarExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 414,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "bulk-svc",
@@ -445,8 +962,19 @@
       "method": "GET",
       "path": "/api/v1/carga-masiva/productos/plantilla",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "bulk-svc",
+        "operationId": "descargarPlantillaProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/plantilla?formato=CSV",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 28212,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "bulk-svc",
@@ -454,8 +982,19 @@
       "method": "GET",
       "path": "/api/v1/carga-masiva/productos/importaciones/{batchId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "bulk-svc",
+        "operationId": "obtenerImportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 886,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "bulk-svc",
@@ -463,8 +1002,19 @@
       "method": "GET",
       "path": "/api/v1/carga-masiva/productos/importaciones/{batchId}/reporte",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "bulk-svc",
+        "operationId": "descargarReporteImportacionGeneral",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 652,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "bulk-svc",
@@ -472,8 +1022,19 @@
       "method": "GET",
       "path": "/api/v1/carga-masiva/productos/exportaciones/{exportId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "bulk-svc",
+        "operationId": "obtenerExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 721,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "bulk-svc",
@@ -481,8 +1042,19 @@
       "method": "GET",
       "path": "/api/v1/carga-masiva/productos/exportaciones/{exportId}/archivo",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "bulk-svc",
+        "operationId": "descargarExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 748,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -490,8 +1062,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/umbrales",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "obtenerUmbralesInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/umbrales",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 794,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -499,8 +1082,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/dashboard",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "obtenerDashboardInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/dashboard",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 378,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -508,8 +1102,19 @@
       "method": "GET",
       "path": "/api/v1/categorias/administracion",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 435,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "taxonomy-svc",
@@ -517,8 +1122,19 @@
       "method": "GET",
       "path": "/api/v1/marcas/administracion",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 452,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "promotions-svc",
@@ -526,8 +1142,19 @@
       "method": "GET",
       "path": "/api/v1/promociones/administracion",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "promotions-svc",
+        "operationId": "listarPromocionesAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1293,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -535,8 +1162,19 @@
       "method": "GET",
       "path": "/api/v1/precios/productos/{productoId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioBaseProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 472,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "pricing-svc",
@@ -544,8 +1182,19 @@
       "method": "GET",
       "path": "/api/v1/precios/productos/{productoId}/programaciones",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_503_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/programaciones",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 603,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -553,8 +1202,18 @@
       "method": "GET",
       "path": "/api/v1/inventario/traslados",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "REQUEST_FAILED",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "listarTrasladosInventario",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados",
+        "httpStatus": null,
+        "error": "TypeError",
+        "errorCode": null,
+        "elapsedMs": 10591,
+        "result": "REQUEST_FAILED"
+      }
     },
     {
       "service": "inventory-svc",
@@ -562,8 +1221,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/traslados/{trasladoId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "obtenerTrasladoInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "TRASLADO_NO_ENCONTRADO",
+        "elapsedMs": 298,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "catalog-svc",
@@ -571,8 +1241,19 @@
       "method": "POST",
       "path": "/api/v1/productos/codigos-barras/resolver",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_404_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "catalog-svc",
+        "operationId": "resolverCodigoBarras",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/codigos-barras/resolver",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CODIGO_BARRAS_NO_ENCONTRADO",
+        "elapsedMs": 707,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -580,8 +1261,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/disponibilidad/comercial",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidadComercial",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial?skus=ADI-ENT22-AZU-M&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 311,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -589,8 +1281,19 @@
       "method": "GET",
       "path": "/api/v1/inventario/operaciones/{operationId}",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+      "functionalHttpsAzure": "OBSERVED_HTTP_500_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests.",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "consultarOperacionInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 500,
+        "error": null,
+        "errorCode": "ERROR_INTERNO",
+        "elapsedMs": 132,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     },
     {
       "service": "inventory-svc",
@@ -598,8 +1301,20 @@
       "method": "POST",
       "path": "/api/v1/inventario/disponibilidad/comercial/verificar",
       "phase1Selected": true,
-      "functionalHttpsAzure": "NOT_RUN",
-      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+      "functionalHttpsAzure": "OBSERVED_HTTP_200_NOT_FULL_FUNCTIONAL_CERTIFICATION",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending",
+      "lastHttpsObservation": {
+        "service": "inventory-svc",
+        "operationId": "verificarCantidadComercial",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial/verificar",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 290,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
     }
-  ]
+  ],
+  "deployedApplicationSha": "3f685dbcb616daad3414039059396823a0a0a9a2"
 }

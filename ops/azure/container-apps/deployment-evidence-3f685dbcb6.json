@@ -1,0 +1,1892 @@
+{
+  "checkedAt": "2026-11-06T21:04:16.234Z",
+  "applicationSha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+  "deploymentName": "g6-aca-standard-3f685dbcb6",
+  "deploymentState": "Succeeded",
+  "functionalCertification": "PARTIAL",
+  "baseUrl": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+  "vm": {
+    "state": "PowerState/deallocated",
+    "resource": "rg-g6-productos-azure/vm-g6-backend",
+    "authorization": "User explicitly requested deallocation after confirming Catalog/Taxonomy parity; this supersedes the earlier instruction to keep the VM running."
+  },
+  "coreAfterVmDeallocation": {
+    "checkedAt": "2026-11-06T21:01:32.259Z",
+    "vmStateConfirmedBeforeProbe": "PowerState/deallocated",
+    "vmResource": "rg-g6-productos-azure/vm-g6-backend",
+    "allFive200": true,
+    "results": [
+      {
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias",
+        "status": 200,
+        "attempts": [
+          {
+            "status": 200,
+            "elapsedMs": 754
+          }
+        ]
+      },
+      {
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas",
+        "status": 200,
+        "attempts": [
+          {
+            "status": 200,
+            "elapsedMs": 348
+          }
+        ]
+      },
+      {
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos?canal=MARKETPLACE",
+        "status": 200,
+        "attempts": [
+          {
+            "status": 200,
+            "elapsedMs": 888
+          }
+        ]
+      },
+      {
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE",
+        "status": 200,
+        "attempts": [
+          {
+            "status": 200,
+            "elapsedMs": 599
+          }
+        ]
+      },
+      {
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE",
+        "status": 200,
+        "attempts": [
+          {
+            "status": 200,
+            "elapsedMs": 576
+          }
+        ]
+      }
+    ]
+  },
+  "vmAcaComparison": [
+    {
+      "path": "/api/v1/categorias",
+      "both200": true,
+      "sameJson": true,
+      "vmAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 546
+        }
+      ],
+      "acaAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 29347
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/marcas",
+      "both200": true,
+      "sameJson": true,
+      "vmAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 2963
+        }
+      ],
+      "acaAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 2961
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/productos?canal=MARKETPLACE",
+      "both200": true,
+      "sameJson": true,
+      "vmAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 763
+        }
+      ],
+      "acaAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 27952
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE",
+      "both200": true,
+      "sameJson": true,
+      "vmAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 1296
+        }
+      ],
+      "acaAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 990
+        }
+      ]
+    },
+    {
+      "path": "/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE",
+      "both200": true,
+      "sameJson": true,
+      "vmAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 904
+        }
+      ],
+      "acaAttempts": [
+        {
+          "status": 200,
+          "elapsedMs": 588
+        }
+      ]
+    }
+  ],
+  "apps": [
+    {
+      "service": "taxonomy-svc",
+      "cpu": [0.25],
+      "fqdn": "taxonomy-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/taxonomy-svc@sha256:57fbcca09f544391650c5769f78055fabee7088f6dcb237e06ca06f0a469d388"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "taxonomy-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "taxonomy-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 4239873,
+        "WorkingSetBytes": 54964224
+      }
+    },
+    {
+      "service": "catalog-svc",
+      "cpu": [0.25],
+      "fqdn": "catalog-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc@sha256:a44533d9885dfb2c05727ba4e4a8b3f841592bac4c5fae0a4e63f3af050f71d5"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "catalog-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "catalog-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 5634070,
+        "WorkingSetBytes": 47570944
+      }
+    },
+    {
+      "service": "api-gateway",
+      "cpu": [0.25, 0.25],
+      "fqdn": "api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/api-gateway@sha256:375044d58ae0356aee753152b3904564ca2c9a131598494498fc9fd8342ace8f",
+        "caddy:2.11.6-alpine@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi", "0.5Gi"],
+      "minReplicas": 0,
+      "name": "api-gateway",
+      "provisioning": "Succeeded",
+      "public": true,
+      "revision": "api-gateway--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 16026620,
+        "WorkingSetBytes": 52248576
+      }
+    },
+    {
+      "service": "promotions-svc",
+      "cpu": [0.25],
+      "fqdn": "promotions-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/promotions-svc@sha256:ebbf14f11d18287c205fd20585aba36cdfff775fda3f1a1e58b5a537e6ed1fdf"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "promotions-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "promotions-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 7897424,
+        "WorkingSetBytes": 54407168
+      }
+    },
+    {
+      "service": "price-audit-svc",
+      "cpu": [0.25],
+      "fqdn": "price-audit-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/price-audit-svc@sha256:195118677f8008a3a376db085fa00d133e6da5a1dd5bd2e349ecacbac8e85a8e"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "price-audit-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "price-audit-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 7327823,
+        "WorkingSetBytes": 56193024
+      }
+    },
+    {
+      "service": "pricing-svc",
+      "cpu": [0.25],
+      "fqdn": "pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/pricing-svc@sha256:e424f9ab50ddaf3fd4db18ac9ec085ec9310e916c20602e32adcf736e90b629b"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "pricing-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "pricing-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 5970673,
+        "WorkingSetBytes": 49868800
+      }
+    },
+    {
+      "service": "bulk-svc",
+      "cpu": [0.25],
+      "fqdn": "bulk-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/bulk-svc@sha256:7f4fd41a1f394c0983877e67f015f7222d5fd101f4466aab4e8b13663b0d8091"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "bulk-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "bulk-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 4694065,
+        "WorkingSetBytes": 47669248
+      }
+    },
+    {
+      "service": "combos-svc",
+      "cpu": [0.25],
+      "fqdn": "combos-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/combos-svc@sha256:0d115c4d3803d674371d3289934261ec520a0a324fc044b3e4b6a03e93544b24"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "combos-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "combos-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 2777968,
+        "WorkingSetBytes": 49299456
+      }
+    },
+    {
+      "service": "inventory-svc",
+      "cpu": [0.25],
+      "fqdn": "inventory-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io",
+      "images": [
+        "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc@sha256:b3f77b5ca039552552e93df04d2cb6e6bdd1d48abcb28fdebb9eea42dc6b80be"
+      ],
+      "maxReplicas": 1,
+      "memory": ["0.5Gi"],
+      "minReplicas": 0,
+      "name": "inventory-svc",
+      "provisioning": "Succeeded",
+      "public": false,
+      "revision": "inventory-svc--r-3f685dbcb6",
+      "running": "Running",
+      "observedPeaks": {
+        "UsageNanoCores": 6372906,
+        "WorkingSetBytes": 47632384
+      }
+    }
+  ],
+  "httpInitial": {
+    "counts": {
+      "200": 35,
+      "404": 21,
+      "422": 1,
+      "500": 1,
+      "503": 7
+    },
+    "observations": [
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerContextoSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/skus/ADI-ENT22-BASE/contexto",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 889,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "listarProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 708,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 636,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategorias",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 417,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 255,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "consultarPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios?skus=ADI-ENT22-BASE&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 252,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-BASE?canal=MARKETPLACE",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "PRECIO_NO_ENCONTRADO",
+        "elapsedMs": 193,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarPromociones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 812,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "evaluarPromociones",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/evaluar",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 280,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "validarCupon",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/validar",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 146,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerRecomendaciones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones?productoId=32a4172c-81b2-b643-1d0f-ae66f627f2ef&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 447,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "obtenerCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "COMBO_NO_ENCONTRADO",
+        "elapsedMs": 725,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidad",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad?skus=ADI-ENT22-BASE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 220,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "consultarDatosFisicos",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/datos-fisicos/consulta",
+        "httpStatus": 422,
+        "error": null,
+        "errorCode": "SKU_INVALIDO",
+        "elapsedMs": 284,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugCategoriaCreacion",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/categorias/slug/resolver",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 193,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/ent22-inka-athletics",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 168,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugAnterior",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/resoluciones/g6-azure-slug-anterior-inexistente",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 148,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerProductoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 688,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerPreparacionProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/preparacion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 447,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "listarVariantesProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 582,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerVariante",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "VARIANTE_NO_ENCONTRADA",
+        "elapsedMs": 293,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "listarCombosAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 421,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "consultarDisponibilidadCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/00000000-0000-4000-8000-000000000000/disponibilidad",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "COMBO_NO_ENCONTRADO",
+        "elapsedMs": 329,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarCupones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 452,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerCuponAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CUPON_NO_ENCONTRADO",
+        "elapsedMs": 388,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerPromocionAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "PROMOCION_NO_ENCONTRADA",
+        "elapsedMs": 352,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarReglasRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 462,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerReglaRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "REGLA_RECOMENDACION_NO_ENCONTRADA",
+        "elapsedMs": 488,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerArbolCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/arbol",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 204,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 143,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCaracteristicas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 298,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CARACTERISTICA_NO_ENCONTRADA",
+        "elapsedMs": 127,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarValoresCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/00000000-0000-4000-8000-000000000000/valores",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CARACTERISTICA_NO_ENCONTRADA",
+        "elapsedMs": 159,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarTiposProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 371,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 126,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerEsquemaTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 206,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerMarcaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/d05cc621-2d16-faa3-f620-19fb3173737c",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 138,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerOperacionMaestra",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/taxonomia/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "OPERACION_MAESTRA_NO_ENCONTRADA",
+        "elapsedMs": 141,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 146,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarHistorialSlugCategoria",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo/historial",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 212,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-BASE/programaciones",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "PRECIO_NO_ENCONTRADO",
+        "elapsedMs": 297,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 238,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "descargarReporteImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 255,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "listarAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 812,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "obtenerAuditoriaPrecio",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 304,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "obtenerExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 259,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "descargarExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 262,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarPlantillaProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/plantilla?formato=CSV",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 135,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "obtenerImportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 475,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarReporteImportacionGeneral",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 188,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "obtenerExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 140,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 467,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerUmbralesInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/umbrales",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 528,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerDashboardInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/dashboard",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 219,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 341,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 200,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarPromocionesAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 643,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioBaseProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 310,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/programaciones",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 373,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "listarTrasladosInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 220,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerTrasladoInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "TRASLADO_NO_ENCONTRADO",
+        "elapsedMs": 138,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "resolverCodigoBarras",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/codigos-barras/resolver",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CODIGO_BARRAS_NO_ENCONTRADO",
+        "elapsedMs": 497,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidadComercial",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial?skus=ADI-ENT22-BASE&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 301,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarOperacionInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 500,
+        "error": null,
+        "errorCode": "ERROR_INTERNO",
+        "elapsedMs": 184,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "verificarCantidadComercial",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial/verificar",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 291,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
+    ]
+  },
+  "httpWithExistingFixtures": {
+    "counts": {
+      "200": 38,
+      "400": 1,
+      "404": 13,
+      "500": 1,
+      "503": 11,
+      "REQUEST_FAILED": 1
+    },
+    "observations": [
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerContextoSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/skus/ADI-ENT22-AZU-M/contexto",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30980,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "listarProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 4580,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 5828,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategorias",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 28823,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 834,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "consultarPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios?skus=ADI-ENT22-AZU-M&canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30859,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-AZU-M?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 9655,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarPromociones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30243,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "evaluarPromociones",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/evaluar",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 6893,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "validarCupon",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/validar",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 1561,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerRecomendaciones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones?productoId=32a4172c-81b2-b643-1d0f-ae66f627f2ef&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 534,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "obtenerCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/447daba6-1bd8-5c0c-bd70-ff4fec7de249",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 30257,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidad",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad?skus=ADI-ENT22-AZU-M",
+        "httpStatus": 400,
+        "error": null,
+        "errorCode": "VALIDACION",
+        "elapsedMs": 459,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "consultarDatosFisicos",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/datos-fisicos/consulta",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 884,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugCategoriaCreacion",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/categorias/slug/resolver",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 513,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/ent22-inka-athletics",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 308,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "resolverSlugAnterior",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/seo/resoluciones/g6-azure-slug-anterior-inexistente",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "SLUG_NO_ENCONTRADO",
+        "elapsedMs": 336,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerProductoPorSlug",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 962,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerPreparacionProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/preparacion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 921,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "listarVariantesProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1019,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "obtenerVariante",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/variantes/35133a17-114a-381e-090a-87446d5fc701",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 617,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "listarCombosAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1542,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "combos-svc",
+        "operationId": "consultarDisponibilidadCombo",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/combos/447daba6-1bd8-5c0c-bd70-ff4fec7de249/disponibilidad",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 632,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarCupones",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 977,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerCuponAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/cupones/6d86380f-5f55-4b9f-9bc4-5e3cf2bfc903",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 607,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerPromocionAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/6d86380f-5f55-4b9f-9bc4-5e3cf2bfc901",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 741,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarReglasRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 732,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "obtenerReglaRecomendacion",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/recomendaciones/reglas/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "REGLA_RECOMENDACION_NO_ENCONTRADA",
+        "elapsedMs": 518,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerArbolCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/arbol",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 301,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 310,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCaracteristicas",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 601,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/acee6db1-ba1c-f020-caf8-f439b09556ff",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 283,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarValoresCaracteristica",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/caracteristicas/acee6db1-ba1c-f020-caf8-f439b09556ff/valores",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 332,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarTiposProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 446,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 276,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerEsquemaTipoProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/tipos-producto/b023a151-d69f-ff9a-483a-678eefe6842e/caracteristicas",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 990,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerMarcaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/d05cc621-2d16-faa3-f620-19fb3173737c",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 315,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerOperacionMaestra",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/taxonomia/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "OPERACION_MAESTRA_NO_ENCONTRADA",
+        "elapsedMs": 284,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "obtenerSeoCategoriaAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 295,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarHistorialSlugCategoria",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/69bda117-9700-d41d-9ccf-f207717068e0/seo/historial",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 353,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioSku",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/skus/ADI-ENT22-AZU-M/programaciones",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "PRECIO_NO_ENCONTRADO",
+        "elapsedMs": 530,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 458,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "descargarReporteImportacionPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 391,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "listarAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios?canal=MARKETPLACE",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 1162,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "obtenerAuditoriaPrecio",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 431,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "obtenerExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 405,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "price-audit-svc",
+        "operationId": "descargarExportacionAuditoriaPrecios",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/auditoria-precios/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 414,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarPlantillaProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/plantilla?formato=CSV",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 28212,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "obtenerImportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 886,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarReporteImportacionGeneral",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/importaciones/00000000-0000-4000-8000-000000000000/reporte",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "LOTE_NO_ENCONTRADO",
+        "elapsedMs": 652,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "obtenerExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 721,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "bulk-svc",
+        "operationId": "descargarExportacionGeneralProductos",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/carga-masiva/productos/exportaciones/00000000-0000-4000-8000-000000000000/archivo",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 748,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerUmbralesInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/umbrales",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 794,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerDashboardInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/dashboard",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 378,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarCategoriasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/categorias/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 435,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "taxonomy-svc",
+        "operationId": "listarMarcasAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/marcas/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 452,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "promotions-svc",
+        "operationId": "listarPromocionesAdmin",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/promociones/administracion",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 1293,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "obtenerPrecioBaseProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 472,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "pricing-svc",
+        "operationId": "listarProgramacionesPrecioProducto",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef/programaciones",
+        "httpStatus": 503,
+        "error": null,
+        "errorCode": "SERVICIO_NO_DISPONIBLE",
+        "elapsedMs": 603,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "listarTrasladosInventario",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados",
+        "httpStatus": null,
+        "error": "TypeError",
+        "errorCode": null,
+        "elapsedMs": 10591,
+        "result": "REQUEST_FAILED"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "obtenerTrasladoInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/traslados/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "TRASLADO_NO_ENCONTRADO",
+        "elapsedMs": 298,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "catalog-svc",
+        "operationId": "resolverCodigoBarras",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/productos/codigos-barras/resolver",
+        "httpStatus": 404,
+        "error": null,
+        "errorCode": "CODIGO_BARRAS_NO_ENCONTRADO",
+        "elapsedMs": 707,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarDisponibilidadComercial",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial?skus=ADI-ENT22-AZU-M&canal=MARKETPLACE",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 311,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "consultarOperacionInventario",
+        "method": "GET",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/operaciones/00000000-0000-4000-8000-000000000000",
+        "httpStatus": 500,
+        "error": null,
+        "errorCode": "ERROR_INTERNO",
+        "elapsedMs": 132,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      },
+      {
+        "service": "inventory-svc",
+        "operationId": "verificarCantidadComercial",
+        "method": "POST",
+        "url": "https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/inventario/disponibilidad/comercial/verificar",
+        "httpStatus": 200,
+        "error": null,
+        "errorCode": null,
+        "elapsedMs": 290,
+        "result": "HTTP_RESPONSE_OBSERVED_NOT_FULL_FUNCTIONAL_CERTIFICATION"
+      }
+    ]
+  },
+  "storage": {
+    "metadata": {
+      "checkedAt": "2026-11-06T21:00:43.635Z",
+      "status": "PRIVATE_BUCKET_READ_ACCESS_VERIFIED",
+      "metadataHttpStatus": 200,
+      "privateBucketVerified": true,
+      "credentialsLoadedOnlyIntoBulkRuntime": true,
+      "objectsCreated": false,
+      "objectsDeleted": false,
+      "uploadDownloadRoundTrip": "NOT_RUN",
+      "secretValuesPrinted": false
+    },
+    "roundTrip": {
+      "checkedAt": "2026-11-06T20:21:14.911Z",
+      "metadataPrivateBucketPreviouslyVerified": true,
+      "uploaded": true,
+      "downloadMatches": true,
+      "cleanupVerified": true,
+      "businessJobsCreated": false,
+      "secretValuesPrinted": false,
+      "uploadStatus": 200,
+      "downloadStatus": 200,
+      "deleteStatus": 200,
+      "absenceStatus": 400,
+      "status": "PRIVATE_STORAGE_ROUNDTRIP_PASS"
+    }
+  },
+  "schemaChecks": {
+    "transport": "TLS certificate verified from the respective Azure containers",
+    "transactionMode": "BEGIN READ ONLY / ROLLBACK",
+    "priceAudit": {
+      "sqlState": "42703",
+      "missingColumn": "price_audit.price_audit_log.target_type",
+      "owner": "vera",
+      "migration": "apps/price-audit-svc/migrations/0002_typed_price_change.sql"
+    },
+    "pricing": {
+      "sqlState": "42703",
+      "missingColumn": "pricing.scheduled_prices.product_id",
+      "owner": "vera",
+      "migration": "apps/pricing-svc/migrations/0002_schedule_effective_events.sql"
+    },
+    "bulk": {
+      "sqlState": "42703",
+      "missingColumn": "bulk.export_jobs.claim_token",
+      "owner": "castilla",
+      "migration": "apps/bulk-svc/migrations/0003_export_claim_lease.sql"
+    },
+    "inventory": {
+      "fullOrmColumnProjection": "PASS",
+      "unknownOperationProviderStatus": 404,
+      "unknownOperationProviderCode": "OPERACION_INVENTARIO_NO_ENCONTRADA",
+      "gatewayObservedStatus": 500
+    }
+  },
+  "catalogToTaxonomy": {
+    "from": "catalog-svc",
+    "to": "taxonomy-svc",
+    "https": true,
+    "path": "/api/v1/categorias",
+    "status": 200,
+    "categories": 8
+  },
+  "readiness": {
+    "catalog-svc": 200,
+    "taxonomy-svc": 200,
+    "pricing-svc": 503,
+    "price-audit-svc": 503,
+    "promotions-svc": "NO_HTTP_READINESS_ENDPOINT",
+    "inventory-svc": 200,
+    "combos-svc": 200,
+    "bulk-svc": {
+      "status": 503,
+      "reason": "AMQP_DISABLED"
+    }
+  },
+  "securityObservations": {
+    "anonymousCatalogWrite": 401,
+    "anonymousTaxonomyWrite": 401,
+    "unknownRoute": 404,
+    "missingProduct": 404,
+    "missingSlug": 404,
+    "invalidSuppliedJwt": 503,
+    "note": "Fails closed with no G7 configured; this does not certify real G7 or contract-complete 401/403 behavior."
+  },
+  "notPerformed": [
+    "Shared database migrations or seeds",
+    "Product state changes",
+    "Oracle deployment",
+    "Cloud simulated JWT issuer",
+    "Real rollback rehearsal",
+    "Full functional certification of all 65 operations"
+  ],
+  "gatewayProposal": {
+    "corsWildcardAnd60SecondTimeout": "NOT_APPLIED_AUTO_REVIEW_REJECTED",
+    "liveTimeoutMs": 30000,
+    "liveCaddyResponseTimeoutSeconds": 45,
+    "liveCorsHeaders": "Absent in both VM and ACA comparison"
+  }
+}

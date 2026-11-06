@@ -1,6 +1,6 @@
 # Migración Azure Container Apps — corte 2026-11-06
 
-Estado al retomar: nueve imágenes oficiales publicadas y verificadas; entorno ACA en aprovisionamiento. Las pruebas HTTPS siguen pendientes.
+Estado actual: nueve servicios desplegados; cinco lecturas Catalog/Taxonomy equivalentes a la VM y verificadas después de desasignarla. Certificación global parcial. Véase [informe del despliegue](DESPLIEGUE_ACA_2026-11-06.md).
 Rama de trabajo `cueva`, fuente oficial incorporada mediante merge normal
 `4f0acd5156b775a06d2b9502b86e1c176d957aec`, desde integración oficial
 `bff05f8f856031807786cf10a501c5a45af07928`.
@@ -118,7 +118,8 @@ polling y almacenamiento antes de prometer suspensión automática de todos.
 - Rollback por revisión anterior y digests oficiales; detener cambio de tráfico si falla
   readiness. No describir ensayos simulados como recuperación real de Azure.
 - Validar nueva URL HTTPS de ACA antes de comunicarla o retirar la VM. El apagado de VM
-  para 06/11 a las 13:00 Lima fue revocado; requiere confirmación de migración completa.
+  para 06/11 a las 13:00 Lima fue revocado. Una autorización posterior permitió
+  desasignar la VM tras comprobar las cinco lecturas de Catalog/Taxonomy.
 
 Fuentes de plataforma: [comunicación interna](https://learn.microsoft.com/en-us/azure/container-apps/connect-apps),
 [escalado](https://learn.microsoft.com/en-us/azure/container-apps/scale-app),
@@ -171,11 +172,13 @@ Después del render, ejecutar validate y what-if con ResourceIdOnly, revisar que
 solo afecten al grupo rg-g6-aca-chile y desplegar en modo Incremental. No imprimir
 los parámetros privados ni el contenido de los secretos. Las probes de transporte
 no certifican readiness de negocio: comprobar cada dependencia por separado.
-RabbitMQ y Bulk Storage siguen diferidos. Price Audit no habilita un exportador
+RabbitMQ sigue diferido. Storage privado de Bulk ya está configurado y verificado.
+Price Audit no habilita un exportador
 sin almacenamiento persistente. No presentar sus descargas como disponibles.
 
-La VM anterior permanece encendida por instrucción del usuario: el apagado de
-06/11 a las 13:00 fue revocado. Apagarla únicamente tras confirmarse la migración.
+La programación de las 13:00 fue revocada. Posteriormente, el usuario autorizó
+desasignar la VM tras comprobar Catalog/Taxonomy: apagado ejecutado y estado
+PowerState/deallocated confirmado. Las cinco lecturas de ACA se revalidaron después.
 
 Fuentes: [limitaciones Express](https://learn.microsoft.com/en-us/azure/container-apps/express-overview),
 [modo del entorno](https://learn.microsoft.com/en-us/azure/templates/microsoft.app/2026-07-01/managedenvironments),
