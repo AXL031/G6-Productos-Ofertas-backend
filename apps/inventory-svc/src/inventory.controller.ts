@@ -328,7 +328,6 @@ export class InventoryController {
     KNOWN_CLIENTS.MARKETPLACE,
     KNOWN_CLIENTS.CHATBOT,
     KNOWN_CLIENTS.RETAIL,
-    KNOWN_CLIENTS.PRODUCTOS,
   ])
   async verificarCantidadComercial(
     @Body() dto: VerificarCantidadComercialRequest,

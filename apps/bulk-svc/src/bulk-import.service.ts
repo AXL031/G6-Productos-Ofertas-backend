@@ -1,4 +1,4 @@
-import { Inject, Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
@@ -6,7 +6,10 @@ import {
   type CatalogBulkCommand,
   type CatalogBulkRow,
 } from './messaging/catalog-bulk-upsert.js';
-import { parseBulkTemplate } from './domain/bulk-template-v2.js';
+import {
+  parseBulkTemplate,
+  type ParsedBulkTemplate,
+} from './domain/bulk-template-v2.js';
 import {
   BulkDomainError,
   mapBulkPersistenceError,
@@ -17,22 +20,13 @@ import {
 } from './domain/bulk.validation.js';
 import { BulkPersistenceError } from './persistence/bulk.persistence.errors.js';
 import {
-  BULK_ENVIRONMENT,
-  type BulkEnvironment,
-} from './config/bulk-environment.js';
-import {
   BulkPersistenceRepository,
   type DomainResultInput,
 } from './persistence/bulk.repository.js';
 
 @Injectable()
 export class BulkImportService {
-  constructor(
-    private readonly repository: BulkPersistenceRepository,
-    @Optional()
-    @Inject(BULK_ENVIRONMENT)
-    private readonly environment?: BulkEnvironment,
-  ) {}
+  constructor(private readonly repository: BulkPersistenceRepository) {}
 
   async receiveImport(input: {
     bytes: Buffer;
@@ -41,6 +35,7 @@ export class BulkImportService {
     correlationId: string;
     contentRef: string;
     batchId?: string;
+    parsed?: ParsedBulkTemplate;
   }) {
     if (input.templateVersion !== 2)
       throw new BulkDomainError(
@@ -48,7 +43,8 @@ export class BulkImportService {
         'template_version debe ser 2.',
       );
     const batchId = input.batchId ?? randomUUID();
-    const parsedFile = parseBulkTemplate(input.bytes, input.format);
+    const parsedFile =
+      input.parsed ?? parseBulkTemplate(input.bytes, input.format);
     const parsed = {
       ...parsedFile,
       rows: parsedFile.rows.map((row) => {
@@ -58,9 +54,7 @@ export class BulkImportService {
         return { ...row, rowId, rowOperationId: rowId };
       }),
     };
-    await this.assertImportDependencies(parsed, batchId);
     const commandV2 =
-      (this.environment?.catalogCommandV2Enabled ?? false) &&
       parsed.mode === 'ACTUALIZACION' &&
       parsed.rows.some((row) => row.variant !== null);
     const rows: NormalizedBulkRow[] = parsed.rows.map((row) => ({
@@ -91,19 +85,10 @@ export class BulkImportService {
   }
 
   async getSnapshot(batchId: string) {
-    const batch = await this.repository.findBatchByBatchId(batchId);
-    if (!batch)
+    const snapshot = await this.repository.loadBatchSnapshot(batchId);
+    if (!snapshot)
       throw new BulkDomainError('BATCH_NOT_FOUND', 'El lote no existe.');
-    const rows = await this.repository.listBatchRows(batchId);
-    return {
-      batch,
-      rows: await Promise.all(
-        rows.map(async (row) => ({
-          row,
-          steps: await this.repository.listRowSteps(batchId, row.rowId),
-        })),
-      ),
-    };
+    return snapshot;
   }
 
   async createImport(input: {
@@ -237,33 +222,24 @@ export class BulkImportService {
         error instanceof BulkPersistenceError &&
         error.code === 'CHECK_VIOLATION'
       ) {
-        throw new BulkDomainError('INVALID_TRANSITION', error.message, {
-          cause: error,
-        });
+        throw new BulkDomainError(
+          'DEPENDENCY_PENDING',
+          'El estado durable del lote no permite reanudación; consulte el snapshot antes de solicitar una nueva operación.',
+          { cause: error },
+        );
+      }
+      if (
+        error instanceof BulkPersistenceError &&
+        error.code === 'NOT_CONFIGURED'
+      ) {
+        throw new BulkDomainError(
+          'DEPENDENCY_PENDING',
+          'BLOQUEADO_ESPECÍFICO: no existe un protocolo homologado que emita un nuevo intento para las filas fallidas; el estado durable se conserva.',
+          { cause: error },
+        );
       }
       throw mapBulkPersistenceError(error);
     }
-  }
-
-  async assertImportDependencies(
-    parsed: ReturnType<typeof parseBulkTemplate>,
-    batchId?: string,
-  ): Promise<void> {
-    if (
-      (this.environment?.catalogCommandV2Enabled ?? false) ||
-      parsed.mode !== 'ACTUALIZACION' ||
-      !parsed.rows.some((row) => row.variant !== null)
-    ) {
-      return;
-    }
-    if (batchId) {
-      try {
-        if (await this.repository.findImportAdmissionIntent(batchId)) return;
-      } catch (error) {
-        throw mapBulkPersistenceError(error);
-      }
-    }
-    assertImportDependencies(parsed, false);
   }
 
   async resumeBatch(batchId: string) {
@@ -288,21 +264,5 @@ export class BulkImportService {
       }
       throw mapBulkPersistenceError(error);
     }
-  }
-}
-
-export function assertImportDependencies(
-  parsed: ReturnType<typeof parseBulkTemplate>,
-  catalogCommandV2Enabled = false,
-): void {
-  if (
-    !catalogCommandV2Enabled &&
-    parsed.mode === 'ACTUALIZACION' &&
-    parsed.rows.some((row) => row.variant !== null)
-  ) {
-    throw new BulkDomainError(
-      'DEPENDENCY_PENDING',
-      'BLOQUEADO_ESPECÍFICO: ACTUALIZACION de variantes requiere BULK_CATALOG_COMMAND_V2_ENABLED=true para emitir sku_variante al consumidor compatible de Catalog.',
-    );
   }
 }

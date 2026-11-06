@@ -190,6 +190,13 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
     });
     it.each([
       { producer: 'otro-servicio' },
+      { occurred_at: '2026-02-30T00:00:00Z' },
+      {
+        data: {
+          ...envelope('invalid').data,
+          valid_from: '2026-02-30T00:00:00Z',
+        },
+      },
       { data: { fixture_sku: 'legacy-generic-data' } },
     ])(
       'retiene envelope incompatible o GenericData antiguo sin ACK: %j',

@@ -1403,7 +1403,9 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
   });
 
   describe('Consumer real — ACK durable, deduplicación y recuperación (#102/#103)', () => {
-    function initializationCommand(defaultLocation = locationId) {
+    function initializationCommand(
+      defaultLocation: string | null = locationId,
+    ) {
       return {
         message_id: randomUUID(),
         operation_id: randomUUID(),
@@ -1457,6 +1459,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       const first = initializationCommand();
       const replay = { ...first, message_id: randomUUID() };
       const rejected = initializationCommand(randomUUID());
+      const withoutLocation = initializationCommand(null);
       try {
         expect(
           (await brokerChannel.checkQueue('po.inventario.q')).messageCount,
@@ -1468,6 +1471,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           first,
           replay,
           rejected,
+          withoutLocation,
         ].entries()) {
           await publishCommand(
             writer,
@@ -1479,8 +1483,8 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           }, 5000);
         }
         expect(consumer.getMetrics()).toMatchObject({
-          received: 4,
-          acknowledged: 4,
+          received: 5,
+          acknowledged: 5,
           duplicates: 1,
           rejected: 1,
           failures: 0,
@@ -1491,9 +1495,16 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           status: string;
         }>(
           `SELECT message_id,status FROM inventory.inbox WHERE message_id=ANY($1::uuid[])`,
-          [[first.message_id, replay.message_id, rejected.message_id]],
+          [
+            [
+              first.message_id,
+              replay.message_id,
+              rejected.message_id,
+              withoutLocation.message_id,
+            ],
+          ],
         );
-        expect(inbox.rows).toHaveLength(3);
+        expect(inbox.rows).toHaveLength(4);
         expect(inbox.rows.every((row) => row.status === 'PROCESSED')).toBe(
           true,
         );
@@ -1503,9 +1514,15 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           result_code: string | null;
         }>(
           `SELECT operation_id,status,result_code FROM inventory.inventory_operations WHERE operation_id=ANY($1::uuid[])`,
-          [[first.operation_id, rejected.operation_id]],
+          [
+            [
+              first.operation_id,
+              rejected.operation_id,
+              withoutLocation.operation_id,
+            ],
+          ],
         );
-        expect(operations.rows).toHaveLength(2);
+        expect(operations.rows).toHaveLength(3);
         expect(operations.rows).toContainEqual({
           operation_id: first.operation_id,
           status: 'APLICADO',
@@ -1516,12 +1533,20 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           status: 'RECHAZADO',
           result_code: 'UBICACION_NO_ENCONTRADA',
         });
+        expect(operations.rows).toContainEqual({
+          operation_id: withoutLocation.operation_id,
+          status: 'APLICADO',
+          result_code: null,
+        });
         expect(
           await stockRepo.findBySkus([first.data.sku], locationId),
         ).toMatchObject([
           { on_hand: 0, reserved: 0, blocked: 0, stock_version: 0 },
         ]);
         expect(await stockRepo.findBySkus([rejected.data.sku])).toHaveLength(0);
+        expect(
+          await stockRepo.findBySkus([withoutLocation.data.sku]),
+        ).toHaveLength(0);
         const events = await database.query<{
           event_type: string;
           count: string;
@@ -1538,6 +1563,38 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           event_type: 'inventory.sku.initialization.completed',
           count: '2',
         });
+
+        // Catalog valida delivery.properties.userId contra su producerUsers.
+        // El publisher real debe propagar el usuario AMQP autenticado de la
+        // conexión (extraído de RABBITMQ_URL), no un valor del payload.
+        for (;;) {
+          const dispatched = await new OutboxPublisherService(
+            database,
+            outboxRepo,
+          ).dispatchPending(10);
+          if (dispatched.dispatched === 0) break;
+        }
+        const initializationUserIds = new Map<string, string | undefined>();
+        for (;;) {
+          const message = await brokerChannel.get(queue);
+          if (!message) break;
+          const payload = JSON.parse(message.content.toString('utf8')) as {
+            name?: string;
+          };
+          if (
+            payload.name === 'inventory.sku.initialization.completed' ||
+            payload.name === 'inventory.sku.initialization.rejected'
+          ) {
+            initializationUserIds.set(payload.name, message.properties.userId);
+          }
+          brokerChannel.ack(message);
+        }
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.completed'),
+        ).toBe('inventory_test');
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.rejected'),
+        ).toBe('inventory_test');
       } finally {
         await consumer.onModuleDestroy();
         await writer.close();
