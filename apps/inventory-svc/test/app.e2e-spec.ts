@@ -635,6 +635,129 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
     );
   });
 
+  describe('Disponibilidad de persistencia y clasificación 503 vs 500 ante fallo DB (H4 / PR #201)', () => {
+    const marketplaceToken = createCryptographicJwt({
+      clientId: 'modulo-marketplace',
+      scope: 'inventario:disponibilidad:leer',
+    });
+
+    beforeEach(() => {
+      mockDb.commercialRoutes.push({
+        id: randomUUID(),
+        channel_id: 'MARKETPLACE',
+        mode: 'ENVIO_DOMICILIO',
+        fulfillment_ref: 'REF-MP',
+        location_id: locLurin,
+        active: true,
+      });
+    });
+
+    it('GET comercial: responde 503 SERVICIO_NO_DISPONIBLE cuando Drizzle envuelve ECONNREFUSED en cause', async () => {
+      const pgError = Object.assign(
+        new Error('connect ECONNREFUSED 127.0.0.1:5432'),
+        { code: 'ECONNREFUSED' },
+      );
+      const drizzleQueryError = new Error(
+        'Failed query: SELECT * FROM stock_balance',
+        { cause: pgError },
+      );
+
+      vi.spyOn(mockDb, 'query').mockRejectedValueOnce(drizzleQueryError);
+
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(503);
+
+      expect(res.headers['content-type']).toContain('application/problem+json');
+      expect(res.body).toEqual({
+        type: '/errores/servicio-no-disponible',
+        title: 'Servicio no disponible',
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+        detail: 'Una dependencia del servicio no está disponible temporalmente',
+        correlationId: undefined,
+      });
+    });
+
+    it('GET comercial: responde 503 SERVICIO_NO_DISPONIBLE cuando PostgreSQL se apaga (57P01 anidado)', async () => {
+      const shutdownError = Object.assign(
+        new Error('terminating connection due to administrator command'),
+        { code: '57P01' },
+      );
+      const drizzleError = new Error('Failed query', { cause: shutdownError });
+
+      vi.spyOn(mockDb, 'query').mockRejectedValueOnce(drizzleError);
+
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(503);
+
+      expect(res.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(res.body.status).toBe(503);
+    });
+
+    it('GET comercial: recupera servicio a 200 tras restablecer conexión con PostgreSQL', async () => {
+      // 1. Simular caída temporal
+      const outage = Object.assign(new Error('connect ECONNREFUSED'), {
+        code: 'ECONNREFUSED',
+      });
+      vi.spyOn(mockDb, 'query').mockRejectedValueOnce(
+        new Error('DB outage', { cause: outage }),
+      );
+
+      await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(503);
+
+      // 2. Siguiente petición con DB operativa -> responde 200 normal
+      const recoveryRes = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(200);
+
+      expect(recoveryRes.body.items).toBeDefined();
+    });
+
+    it('GET comercial: responde 500 ERROR_INTERNO para errores SQL que no son de disponibilidad', async () => {
+      const sqlError = Object.assign(
+        new Error('syntax error at or near "SELECT"'),
+        { code: '42601' },
+      );
+      const drizzleError = new Error('Failed query execution', {
+        cause: sqlError,
+      });
+
+      vi.spyOn(mockDb, 'query').mockRejectedValueOnce(drizzleError);
+
+      const res = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .set('Authorization', `Bearer ${marketplaceToken}`)
+        .expect(500);
+
+      expect(res.body).toEqual({
+        type: '/errores/error-interno',
+        title: 'Error interno del servidor',
+        status: 500,
+        code: 'ERROR_INTERNO',
+        detail: 'Ha ocurrido un error interno en el servicio',
+        correlationId: undefined,
+      });
+    });
+  });
+
   describe('Disponibilidad comercial — identidad interna modulo-productos (H4)', () => {
     const productosToken = createCryptographicJwt({
       clientId: 'modulo-productos',
