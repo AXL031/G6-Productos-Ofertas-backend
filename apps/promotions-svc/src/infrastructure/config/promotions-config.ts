@@ -53,7 +53,8 @@ export class PromotionsConfigurationError extends Error {
 }
 
 export interface PromotionsConfiguration {
-  readonly securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  readonly securityMode:
+    'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   readonly publicOperations: readonly string[];
   readonly environment: 'development' | 'test' | 'production';
   readonly port: number;
@@ -97,29 +98,54 @@ export function validatePromotionsConfiguration(
     ConfigurationVariable | (typeof upstreamVariables)[Upstream]
   >();
   const securityMode = environment.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
-  if (!['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(securityMode))
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
     invalid.add('G6_SECURITY_MODE');
   const publicOperations = (environment.PROMOTIONS_PUBLIC_OPERATION_IDS ?? '')
-    .split(',').map((id) => id.trim()).filter(Boolean);
-  if (publicOperations.some((id) => id !== 'listarPromociones') || (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length))
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => id !== 'listarPromociones') ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
     invalid.add('PROMOTIONS_PUBLIC_OPERATION_IDS');
-  const selectedIssuer = securityMode === 'SIMULATED_AUTH' ? environment.SIMULATED_AUTH_ISSUER : environment.AUTH_ISSUER;
-  const selectedJwks = securityMode === 'SIMULATED_AUTH' ? environment.SIMULATED_AUTH_JWKS_URL : environment.AUTH_JWKS_URL;
-  if (securityMode === 'SIMULATED_AUTH' && (!selectedIssuer || !selectedJwks || selectedIssuer === environment.AUTH_ISSUER)) {
+  const selectedIssuer =
+    securityMode === 'SIMULATED_AUTH'
+      ? environment.SIMULATED_AUTH_ISSUER
+      : environment.AUTH_ISSUER;
+  const selectedJwks =
+    securityMode === 'SIMULATED_AUTH'
+      ? environment.SIMULATED_AUTH_JWKS_URL
+      : environment.AUTH_JWKS_URL;
+  if (
+    securityMode === 'SIMULATED_AUTH' &&
+    (!selectedIssuer ||
+      !selectedJwks ||
+      selectedIssuer === environment.AUTH_ISSUER)
+  ) {
     invalid.add('SIMULATED_AUTH_ISSUER');
     invalid.add('SIMULATED_AUTH_JWKS_URL');
   }
   let auth: PromotionsConfiguration['auth'];
   let serviceCredentials: PromotionsConfiguration['serviceCredentials'];
-  if (
-    selectedIssuer !== undefined ||
-    selectedJwks !== undefined
-  ) {
-    for (const [name, value] of [['AUTH_ISSUER', selectedIssuer], ['AUTH_JWKS_URL', selectedJwks]] as const) {
+  if (selectedIssuer !== undefined || selectedJwks !== undefined) {
+    for (const [name, value] of [
+      ['AUTH_ISSUER', selectedIssuer],
+      ['AUTH_JWKS_URL', selectedJwks],
+    ] as const) {
       try {
         const url = new URL(value ?? '');
         if (
-          (url.protocol !== 'https:' && !(environment.NODE_ENV === 'test' && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) ||
+          (url.protocol !== 'https:' &&
+            !(
+              environment.NODE_ENV === 'test' &&
+              url.protocol === 'http:' &&
+              ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+            )) ||
           url.username ||
           url.password ||
           url.search ||

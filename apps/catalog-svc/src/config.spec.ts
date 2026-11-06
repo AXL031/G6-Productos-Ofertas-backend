@@ -40,7 +40,9 @@ describe('CatalogConfig PG contract', () => {
       CATALOG_TAXONOMY_URL: 'http://taxonomy-svc:3009',
       CATALOG_PRICING_URL: 'http://pricing-svc:3002',
     };
-    expect(() => new CatalogConfig(env)).toThrow('bypasses de lectura heredados');
+    expect(() => new CatalogConfig(env)).toThrow(
+      'bypasses de lectura heredados',
+    );
     expect(
       new CatalogConfig({ ...env, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
         .readDemo.restricted,

@@ -61,18 +61,20 @@ export class PricingReadGuard implements CanActivate {
     )
       throw new PricingHttpError(400, 'VALIDACION');
     const handler = context.getHandler();
-    const operationId = handler?.name === 'batch'
-      ? 'consultarPrecios'
-      : handler?.name === 'sku'
-        ? 'obtenerPrecioSku'
-        : undefined;
+    const operationId =
+      handler?.name === 'batch'
+        ? 'consultarPrecios'
+        : handler?.name === 'sku'
+          ? 'obtenerPrecioSku'
+          : undefined;
     if (
       this.config.securityMode === 'PUBLIC_READ_ONLY' &&
       request.method === 'GET' &&
       request.headers.authorization === undefined &&
       operationId !== undefined &&
       this.config.publicOperations.includes(operationId)
-    ) return true;
+    )
+      return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
       request.headers.authorization ?? '',
     );

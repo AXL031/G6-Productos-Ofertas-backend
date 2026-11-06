@@ -65,7 +65,8 @@ export function verifyUserBearerToken(
     );
   }
 
-  const publicKey = trust?.publicKey ?? InventoryAuthGuard.getTrustedPublicKey();
+  const publicKey =
+    trust?.publicKey ?? InventoryAuthGuard.getTrustedPublicKey();
   if (!publicKey) {
     throw ProblemDetailsException.tokenInvalido(
       'Material de confianza de G7 no disponible para verificación criptográfica',

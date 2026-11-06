@@ -18,7 +18,7 @@ describe('Local demo HTTP with unchanged business boundaries', () => {
     const config = new PromotionsConfigService(
       validatePromotionsConfiguration({
         ...fixture.environment,
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'false',
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
       }),
     );
     const module = await Test.createTestingModule({
@@ -39,9 +39,12 @@ describe('Local demo HTTP with unchanged business boundaries', () => {
   });
 
   it('rejects the legacy token-free flag during startup', () => {
-    expect(() => validatePromotionsConfiguration({
-      ...fixture.environment,
-      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-    })).toThrow('GATEWAY_DEMO_NO_AUTH_ENABLED');
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...fixture.environment,
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }),
+    ).toThrow('GATEWAY_DEMO_NO_AUTH_ENABLED');
   });
 });

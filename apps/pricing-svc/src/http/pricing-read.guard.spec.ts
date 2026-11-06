@@ -20,13 +20,16 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it('rejects legacy demo bypass and requires bearer authentication', async () => {
-    expect(() => validateEnvironment({
-      NODE_ENV: 'production',
-      PRICING_SVC_PORT: '3002',
-      DATABASE_URL: 'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
-      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-      PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
-    })).toThrow('bypasses demo heredados están deshabilitados');
+    expect(() =>
+      validateEnvironment({
+        NODE_ENV: 'production',
+        PRICING_SVC_PORT: '3002',
+        DATABASE_URL:
+          'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
+      }),
+    ).toThrow('bypasses demo heredados están deshabilitados');
     const config = validateEnvironment({
       NODE_ENV: 'production',
       PRICING_SVC_PORT: '3002',

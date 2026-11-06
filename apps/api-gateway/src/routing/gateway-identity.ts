@@ -199,13 +199,106 @@ export class GatewayIdentity {
         !claims.roles.every((role) => typeof role === 'string')
       )
         throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      if (this.settings.securityMode === 'SIMULATED_AUTH') {
+        const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+        if (!audiences.includes('api-productos'))
+          throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      }
       // Arquitectura §1.2.1: the canonical human actor in G6 is Gestor Comercial.
       if (!claims.roles.includes(route.role ?? 'GESTOR_COMERCIAL'))
         throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
     } else throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
-    // Never replace the mandatory Pricing introspection with successful JWT validation.
-    if (route.introspection)
+    if (route.introspection && this.settings.securityMode !== 'SIMULATED_AUTH')
+      await this.introspect(bearer[1]);
+  }
+
+  private async introspect(userToken: string): Promise<void> {
+    const { serviceTokenUrl, serviceClientSecret, issuer } = this.settings;
+    if (!serviceTokenUrl || !serviceClientSecret || !issuer)
       throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
+    try {
+      const tokenResponse = await fetch(serviceTokenUrl, {
+        method: 'POST',
+        redirect: 'error',
+        signal: AbortSignal.timeout(Math.min(this.settings.timeoutMs, 1500)),
+        headers: { 'content-type': 'application/x-www-form-urlencoded' },
+        body: new URLSearchParams({
+          grant_type: 'client_credentials',
+          client_id: 'modulo-productos',
+          client_secret: serviceClientSecret,
+          scope: 'tokens:introspeccion',
+        }),
+      });
+      const tokenBody = await this.jsonResponse(tokenResponse, 65536);
+      if (
+        !object(tokenBody) ||
+        tokenBody.tokenType !== 'Bearer' ||
+        typeof tokenBody.accessToken !== 'string' ||
+        !Number.isSafeInteger(tokenBody.expiresIn) ||
+        (tokenBody.expiresIn as number) <= 0 ||
+        !Array.isArray(tokenBody.scopes) ||
+        !tokenBody.scopes.every((scope) => typeof scope === 'string') ||
+        !tokenBody.scopes.includes('tokens:introspeccion')
+      )
+        throw new Error('Invalid client token response');
+      const serviceClaims = await this.authenticate(tokenBody.accessToken);
+      const serviceAudiences = Array.isArray(serviceClaims.aud)
+        ? serviceClaims.aud
+        : [serviceClaims.aud];
+      const serviceScopes =
+        typeof serviceClaims.scope === 'string'
+          ? serviceClaims.scope.split(/\s+/)
+          : [];
+      if (
+        serviceClaims.tipo !== 'servicio' ||
+        serviceClaims.sub !== 'modulo-productos' ||
+        !serviceAudiences.includes('api-productos') ||
+        !serviceScopes.includes('tokens:introspeccion')
+      )
+        throw new Error('Invalid client token claims');
+
+      const response = await fetch(
+        new URL('/api/v1/auth/introspeccion', new URL(issuer).origin),
+        {
+          method: 'POST',
+          redirect: 'error',
+          signal: AbortSignal.timeout(Math.min(this.settings.timeoutMs, 1500)),
+          headers: {
+            accept: 'application/json',
+            'content-type': 'application/json',
+            authorization: `Bearer ${tokenBody.accessToken}`,
+          },
+          body: JSON.stringify({ token: userToken }),
+        },
+      );
+      if (response.status === 401) {
+        await response.body?.cancel();
+        throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      }
+      const result = await this.jsonResponse(response, 65536);
+      if (!object(result) || typeof result.activo !== 'boolean')
+        throw new Error('Invalid introspection response');
+      if (!result.activo) throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+    } catch (error) {
+      if (error instanceof GatewayFailure) throw error;
+      throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
+    }
+  }
+
+  private async jsonResponse(
+    response: Response,
+    maxBytes: number,
+  ): Promise<unknown> {
+    if (
+      !response.ok ||
+      response.headers.get('content-type')?.split(';')[0]?.trim() !==
+        'application/json'
+    ) {
+      await response.body?.cancel();
+      throw new Error('G7 response unavailable');
+    }
+    const body = await readLimitedResponse(response, maxBytes);
+    return JSON.parse(body.toString('utf8')) as unknown;
   }
 }
 

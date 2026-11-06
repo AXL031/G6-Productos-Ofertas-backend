@@ -3,7 +3,11 @@ import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { InventoryAuthGuard } from './inventory-auth.guard.js';
-import { ALLOW_USER_BEARER_KEY, INVENTORY_SCOPES, KNOWN_CLIENTS } from './auth.constants.js';
+import {
+  ALLOW_USER_BEARER_KEY,
+  INVENTORY_SCOPES,
+  KNOWN_CLIENTS,
+} from './auth.constants.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
   createCryptographicJwt,
@@ -36,7 +40,11 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
 
   function createMockContext(
     authHeader?: string,
-    metadata?: { scope?: string; allowedClients?: string[]; allowUserBearer?: boolean },
+    metadata?: {
+      scope?: string;
+      allowedClients?: string[];
+      allowUserBearer?: boolean;
+    },
   ): ExecutionContext {
     const request = {
       headers: {
@@ -65,9 +73,14 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
   }
 
   async function guardError(context: ExecutionContext) {
-    const error = await guard.canActivate(context).then(() => undefined, (value: unknown) => value as ProblemDetailsException);
+    const error = await guard.canActivate(context).then(
+      () => undefined,
+      (value: unknown) => value as ProblemDetailsException,
+    );
     expect(error).toBeInstanceOf(ProblemDetailsException);
-    return error as ProblemDetailsException & { problem: { status: number; code: string; detail: string } };
+    return error as ProblemDetailsException & {
+      problem: { status: number; code: string; detail: string };
+    };
   }
 
   it('1. Caso obligatorio: firma ausente debe ser rechazada con 401 TOKEN_INVALIDO', async () => {
@@ -202,7 +215,9 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
       const error = await guardError(context);
       expect(error.problem.status).toBe(401);
       expect(error.problem.code).toBe('TOKEN_INVALIDO');
-      expect(error.problem.detail).toMatch(/material de confianza de g7 no disponible/i);
+      expect(error.problem.detail).toMatch(
+        /material de confianza de g7 no disponible/i,
+      );
     } finally {
       if (savedEnv) process.env.G7_JWT_PUBLIC_KEY = savedEnv;
     }
@@ -223,17 +238,29 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
     const simulatedIssuer = 'https://simulated.integration.test/issuer';
     const keyPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const publicJwk = {
-      ...(keyPair.publicKey.export({ format: 'jwk' }) as Record<string, unknown>),
+      ...(keyPair.publicKey.export({ format: 'jwk' }) as Record<
+        string,
+        unknown
+      >),
       kid: 'simulated-inventory-key',
       alg: 'RS256',
       use: 'sig',
     };
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ keys: [publicJwk] }))));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response(JSON.stringify({ keys: [publicJwk] }))),
+    );
     process.env.G6_SECURITY_MODE = 'SIMULATED_AUTH';
     process.env.SIMULATED_AUTH_ISSUER = simulatedIssuer;
-    process.env.SIMULATED_AUTH_JWKS_URL = 'https://simulated.integration.test/jwks';
-    const encode = (value: object) => Buffer.from(JSON.stringify(value)).toString('base64url');
-    const header = encode({ alg: 'RS256', typ: 'JWT', kid: 'simulated-inventory-key' });
+    process.env.SIMULATED_AUTH_JWKS_URL =
+      'https://simulated.integration.test/jwks';
+    const encode = (value: object) =>
+      Buffer.from(JSON.stringify(value)).toString('base64url');
+    const header = encode({
+      alg: 'RS256',
+      typ: 'JWT',
+      kid: 'simulated-inventory-key',
+    });
     const claims = encode({
       iss: simulatedIssuer,
       sub: randomUUID(),
@@ -246,10 +273,14 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
     const signed = createSign('RSA-SHA256');
     signed.update(`${header}.${claims}`);
     const token = `${header}.${claims}.${signed.sign(keyPair.privateKey, 'base64url')}`;
-    const context = createMockContext(`Bearer ${token}`, { allowUserBearer: true });
+    const context = createMockContext(`Bearer ${token}`, {
+      allowUserBearer: true,
+    });
     await expect(guard.canActivate(context)).resolves.toBe(true);
 
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
-    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(ProblemDetailsException);
+    await expect(guard.canActivate(context)).rejects.toBeInstanceOf(
+      ProblemDetailsException,
+    );
   });
 });

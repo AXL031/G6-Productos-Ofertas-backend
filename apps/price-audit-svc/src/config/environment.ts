@@ -33,7 +33,11 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
     );
   }
   const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
-  if (!['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(securityMode))
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
     throw new InvalidAuditConfig('G6_SECURITY_MODE inválido.');
   const rawPort = env.PRICE_AUDIT_SVC_PORT ?? env.PORT;
   const port = Number(rawPort);
@@ -128,9 +132,19 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
   let auth: AuditConfig['auth'];
   {
     try {
-      const issuer = securityMode === 'SIMULATED_AUTH' ? env.SIMULATED_AUTH_ISSUER : env.AUTH_ISSUER;
-      const jwksUrl = securityMode === 'SIMULATED_AUTH' ? env.SIMULATED_AUTH_JWKS_URL : env.AUTH_JWKS_URL;
-      if (securityMode === 'SIMULATED_AUTH' && (!issuer || !jwksUrl || issuer === env.AUTH_ISSUER)) throw new Error();
+      const issuer =
+        securityMode === 'SIMULATED_AUTH'
+          ? env.SIMULATED_AUTH_ISSUER
+          : env.AUTH_ISSUER;
+      const jwksUrl =
+        securityMode === 'SIMULATED_AUTH'
+          ? env.SIMULATED_AUTH_JWKS_URL
+          : env.AUTH_JWKS_URL;
+      if (
+        securityMode === 'SIMULATED_AUTH' &&
+        (!issuer || !jwksUrl || issuer === env.AUTH_ISSUER)
+      )
+        throw new Error();
       for (const value of [issuer, jwksUrl]) {
         if (!value || value !== value.trim()) throw new Error();
         const endpoint = new URL(value);

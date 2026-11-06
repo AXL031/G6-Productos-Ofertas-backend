@@ -87,7 +87,11 @@ export function readCatalogSecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, ...(discoveryUrl ? { discoveryUrl } : {}), jwksUrl });
+  return Object.freeze({
+    issuer,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+    jwksUrl,
+  });
 }
 
 export type CatalogPrincipal =
@@ -233,19 +237,19 @@ export class CatalogTokenVerifier {
 
     try {
       if (this.config.discoveryUrl) {
-      const discoveryResponse = await fetch(this.config.discoveryUrl, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-        headers: { accept: 'application/json' },
-      });
-      const discovery: unknown = await jsonResponse(discoveryResponse);
-      if (
-        !record(discovery) ||
-        discovery.issuer !== this.config.issuer ||
-        typeof discovery.jwks_uri !== 'string' ||
-        new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
-      )
-        throw new CatalogSecurityUnavailable();
+        const discoveryResponse = await fetch(this.config.discoveryUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: { accept: 'application/json' },
+        });
+        const discovery: unknown = await jsonResponse(discoveryResponse);
+        if (
+          !record(discovery) ||
+          discovery.issuer !== this.config.issuer ||
+          typeof discovery.jwks_uri !== 'string' ||
+          new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
+        )
+          throw new CatalogSecurityUnavailable();
       }
 
       const response = await fetch(this.config.jwksUrl, {

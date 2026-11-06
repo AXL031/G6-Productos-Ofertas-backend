@@ -13,10 +13,11 @@ describe('G6 read-only demo Gateway boundary', () => {
     ).toThrow();
   });
   it('rejects the retired read-only flag instead of changing authorization implicitly', async () => {
-    expect(() =>
-      new GatewayIdentity(
-        readGatewaySettings({ G6_READ_ONLY_DEMO_ENABLED: 'true' }),
-      ),
+    expect(
+      () =>
+        new GatewayIdentity(
+          readGatewaySettings({ G6_READ_ONLY_DEMO_ENABLED: 'true' }),
+        ),
     ).toThrow('Invalid Gateway configuration');
   });
   it('keeps the ordinary authentication path when the new flag is disabled', async () => {

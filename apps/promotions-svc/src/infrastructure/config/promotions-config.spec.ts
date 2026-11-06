@@ -145,8 +145,8 @@ describe('Promotions configuration', () => {
       listenHost: '::',
     });
     for (const NODE_ENV of ['development', 'test', 'production'])
-      expect(
-        () => validatePromotionsConfiguration({
+      expect(() =>
+        validatePromotionsConfiguration({
           ...fixture.environment,
           NODE_ENV,
           GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',

@@ -42,7 +42,9 @@ export function readCatalogReadDemo(
   const securityModeRaw = env.G6_SECURITY_MODE;
   if (
     securityModeRaw !== undefined &&
-    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(securityModeRaw)
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityModeRaw,
+    )
   ) {
     throw new Error(
       'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY, SIMULATED_AUTH o G7_AUTHENTICATED.',

@@ -42,8 +42,9 @@ describe('Public-read authorization never selects Catalog demo data', () => {
           CATALOG_PUBLIC_OPERATION_IDS: operation,
         }),
       ).toThrow();
-    expect(readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }))
-      .toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
+    expect(
+      readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
+    ).toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
     expect(
       readCatalogReadDemo({
         G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',

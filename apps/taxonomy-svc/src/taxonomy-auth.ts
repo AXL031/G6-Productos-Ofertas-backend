@@ -74,7 +74,9 @@ export function readTaxonomyDemoConfig(
   readTaxonomyPublicReadConfig(env);
   const flag = env.ALLOW_DEMO_UNAUTHENTICATED;
   if (flag === undefined || flag === 'false') return false;
-  throw new Error('ALLOW_DEMO_UNAUTHENTICATED está deshabilitado; use G6_SECURITY_MODE.');
+  throw new Error(
+    'ALLOW_DEMO_UNAUTHENTICATED está deshabilitado; use G6_SECURITY_MODE.',
+  );
 }
 const SECURITY_AUDIENCE = 'api-productos';
 const UUID_PATTERN =
@@ -142,7 +144,11 @@ export function readTaxonomySecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, ...(discoveryUrl ? { discoveryUrl } : {}), jwksUrl });
+  return Object.freeze({
+    issuer,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+    jwksUrl,
+  });
 }
 
 export type TaxonomyPrincipal =
@@ -273,19 +279,19 @@ export class TaxonomyTokenVerifier {
 
     try {
       if (this.config.discoveryUrl) {
-      const discoveryResponse = await fetch(this.config.discoveryUrl, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-        headers: { accept: 'application/json' },
-      });
-      const discovery: unknown = await jsonResponse(discoveryResponse);
-      if (
-        !record(discovery) ||
-        discovery.issuer !== this.config.issuer ||
-        typeof discovery.jwks_uri !== 'string' ||
-        new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
-      )
-        throw new TaxonomySecurityUnavailable();
+        const discoveryResponse = await fetch(this.config.discoveryUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: { accept: 'application/json' },
+        });
+        const discovery: unknown = await jsonResponse(discoveryResponse);
+        if (
+          !record(discovery) ||
+          discovery.issuer !== this.config.issuer ||
+          typeof discovery.jwks_uri !== 'string' ||
+          new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
+        )
+          throw new TaxonomySecurityUnavailable();
       }
 
       const response = await fetch(this.config.jwksUrl, {

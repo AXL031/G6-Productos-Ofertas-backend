@@ -14,6 +14,8 @@ export interface GatewaySettings {
   readonly readinessPaths?: Readonly<Record<string, string>>;
   readonly issuer?: string;
   readonly jwksUrl?: string;
+  readonly serviceTokenUrl?: string;
+  readonly serviceClientSecret?: string;
   readonly publicOperations: readonly string[];
   readonly demoNoAuthEnabled: boolean;
   /** Compatibility with PR #125; this flag grants only its approved GET subset. */
@@ -101,7 +103,9 @@ export function readGatewaySettings(
     if (readOnlyDemoEnabled === 'true') throw new Error();
     if (
       env.G6_SECURITY_MODE !== undefined &&
-      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
+      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+        env.G6_SECURITY_MODE,
+      )
     )
       throw new Error();
     const securityMode: GatewaySecurityMode =
@@ -119,15 +123,28 @@ export function readGatewaySettings(
     const simulated = securityMode === 'SIMULATED_AUTH';
     const issuer = simulated ? env.SIMULATED_AUTH_ISSUER : env.AUTH_ISSUER;
     const jwksUrl = simulated ? env.SIMULATED_AUTH_JWKS_URL : env.AUTH_JWKS_URL;
+    const serviceTokenUrl = simulated
+      ? undefined
+      : (env.GATEWAY_SERVICE_TOKEN_URL ??
+        (issuer
+          ? new URL('/api/v1/auth/token', new URL(issuer).origin).href
+          : undefined));
+    const serviceClientSecret = simulated
+      ? undefined
+      : env.GATEWAY_SERVICE_CLIENT_SECRET;
     if (!!issuer !== !!jwksUrl) throw new Error();
     if (simulated && (!issuer || !jwksUrl || issuer === env.AUTH_ISSUER))
       throw new Error();
-    for (const value of [issuer, jwksUrl]) {
+    for (const value of [issuer, jwksUrl, serviceTokenUrl]) {
       if (!value) continue;
       const url = new URL(value);
       if (
         (url.protocol !== 'https:' &&
-          !(env.NODE_ENV === 'test' && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) ||
+          !(
+            env.NODE_ENV === 'test' &&
+            url.protocol === 'http:' &&
+            ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+          )) ||
         url.username ||
         url.password ||
         url.search ||
@@ -158,6 +175,8 @@ export function readGatewaySettings(
       maxBytes: 10 * 1024 * 1024,
       issuer,
       jwksUrl,
+      serviceTokenUrl,
+      serviceClientSecret,
       publicOperations: Object.freeze(publicOperations),
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
       readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',

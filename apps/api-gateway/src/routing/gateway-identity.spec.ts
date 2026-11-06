@@ -2,6 +2,8 @@ import { readGatewaySettings } from './gateway-settings.js';
 import { createSignedIdentity } from '../../test/support/signed-identity.js';
 import { CONTRACT_ROUTES } from './contract-routes.js';
 import { GatewayIdentity, isDemoBypassRoute } from './gateway-identity.js';
+import { createServer } from 'node:http';
+import { once } from 'node:events';
 
 describe('Gateway identity from G6/G7 contracts', () => {
   const settings = readGatewaySettings({});
@@ -48,41 +50,80 @@ describe('Gateway identity from G6/G7 contracts', () => {
     ).resolves.toBeUndefined();
   });
   it('switches the exact trust issuer by configuration and rejects phase-crossed JWTs', async () => {
-    const jwks = vi.fn(async () =>
-      new Response(JSON.stringify({ keys: [signed.key] }), { status: 200 }),
+    const jwks = vi.fn(
+      async () =>
+        new Response(JSON.stringify({ keys: [signed.key] }), { status: 200 }),
     );
     vi.stubGlobal('fetch', jwks);
     const simIssuer = 'https://simulated.test/issuer';
     const g7Issuer = 'https://g7.test/issuer';
-    const simulated = new GatewayIdentity(readGatewaySettings({
-      G6_SECURITY_MODE: 'SIMULATED_AUTH',
-      SIMULATED_AUTH_ISSUER: simIssuer,
-      SIMULATED_AUTH_JWKS_URL: 'https://simulated.test/jwks',
-    }));
-    const simulatedToken = signed.token({ iss: simIssuer, scope: 'promociones:leer' });
+    const simulated = new GatewayIdentity(
+      readGatewaySettings({
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: simIssuer,
+        SIMULATED_AUTH_JWKS_URL: 'https://simulated.test/jwks',
+      }),
+    );
+    const simulatedToken = signed.token({
+      iss: simIssuer,
+      scope: 'promociones:leer',
+    });
     await simulated.authorize(
       CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
       `Bearer ${simulatedToken}`,
     );
+    const simulatedUser = signed.token({
+      iss: simIssuer,
+      tipo: 'acceso',
+      sub: '11111111-1111-1111-1111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+      aud: 'api-productos',
+      scope: undefined,
+    });
+    await simulated.authorize(product, `Bearer ${simulatedUser}`);
+    await expect(
+      simulated.authorize(
+        product,
+        `Bearer ${signed.token({ ...JSON.parse(Buffer.from(simulatedUser.split('.')[1], 'base64url').toString()), aud: undefined })}`,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    await expect(
+      simulated.authorize(
+        product,
+        `Bearer ${signed.token({
+          iss: simIssuer,
+          tipo: 'acceso',
+          sub: '11111111-1111-1111-1111-111111111111',
+          roles: ['CLIENTE'],
+          aud: 'api-productos',
+        })}`,
+      ),
+    ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
     const g7Token = signed.token({ iss: g7Issuer, scope: 'promociones:leer' });
-    await expect(simulated.authorize(
-      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
-      `Bearer ${g7Token}`,
-    )).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    await expect(
+      simulated.authorize(
+        CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+        `Bearer ${g7Token}`,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
 
-    const g7 = new GatewayIdentity(readGatewaySettings({
-      G6_SECURITY_MODE: 'G7_AUTHENTICATED',
-      AUTH_ISSUER: g7Issuer,
-      AUTH_JWKS_URL: 'https://g7.test/jwks',
-    }));
+    const g7 = new GatewayIdentity(
+      readGatewaySettings({
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+        AUTH_ISSUER: g7Issuer,
+        AUTH_JWKS_URL: 'https://g7.test/jwks',
+      }),
+    );
     await g7.authorize(
       CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
       `Bearer ${g7Token}`,
     );
-    await expect(g7.authorize(
-      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
-      `Bearer ${simulatedToken}`,
-    )).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    await expect(
+      g7.authorize(
+        CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+        `Bearer ${simulatedToken}`,
+      ),
+    ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
     expect(jwks).toHaveBeenCalledTimes(2);
   });
   it.each([
@@ -167,7 +208,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
       signed.identity.authorize(reservation, `Bearer ${signed.token(human)}`),
     ).rejects.toMatchObject({ status: 403 });
   });
-  it('keeps Pricing mutations closed without required introspection', async () => {
+  it('fails closed when G7 introspection credentials are unavailable', async () => {
     const pricing = CONTRACT_ROUTES.find(
       (r) => r.operationId === 'actualizarPrecioSku',
     )!;
@@ -179,6 +220,105 @@ describe('Gateway identity from G6/G7 contracts', () => {
     await expect(
       signed.identity.authorize(pricing, `Bearer ${token}`),
     ).rejects.toMatchObject({ status: 503 });
+  });
+  it('calls the G7 contract endpoint with its scoped service token and checks the active actor', async () => {
+    const pricing = CONTRACT_ROUTES.find(
+      (r) => r.operationId === 'actualizarPrecioSku',
+    )!;
+    let serviceToken = '';
+    let introspectionResponse: unknown = { activo: true };
+    const calls: Array<{
+      path: string;
+      authorization?: string;
+      body: unknown;
+    }> = [];
+    const server = createServer(async (request, response) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of request) chunks.push(Buffer.from(chunk));
+      const body = Buffer.concat(chunks).toString('utf8');
+      calls.push({
+        path: request.url ?? '',
+        authorization: request.headers.authorization,
+        body:
+          request.url === '/api/v1/auth/token'
+            ? body
+            : JSON.parse(body || '{}'),
+      });
+      response.setHeader('content-type', 'application/json');
+      if (request.url === '/jwks')
+        response.end(JSON.stringify({ keys: [signed.key] }));
+      else if (request.url === '/api/v1/auth/token')
+        response.end(
+          JSON.stringify({
+            tokenType: 'Bearer',
+            accessToken: serviceToken,
+            expiresIn: 60,
+            scopes: ['tokens:introspeccion'],
+          }),
+        );
+      else if (request.url === '/api/v1/auth/introspeccion')
+        response.end(JSON.stringify(introspectionResponse));
+      else {
+        response.statusCode = 404;
+        response.end('{}');
+      }
+    });
+    server.listen(0, '127.0.0.1');
+    await once(server, 'listening');
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('No port');
+    const origin = `http://127.0.0.1:${address.port}`;
+    const userToken = signed.token({
+      iss: `${origin}/issuer`,
+      tipo: 'acceso',
+      sub: '11111111-1111-1111-1111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+      aud: undefined,
+      scope: undefined,
+    });
+    serviceToken = signed.token({
+      iss: `${origin}/issuer`,
+      tipo: 'servicio',
+      sub: 'modulo-productos',
+      aud: ['api-productos'],
+      scope: 'tokens:introspeccion',
+    });
+    const identity = new GatewayIdentity({
+      ...settings,
+      securityMode: 'G7_AUTHENTICATED',
+      issuer: `${origin}/issuer`,
+      jwksUrl: `${origin}/jwks`,
+      serviceTokenUrl: `${origin}/api/v1/auth/token`,
+      serviceClientSecret: 'test-secret',
+      timeoutMs: 1000,
+    });
+    try {
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).resolves.toBeUndefined();
+      expect(calls.map((call) => call.path)).toEqual([
+        '/jwks',
+        '/api/v1/auth/token',
+        '/api/v1/auth/introspeccion',
+      ]);
+      expect(calls[1]?.body).toContain('scope=tokens%3Aintrospeccion');
+      expect(calls[2]).toMatchObject({
+        authorization: `Bearer ${serviceToken}`,
+        body: { token: userToken },
+      });
+      introspectionResponse = { activo: false };
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 401 });
+      introspectionResponse = {};
+      await expect(
+        identity.authorize(pricing, `Bearer ${userToken}`),
+      ).rejects.toMatchObject({ status: 503 });
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
+    }
   });
   it('does not grant anonymous access merely because security is empty', async () => {
     const publicRoute = CONTRACT_ROUTES.find(
@@ -217,7 +357,9 @@ describe('Gateway identity from G6/G7 contracts', () => {
       isDemoBypassRoute(route, demoSettings),
     );
     expect(allowed).toHaveLength(0);
-    await expect(demoIdentity.authorize(product, undefined)).rejects.toMatchObject({
+    await expect(
+      demoIdentity.authorize(product, undefined),
+    ).rejects.toMatchObject({
       status: 401,
       code: 'TOKEN_INVALIDO',
     });

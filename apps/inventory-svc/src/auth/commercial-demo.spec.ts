@@ -90,8 +90,12 @@ describe('Excepción comercial demo — límites de #25/#100', () => {
     ]) {
       await expect(guard.canActivate(context(handler).ctx)).rejects.toThrow();
     }
-    await expect(guard.canActivate(context(undefined, undefined, 'HEAD').ctx)).rejects.toThrow();
-    await expect(guard.canActivate(context(undefined, undefined, 'POST').ctx)).rejects.toThrow();
+    await expect(
+      guard.canActivate(context(undefined, undefined, 'HEAD').ctx),
+    ).rejects.toThrow();
+    await expect(
+      guard.canActivate(context(undefined, undefined, 'POST').ctx),
+    ).rejects.toThrow();
   });
 
   it('validates canonical peer helpers without using them as authentication', async () => {
@@ -101,7 +105,9 @@ describe('Excepción comercial demo — límites de #25/#100', () => {
     expect(canonicalPeerIp('192.0.2.10')).toBe(
       canonicalPeerIp('::ffff:c000:20a'),
     );
-    await expect(guard.canActivate(context(undefined, '2001:0db8:0:0:0:0:0:10').ctx)).rejects.toThrow();
+    await expect(
+      guard.canActivate(context(undefined, '2001:0db8:0:0:0:0:0:10').ctx),
+    ).rejects.toThrow();
   });
 
   it.each(['true', 'false', undefined])(

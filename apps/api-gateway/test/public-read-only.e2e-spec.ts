@@ -1,10 +1,8 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:https';
+import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
-import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import request from 'supertest';
 import { ApiGatewayModule } from '../src/api-gateway.module.js';
 import {
@@ -37,7 +35,6 @@ const paths = [
 describe('Phase 1 real three-service integration on disposable PostgreSQL', () => {
   const postgres = new Phase1Postgres();
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const originalCa = getCACertificates('default');
   let issuerServer: Server;
   let issuer = '';
   let taxonomy: INestApplication | undefined;
@@ -139,6 +136,7 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
     await catalog.get(CatalogDatabase).verifyIdentity();
     await catalog.listen(0, '127.0.0.1');
     const settings = readGatewaySettings({
+      NODE_ENV: 'test',
       G6_SECURITY_MODE: mode,
       AUTH_ISSUER: issuer,
       AUTH_JWKS_URL: issuer + '/jwks',
@@ -178,51 +176,40 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
         ('${id(21)}','${id(14)}','HIDDEN-VARIANT','{"size":"L"}','INACTIVA');
       RESET session_replication_role;`);
     persistedBefore = snapshot();
-    setDefaultCACertificates([
-      ...originalCa,
-      readFileSync(postgres.certificate, 'utf8'),
-    ]);
-    issuerServer = createServer(
-      {
-        key: readFileSync(postgres.key),
-        cert: readFileSync(postgres.certificate),
-      },
-      (req, res) => {
-        res.setHeader('content-type', 'application/json');
-        if (req.url === '/issuer/jwks')
-          res.end(
-            JSON.stringify({
-              keys: [
-                {
-                  ...keys.publicKey.export({ format: 'jwk' }),
-                  kid: 'phase1-fixture',
-                  use: 'sig',
-                  alg: 'RS256',
-                },
-              ],
-            }),
-          );
-        else if (req.url === '/issuer/discovery')
-          res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
-        else {
-          res.statusCode = 404;
-          res.end('{}');
-        }
-      },
-    );
+    issuerServer = createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/issuer/jwks')
+        res.end(
+          JSON.stringify({
+            keys: [
+              {
+                ...keys.publicKey.export({ format: 'jwk' }),
+                kid: 'phase1-fixture',
+                use: 'sig',
+                alg: 'RS256',
+              },
+            ],
+          }),
+        );
+      else if (req.url === '/issuer/discovery')
+        res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
+      else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
+    });
     issuerServer.listen(0, '127.0.0.1');
     await once(issuerServer, 'listening');
     const address = issuerServer.address();
     if (!address || typeof address === 'string')
       throw new Error('No local issuer port');
-    issuer = `https://localhost:${address.port}/issuer`;
+    issuer = `http://127.0.0.1:${address.port}/issuer`;
   }, 90000);
 
   afterAll(async () => {
     await closeServices();
     if (issuerServer)
       await new Promise<void>((resolve) => issuerServer.close(() => resolve()));
-    setDefaultCACertificates(originalCa);
     await postgres.close();
   }, 30000);
 

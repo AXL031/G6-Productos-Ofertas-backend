@@ -32,11 +32,22 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
     );
   }
   const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
-  if (!['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(securityMode))
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
     throw new InvalidPricingConfig('G6_SECURITY_MODE inválido.');
-  const publicOperations = (env.PRICING_PUBLIC_OPERATION_IDS ?? '').split(',').map((id) => id.trim()).filter(Boolean);
-  if (publicOperations.some((id) => !['consultarPrecios', 'obtenerPrecioSku'].includes(id)) ||
-      (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length))
+  const publicOperations = (env.PRICING_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some(
+      (id) => !['consultarPrecios', 'obtenerPrecioSku'].includes(id),
+    ) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
     throw new InvalidPricingConfig('PRICING_PUBLIC_OPERATION_IDS inválido.');
   if (
     env.GATEWAY_DEMO_NO_AUTH_ENABLED === 'true' ||
@@ -141,10 +152,21 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
   }
   url.search = '';
   let auth: PricingConfig['auth'];
-  const authIssuer = securityMode === 'SIMULATED_AUTH' ? env.SIMULATED_AUTH_ISSUER : env.AUTH_ISSUER;
-  const authJwksUrl = securityMode === 'SIMULATED_AUTH' ? env.SIMULATED_AUTH_JWKS_URL : env.AUTH_JWKS_URL;
-  if (securityMode === 'SIMULATED_AUTH' && (!authIssuer || !authJwksUrl || authIssuer === env.AUTH_ISSUER))
-    throw new InvalidPricingConfig('SIMULATED_AUTH requiere issuer y JWKS independientes de G7.');
+  const authIssuer =
+    securityMode === 'SIMULATED_AUTH'
+      ? env.SIMULATED_AUTH_ISSUER
+      : env.AUTH_ISSUER;
+  const authJwksUrl =
+    securityMode === 'SIMULATED_AUTH'
+      ? env.SIMULATED_AUTH_JWKS_URL
+      : env.AUTH_JWKS_URL;
+  if (
+    securityMode === 'SIMULATED_AUTH' &&
+    (!authIssuer || !authJwksUrl || authIssuer === env.AUTH_ISSUER)
+  )
+    throw new InvalidPricingConfig(
+      'SIMULATED_AUTH requiere issuer y JWKS independientes de G7.',
+    );
   if (authIssuer !== undefined || authJwksUrl !== undefined) {
     try {
       for (const value of [authIssuer, authJwksUrl]) {
@@ -210,8 +232,8 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       const endpoint = new URL(env.PRICING_CATALOG_URL);
       const privateHttp =
         endpoint.protocol === 'http:' &&
-        (nodeEnv === 'test' &&
-          ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname));
+        nodeEnv === 'test' &&
+        ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname);
       if (
         env.PRICING_CATALOG_URL !== env.PRICING_CATALOG_URL.trim() ||
         endpoint.username ||
