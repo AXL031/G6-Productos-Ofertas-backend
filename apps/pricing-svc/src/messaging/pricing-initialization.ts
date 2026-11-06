@@ -1,6 +1,18 @@
+import { selectHistoricalValidity } from '../domain/historical-price.js';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  ne,
+  lte,
+  gt,
+  or,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import { initializeProduct, PriceRuleError } from '../domain/price.js';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import {
@@ -94,9 +106,14 @@ function amountFromRawJson(raw: string, parsed: unknown): string {
 
 function semanticInput(data: Record<string, unknown>, rawAmount?: string) {
   return {
+    modalidad: data.modalidad === undefined ? 'ALTA_PRODUCTO' : data.modalidad,
     product_id: typeof data.product_id === 'string' ? data.product_id : '',
     sku_base: typeof data.sku_base === 'string' ? data.sku_base : '',
-    precio_regular: rawAmount ?? null,
+    precio_regular:
+      rawAmount ??
+      (Object.hasOwn(data, 'precio_regular')
+        ? { invalid: data.precio_regular }
+        : null),
     moneda: typeof data.moneda === 'string' ? data.moneda : '',
     channel_id: data.channel_id ?? 'INVALID',
     motivo_cambio: data.motivo_cambio ?? 'INVALID',
@@ -120,13 +137,21 @@ export class PricingProductInitialization {
     let amount: string | undefined;
     let domainCode: string | undefined;
     try {
-      amount = amountFromRawJson(rawText, parsed);
+      if (
+        message.data.modalidad !== 'RECUPERACION_HISTORICA' ||
+        Object.hasOwn(message.data, 'precio_regular')
+      )
+        amount = amountFromRawJson(rawText, parsed);
     } catch (error) {
       domainCode =
         error instanceof PriceRuleError ? error.code : 'PRECIO_INVALIDO';
     }
     const normalized = semanticInput(message.data, amount);
+    const historical = message.data.modalidad === 'RECUPERACION_HISTORICA';
     const validFields =
+      (message.data.modalidad === undefined ||
+        message.data.modalidad === 'ALTA_PRODUCTO' ||
+        historical) &&
       typeof message.data.product_id === 'string' &&
       message.data.product_id.length > 0 &&
       typeof message.data.sku_base === 'string' &&
@@ -136,6 +161,7 @@ export class PricingProductInitialization {
       message.data.channel_id === null &&
       message.data.motivo_cambio === 'ALTA_PRODUCTO';
     if (!validFields && !domainCode) domainCode = 'VALIDACION';
+    if (historical && domainCode) domainCode = 'HISTORICAL_PRICE_CONFLICT';
 
     return this.repository.transaction(async (tx) => {
       await tx.execute(
@@ -163,9 +189,11 @@ export class PricingProductInitialization {
         .where(
           and(
             eq(inbox.handler, HANDLER),
+            ne(inbox.result, 'OPERATION_ID_CONFLICT'),
             sql`${inbox.payload}->>'operation_id' = ${message.operation_id}`,
           ),
         )
+        .orderBy(asc(inbox.createdAt), asc(inbox.id))
         .limit(1);
       if (priorOperation.length) {
         const prior = priorOperation[0].payload;
@@ -175,13 +203,13 @@ export class PricingProductInitialization {
             semanticInput(priorData, amountFromPrior(priorData) ?? undefined),
           ) === JSON.stringify(normalized);
         if (sameIntent) {
-          await this.insertInbox(tx, message, parsed, 'DUPLICATE');
           const [priorResult] = await tx
             .select()
             .from(outbox)
             .where(
               and(
                 eq(outbox.operationId, message.operation_id),
+                eq(outbox.causationId, priorOperation[0].messageId),
                 eq(outbox.kind, 'result'),
                 inArray(outbox.eventName, [
                   'pricing.product.initialization.completed',
@@ -194,6 +222,11 @@ export class PricingProductInitialization {
           if (!priorResult)
             throw new Error('PRICING_INITIALIZATION_RESULT_MISSING');
           const priorPayload = priorResult.payload;
+          const decisionAt =
+            historical && typeof priorPayload.completed_at === 'string'
+              ? priorPayload.completed_at
+              : undefined;
+          await this.insertInbox(tx, message, parsed, 'DUPLICATE', decisionAt);
           await this.insertResult(
             tx,
             message,
@@ -206,10 +239,11 @@ export class PricingProductInitialization {
             typeof priorPayload.vigencia_id === 'string'
               ? priorPayload.vigencia_id
               : null,
+            decisionAt,
           );
           return 'DUPLICATE';
         }
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(tx, message, parsed, 'OPERATION_ID_CONFLICT');
         await this.insertResult(
           tx,
           message,
@@ -218,6 +252,17 @@ export class PricingProductInitialization {
           'OPERATION_ID_CONFLICT',
         );
         return 'REJECTED';
+      }
+
+      if (historical) {
+        return this.adoptHistorical(
+          tx,
+          message,
+          parsed,
+          normalized,
+          amount,
+          domainCode !== undefined,
+        );
       }
 
       if (domainCode) {
@@ -365,6 +410,78 @@ export class PricingProductInitialization {
     });
   }
 
+  private async adoptHistorical(
+    tx: Parameters<PricingRepository['transaction']>[0] extends (
+      tx: infer T,
+    ) => Promise<unknown>
+      ? T
+      : never,
+    message: Envelope,
+    parsed: unknown,
+    input: ReturnType<typeof semanticInput>,
+    expectedAmount: string | undefined,
+    invalid: boolean,
+  ): Promise<'APPLIED' | 'REJECTED'> {
+    // Mismo lock de definición que las mutaciones; la operación ya está serializada.
+    const definitions = await tx
+      .select()
+      .from(prices)
+      .where(
+        and(
+          eq(prices.productId, input.product_id),
+          sql`${prices.sku} IS NULL`,
+          sql`${prices.channelId} IS NULL`,
+        ),
+      )
+      .for('update');
+    // Después de adquirir locks: ni occurred_at del emisor ni transaction_timestamp.
+    const clock = await tx.execute<{ cutoff: string }>(
+      sql`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cutoff`,
+    );
+    const cutoff = clock.rows[0].cutoff;
+    const validities =
+      definitions.length === 1
+        ? await tx
+            .select()
+            .from(priceValidities)
+            .where(
+              and(
+                eq(priceValidities.priceId, definitions[0].id),
+                eq(priceValidities.isCancelled, false),
+                lte(priceValidities.validFrom, sql`${cutoff}::timestamptz`),
+                or(
+                  isNull(priceValidities.validUntil),
+                  gt(priceValidities.validUntil, sql`${cutoff}::timestamptz`),
+                ),
+              ),
+            )
+            .for('share')
+        : [];
+    const chosen = invalid
+      ? undefined
+      : selectHistoricalValidity(validities, input.moneda, expectedAmount);
+    const compatible = chosen !== undefined;
+    const status = compatible ? 'READY' : 'REJECTED';
+    await this.insertInbox(
+      tx,
+      message,
+      parsed,
+      compatible ? 'APPLIED' : 'REJECTED',
+      cutoff,
+    );
+    await this.insertResult(
+      tx,
+      message,
+      input,
+      status,
+      compatible ? null : 'HISTORICAL_PRICE_CONFLICT',
+      compatible ? Number(chosen!.priceVersion) : null,
+      compatible ? chosen!.id : null,
+      cutoff,
+    );
+    return compatible ? 'APPLIED' : 'REJECTED';
+  }
+
   private insertInbox(
     tx: Parameters<PricingRepository['transaction']>[0] extends (
       tx: infer T,
@@ -374,6 +491,7 @@ export class PricingProductInitialization {
     message: Envelope,
     payload: unknown,
     result: string,
+    processedAt?: Date | string,
   ) {
     return tx.insert(inbox).values({
       messageId: message.message_id,
@@ -382,6 +500,14 @@ export class PricingProductInitialization {
       correlationId: message.correlation_id,
       payload: payload as Record<string, unknown>,
       result,
+      ...(processedAt
+        ? {
+            processedAt:
+              typeof processedAt === 'string'
+                ? sql`${processedAt}::timestamptz`
+                : processedAt,
+          }
+        : {}),
     });
   }
 
@@ -397,6 +523,7 @@ export class PricingProductInitialization {
     code: string | null,
     priceVersion: number | null = null,
     validityId: string | null = null,
+    at: Date | string = new Date(),
   ) {
     const payload = {
       product_id: input.product_id,
@@ -405,7 +532,7 @@ export class PricingProductInitialization {
       price_version: priceVersion,
       vigencia_id: validityId,
       code,
-      completed_at: new Date().toISOString(),
+      completed_at: typeof at === 'string' ? at : at.toISOString(),
     };
     return tx.insert(outbox).values({
       messageId: deterministicUuid(
@@ -417,7 +544,7 @@ export class PricingProductInitialization {
       correlationId: message.correlation_id,
       causationId: message.message_id,
       operationId: message.operation_id,
-      occurredAt: new Date(),
+      occurredAt: typeof at === 'string' ? sql`${at}::timestamptz` : at,
       payload,
     });
   }
