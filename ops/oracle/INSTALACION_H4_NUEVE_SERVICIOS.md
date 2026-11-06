@@ -2,6 +2,47 @@
 
 Procedimiento exclusivamente documental. No se ejecutó en Oracle. Requiere checkout autorizado, aprobación operativa específica y ventana de mantenimiento. No cambia imágenes activas, active-image, previous-image, runtime.env, secretos, Caddy ni redes productivas. No ejecutar up, pull, reinicios ni comandos destructivos globales.
 
+## Gate de procedencia del checkout
+
+El gate acepta solo URLs canónicas de GitHub para Taller-SW-Web/G6-Productos-Ofertas-backend por HTTPS o SSH. HTTPS fuerza validación TLS; SSH requiere modo no interactivo y clave de host ya confiable (StrictHostKeyChecking=yes). Comprueba tanto la URL de lectura como la URL de push configuradas en origin, consulta directamente refs/heads/master en esa URL y falla si hay checkout sucio, referencia inaccesible, salida ambigua o SHA distinto. No usa origin/master local.
+
+Ejecutar estas funciones, pruebas fixture y pasos operativos en una misma sesión Bash. Las fixtures son locales, no usan sudo ni consultan repositorios remotos.
+
+```bash
+fail_source() { printf 'FALLO CERRADO: %s\n' "$*" >&2; return 1; }
+is_authorized_repository_url() {
+  case "$1" in
+    https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend|https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend.git|\
+    git@github.com:Taller-SW-Web/G6-Productos-Ofertas-backend|git@github.com:Taller-SW-Web/G6-Productos-Ofertas-backend.git|\
+    ssh://git@github.com/Taller-SW-Web/G6-Productos-Ofertas-backend|ssh://git@github.com/Taller-SW-Web/G6-Productos-Ofertas-backend.git) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+validate_source_facts() {
+  local url="$1" checkout_sha="$2" fetch_state="$3" master_sha="$4" worktree_state="$5"
+  is_authorized_repository_url "$url" || { fail_source 'origin no apunta al repositorio oficial permitido'; return 1; }
+  [[ "$worktree_state" == clean ]] || { fail_source 'el checkout tiene cambios locales'; return 1; }
+  [[ "$fetch_state" == reachable ]] || { fail_source 'no se pudo consultar refs/heads/master oficial'; return 1; }
+  [[ "$checkout_sha" =~ ^[0-9a-f]{40}$ && "$master_sha" =~ ^[0-9a-f]{40}$ ]] || { fail_source 'SHA de checkout o master inválido'; return 1; }
+  [[ "$checkout_sha" == "$master_sha" ]] || { fail_source 'el checkout no coincide con el master oficial actual'; return 1; }
+}
+```
+
+### Pruebas locales del gate
+
+```bash
+FIXTURE_SHA=1111111111111111111111111111111111111111
+OFFICIAL_HTTPS=https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend.git
+OFFICIAL_SSH=git@github.com:Taller-SW-Web/G6-Productos-Ofertas-backend.git
+validate_source_facts "$OFFICIAL_HTTPS" "$FIXTURE_SHA" reachable "$FIXTURE_SHA" clean
+validate_source_facts "$OFFICIAL_SSH" "$FIXTURE_SHA" reachable "$FIXTURE_SHA" clean
+printf 'PASS fixture: HTTPS y SSH oficiales con SHA coincidente aceptados\n'
+if validate_source_facts https://github.com/fork/G6-Productos-Ofertas-backend.git "$FIXTURE_SHA" reachable "$FIXTURE_SHA" clean; then exit 1; else printf 'PASS fixture: fork rechazado\n'; fi
+if validate_source_facts "$OFFICIAL_HTTPS" "$FIXTURE_SHA" reachable 2222222222222222222222222222222222222222 clean; then exit 1; else printf 'PASS fixture: SHA obsoleto rechazado\n'; fi
+if validate_source_facts "$OFFICIAL_HTTPS" "$FIXTURE_SHA" unreachable '' clean; then exit 1; else printf 'PASS fixture: referencia inaccesible rechazada\n'; fi
+if validate_source_facts "$OFFICIAL_HTTPS" "$FIXTURE_SHA" reachable "$FIXTURE_SHA" dirty; then exit 1; else printf 'PASS fixture: checkout modificado rechazado\n'; fi
+```
+
 ## Preflight y exclusión
 
 El ejecutor usa flock por servicio, pero no implementa un bloqueo global de instalación. Suspender CI/CD Oracle y lanzamientos manuales, confirmar que no hay procesos deploy-g6-service ni deploy-inventory-svc activos y mantener la suspensión hasta completar o restaurar. Si no se garantiza esa exclusión, detenerse.
@@ -10,19 +51,44 @@ El ejecutor usa flock por servicio, pero no implementa un bloqueo global de inst
 set -Eeuo pipefail
 cd /RUTA/AL/CHECKOUT_AUTORIZADO
 git status --short --branch
-test -z "$(git status --porcelain)"
-LOCAL_SHA="$(git rev-parse HEAD)"
-REMOTE_MASTER_SHA="$(git ls-remote origin refs/heads/master | awk 'NR==1 {print $1}')"
-[[ "$REMOTE_MASTER_SHA" =~ ^[0-9a-f]{40}$ ]]
-printf 'checkout=%s\norigin/master=%s\n' "$LOCAL_SHA" "$REMOTE_MASTER_SHA"
-test "$LOCAL_SHA" = "$REMOTE_MASTER_SHA"
+verify_official_master() {
+  local fetch_text push_text url transport status_output checkout_sha ref_output master_sha
+  local -a fetch_urls=() push_urls=() refs=()
+  fetch_text="$(git remote get-url --all origin)" || { fail_source 'no se pudo resolver la URL fetch de origin'; return 1; }
+  push_text="$(git remote get-url --push --all origin)" || { fail_source 'no se pudo resolver la URL push de origin'; return 1; }
+  mapfile -t fetch_urls <<<"$fetch_text"
+  mapfile -t push_urls <<<"$push_text"
+  [[ "${#fetch_urls[@]}" == 1 && -n "${fetch_urls[0]}" ]] || { fail_source 'origin debe tener exactamente una URL fetch'; return 1; }
+  [[ "${#push_urls[@]}" == 1 && "${push_urls[0]}" == "${fetch_urls[0]}" ]] || { fail_source 'origin fetch y push deben apuntar a la misma URL oficial'; return 1; }
+  url="${fetch_urls[0]}"
+  is_authorized_repository_url "$url" || { fail_source 'origin no apunta al repositorio oficial permitido'; return 1; }
+  case "$url" in
+    https://*) transport=https ;;
+    *) transport=ssh ;;
+  esac
+  status_output="$(git status --porcelain --untracked-files=all)" || { fail_source 'no se pudo comprobar el estado del checkout'; return 1; }
+  [[ -z "$status_output" ]] || { fail_source 'el checkout tiene modificaciones locales'; return 1; }
+  checkout_sha="$(git rev-parse --verify 'HEAD^{commit}')" || { fail_source 'no se pudo resolver HEAD del checkout'; return 1; }
+  if [[ "$transport" == https ]]; then
+    ref_output="$(git -c http.sslVerify=true ls-remote "$url" refs/heads/master)" || { fail_source 'no se pudo consultar master por HTTPS verificado'; return 1; }
+  else
+    ref_output="$(GIT_SSH_COMMAND='ssh -o BatchMode=yes -o StrictHostKeyChecking=yes' git ls-remote "$url" refs/heads/master)" || { fail_source 'no se pudo consultar master por SSH con host key verificada'; return 1; }
+  fi
+  mapfile -t refs <<<"$ref_output"
+  [[ "${#refs[@]}" == 1 && "${refs[0]}" =~ ^([0-9a-f]{40})[[:space:]]refs/heads/master$ ]] || { fail_source 'la referencia remota master falta o su respuesta es ambigua'; return 1; }
+  master_sha="${BASH_REMATCH[1]}"
+  validate_source_facts "$url" "$checkout_sha" reachable "$master_sha" clean || return 1
+  printf '%s\n' "$checkout_sha"
+}
+INSTALL_SHA="$(verify_official_master)"
+printf 'Repositorio oficial y master verificados: %s\n' "$INSTALL_SHA"
 sha256sum ops/oracle/service-registry.sh ops/oracle/services.psv \
   ops/oracle/deploy-g6-service.sh ops/oracle/deploy-inventory-svc.sh \
   ops/oracle/docker-compose.service.yml ops/oracle/docker-compose.service.http.yml \
   ops/oracle/docker-compose.gateway.yml ops/oracle/docker-compose.inventory.http.yml
 ```
 
-git ls-remote consulta master remoto actual; origin/master local no basta. Si los SHA difieren, detenerse y revisar el checkout vigente. Registrar SHA, fecha y checksums.
+Si falla cualquier comprobación, detenerse. Registrar SHA, fecha y checksums.
 
 ## Respaldo recuperable
 
@@ -119,6 +185,8 @@ check_candidate() {
   actual="$(sudo sha256sum "$candidate" | awk '{print $1}')"
   [[ "$expected" == "$actual" ]]
 }
+PROMOTION_SHA="$(verify_official_master)"
+[[ "$PROMOTION_SHA" == "$INSTALL_SHA" ]] || fail_source 'master oficial cambió desde el preflight; no se promueve ningún archivo'
 check_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new
 sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
 check_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new
