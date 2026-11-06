@@ -1,6 +1,6 @@
 # Migración Azure Container Apps — corte 2026-11-06
 
-Estado: preparación y pruebas locales; sin entorno ACA creado ni nueva versión desplegada.
+Estado al retomar: nueve imágenes oficiales publicadas y verificadas; entorno ACA en aprovisionamiento. Las pruebas HTTPS siguen pendientes.
 Rama de trabajo `cueva`, fuente oficial incorporada mediante merge normal
 `4f0acd5156b775a06d2b9502b86e1c176d957aec`, desde integración oficial
 `bff05f8f856031807786cf10a501c5a45af07928`.
@@ -23,15 +23,15 @@ La visibilidad comercial de Catalog conserva sus filtros: abrir acceso no public
 
 ### Auditoría de los siete POST
 
-| Operación | Decisión y evidencia de código |
-|---|---|
-| consultarDatosFisicos | Incluida. Catalog consulta SKUs y proyecta datos físicos; no modifica productos. |
-| resolverCodigoBarras | Incluida. Catalog resuelve código mediante consulta al repositorio. |
-| resolverSlugCategoriaCreacion | Incluida. Taxonomy propone un slug leyendo SEO e historial; no reserva ni crea categoría. |
-| evaluarPromociones | Incluida. Evaluación y consultas HTTP a dependencias; no consume cupón ni publica comandos de consumo. |
-| validarCupon | Incluida. Valida condiciones; no ejecuta consumo/redención. |
-| verificarCantidadComercial | Incluida. Inventory calcula disponibilidad no vinculante; no reserva ni mueve stock. |
-| prevalidarImportacionPrecios | Excluida del corte. No existe handler multipart productivo. No se inventa un resultado positivo. |
+| Operación                     | Decisión y evidencia de código                                                                         |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------ |
+| consultarDatosFisicos         | Incluida. Catalog consulta SKUs y proyecta datos físicos; no modifica productos.                       |
+| resolverCodigoBarras          | Incluida. Catalog resuelve código mediante consulta al repositorio.                                    |
+| resolverSlugCategoriaCreacion | Incluida. Taxonomy propone un slug leyendo SEO e historial; no reserva ni crea categoría.              |
+| evaluarPromociones            | Incluida. Evaluación y consultas HTTP a dependencias; no consume cupón ni publica comandos de consumo. |
+| validarCupon                  | Incluida. Valida condiciones; no ejecuta consumo/redención.                                            |
+| verificarCantidadComercial    | Incluida. Inventory calcula disponibilidad no vinculante; no reserva ni mueve stock.                   |
+| prevalidarImportacionPrecios  | Excluida del corte. No existe handler multipart productivo. No se inventa un resultado positivo.       |
 
 La auditoría anterior es estática. Las pruebas HTTP de transporte no demuestran
 ausencia de cambios en las bases de todos los servicios: falta certificación funcional
@@ -80,7 +80,7 @@ No incluye logs, almacenamiento, red ni impuestos; el saldo estudiantil no se ve
 Escalar a cero reduce cómputo, pero hay que definir trabajadores AMQP, Outbox,
 polling y almacenamiento antes de prometer suspensión automática de todos.
 
-## Condiciones concretas antes de crear recursos
+## Condiciones del preflight original (corte histórico)
 
 1. Integrar/revisar este nuevo código y obtener CI del SHA final. La CI verde del
    SHA oficial anterior no certifica los nuevos cambios.
@@ -118,10 +118,65 @@ polling y almacenamiento antes de prometer suspensión automática de todos.
 - Rollback por revisión anterior y digests oficiales; detener cambio de tráfico si falla
   readiness. No describir ensayos simulados como recuperación real de Azure.
 - Validar nueva URL HTTPS de ACA antes de comunicarla o retirar la VM. El apagado de VM
-  ya programado para 06/11 a las 13:00 Lima no se cancela por esta preparación.
+  para 06/11 a las 13:00 Lima fue revocado; requiere confirmación de migración completa.
 
 Fuentes de plataforma: [comunicación interna](https://learn.microsoft.com/en-us/azure/container-apps/connect-apps),
 [escalado](https://learn.microsoft.com/en-us/azure/container-apps/scale-app),
 [probes](https://learn.microsoft.com/en-us/azure/container-apps/health-probes),
 [facturación](https://learn.microsoft.com/en-us/azure/container-apps/billing),
 [volúmenes](https://learn.microsoft.com/en-us/azure/container-apps/storage-mounts).
+
+## Release oficial y ejecución ACA
+
+La aplicación común quedó integrada mediante Backend #211 en
+`3f685dbcb616daad3414039059396823a0a0a9a2`, con CI posterior 19/19 satisfactoria.
+Backend #210 habilitó el publicador oficial para AXL031 y los nueve componentes.
+`official-release-3f685dbcb6.json` registra los nueve workflows satisfactorios,
+los digests obtenidos de GHCR, hashes de manifiestos/configs, labels de origen,
+revisión/servicio y plataforma linux/amd64. Son imágenes del Backend oficial.
+
+`render-deployment.mjs` transforma el manifiesto de nueve filas y los archivos
+privados de runtime en plantilla ARM y parámetros seguros. No publica imágenes,
+no crea recursos por sí solo y no imprime credenciales. La opción
+`--enable-public-reads` es obligatoria para activar exactamente las 65 seleccionadas.
+No admite SIMULATED_AUTH en cloud. G7 debe configurarse y validarse con sus parsers
+reales antes de cambiar a G7_AUTHENTICATED; el generador no homologa G7.
+
+Ejecutar desde una carpeta privada fuera de Git, con G6_GHCR_PULL_TOKEN cargado
+sin imprimirlo:
+
+```powershell
+node ops/azure/container-apps/render-deployment.mjs `
+  --release <release.psv-privado> --runtime <directorio-runtime-privado> `
+  --ca <CA-Supabase> --registry-user AXL031 `
+  --caddy-image caddy:2.11.6-alpine@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9 `
+  --out <directorio-privado> --enable-public-reads
+node --test ops/azure/container-apps/render-deployment.test.mjs
+```
+
+La plantilla fija Chile Central, environmentMode WorkloadProfiles explícito
+(API 2026-07-01), solamente el perfil Consumption, cero a una réplica por app,
+Gateway público con Caddy sidecar y ocho ingress internos HTTPS. PostgreSQL
+conserva verify-full y CA montada por Secret volume. La configuración y las
+credenciales se pasan mediante secureObject/secureString y secretos por app.
+No hay migraciones, seeds, publicador alternativo ni emisor simulado desplegado.
+
+El primer intento creó un entorno Express y Azure rechazó los Secret volumes.
+Se corrigió la selección explícita y la plantilla revisada pasó la validación
+Azure. Express no admite sidecars ni esos volúmenes; esta aplicación necesita
+WorkloadProfiles con Consumption. El cambio de modo se procesa como operación
+asíncrona; esperar Succeeded antes de desplegar. No sustituirlo por Dedicated.
+
+Después del render, ejecutar validate y what-if con ResourceIdOnly, revisar que
+solo afecten al grupo rg-g6-aca-chile y desplegar en modo Incremental. No imprimir
+los parámetros privados ni el contenido de los secretos. Las probes de transporte
+no certifican readiness de negocio: comprobar cada dependencia por separado.
+RabbitMQ y Bulk Storage siguen diferidos. Price Audit no habilita un exportador
+sin almacenamiento persistente. No presentar sus descargas como disponibles.
+
+La VM anterior permanece encendida por instrucción del usuario: el apagado de
+06/11 a las 13:00 fue revocado. Apagarla únicamente tras confirmarse la migración.
+
+Fuentes: [limitaciones Express](https://learn.microsoft.com/en-us/azure/container-apps/express-overview),
+[modo del entorno](https://learn.microsoft.com/en-us/azure/templates/microsoft.app/2026-07-01/managedenvironments),
+[restauración del entorno](https://learn.microsoft.com/es-es/azure/container-apps/faq).

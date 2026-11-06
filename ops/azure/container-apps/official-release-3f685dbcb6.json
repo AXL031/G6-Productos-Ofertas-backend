@@ -1,0 +1,122 @@
+{
+  "checkedAt": "2026-11-06T17:46:38.069Z",
+  "evidence": [
+    {
+      "service": "api-gateway",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:375044d58ae0356aee753152b3904564ca2c9a131598494498fc9fd8342ace8f",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/api-gateway@sha256:375044d58ae0356aee753152b3904564ca2c9a131598494498fc9fd8342ace8f",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263514382",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "catalog-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:a44533d9885dfb2c05727ba4e4a8b3f841592bac4c5fae0a4e63f3af050f71d5",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc@sha256:a44533d9885dfb2c05727ba4e4a8b3f841592bac4c5fae0a4e63f3af050f71d5",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263514211",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "taxonomy-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:57fbcca09f544391650c5769f78055fabee7088f6dcb237e06ca06f0a469d388",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/taxonomy-svc@sha256:57fbcca09f544391650c5769f78055fabee7088f6dcb237e06ca06f0a469d388",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263513755",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "pricing-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:e424f9ab50ddaf3fd4db18ac9ec085ec9310e916c20602e32adcf736e90b629b",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/pricing-svc@sha256:e424f9ab50ddaf3fd4db18ac9ec085ec9310e916c20602e32adcf736e90b629b",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263513299",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "price-audit-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:195118677f8008a3a376db085fa00d133e6da5a1dd5bd2e349ecacbac8e85a8e",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/price-audit-svc@sha256:195118677f8008a3a376db085fa00d133e6da5a1dd5bd2e349ecacbac8e85a8e",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263517151",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "promotions-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:ebbf14f11d18287c205fd20585aba36cdfff775fda3f1a1e58b5a537e6ed1fdf",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/promotions-svc@sha256:ebbf14f11d18287c205fd20585aba36cdfff775fda3f1a1e58b5a537e6ed1fdf",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263514127",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "inventory-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:b3f77b5ca039552552e93df04d2cb6e6bdd1d48abcb28fdebb9eea42dc6b80be",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc@sha256:b3f77b5ca039552552e93df04d2cb6e6bdd1d48abcb28fdebb9eea42dc6b80be",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263513232",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "combos-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:0d115c4d3803d674371d3289934261ec520a0a324fc044b3e4b6a03e93544b24",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/combos-svc@sha256:0d115c4d3803d674371d3289934261ec520a0a324fc044b3e4b6a03e93544b24",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263518254",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    },
+    {
+      "service": "bulk-svc",
+      "sha": "3f685dbcb616daad3414039059396823a0a0a9a2",
+      "digest": "sha256:7f4fd41a1f394c0983877e67f015f7222d5fd101f4466aab4e8b13663b0d8091",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/bulk-svc@sha256:7f4fd41a1f394c0983877e67f015f7222d5fd101f4466aab4e8b13663b0d8091",
+      "platform": "linux/amd64",
+      "workflowUrl": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42263514036",
+      "workflowConclusion": "success",
+      "manifestHashVerified": true,
+      "configHashVerified": true,
+      "officialLabelsVerified": true,
+      "registryReadVerified": true
+    }
+  ]
+}
