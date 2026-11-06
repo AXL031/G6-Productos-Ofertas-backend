@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
@@ -6,6 +7,7 @@ import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
 export const PRICE_AUDIT_CONFIG = Symbol('PRICE_AUDIT_CONFIG');
 
 export interface AuditConfig {
+  publicOperations?: readonly string[];
   securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   nodeEnv: 'development' | 'test' | 'production';
   port: number;
@@ -39,6 +41,15 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
     )
   )
     throw new InvalidAuditConfig('G6_SECURITY_MODE inválido.');
+  const publicOperations = (env.PRICE_AUDIT_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    throw new InvalidAuditConfig('PRICE_AUDIT_PUBLIC_OPERATION_IDS inválido.');
   const rawPort = env.PRICE_AUDIT_SVC_PORT ?? env.PORT;
   const port = Number(rawPort);
   if (
@@ -130,7 +141,11 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
   }
   url.search = '';
   let auth: AuditConfig['auth'];
-  {
+  if (
+    securityMode !== 'PUBLIC_READ_ONLY' ||
+    env.AUTH_ISSUER !== undefined ||
+    env.AUTH_JWKS_URL !== undefined
+  ) {
     try {
       const issuer =
         securityMode === 'SIMULATED_AUTH'
@@ -200,6 +215,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
     ...(env.PRICE_AUDIT_AMQP_URL === undefined
       ? {}
       : { amqpUrl: validateAmqpUrl(env.PRICE_AUDIT_AMQP_URL, nodeEnv) }),
+    publicOperations: Object.freeze(publicOperations),
     hotRetentionMonths,
     archiveRetentionYears,
     nodeEnv,

@@ -97,6 +97,30 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     ).toEqual(body);
     expect(received[0].authorization).toBe('Bearer fixture-service-token');
   });
+  it('uses only its fixed public context read in Phase 1 and never downgrades phases 2/3', async () => {
+    const tokens = vi.fn(async () => 'unused');
+    await expect(
+      new CatalogContextHttp(
+        {
+          ...config(),
+          securityMode: 'PUBLIC_READ_ONLY',
+          publicOperations: ['consultarPrecios'],
+        },
+        tokens,
+      ).resolve(sku),
+    ).resolves.toEqual(body);
+    expect(received[0].authorization).toBeUndefined();
+    expect(tokens).not.toHaveBeenCalled();
+    for (const securityMode of ['SIMULATED_AUTH', 'G7_AUTHENTICATED'] as const)
+      await expect(
+        new CatalogContextHttp({
+          ...config(),
+          securityMode,
+          publicOperations: [],
+        }).resolve(sku),
+      ).rejects.toMatchObject({ status: 503 });
+    expect(received).toHaveLength(1);
+  });
   it('solo traduce el 404 contractual a null', async () => {
     status = 404;
     type = 'application/problem+json';

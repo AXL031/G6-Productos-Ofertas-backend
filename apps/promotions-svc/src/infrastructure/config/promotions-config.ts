@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../../phase1-public-reads.js';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -69,7 +70,7 @@ export interface PromotionsConfiguration {
     readonly schema: 'promotions';
     readonly connectionMode: 'session';
   };
-  readonly rabbitmqUrl: string;
+  readonly rabbitmqUrl?: string;
   readonly dependencyProbesEnabled: boolean;
   readonly couponRuntimeEnabled: boolean;
   readonly localDemoEnabled: boolean;
@@ -109,7 +110,7 @@ export function validatePromotionsConfiguration(
     .map((id) => id.trim())
     .filter(Boolean);
   if (
-    publicOperations.some((id) => id !== 'listarPromociones') ||
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
     (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
   )
     invalid.add('PROMOTIONS_PUBLIC_OPERATION_IDS');
@@ -211,10 +212,18 @@ export function validatePromotionsConfiguration(
       invalid.add(variable);
     }
   }
+  const httpOnly =
+    securityMode === 'PUBLIC_READ_ONLY' &&
+    !dependencyProbesEnabled &&
+    !couponRuntimeEnabled;
   const required = Object.fromEntries(
     requiredVariables.map((name) => {
       const value = environment[name] ?? '';
-      if (!value.trim() || value.includes('\0')) invalid.add(name);
+      if (
+        (!value.trim() && !(httpOnly && name === 'RABBITMQ_URL')) ||
+        value.includes('\0')
+      )
+        invalid.add(name);
       return [name, value];
     }),
   ) as Record<(typeof requiredVariables)[number], string>;
@@ -255,21 +264,22 @@ export function validatePromotionsConfiguration(
   } catch {
     invalid.add('PGSSLROOTCERT');
   }
-  try {
-    const broker = new URL(required.RABBITMQ_URL);
-    if (
-      !['amqp:', 'amqps:'].includes(broker.protocol) ||
-      /\s/.test(required.RABBITMQ_URL) ||
-      !broker.hostname ||
-      (broker.port !== '' && !isPort(broker.port)) ||
-      broker.search ||
-      broker.hash
-    ) {
+  if (required.RABBITMQ_URL || !httpOnly)
+    try {
+      const broker = new URL(required.RABBITMQ_URL);
+      if (
+        !['amqp:', 'amqps:'].includes(broker.protocol) ||
+        /\s/.test(required.RABBITMQ_URL) ||
+        !broker.hostname ||
+        (broker.port !== '' && !isPort(broker.port)) ||
+        broker.search ||
+        broker.hash
+      ) {
+        invalid.add('RABBITMQ_URL');
+      }
+    } catch {
       invalid.add('RABBITMQ_URL');
     }
-  } catch {
-    invalid.add('RABBITMQ_URL');
-  }
 
   if (invalid.size) throw new PromotionsConfigurationError([...invalid]);
 
@@ -289,7 +299,7 @@ export function validatePromotionsConfiguration(
       schema: 'promotions' as const,
       connectionMode: 'session' as const,
     }),
-    rabbitmqUrl: required.RABBITMQ_URL,
+    rabbitmqUrl: required.RABBITMQ_URL || undefined,
     dependencyProbesEnabled,
     couponRuntimeEnabled,
     localDemoEnabled: false,

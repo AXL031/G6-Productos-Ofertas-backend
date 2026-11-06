@@ -79,6 +79,7 @@ export class SignedIdentityVerifier {
         typeof claims.sub !== 'string' ||
         !claims.sub ||
         !Number.isSafeInteger(claims.iat) ||
+        (claims.iat as number) > now ||
         typeof claims.jti !== 'string' ||
         !claims.jti.trim() ||
         !['acceso', 'servicio'].includes(String(claims.tipo)) ||
@@ -165,8 +166,14 @@ export class GatewayIdentity {
     if (this.settings.readOnlyDemoEnabled)
       throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
     if (!route.security.length) {
-      if (!this.settings.publicOperations.includes(route.operationId))
+      if (
+        this.settings.securityMode !== 'PUBLIC_READ_ONLY' ||
+        !this.settings.publicOperations.includes(route.operationId)
+      )
         throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
+      const bearer = /^Bearer ([^\s]+)$/i.exec(authorization ?? '');
+      if (!bearer) throw new GatewayFailure(401, 'TOKEN_INVALIDO');
+      await this.authenticate(bearer[1]);
       return;
     }
     const bearer = /^Bearer ([^\s]+)$/i.exec(authorization ?? '');

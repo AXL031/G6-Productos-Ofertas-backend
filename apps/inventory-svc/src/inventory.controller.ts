@@ -343,6 +343,8 @@ export class InventoryController {
       req.clientId,
       correlationId,
       isCommercialDemoRequest(req),
+      false,
+      isInventoryPublicRead(req),
     );
 
     return this.disponibilidadService.verificarCantidadComercial(

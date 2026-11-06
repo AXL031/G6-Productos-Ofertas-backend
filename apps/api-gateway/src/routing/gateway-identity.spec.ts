@@ -137,6 +137,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
     { exp: 1 },
     { nbf: Math.floor(Date.now() / 1000) + 600 },
     { iat: undefined },
+    { iat: Math.floor(Date.now() / 1000) + 600 },
     { jti: '' },
     { tipo: 'refresh' },
   ])('rejects invalid signed claims %j', async (claims) => {
@@ -372,6 +373,31 @@ describe('Gateway identity from G6/G7 contracts', () => {
     await expect(
       signed.identity.authorize(publicRoute, undefined),
     ).rejects.toMatchObject({ status: 403 });
+  });
+  it('validates supplied JWT even on selected public SEO and never carries that exception into phase 3', async () => {
+    const route = CONTRACT_ROUTES.find(
+      (r) => r.operationId === 'obtenerSeoPorSlug',
+    )!;
+    const identity = new GatewayIdentity({
+      ...settings,
+      securityMode: 'PUBLIC_READ_ONLY',
+      publicOperations: [route.operationId],
+    });
+    await expect(identity.authorize(route, undefined)).resolves.toBeUndefined();
+    await expect(identity.authorize(route, 'not bearer')).rejects.toMatchObject(
+      { status: 401 },
+    );
+    await expect(
+      identity.authorize(route, 'Bearer invalid'),
+    ).rejects.toMatchObject({ status: 503 });
+    const g7 = new GatewayIdentity({
+      ...settings,
+      securityMode: 'G7_AUTHENTICATED',
+      publicOperations: [route.operationId],
+    });
+    await expect(g7.authorize(route, undefined)).rejects.toMatchObject({
+      status: 403,
+    });
   });
   it('fails closed before forwarding without token or trust configuration', async () => {
     const identity = new GatewayIdentity(settings);

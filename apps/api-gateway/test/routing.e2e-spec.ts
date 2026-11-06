@@ -78,6 +78,9 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       throw new Error('No test provider address');
     const origin = `http://127.0.0.1:${address.port}`;
     settings = {
+      // Only the two contract-public SEO reads are selected in this transport
+      // fixture. All other operations still exercise their signed JWT policy.
+      securityMode: 'PUBLIC_READ_ONLY',
       upstreams: Object.fromEntries(
         CONTRACT_ROUTES.map((r) => [r.service, origin]),
       ),

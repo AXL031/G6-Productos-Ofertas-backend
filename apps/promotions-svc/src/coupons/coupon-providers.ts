@@ -102,6 +102,8 @@ export function nativeCouponResources(
     if (closed) throw new Error('COUPON_TRANSPORT_CLOSED');
     if (!opening) {
       const pending = (async () => {
+        if (!config.settings.rabbitmqUrl)
+          throw new Error('AMQP_NOT_CONFIGURED');
         const connection = await connect(config.settings.rabbitmqUrl, {
           timeout: 3000,
         });
@@ -137,6 +139,7 @@ export function nativeCouponResources(
     pool,
     openConsumerChannel: async () => {
       if (closed) throw new Error('COUPON_TRANSPORT_CLOSED');
+      if (!config.settings.rabbitmqUrl) throw new Error('AMQP_NOT_CONFIGURED');
       const connection = await connect(config.settings.rabbitmqUrl, {
         timeout: 3000,
       });

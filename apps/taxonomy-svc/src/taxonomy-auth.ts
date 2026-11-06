@@ -12,6 +12,10 @@ import {
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
+import {
+  PHASE1_PUBLIC_OPERATION_IDS,
+  isPhase1PublicRead,
+} from './phase1-public-reads.js';
 
 export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
 export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
@@ -24,12 +28,7 @@ export interface TaxonomyPublicReadConfig {
   readonly securityMode: TaxonomySecurityMode;
   readonly publicOperations: readonly string[];
 }
-const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
-  'listarCategorias',
-  'listarMarcas',
-  'obtenerSeoPorSlug',
-  'resolverSlugAnterior',
-]);
+const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = PHASE1_PUBLIC_OPERATION_IDS;
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
 const TAXONOMY_SERVICE_CLIENTS = 'taxonomy:service-clients';
@@ -111,6 +110,8 @@ export function readTaxonomySecurityConfig(
     );
 
   const issuer = values[0]!.trim();
+  if (simulated && issuer === env.SECURITY_ISSUER?.trim())
+    throw new Error('SIMULATED_AUTH requiere un emisor independiente de G7.');
   const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
@@ -453,6 +454,14 @@ export class TaxonomyUserGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+    if (
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
+      return true;
     const authorization = request.headers.authorization;
     const match =
       typeof authorization === 'string' &&
@@ -495,7 +504,21 @@ export class TaxonomyUserGuard implements CanActivate {
 
 @Injectable()
 export class TaxonomyCommercialGuard implements CanActivate {
+  constructor(
+    @Optional()
+    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
+    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
+  ) {}
   canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request>();
+    if (
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
+      return true;
     const principal = context
       .switchToHttp()
       .getRequest<
@@ -523,6 +546,14 @@ export class TaxonomyAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+    if (
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
+      return true;
     const authorization = request.headers.authorization;
     const handlerName =
       context.getHandler?.()?.name ||

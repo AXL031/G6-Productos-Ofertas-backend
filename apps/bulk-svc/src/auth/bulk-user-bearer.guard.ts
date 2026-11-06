@@ -1,23 +1,18 @@
-import {
-  createPublicKey,
-  createVerify,
-  verify,
-  type JsonWebKey,
-} from 'node:crypto';
+import { createVerify } from 'node:crypto';
+import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
 import {
   CanActivate,
   ExecutionContext,
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 
 @Injectable()
 export class BulkUserBearerGuard implements CanActivate {
-  private static simulatedKeys: Array<Record<string, unknown>> = [];
-  private static simulatedKeysExpireAt = 0;
-
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
@@ -30,12 +25,12 @@ export class BulkUserBearerGuard implements CanActivate {
       .map((id) => id.trim())
       .filter(Boolean);
     if (
-      mode === 'PUBLIC_READ_ONLY' &&
-      request.method === 'GET' &&
-      request.path === '/api/v1/carga-masiva/productos/plantilla' &&
-      context.getHandler().name === 'descargarPlantillaProductos' &&
-      publicOperations.includes('descargarPlantillaProductos') &&
-      request.headers.authorization === undefined
+      isPhase1PublicRead(
+        request,
+        mode,
+        publicOperations,
+        context.getHandler().name,
+      )
     )
       return true;
     const token = request.headers.authorization;
@@ -53,6 +48,15 @@ export class BulkUserBearerGuard implements CanActivate {
       claims = JSON.parse(
         Buffer.from(parts[1]!, 'base64url').toString('utf8'),
       ) as Record<string, unknown>;
+      if (
+        !header ||
+        typeof header !== 'object' ||
+        Array.isArray(header) ||
+        !claims ||
+        typeof claims !== 'object' ||
+        Array.isArray(claims)
+      )
+        throw new Error('Invalid JWT objects');
     } catch {
       throw new UnauthorizedException('TOKEN_INVALIDO');
     }
@@ -63,70 +67,31 @@ export class BulkUserBearerGuard implements CanActivate {
     if (header.alg !== 'RS256' || !issuer)
       throw new UnauthorizedException('TOKEN_INVALIDO');
     try {
-      if (mode === 'SIMULATED_AUTH') {
-        const jwksUrl = process.env.SIMULATED_AUTH_JWKS_URL;
-        if (!jwksUrl || typeof header.kid !== 'string') throw new Error();
-        if (Date.now() >= BulkUserBearerGuard.simulatedKeysExpireAt) {
-          const endpoint = new URL(jwksUrl);
-          if (
-            endpoint.protocol !== 'https:' &&
-            !(
-              process.env.NODE_ENV === 'test' &&
-              ['localhost', '127.0.0.1', '[::1]'].includes(endpoint.hostname)
+      const key =
+        mode === 'SIMULATED_AUTH' || process.env.G7_JWT_JWKS_URL !== undefined
+          ? await trustedJwksPublicKey(
+              token.slice(7).trim(),
+              mode === 'SIMULATED_AUTH'
+                ? process.env.SIMULATED_AUTH_JWKS_URL
+                : process.env.G7_JWT_JWKS_URL,
+              process.env.NODE_ENV,
             )
-          )
-            throw new Error();
-          const response = await fetch(endpoint, {
-            redirect: 'error',
-            signal: AbortSignal.timeout(2500),
-          });
-          const raw = await response.text();
-          if (!response.ok || raw.length > 65536) throw new Error();
-          const jwks: unknown = JSON.parse(raw);
-          if (
-            !jwks ||
-            typeof jwks !== 'object' ||
-            !Array.isArray((jwks as { keys?: unknown }).keys)
-          )
-            throw new Error();
-          BulkUserBearerGuard.simulatedKeys = (
-            jwks as { keys: Array<Record<string, unknown>> }
-          ).keys;
-          BulkUserBearerGuard.simulatedKeysExpireAt = Date.now() + 60000;
-        }
-        const matches = BulkUserBearerGuard.simulatedKeys.filter(
-          (item) =>
-            item.kid === header.kid &&
-            item.kty === 'RSA' &&
-            (item.use === undefined || item.use === 'sig') &&
-            (item.alg === undefined || item.alg === 'RS256') &&
-            typeof item.n === 'string' &&
-            typeof item.e === 'string',
-        );
-        if (
-          matches.length !== 1 ||
-          !verify(
-            'RSA-SHA256',
-            Buffer.from(`${parts[0]}.${parts[1]}`),
-            createPublicKey({ key: matches[0] as JsonWebKey, format: 'jwk' }),
-            Buffer.from(parts[2]!, 'base64url'),
-          )
+          : (process.env.G7_JWT_PUBLIC_KEY ?? process.env.JWT_PUBLIC_KEY);
+      if (!key) throw new JwksUnavailable();
+      const verifier = createVerify('RSA-SHA256');
+      verifier.update(parts[0] + '.' + parts[1]);
+      if (
+        !verifier.verify(
+          key.replace(/\\n/g, '\n'),
+          Buffer.from(parts[2], 'base64url'),
         )
-          throw new Error();
-      } else {
-        const key = process.env.G7_JWT_PUBLIC_KEY ?? process.env.JWT_PUBLIC_KEY;
-        if (!key) throw new Error();
-        const verifier = createVerify('RSA-SHA256');
-        verifier.update(`${parts[0]}.${parts[1]}`);
-        if (
-          !verifier.verify(
-            key.replace(/\\n/g, '\n'),
-            Buffer.from(parts[2]!, 'base64url'),
-          )
-        )
-          throw new Error();
-      }
-    } catch {
+      )
+        throw new Error();
+    } catch (error) {
+      if (error instanceof JwksUnavailable)
+        throw new ServiceUnavailableException({
+          code: 'SERVICIO_NO_DISPONIBLE',
+        });
       throw new UnauthorizedException('TOKEN_INVALIDO');
     }
     const now = Math.floor(Date.now() / 1000);

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
 
@@ -43,9 +44,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
     .map((id) => id.trim())
     .filter(Boolean);
   if (
-    publicOperations.some(
-      (id) => !['consultarPrecios', 'obtenerPrecioSku'].includes(id),
-    ) ||
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
     (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
   )
     throw new InvalidPricingConfig('PRICING_PUBLIC_OPERATION_IDS inválido.');

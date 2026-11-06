@@ -8,6 +8,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 import type { Request } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PromotionsConfigService } from '../infrastructure/config/promotions-config.js';
 import { httpContracts } from './http-contract.generated.js';
 import {
@@ -216,11 +217,12 @@ export class PromotionsQueryGuard implements CanActivate {
     if (!httpContracts[id])
       throw new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     if (
-      this.config.settings.securityMode === 'PUBLIC_READ_ONLY' &&
-      request.method === 'GET' &&
-      id === 'listarPromociones' &&
-      this.config.settings.publicOperations.includes(id) &&
-      request.header('authorization') === undefined
+      isPhase1PublicRead(
+        request,
+        this.config.settings.securityMode,
+        this.config.settings.publicOperations,
+        id,
+      )
     )
       return true;
     await this.identity.authorize(

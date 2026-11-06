@@ -10,6 +10,31 @@ import {
 
 describe('Promotions configuration', () => {
   const fixture = createEnvironmentFixture();
+  it('permits explicit HTTP-only Phase 1 without a fake broker, but requires messaging for enabled workers', () => {
+    const environment = {
+      ...fixture.environment,
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+      PROMOTIONS_PUBLIC_OPERATION_IDS: 'listarPromociones',
+      RABBITMQ_URL: undefined,
+      PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false',
+      PROMOTIONS_COUPON_RUNTIME_ENABLED: 'false',
+    };
+    expect(
+      validatePromotionsConfiguration(environment).rabbitmqUrl,
+    ).toBeUndefined();
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...environment,
+        PROMOTIONS_COUPON_RUNTIME_ENABLED: 'true',
+      }),
+    ).toThrow(PromotionsConfigurationError);
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...environment,
+        PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'true',
+      }),
+    ).toThrow(PromotionsConfigurationError);
+  });
   afterAll(() => fixture.cleanup());
   it('selects an independent simulated issuer and JWKS while keeping public operations empty', () => {
     const settings = validatePromotionsConfiguration({

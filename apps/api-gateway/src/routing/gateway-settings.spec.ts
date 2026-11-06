@@ -62,9 +62,18 @@ describe('Gateway route boundaries and configuration', () => {
       readGatewaySettings({ GATEWAY_PUBLIC_OPERATION_IDS: 'listarProductos' }),
     ).toThrow();
     expect(
-      readGatewaySettings({ GATEWAY_PUBLIC_OPERATION_IDS: 'obtenerSeoPorSlug' })
-        .publicOperations,
+      readGatewaySettings({
+        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+        GATEWAY_PUBLIC_OPERATION_IDS: 'obtenerSeoPorSlug',
+      }).publicOperations,
     ).toEqual(['obtenerSeoPorSlug']);
+    for (const mode of ['SIMULATED_AUTH', 'G7_AUTHENTICATED'])
+      expect(() =>
+        readGatewaySettings({
+          G6_SECURITY_MODE: mode,
+          GATEWAY_PUBLIC_OPERATION_IDS: 'obtenerSeoPorSlug',
+        }),
+      ).toThrow();
   });
   it('keeps anonymous legacy mode disabled and rejects attempts to enable it', () => {
     expect(readGatewaySettings({}).demoNoAuthEnabled).toBe(false);

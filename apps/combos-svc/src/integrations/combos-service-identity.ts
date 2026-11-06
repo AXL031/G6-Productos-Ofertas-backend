@@ -1,5 +1,8 @@
-import { Injectable } from '@nestjs/common';
-import { ComboTokenVerifier } from '../http/combos-auth.js';
+import { Injectable, Optional } from '@nestjs/common';
+import {
+  ComboTokenVerifier,
+  SimulatedComboTokenVerifier,
+} from '../http/combos-auth.js';
 import { IntegrationFailure } from './catalog-sku-context.client.js';
 
 type ServiceScope = 'catalogo:leer' | 'precios:leer';
@@ -41,13 +44,22 @@ async function readTokenBody(response: Response): Promise<unknown> {
 
 @Injectable()
 export class CombosServiceIdentity {
-  private readonly cache = new Map<ServiceScope, CachedToken>();
-  private readonly pending = new Map<ServiceScope, Promise<string>>();
+  private readonly cache = new Map<string, CachedToken>();
+  private readonly pending = new Map<string, Promise<string>>();
 
-  constructor(private readonly verifier: ComboTokenVerifier) {}
+  constructor(
+    private readonly verifier: ComboTokenVerifier,
+    @Optional()
+    private readonly simulatedVerifier?: SimulatedComboTokenVerifier,
+  ) {}
 
   invalidate(scope: ServiceScope): void {
-    this.cache.delete(scope);
+    for (const phase of [
+      'PUBLIC_READ_ONLY',
+      'SIMULATED_AUTH',
+      'G7_AUTHENTICATED',
+    ])
+      this.cache.delete(phase + ':' + scope);
   }
 
   async authorization(
@@ -55,22 +67,37 @@ export class CombosServiceIdentity {
     signal?: AbortSignal,
   ): Promise<string> {
     signal?.throwIfAborted();
-    const cached = this.cache.get(scope);
+    const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+    const cacheKey = mode + ':' + scope;
+    const cached = this.cache.get(cacheKey);
     if (cached && cached.expiresAt > Date.now()) return cached.value;
-    this.cache.delete(scope);
-    const existing = this.pending.get(scope);
+    this.cache.delete(cacheKey);
+    const existing = this.pending.get(cacheKey);
     if (existing) return raceWithSignal(existing, signal);
-    const pending = this.issue(scope).finally(() => {
-      this.pending.delete(scope);
+    const pending = this.issue(scope, mode).finally(() => {
+      this.pending.delete(cacheKey);
     });
-    this.pending.set(scope, pending);
+    this.pending.set(cacheKey, pending);
     return raceWithSignal(pending, signal);
   }
 
-  private async issue(scope: ServiceScope): Promise<string> {
-    const tokenUrl = process.env.COMBOS_G7_TOKEN_URL?.trim();
-    const secret = process.env.COMBOS_G7_CLIENT_SECRET;
-    if (!tokenUrl || !secret)
+  private async issue(scope: ServiceScope, mode: string): Promise<string> {
+    const simulated = mode === 'SIMULATED_AUTH';
+    const tokenUrl = (
+      simulated
+        ? process.env.COMBOS_SIMULATED_TOKEN_URL
+        : process.env.COMBOS_G7_TOKEN_URL
+    )?.trim();
+    const secret = simulated
+      ? process.env.COMBOS_SIMULATED_CLIENT_SECRET
+      : process.env.COMBOS_G7_CLIENT_SECRET;
+    const verifier = simulated ? this.simulatedVerifier : this.verifier;
+    if (
+      !tokenUrl ||
+      !secret ||
+      !verifier ||
+      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
+    )
       throw new IntegrationFailure(
         scope === 'catalogo:leer' ? 'CATALOG' : 'PRICING',
         'AUTH_NOT_CONFIGURED',
@@ -124,7 +151,7 @@ export class CombosServiceIdentity {
         payload.scopes[0] !== scope
       )
         throw new Error('TOKEN_RESPONSE_INVALID');
-      const principal = await this.verifier.verify(payload.accessToken);
+      const principal = await verifier.verify(payload.accessToken);
       if (
         principal.kind !== 'service' ||
         principal.subject !== 'modulo-productos' ||
@@ -147,10 +174,13 @@ export class CombosServiceIdentity {
       if (!Number.isFinite(lifetime) || lifetime <= 0)
         throw new Error('TOKEN_EXPIRED');
       const expiresAt = now + lifetime - Math.min(30000, lifetime / 10);
-      this.cache.set(scope, { value: payload.accessToken, expiresAt });
+      this.cache.set(mode + ':' + scope, {
+        value: payload.accessToken,
+        expiresAt,
+      });
       return payload.accessToken;
     } catch {
-      this.cache.delete(scope);
+      this.cache.delete(mode + ':' + scope);
       throw new IntegrationFailure(
         scope === 'catalogo:leer' ? 'CATALOG' : 'PRICING',
         'AUTH_UNAVAILABLE',

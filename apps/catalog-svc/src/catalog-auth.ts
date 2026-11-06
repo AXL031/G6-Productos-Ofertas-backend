@@ -18,6 +18,7 @@ import {
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
+import { isPhase1PublicRead } from './phase1-public-reads.js';
 
 export const CATALOG_SECURITY_CONFIG = Symbol('CATALOG_SECURITY_CONFIG');
 const CATALOG_AUTH_POLICY = Symbol('CATALOG_AUTH_POLICY');
@@ -54,6 +55,8 @@ export function readCatalogSecurityConfig(
     );
 
   const issuer = values[0]!.trim();
+  if (simulated && issuer === env.SECURITY_ISSUER?.trim())
+    throw new Error('SIMULATED_AUTH requiere un emisor independiente de G7.');
   const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
@@ -388,6 +391,12 @@ const CATALOG_PUBLIC_OPERATION_BY_HANDLER: Readonly<Record<string, string>> = {
   list: 'listarProductos',
   detail: 'obtenerProductoPorSlug',
   product: 'obtenerProducto',
+  context: 'obtenerContextoSku',
+  physicalData: 'consultarDatosFisicos',
+  preparation: 'obtenerPreparacionProducto',
+  variants: 'listarVariantesProducto',
+  variant: 'obtenerVariante',
+  resolveBarcode: 'resolverCodigoBarras',
 };
 
 @Injectable()
@@ -418,23 +427,23 @@ export class CatalogAuthGuard implements CanActivate {
     >();
     const handlerOp =
       CATALOG_PUBLIC_OPERATION_BY_HANDLER[context.getHandler().name];
-    const publicController =
-      context.getClass().name ===
-      (handlerOp === 'obtenerProducto'
-        ? 'CatalogQueryController'
-        : 'CommercialController');
+    const expectedController =
+      handlerOp === 'listarProductos' || handlerOp === 'obtenerProductoPorSlug'
+        ? 'CommercialController'
+        : handlerOp === 'obtenerContextoSku'
+          ? 'CatalogSkuContextController'
+          : 'CatalogQueryController';
     if (
-      this.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
-      request.headers.authorization === undefined &&
-      request.method === 'GET' &&
-      policy.demoRead &&
-      publicController &&
       handlerOp &&
-      this.readDemo.publicOperations?.includes(handlerOp)
-    ) {
-      // Public authorization never enables the legacy draft/administrative path.
+      context.getClass().name === expectedController &&
+      isPhase1PublicRead(
+        request,
+        this.readDemo.securityMode,
+        this.readDemo.publicOperations,
+        handlerOp,
+      )
+    )
       return true;
-    }
     const authorization = request.headers.authorization;
     const match =
       typeof authorization === 'string' &&

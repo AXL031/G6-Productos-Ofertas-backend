@@ -8,6 +8,7 @@ export interface UserTokenPayload {
   aud?: string | string[];
   exp?: number;
   iat?: number;
+  nbf?: number;
   iss?: string;
   roles?: string[];
   capabilities?: string[];
@@ -140,5 +141,12 @@ export function verifyUserBearerToken(
     );
   }
 
+  for (const claim of [payload.iat, payload.nbf]) {
+    if (claim !== undefined && (!Number.isSafeInteger(claim) || claim > nowSec))
+      throw ProblemDetailsException.tokenInvalido(
+        'Token humano todavía no válido',
+        correlationId,
+      );
+  }
   return payload;
 }

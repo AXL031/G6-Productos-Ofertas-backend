@@ -1,0 +1,605 @@
+{
+  "sourceBranch": "integracion/h4-fase1-completa",
+  "sourceSha": "bff05f8f856031807786cf10a501c5a45af07928",
+  "authorization": "User explicitly requested temporary anonymous access including administrative/internal reads using synthetic academic data on 2026-11-06. This records the instruction, not independently verified normative approval.",
+  "status": "IMPLEMENTED_SELECTION_NOT_CLOUD_CERTIFIED",
+  "totalCandidates": 66,
+  "selectedGet": 59,
+  "selectedPost": 6,
+  "operations": [
+    {
+      "service": "catalog-svc",
+      "operationId": "obtenerContextoSku",
+      "method": "GET",
+      "path": "/api/v1/productos/skus/{sku}/contexto",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "listarProductos",
+      "method": "GET",
+      "path": "/api/v1/productos",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "obtenerProducto",
+      "method": "GET",
+      "path": "/api/v1/productos/{productoId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarCategorias",
+      "method": "GET",
+      "path": "/api/v1/categorias",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarMarcas",
+      "method": "GET",
+      "path": "/api/v1/marcas",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "consultarPrecios",
+      "method": "GET",
+      "path": "/api/v1/precios",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "obtenerPrecioSku",
+      "method": "GET",
+      "path": "/api/v1/precios/skus/{sku}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "listarPromociones",
+      "method": "GET",
+      "path": "/api/v1/promociones",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "evaluarPromociones",
+      "method": "POST",
+      "path": "/api/v1/promociones/evaluar",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "validarCupon",
+      "method": "POST",
+      "path": "/api/v1/cupones/validar",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "obtenerRecomendaciones",
+      "method": "GET",
+      "path": "/api/v1/recomendaciones",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "combos-svc",
+      "operationId": "obtenerCombo",
+      "method": "GET",
+      "path": "/api/v1/combos/{comboId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "consultarDisponibilidad",
+      "method": "GET",
+      "path": "/api/v1/inventario/disponibilidad",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "consultarDatosFisicos",
+      "method": "POST",
+      "path": "/api/v1/productos/datos-fisicos/consulta",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "resolverSlugCategoriaCreacion",
+      "method": "POST",
+      "path": "/api/v1/seo/categorias/slug/resolver",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerSeoPorSlug",
+      "method": "GET",
+      "path": "/api/v1/seo/{slug}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "resolverSlugAnterior",
+      "method": "GET",
+      "path": "/api/v1/seo/resoluciones/{slugAnterior}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "obtenerProductoPorSlug",
+      "method": "GET",
+      "path": "/api/v1/productos/por-slug/{slug}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "obtenerPreparacionProducto",
+      "method": "GET",
+      "path": "/api/v1/productos/{productoId}/preparacion",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "listarVariantesProducto",
+      "method": "GET",
+      "path": "/api/v1/productos/{productoId}/variantes",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "obtenerVariante",
+      "method": "GET",
+      "path": "/api/v1/productos/{productoId}/variantes/{variantId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "combos-svc",
+      "operationId": "listarCombosAdmin",
+      "method": "GET",
+      "path": "/api/v1/combos",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "combos-svc",
+      "operationId": "consultarDisponibilidadCombo",
+      "method": "GET",
+      "path": "/api/v1/combos/{comboId}/disponibilidad",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "listarCupones",
+      "method": "GET",
+      "path": "/api/v1/cupones",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "obtenerCuponAdmin",
+      "method": "GET",
+      "path": "/api/v1/cupones/{cuponId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "obtenerPromocionAdmin",
+      "method": "GET",
+      "path": "/api/v1/promociones/{promocionId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "listarReglasRecomendacion",
+      "method": "GET",
+      "path": "/api/v1/recomendaciones/reglas",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "obtenerReglaRecomendacion",
+      "method": "GET",
+      "path": "/api/v1/recomendaciones/reglas/{reglaId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerArbolCategoriasAdmin",
+      "method": "GET",
+      "path": "/api/v1/categorias/arbol",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerCategoriaAdmin",
+      "method": "GET",
+      "path": "/api/v1/categorias/{categoriaId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarCaracteristicas",
+      "method": "GET",
+      "path": "/api/v1/caracteristicas",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerCaracteristica",
+      "method": "GET",
+      "path": "/api/v1/caracteristicas/{caracteristicaId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarValoresCaracteristica",
+      "method": "GET",
+      "path": "/api/v1/caracteristicas/{caracteristicaId}/valores",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarTiposProducto",
+      "method": "GET",
+      "path": "/api/v1/tipos-producto",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerTipoProducto",
+      "method": "GET",
+      "path": "/api/v1/tipos-producto/{tipoProductoId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerEsquemaTipoProducto",
+      "method": "GET",
+      "path": "/api/v1/tipos-producto/{tipoProductoId}/caracteristicas",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerMarcaAdmin",
+      "method": "GET",
+      "path": "/api/v1/marcas/{marcaId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerOperacionMaestra",
+      "method": "GET",
+      "path": "/api/v1/taxonomia/operaciones/{operationId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "obtenerSeoCategoriaAdmin",
+      "method": "GET",
+      "path": "/api/v1/categorias/{categoriaId}/seo",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarHistorialSlugCategoria",
+      "method": "GET",
+      "path": "/api/v1/categorias/{categoriaId}/seo/historial",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "listarProgramacionesPrecioSku",
+      "method": "GET",
+      "path": "/api/v1/precios/skus/{sku}/programaciones",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "prevalidarImportacionPrecios",
+      "method": "POST",
+      "path": "/api/v1/precios/importaciones/prevalidar",
+      "phase1Selected": false,
+      "functionalHttpsAzure": "NOT_RUN",
+      "exclusion": "No implemented production multipart handler; not a certifiable read."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "obtenerImportacionPrecios",
+      "method": "GET",
+      "path": "/api/v1/precios/importaciones/{batchId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "descargarReporteImportacionPrecios",
+      "method": "GET",
+      "path": "/api/v1/precios/importaciones/{batchId}/reporte",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "price-audit-svc",
+      "operationId": "listarAuditoriaPrecios",
+      "method": "GET",
+      "path": "/api/v1/auditoria-precios",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "price-audit-svc",
+      "operationId": "obtenerAuditoriaPrecio",
+      "method": "GET",
+      "path": "/api/v1/auditoria-precios/{auditId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "price-audit-svc",
+      "operationId": "obtenerExportacionAuditoriaPrecios",
+      "method": "GET",
+      "path": "/api/v1/auditoria-precios/exportaciones/{exportId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "price-audit-svc",
+      "operationId": "descargarExportacionAuditoriaPrecios",
+      "method": "GET",
+      "path": "/api/v1/auditoria-precios/exportaciones/{exportId}/archivo",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "bulk-svc",
+      "operationId": "descargarPlantillaProductos",
+      "method": "GET",
+      "path": "/api/v1/carga-masiva/productos/plantilla",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "bulk-svc",
+      "operationId": "obtenerImportacionGeneralProductos",
+      "method": "GET",
+      "path": "/api/v1/carga-masiva/productos/importaciones/{batchId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "bulk-svc",
+      "operationId": "descargarReporteImportacionGeneral",
+      "method": "GET",
+      "path": "/api/v1/carga-masiva/productos/importaciones/{batchId}/reporte",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "bulk-svc",
+      "operationId": "obtenerExportacionGeneralProductos",
+      "method": "GET",
+      "path": "/api/v1/carga-masiva/productos/exportaciones/{exportId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "bulk-svc",
+      "operationId": "descargarExportacionGeneralProductos",
+      "method": "GET",
+      "path": "/api/v1/carga-masiva/productos/exportaciones/{exportId}/archivo",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "obtenerUmbralesInventario",
+      "method": "GET",
+      "path": "/api/v1/inventario/umbrales",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "obtenerDashboardInventario",
+      "method": "GET",
+      "path": "/api/v1/inventario/dashboard",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarCategoriasAdmin",
+      "method": "GET",
+      "path": "/api/v1/categorias/administracion",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "taxonomy-svc",
+      "operationId": "listarMarcasAdmin",
+      "method": "GET",
+      "path": "/api/v1/marcas/administracion",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "promotions-svc",
+      "operationId": "listarPromocionesAdmin",
+      "method": "GET",
+      "path": "/api/v1/promociones/administracion",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "obtenerPrecioBaseProducto",
+      "method": "GET",
+      "path": "/api/v1/precios/productos/{productoId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "pricing-svc",
+      "operationId": "listarProgramacionesPrecioProducto",
+      "method": "GET",
+      "path": "/api/v1/precios/productos/{productoId}/programaciones",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "listarTrasladosInventario",
+      "method": "GET",
+      "path": "/api/v1/inventario/traslados",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "obtenerTrasladoInventario",
+      "method": "GET",
+      "path": "/api/v1/inventario/traslados/{trasladoId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "catalog-svc",
+      "operationId": "resolverCodigoBarras",
+      "method": "POST",
+      "path": "/api/v1/productos/codigos-barras/resolver",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "consultarDisponibilidadComercial",
+      "method": "GET",
+      "path": "/api/v1/inventario/disponibilidad/comercial",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "consultarOperacionInventario",
+      "method": "GET",
+      "path": "/api/v1/inventario/operaciones/{operationId}",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "Operation-specific functional evidence remains separate from selection/transport tests."
+    },
+    {
+      "service": "inventory-svc",
+      "operationId": "verificarCantidadComercial",
+      "method": "POST",
+      "path": "/api/v1/inventario/disponibilidad/comercial/verificar",
+      "phase1Selected": true,
+      "functionalHttpsAzure": "NOT_RUN",
+      "sideEffectEvidence": "STATIC_CALL_PATH_REVIEW; runtime non-mutation verification pending"
+    }
+  ]
+}

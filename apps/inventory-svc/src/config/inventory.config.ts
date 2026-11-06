@@ -1,3 +1,5 @@
+import { trustedJwksUrl } from '../auth/trusted-jwks.js';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { isIP } from 'node:net';
 
 export interface InventoryConfig {
@@ -96,7 +98,7 @@ export function loadInventoryConfig(): InventoryConfig {
     .map((id) => id.trim())
     .filter(Boolean);
   if (
-    publicOperations.some((id) => id !== 'consultarDisponibilidadComercial') ||
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
     (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
   )
     throw new Error('[inventory-svc] INVENTORY_PUBLIC_OPERATION_IDS inválido');
@@ -127,6 +129,10 @@ export function loadInventoryConfig(): InventoryConfig {
         '[inventory-svc] SIMULATED_AUTH requiere issuer y JWKS seguros e independientes de G7',
       );
     }
+  }
+  if (process.env.G7_JWT_JWKS_URL !== undefined) {
+    trustedJwksUrl(process.env.G7_JWT_JWKS_URL, process.env.NODE_ENV);
+    trustedJwksUrl(process.env.G7_JWT_ISSUER, process.env.NODE_ENV);
   }
   const portName =
     process.env.INVENTORY_SVC_PORT === undefined

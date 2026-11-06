@@ -1,0 +1,58 @@
+{
+  "scope": "Local verification only; no new Azure deployment",
+  "sourceMerge": "4f0acd5156b775a06d2b9502b86e1c176d957aec",
+  "tests": [
+    {
+      "command": "npm test -- --reporter=dot --maxWorkers=2",
+      "passed": 2456,
+      "skipped": 72,
+      "note": "Full run before the final Combos config validation; that change has a separate focused run."
+    },
+    {
+      "command": "npm test -- --reporter=dot apps/combos-svc/src/config/combos-environment.spec.ts",
+      "passed": 8,
+      "skipped": 0
+    },
+    {
+      "command": "npm run test:e2e -- --reporter=dot --maxWorkers=2",
+      "passed": 926,
+      "skipped": 207,
+      "note": "Full run before final SEO Gateway tightening and new 67 transport cases; final affected Gateway checks recorded separately."
+    },
+    {
+      "command": "npm run test:e2e -- --reporter=dot apps/api-gateway/test/phase1-expanded-transport.e2e-spec.ts",
+      "passed": 67,
+      "scope": "Gateway transport against explicit HTTP fixture; not real upstream functional certification"
+    },
+    {
+      "command": "npm run test:e2e -- --reporter=dot apps/api-gateway/test/routing.e2e-spec.ts --maxWorkers=1",
+      "passed": 445,
+      "note": "Updated fixture uses explicit Phase 1 for SEO; other operations retain signed JWT policy."
+    },
+    {
+      "command": "node --test ops/azure/tests/demo-jwt-issuer.test.mjs ops/azure/tests/deploy.test.mjs",
+      "passed": 10,
+      "note": "Local issuer and simulated deploy tool tests, not a real Azure rollback."
+    }
+  ],
+  "typecheck": "PASS",
+  "finalAffectedGatewayE2e": { "passed": 538, "skipped": 12, "command": "npm run test:e2e -- --reporter=dot apps/api-gateway --maxWorkers=2" },
+  "lint": "PASS",
+  "format": "PASS",
+  "builds": [
+    "api-gateway",
+    "catalog-svc",
+    "taxonomy-svc",
+    "pricing-svc",
+    "price-audit-svc",
+    "promotions-svc",
+    "inventory-svc",
+    "combos-svc",
+    "bulk-svc"
+  ],
+  "cloudEndpointVerification": "NOT_RUN",
+  "officialCiForNewCode": "PENDING_NEW_COMMIT",
+  "officialImagesForNewCode": "PENDING_AUTHORIZED_PUBLISHER",
+  "g7RealHomologation": "NOT_RUN",
+  "sharedDatabaseWrites": "NONE; metadata-only probes"
+}

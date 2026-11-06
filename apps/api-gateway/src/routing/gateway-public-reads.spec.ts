@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { PHASE1_INTERNAL_READ_ROUTES } from './phase1-internal-read-routes.js';
+import { matchContractRoute } from './gateway-proxy.js';
 import { readGatewaySettings } from './gateway-settings.js';
 import { CONTRACT_ROUTES } from './contract-routes.js';
 import { isEligiblePublicRead } from './gateway-public-reads.js';
@@ -5,27 +8,36 @@ import { isDemoBypassRoute } from './gateway-identity.js';
 import { createSignedIdentity } from '../../test/support/signed-identity.js';
 
 describe('Phase 1 exact operation policy and JWT coexistence', () => {
-  it('permits only the fourteen authorized candidates, with exact service, method and route', () => {
+  it('permits exactly the academic matrix except unimplemented multipart prevalidation', () => {
+    const expected = readFileSync(
+      new URL(
+        '../../../../ops/oracle/H4-MATRIZ-OPERACIONES-FASE1.csv',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+      .trim()
+      .split(/\r?\n/)
+      .slice(1)
+      .map((line) => /^"[^"]+","([^"]+)"/.exec(line)?.[1])
+      .filter(
+        (id): id is string => !!id && id !== 'prevalidarImportacionPrecios',
+      )
+      .sort();
+    expect(expected).toHaveLength(65);
     expect(
-      CONTRACT_ROUTES.filter(isEligiblePublicRead)
-        .map((r) => r.operationId)
+      [...CONTRACT_ROUTES, ...PHASE1_INTERNAL_READ_ROUTES]
+        .filter(isEligiblePublicRead)
+        .map((route) => route.operationId)
         .sort(),
-    ).toEqual([
-      'consultarDisponibilidadCombo',
-      'consultarDisponibilidadComercial',
-      'consultarPrecios',
-      'descargarPlantillaProductos',
-      'listarCategorias',
-      'listarMarcas',
-      'listarProductos',
-      'listarPromociones',
-      'obtenerCombo',
-      'obtenerPrecioSku',
-      'obtenerProducto',
-      'obtenerProductoPorSlug',
-      'obtenerSeoPorSlug',
-      'resolverSlugAnterior',
-    ]);
+    ).toEqual(expected);
+    expect(
+      matchContractRoute('GET', '/api/v1/productos/skus/TEST/contexto'),
+    ).toBeUndefined();
+    expect(
+      matchContractRoute('GET', '/api/v1/productos/skus/TEST/contexto', true)
+        ?.operationId,
+    ).toBe('obtenerContextoSku');
     const route = CONTRACT_ROUTES[0];
     for (const changed of [
       { ...route, method: 'POST' },
@@ -34,9 +46,9 @@ describe('Phase 1 exact operation policy and JWT coexistence', () => {
     ])
       expect(isEligiblePublicRead(changed)).toBe(false);
     for (const operation of [
-      'obtenerPreparacionProducto',
-      'listarCategoriasAdmin',
       'crearProducto',
+      'prevalidarImportacionPrecios',
+      'activarProducto',
     ])
       expect(() =>
         readGatewaySettings({

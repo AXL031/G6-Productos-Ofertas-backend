@@ -1,3 +1,5 @@
+import { PHASE1_PUBLIC_OPERATION_IDS } from './phase1-public-reads.js';
+
 /** Legacy read-only presentation and explicit restricted H4 access selection.
  * Neither policy grants commercial eligibility or fabricates a G7 principal.
  */
@@ -15,11 +17,7 @@ export interface CatalogReadDemo {
   readonly publicOperations?: readonly string[];
 }
 
-const CATALOG_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
-  'listarProductos',
-  'obtenerProductoPorSlug',
-  'obtenerProducto',
-]);
+const CATALOG_ELIGIBLE_PUBLIC_OPERATIONS = PHASE1_PUBLIC_OPERATION_IDS;
 
 /** Existing legacy placeholders are not photographs of the stored product. */
 export function isDemoCatalogImage(value: string): boolean {

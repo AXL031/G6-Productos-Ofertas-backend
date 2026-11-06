@@ -1,11 +1,8 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import {
-  createPublicKey,
-  createVerify,
-  verify,
-  type JsonWebKey,
-} from 'node:crypto';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
+import { createVerify } from 'node:crypto';
+import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
 import {
   REQUIRED_SCOPE_KEY,
   ALLOWED_CLIENTS_KEY,
@@ -26,6 +23,7 @@ export interface DecodedTokenPayload {
   scopes?: string[];
   exp?: number;
   iat?: number;
+  nbf?: number;
   iss?: string;
   tipo?: string;
   [key: string]: unknown;
@@ -34,8 +32,6 @@ export interface DecodedTokenPayload {
 @Injectable()
 export class InventoryAuthGuard implements CanActivate {
   private static trustedPublicKey: string | null = null;
-  private static simulatedKeys: JsonWebKey[] = [];
-  private static simulatedKeysExpireAt = 0;
 
   constructor(private readonly reflector: Reflector) {}
 
@@ -66,14 +62,7 @@ export class InventoryAuthGuard implements CanActivate {
       .split(',')
       .map((id: string) => id.trim())
       .filter(Boolean);
-    if (
-      mode === 'PUBLIC_READ_ONLY' &&
-      request.method === 'GET' &&
-      request.path === '/api/v1/inventario/disponibilidad/comercial' &&
-      context.getHandler().name === 'consultarDisponibilidadComercial' &&
-      publicOperations.includes('consultarDisponibilidadComercial') &&
-      request.headers.authorization === undefined
-    ) {
+    if (isPhase1PublicRead(request, mode, publicOperations)) {
       request.inventoryPublicRead = true;
       return true;
     }
@@ -117,10 +106,11 @@ export class InventoryAuthGuard implements CanActivate {
       mode === 'SIMULATED_AUTH'
         ? process.env.SIMULATED_AUTH_ISSUER
         : getConfiguredIssuer();
-    const publicKey =
-      mode === 'SIMULATED_AUTH'
-        ? await this.simulatedPublicKey(rawToken, correlationId)
-        : InventoryAuthGuard.getTrustedPublicKey();
+    const publicKey = await this.selectedPublicKey(
+      rawToken,
+      mode === 'SIMULATED_AUTH',
+      correlationId,
+    );
     const payload = this.verifyAndDecodeToken(
       rawToken,
       correlationId,
@@ -153,6 +143,17 @@ export class InventoryAuthGuard implements CanActivate {
         'Token JWT expirado',
         correlationId,
       );
+    }
+
+    for (const claim of [payload.iat, payload.nbf]) {
+      if (
+        claim !== undefined &&
+        (!Number.isSafeInteger(claim) || claim > nowSec)
+      )
+        throw ProblemDetailsException.tokenInvalido(
+          'Token JWT todavía no válido',
+          correlationId,
+        );
     }
 
     // 2. Comparar el issuer exacto publicado por el discovery de G7.
@@ -319,86 +320,38 @@ export class InventoryAuthGuard implements CanActivate {
     }
   }
 
-  private async simulatedPublicKey(
+  private async selectedPublicKey(
     rawToken: string,
+    simulated: boolean,
     correlationId?: string,
-  ): Promise<string> {
-    const issuerValue = process.env.SIMULATED_AUTH_ISSUER;
-    const jwksValue = process.env.SIMULATED_AUTH_JWKS_URL;
+  ): Promise<string | null> {
+    if (!simulated && process.env.G7_JWT_JWKS_URL === undefined)
+      return InventoryAuthGuard.getTrustedPublicKey();
     try {
-      const issuer = new URL(issuerValue ?? '');
-      const jwksUrl = new URL(jwksValue ?? '');
-      const loopback = ['localhost', '127.0.0.1', '[::1]'];
       if (
-        issuer.href ===
-          new URL(process.env.G7_JWT_ISSUER ?? 'https://invalid').href ||
-        (issuer.protocol !== 'https:' &&
-          !(
-            process.env.NODE_ENV === 'test' &&
-            loopback.includes(issuer.hostname)
-          )) ||
-        (jwksUrl.protocol !== 'https:' &&
-          !(
-            process.env.NODE_ENV === 'test' &&
-            loopback.includes(jwksUrl.hostname)
-          )) ||
-        issuer.username ||
-        issuer.password ||
-        issuer.hash ||
-        jwksUrl.username ||
-        jwksUrl.password ||
-        jwksUrl.hash
+        simulated &&
+        (!process.env.SIMULATED_AUTH_ISSUER ||
+          process.env.SIMULATED_AUTH_ISSUER === process.env.G7_JWT_ISSUER)
       )
         throw new Error();
-      const parts = rawToken.split('.');
-      const header = JSON.parse(
-        Buffer.from(parts[0] ?? '', 'base64url').toString('utf8'),
-      ) as { alg?: string; kid?: string };
-      if (parts.length !== 3 || header.alg !== 'RS256' || !header.kid)
-        throw new Error();
-      if (Date.now() >= InventoryAuthGuard.simulatedKeysExpireAt) {
-        const response = await fetch(jwksUrl, {
-          redirect: 'error',
-          signal: AbortSignal.timeout(2500),
-        });
-        const raw = await response.text();
-        if (!response.ok || raw.length > 65536) throw new Error();
-        const data: unknown = JSON.parse(raw);
-        if (
-          !data ||
-          typeof data !== 'object' ||
-          !Array.isArray((data as { keys?: unknown }).keys)
-        )
-          throw new Error();
-        InventoryAuthGuard.simulatedKeys = (
-          data as { keys: JsonWebKey[] }
-        ).keys;
-        InventoryAuthGuard.simulatedKeysExpireAt = Date.now() + 60000;
-      }
-      const matches = InventoryAuthGuard.simulatedKeys.filter(
-        (key) =>
-          key.kid === header.kid &&
-          key.kty === 'RSA' &&
-          (!key.alg || key.alg === 'RS256') &&
-          (!key.use || key.use === 'sig') &&
-          !key.d,
+      return await trustedJwksPublicKey(
+        rawToken,
+        simulated
+          ? process.env.SIMULATED_AUTH_JWKS_URL
+          : process.env.G7_JWT_JWKS_URL,
+        process.env.NODE_ENV,
       );
-      if (matches.length !== 1) throw new Error();
-      const key = createPublicKey({ key: matches[0]!, format: 'jwk' });
-      if (
-        (key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048 ||
-        !verify(
-          'RSA-SHA256',
-          Buffer.from(parts[0] + '.' + parts[1]),
-          key,
-          Buffer.from(parts[2]!, 'base64url'),
-        )
-      )
-        throw new Error();
-      return key.export({ type: 'spki', format: 'pem' }).toString();
-    } catch {
+    } catch (error) {
+      if (error instanceof JwksUnavailable)
+        throw new ProblemDetailsException({
+          type: '/errores/servicio-no-disponible',
+          title: 'Servicio no disponible',
+          status: 503,
+          code: 'SERVICIO_NO_DISPONIBLE',
+          correlationId,
+        });
       throw ProblemDetailsException.tokenInvalido(
-        'Token SIMULATED_AUTH inválido',
+        'Token JWT inválido',
         correlationId,
       );
     }

@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { trustedJwksUrl } from '../auth/trusted-jwks.js';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { isAbsolute } from 'node:path';
 import { X509Certificate } from 'node:crypto';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
@@ -111,7 +113,7 @@ export function parseBulkEnvironment(
     .map((id) => id.trim())
     .filter(Boolean);
   if (
-    publicOperations.some((id) => id !== 'descargarPlantillaProductos') ||
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
     (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
   )
     fail('BULK_PUBLIC_OPERATION_IDS inválido.');
@@ -150,6 +152,16 @@ export function parseBulkEnvironment(
     } catch {
       fail(
         'SIMULATED_AUTH requiere issuer y JWKS seguros e independientes de G7.',
+      );
+    }
+  }
+  if (env.G7_JWT_JWKS_URL !== undefined) {
+    try {
+      trustedJwksUrl(env.G7_JWT_JWKS_URL, nodeEnv);
+      trustedJwksUrl(env.G7_JWT_ISSUER, nodeEnv);
+    } catch {
+      fail(
+        'G7_JWT_ISSUER y G7_JWT_JWKS_URL deben ser URLs de confianza seguras.',
       );
     }
   }

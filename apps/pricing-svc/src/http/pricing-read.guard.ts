@@ -11,6 +11,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingHttpError } from './pricing-http.error.js';
 import { SafeLogger } from '../logging/safe-logger.js';
@@ -61,18 +62,25 @@ export class PricingReadGuard implements CanActivate {
     )
       throw new PricingHttpError(400, 'VALIDACION');
     const handler = context.getHandler();
-    const operationId =
-      handler?.name === 'batch'
-        ? 'consultarPrecios'
-        : handler?.name === 'sku'
-          ? 'obtenerPrecioSku'
-          : undefined;
+    const operationId: string | undefined = (
+      {
+        batch: 'consultarPrecios',
+        sku: 'obtenerPrecioSku',
+        product: 'obtenerPrecioBaseProducto',
+        productSchedules: 'listarProgramacionesPrecioProducto',
+        skuSchedules: 'listarProgramacionesPrecioSku',
+        imported: 'obtenerImportacionPrecios',
+        importReport: 'descargarReporteImportacionPrecios',
+      } as Readonly<Record<string, string>>
+    )[handler?.name];
     if (
-      this.config.securityMode === 'PUBLIC_READ_ONLY' &&
-      request.method === 'GET' &&
-      request.headers.authorization === undefined &&
-      operationId !== undefined &&
-      this.config.publicOperations.includes(operationId)
+      operationId &&
+      isPhase1PublicRead(
+        request,
+        this.config.securityMode,
+        this.config.publicOperations,
+        operationId,
+      )
     )
       return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
