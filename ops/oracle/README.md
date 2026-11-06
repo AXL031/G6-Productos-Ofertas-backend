@@ -275,3 +275,12 @@ Para cada servicio futuro, crea su directorio `/etc/g6-<servicio>` como `root:g6
 ## Pruebas locales
 
 Las pruebas `ops/oracle/tests/validate-cd-source.test.sh`, `select-cd-services.test.sh`, `deploy-g6-service.test.sh` y `publish-isolation.test.sh` usan respuestas GitHub simuladas o registros temporales. Comprueban CI push exitosa en `master`, rechazo de pull requests/forks/CI fallida, SHA obsoleto como no-op, dispatch manual con CI exitosa, los nueve servicios por dispatch manual y autorización automática individual con evidencia obligatoria. Las simulaciones del ejecutor cubren el gate Catalog (HTTP 200 y JSON ready), readiness 503, timeout, ausencia de imagen previa, rollback, despliegues simultáneos, rollback concurrente, wrapper manual de Inventory frente al comando genérico e aislamiento de servicios. Si Docker daemon e `inventory-svc:ci` están disponibles, `deploy-g6-service.test.sh` crea una red bridge temporal aislada y dos proyectos Compose con la clave común `service`, inspecciona aliases reales y ejecuta el preflight real hasta el gate de imagen antes de login/pull/up; el `trap` retira solo los proyectos y la red temporal creados por la prueba. Si no están disponibles, declara ese paso `NO EJECUTADO`. `deployment-api.test.sh` comprueba ciclo de vida y estados; `publish-isolation.test.sh` comprueba fail-fast, concurrencia y errores de publicación. El CI además construye y ejecuta `Dockerfile.service` para los servicios habilitados, valida Compose y sus puertos/env/healthchecks. Nada de esto despliega en Oracle.
+
+## Preparación local H4 de nueve servicios
+
+- Procedimiento futuro, reversible y sin despliegue: [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md).
+- Variables verificadas en parsers, límites de preparación y bloqueos externos: [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md).
+- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); prueba dinámica aislada con la imagen oficial Caddy: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
+- Pruebas de registro, puertos, aliases y Compose JSON de nueve servicios: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
+
+El Caddyfile general es candidato local únicamente. No se instala ni activa mientras Gateway conserve un bypass demo o hasta cumplir los gates de autenticación y exposición del procedimiento H4.

@@ -1,0 +1,28 @@
+{
+	admin off
+}
+
+g6-productos-ofertas.duckdns.org {
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+		-Server
+	}
+
+	handle /health {
+		reverse_proxy g6-api-gateway:3000 {
+			header_down -Server
+		}
+	}
+
+	handle /api/v1/* {
+		reverse_proxy g6-api-gateway:3000 {
+			header_down -Server
+		}
+	}
+
+	handle {
+		respond `{"codigo":"RUTA_NO_PUBLICADA"}` 404
+	}
+}
