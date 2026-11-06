@@ -2,7 +2,10 @@
 -- Aplicar solo mediante el proceso autorizado; nunca desde bootstrap.
 -- No aplicada en Supabase compartida. Pruebas: PostgreSQL descartable.
 DO $$ BEGIN
-  IF current_user <> 'po_catalog_owner' THEN
+  IF current_user <> 'po_catalog_owner' OR NOT EXISTS (
+    SELECT 1 FROM pg_namespace WHERE nspname='catalog'
+      AND pg_get_userbyid(nspowner)=current_user
+  ) THEN
     RAISE EXCEPTION 'Catalog migration requires po_catalog_owner' USING ERRCODE = '42501';
   END IF;
 END $$;
@@ -20,6 +23,7 @@ CREATE INDEX ix_historical_preparation_requests_product
   ON catalog.historical_preparation_requests(product_id);
 ALTER TABLE catalog.historical_preparation_requests ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON catalog.historical_preparation_requests FROM PUBLIC;
+REVOKE ALL ON catalog.historical_preparation_requests FROM catalog_app;
 GRANT SELECT, INSERT ON catalog.historical_preparation_requests TO catalog_app;
 CREATE POLICY historical_preparation_runtime
   ON catalog.historical_preparation_requests TO catalog_app

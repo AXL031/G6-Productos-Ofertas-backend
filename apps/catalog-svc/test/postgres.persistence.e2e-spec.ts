@@ -1394,7 +1394,9 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             sku: 'COLLISION-' + randomUUID(),
           },
         });
-        await nextResult((message) => message.causation_id === collisionId);
+        const collisionResult = await nextResult(
+          (message) => message.causation_id === collisionId,
+        );
         runtime = new CatalogAmqpRuntime(
           new CatalogMessageService(database),
           broker.settings,
@@ -1456,6 +1458,15 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           code: 'IDEMPOTENCY_CONFLICT',
           manual_retry_allowed: false,
         });
+        // The priming fixture's genuine result has the foreign SKU, so Catalog
+        // correctly quarantines it before the original request is rejected.
+        const collisionQuarantine = await broker.next('po.catalogo.q.dlq');
+        expect(
+          JSON.parse(collisionQuarantine.content.toString()).message_id,
+        ).toBe(collisionResult.message.message_id);
+        expect(
+          collisionQuarantine.properties.headers?.['x-catalog-failure'],
+        ).toBe('INVALID_OR_BLOCKED_CONTRACT');
         await call(
           'POST',
           '/productos/' + rejectedProduct.product_id + '/activar',
