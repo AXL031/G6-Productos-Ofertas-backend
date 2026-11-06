@@ -1,7 +1,8 @@
 # Procedimiento preparado — Azure Fase 1
 
 Estado: **preparación**, sin autorización de aprovisionamiento, despliegue o
-activación pública. Backend #144 abierto. La PR #196 permanece draft y sin merge.
+activación pública. Backend #144 abierto. La PR #196 se integró mediante
+`167090af6d4ae93adbde54b6741dd994d91bf70b`; su CI posterior pasó 18/18 jobs.
 No es necesario un despliegue Oracle para ejecutar posteriormente este plan.
 
 ## Separar código oficial y repositorio de trabajo
@@ -17,6 +18,11 @@ durante la actualización inicial a `5114c256...`. Su diff conserva exactamente 
 14 archivos aprobados, sin cambios en `apps/` ni `ops/oracle/`. Los documentos y
 la plantilla de este directorio se publican solo en `cueva`, fuera de esa PR.
 
+Estado posterior: #196 ya está integrada en master. El árbol del merge
+`167090af...` coincide exactamente con el HEAD aprobado `e0046124...`; el nuevo
+SHA candidato para la publicación oficial es el merge, sujeto a aprobación de
+Marco y a que siga siendo master vigente con CI push/master exitosa.
+
 ## 1. Publicación controlada: owner Marco
 
 Usar exclusivamente el workflow oficial
@@ -28,7 +34,7 @@ cuenta de Axel para intentar eludirla. Solo se propone su ejecución autorizada.
 Marco debe confirmar el SHA vigente y la CI exitosa exacta antes de ejecutar:
 
 ```powershell
-$releaseSha = 'a9c19ded7f6ac6e7714cf8d84244a396bdec0559' # Propuesta; revalidar master y CI
+$releaseSha = '167090af6d4ae93adbde54b6741dd994d91bf70b' # Propuesta; revalidar master y CI
 gh workflow run publish-only-images.yml --repo Taller-SW-Web/G6-Productos-Ofertas-backend --ref master -f service=api-gateway -f sha=$releaseSha
 gh workflow run publish-only-images.yml --repo Taller-SW-Web/G6-Productos-Ofertas-backend --ref master -f service=catalog-svc -f sha=$releaseSha
 gh workflow run publish-only-images.yml --repo Taller-SW-Web/G6-Productos-Ofertas-backend --ref master -f service=taxonomy-svc -f sha=$releaseSha

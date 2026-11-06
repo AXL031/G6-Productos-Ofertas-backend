@@ -1,6 +1,6 @@
 # BLOQUEADO: plantilla de revisión, no es una release aprobada ni desplegable.
 # Completar solo con el SHA y los digests verificados por el publicador oficial.
-# SHA propuesto observado de master: a9c19ded7f6ac6e7714cf8d84244a396bdec0559.
+# SHA propuesto observado de master: 167090af6d4ae93adbde54b6741dd994d91bf70b.
 # Si master cambia, el workflow exige su nueva punta con CI push/master exitosa.
 # No usar imágenes construidas desde cueva ni inventar valores sha256.
 # service|source-SHA|sha256:digest
