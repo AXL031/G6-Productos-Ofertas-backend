@@ -1,171 +1,125 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BulkStorageService } from './bulk-storage.service.js';
 
-const bucketUrl = 'http://storage.local/storage/v1/bucket/bulk-h4-local';
-const objectUrl =
-  'http://storage.local/storage/v1/object/bulk-h4-local/imports/test.csv';
-const bytes = Buffer.from('bulk storage test bytes');
-const contentRef = 'supabase://bulk-h4-local/imports/test.csv';
+describe('BulkStorageService HTTP safety', () => {
+  const original = {
+    url: process.env.SUPABASE_URL,
+    key: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    bucket: process.env.BULK_STORAGE_BUCKET,
+  };
 
-function fetchMock(): ReturnType<typeof vi.fn<typeof fetch>> {
-  return vi.mocked(fetch);
-}
-
-function privateBucketResponse(): Response {
-  return new Response(JSON.stringify({ public: false }), { status: 200 });
-}
-
-async function expectStorageUnavailable(): Promise<void> {
-  await expect(
-    new BulkStorageService().put(bytes, 'text/csv', 'imports/test.csv'),
-  ).rejects.toMatchObject({
-    code: 'STORAGE_UNAVAILABLE',
-    message: 'El almacenamiento privado no pudo aceptar el archivo.',
-  });
-}
-
-describe('BulkStorageService', () => {
   beforeEach(() => {
-    vi.stubEnv('SUPABASE_URL', 'http://storage.local');
-    vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'local-test-key');
-    vi.stubEnv('BULK_STORAGE_BUCKET', 'bulk-h4-local');
-    vi.stubGlobal('fetch', vi.fn<typeof fetch>());
+    process.env.SUPABASE_URL = 'https://storage.example.test';
+    process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-only-placeholder';
+    process.env.BULK_STORAGE_BUCKET = 'bulk-private';
   });
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.unstubAllEnvs();
+    vi.useRealTimers();
+    for (const [key, value] of Object.entries({
+      SUPABASE_URL: original.url,
+      SUPABASE_SERVICE_ROLE_KEY: original.key,
+      BULK_STORAGE_BUCKET: original.bucket,
+    })) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
   });
 
-  it('uploads when Storage reports a missing object as 400 NoSuchKey/404', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(
-        new Response(
-          JSON.stringify({
-            statusCode: '404',
-            code: 'NoSuchKey',
-            message: 'Object not found',
-          }),
-          { status: 400 },
-        ),
-      )
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
-
-    await expect(
-      new BulkStorageService().put(bytes, 'text/csv', 'imports/test.csv'),
-    ).resolves.toBe(contentRef);
-
-    expect(fetchMock()).toHaveBeenCalledTimes(3);
-    expect(fetchMock().mock.calls[0][0]).toBe(bucketUrl);
-    expect(fetchMock().mock.calls[1][0]).toBe(objectUrl);
-    expect(fetchMock().mock.calls[2][0]).toBe(objectUrl);
-    expect(fetchMock().mock.calls[2][1]?.method).toBe('POST');
-  });
-
-  it('continues to upload when the object lookup returns HTTP 404', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(new Response(null, { status: 404 }))
-      .mockResolvedValueOnce(new Response(null, { status: 200 }));
-
-    await expect(
-      new BulkStorageService().put(bytes, 'text/csv', 'imports/test.csv'),
-    ).resolves.toBe(contentRef);
-    expect(fetchMock().mock.calls[2][1]?.method).toBe('POST');
-  });
-
-  it.each([
-    [
-      'HTTP 400 for another error',
-      new Response('{"code":"InvalidKey"}', { status: 400 }),
-    ],
-    [
-      'HTTP 400 with an incomplete NoSuchKey body',
-      new Response('{"code":"NoSuchKey"}', { status: 400 }),
-    ],
-    [
-      'HTTP 400 with a numeric statusCode',
-      new Response('{"code":"NoSuchKey","statusCode":404}', {
-        status: 400,
+  it('uses private non-upsert upload and verifies stored bytes before returning the reference', async () => {
+    const bytes = Buffer.from('CSV,niño,東京\r\n');
+    const calls: Array<{ url: string; init?: RequestInit }> = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith('/storage/v1/bucket/bulk-private'))
+          return Response.json({ public: false });
+        if (init?.method === 'POST') return new Response(null, { status: 200 });
+        if (url.endsWith('/exports/job/file.csv')) {
+          if (
+            calls.filter((call) => call.url.endsWith('/exports/job/file.csv'))
+              .length === 1
+          )
+            return new Response(null, { status: 404 });
+          return new Response(bytes, { status: 200 });
+        }
+        throw new Error(`Unexpected Storage request ${url}`);
       }),
-    ],
-    ['HTTP 401', new Response(null, { status: 401 })],
-    ['HTTP 403', new Response(null, { status: 403 })],
-    ['HTTP 409', new Response(null, { status: 409 })],
-    ['HTTP 503', new Response('private diagnostic', { status: 503 })],
-  ])('does not upload after %s', async (_label, lookupResponse) => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(lookupResponse);
-
-    await expectStorageUnavailable();
-    expect(fetchMock()).toHaveBeenCalledTimes(2);
-    expect(
-      fetchMock().mock.calls.some(([, init]) => init?.method === 'POST'),
-    ).toBe(false);
-  });
-
-  it('does not upload after a network failure during object lookup', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockRejectedValueOnce(new Error('private URL and key diagnostic'));
-
-    await expectStorageUnavailable();
-    expect(fetchMock()).toHaveBeenCalledTimes(2);
-    expect(
-      fetchMock().mock.calls.some(([, init]) => init?.method === 'POST'),
-    ).toBe(false);
-  });
-
-  it('returns the reference without overwriting an identical existing object', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(new Response(bytes, { status: 200 }));
-
-    await expect(
-      new BulkStorageService().put(bytes, 'text/csv', 'imports/test.csv'),
-    ).resolves.toBe(contentRef);
-    expect(fetchMock()).toHaveBeenCalledTimes(2);
-  });
-
-  it('rejects an existing object with different bytes without overwriting it', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(new Response('different bytes', { status: 200 }));
-
-    await expectStorageUnavailable();
-    expect(fetchMock()).toHaveBeenCalledTimes(2);
-    expect(
-      fetchMock().mock.calls.some(([, init]) => init?.method === 'POST'),
-    ).toBe(false);
-  });
-
-  it('rejects a public bucket before looking up or uploading an object', async () => {
-    fetchMock().mockResolvedValueOnce(
-      new Response(JSON.stringify({ public: true }), { status: 200 }),
     );
-
-    await expectStorageUnavailable();
-    expect(fetchMock()).toHaveBeenCalledTimes(1);
+    const service = new BulkStorageService();
+    await expect(
+      service.put(bytes, 'text/csv; charset=utf-8', 'exports/job/file.csv'),
+    ).resolves.toBe('supabase://bulk-private/exports/job/file.csv');
+    expect(calls.map((call) => call.init?.method ?? 'GET')).toEqual([
+      'GET',
+      'GET',
+      'POST',
+      'GET',
+    ]);
+    expect(calls[2]?.init?.headers).toMatchObject({ 'x-upsert': 'false' });
+    expect(
+      calls.every((call) => call.init?.signal instanceof AbortSignal),
+    ).toBe(true);
   });
 
-  it('accepts a concurrent upload only after confirming identical stored bytes', async () => {
-    fetchMock()
-      .mockResolvedValueOnce(privateBucketResponse())
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ statusCode: '404', code: 'NoSuchKey' }), {
-          status: 400,
-        }),
-      )
-      .mockResolvedValueOnce(new Response('conflict', { status: 409 }))
-      .mockResolvedValueOnce(new Response(bytes, { status: 200 }));
-
+  it('preserves idempotency when the same object already contains identical bytes', async () => {
+    const bytes = Buffer.from('actual file bytes');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string | URL | Request) => {
+        if (String(input).endsWith('/storage/v1/bucket/bulk-private'))
+          return Response.json({ public: false });
+        return new Response(bytes, { status: 200 });
+      }),
+    );
     await expect(
-      new BulkStorageService().put(bytes, 'text/csv', 'imports/test.csv'),
-    ).resolves.toBe(contentRef);
-    expect(fetchMock()).toHaveBeenCalledTimes(4);
-    expect(fetchMock().mock.calls[2][1]?.method).toBe('POST');
-    expect(fetchMock().mock.calls[3][0]).toBe(objectUrl);
+      new BulkStorageService().put(bytes, 'application/octet-stream', 'stable'),
+    ).resolves.toBe('supabase://bulk-private/stable');
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('maps a timed-out request to a sanitized storage failure and aborts its fetch', async () => {
+    vi.useFakeTimers();
+    let observedSignal: AbortSignal | undefined;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((_input: string | URL | Request, init?: RequestInit) => {
+        observedSignal = init?.signal as AbortSignal;
+        return new Promise<Response>((_resolve, reject) => {
+          observedSignal?.addEventListener('abort', () =>
+            reject(observedSignal?.reason),
+          );
+        });
+      }),
+    );
+    const request = new BulkStorageService().get(
+      'supabase://bulk-private/exports/job.csv',
+    );
+    const assertion = expect(request).rejects.toMatchObject({
+      code: 'STORAGE_UNAVAILABLE',
+    });
+    await vi.advanceTimersByTimeAsync(10_000);
+    await assertion;
+    expect(observedSignal?.aborted).toBe(true);
+  });
+
+  it('honors caller cancellation and rejects arbitrary download references before network access', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(
+      new BulkStorageService().get(
+        'supabase://bulk-private/exports/job.csv',
+        controller.signal,
+      ),
+    ).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' });
+    fetchMock.mockClear();
+    await expect(
+      new BulkStorageService().get('supabase://other-bucket/file.csv'),
+    ).rejects.toMatchObject({ code: 'STORAGE_UNAVAILABLE' });
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

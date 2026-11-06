@@ -100,13 +100,16 @@ export function validateBulkImport(input: {
         : row.defaultLocationId
           ? 'REQUIRED'
           : 'LOCATION_MISSING';
+    const mode = row.mode ?? 'ALTA';
     return {
       ...row,
       vendibleSkus: skus,
       requiredDomains: [
         'CATALOGO',
-        ...(row.precioRegular == null ? [] : ['PRICING' as const]),
-        'INVENTARIO',
+        ...(mode === 'ALTA' && row.precioRegular != null
+          ? (['PRICING'] as const)
+          : []),
+        ...(mode === 'ALTA' ? (['INVENTARIO'] as const) : []),
       ],
       inventoryAdjustment,
     };

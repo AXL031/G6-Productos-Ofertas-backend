@@ -141,26 +141,27 @@ export class InventoryCommandService {
           result = previous as unknown as InitializationResult;
         }
       } else {
-        const active = await this.locations.findActive(client);
-        const location =
-          message.data.default_location_id ??
-          (active.length === 1 ? active[0].id : null);
-        if (
-          !location ||
-          !active.some((candidate) => candidate.id === location)
-        ) {
+        const locationId = message.data.default_location_id;
+        const active = locationId
+          ? await this.locations.findActive(client)
+          : [];
+        if (!locationId) {
+          // SPEC-001 permits registering a SKU without creating a balance.
+          // Never infer the default location from the current inventory.
+          result = this.result(message, 'INITIALIZED', null);
+        } else if (!active.some((candidate) => candidate.id === locationId)) {
           result = this.result(message, 'REJECTED', 'UBICACION_NO_ENCONTRADA');
         } else {
           const created = await this.stock.initializeZero(
             client,
             message.data.sku,
-            location,
+            locationId,
           );
           result = this.result(message, 'INITIALIZED', null);
           if (created)
             await this.outbox.stockChanged(client, {
               sku: message.data.sku,
-              location_id: location,
+              location_id: locationId,
               on_hand: 0,
               reserved: 0,
               blocked: 0,

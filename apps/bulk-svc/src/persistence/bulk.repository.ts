@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   batchJobs,
   batchRows,
@@ -73,6 +73,15 @@ export interface CreateExportJobInput {
   exportId: string;
   format: BulkFileFormat;
 }
+export interface ExportSnapshotMetadata {
+  requestedAt: string;
+  catalogObservedAt: string;
+  pricingObservedAt: string;
+  inventoryObservedAt: string;
+  catalogVersion: string;
+  pricingVersion: string;
+  inventoryVersion: string;
+}
 export interface OutboxInput {
   messageId: string;
   eventName: string;
@@ -89,6 +98,12 @@ export interface InboxInput {
   handler: string;
   eventName: string;
   correlationId?: string | null;
+  payload: Record<string, unknown>;
+}
+export interface PendingContractResult {
+  messageId: string;
+  eventName: string;
+  correlationId: string;
   payload: Record<string, unknown>;
 }
 export interface InboxMutationContext {
@@ -219,26 +234,45 @@ export class BulkPersistenceRepository {
             throw new BulkPersistenceError('UNIQUE_CONFLICT');
           }
           const [manifest] = await tx
-            .select()
+            .select({
+              id: fileManifests.id,
+              role: fileManifests.role,
+              format: fileManifests.format,
+              contentRef: fileManifests.contentRef,
+              createdAt: fileManifests.createdAt,
+              updatedAt: fileManifests.updatedAt,
+            })
             .from(fileManifests)
             .where(eq(fileManifests.id, existingBatch.inputFileId))
             .limit(1);
           if (!manifest)
             throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
-          const rows = await tx
-            .select()
+          const joined = await tx
+            .select({ row: batchRows, step: rowDomainSteps })
             .from(batchRows)
+            .leftJoin(
+              rowDomainSteps,
+              eq(rowDomainSteps.batchRowId, batchRows.id),
+            )
             .where(eq(batchRows.batchJobId, existingBatch.id))
-            .orderBy(asc(batchRows.createdAt), asc(batchRows.id));
-          const resultRows: CreateImportBatchResult['rows'] = [];
-          for (const row of rows) {
-            const steps = await tx
-              .select()
-              .from(rowDomainSteps)
-              .where(eq(rowDomainSteps.batchRowId, row.id))
-              .orderBy(asc(rowDomainSteps.domain));
-            resultRows.push({ row, steps });
+            .orderBy(
+              asc(batchRows.createdAt),
+              asc(batchRows.id),
+              asc(rowDomainSteps.domain),
+            );
+          const grouped = new Map<
+            string,
+            CreateImportBatchResult['rows'][number]
+          >();
+          for (const item of joined) {
+            let existing = grouped.get(item.row.id);
+            if (!existing) {
+              existing = { row: item.row, steps: [] };
+              grouped.set(item.row.id, existing);
+            }
+            if (item.step) existing.steps.push(item.step);
           }
+          const resultRows = [...grouped.values()];
           return { manifest, batch: existingBatch, rows: resultRows };
         }
         const [manifest] = await tx
@@ -248,7 +282,14 @@ export class BulkPersistenceRepository {
             format: input.inputFile.format,
             contentRef: input.inputFile.contentRef,
           })
-          .returning();
+          .returning({
+            id: fileManifests.id,
+            role: fileManifests.role,
+            format: fileManifests.format,
+            contentRef: fileManifests.contentRef,
+            createdAt: fileManifests.createdAt,
+            updatedAt: fileManifests.updatedAt,
+          });
         if (!manifest) throw new Error('Manifest insert returned no row');
         const [batch] = await tx
           .insert(batchJobs)
@@ -262,30 +303,44 @@ export class BulkPersistenceRepository {
           })
           .returning();
         if (!batch) throw new Error('Batch insert returned no row');
-        const createdRows: CreateImportBatchResult['rows'] = [];
-        for (const rowInput of input.rows) {
-          const [row] = await tx
-            .insert(batchRows)
-            .values({
-              batchJobId: batch.id,
-              rowId: rowInput.rowId,
-              requiredDomains: rowInput.requiredDomains,
-            })
-            .returning();
+        const rows = input.rows.length
+          ? await tx
+              .insert(batchRows)
+              .values(
+                input.rows.map((rowInput) => ({
+                  batchJobId: batch.id,
+                  rowId: rowInput.rowId,
+                  requiredDomains: rowInput.requiredDomains,
+                })),
+              )
+              .returning()
+          : [];
+        if (rows.length !== input.rows.length)
+          throw new Error('Incomplete batch row insert');
+        const rowsById = new Map(rows.map((row) => [row.rowId, row]));
+        const stepInputs = input.rows.flatMap((rowInput) => {
+          const row = rowsById.get(rowInput.rowId);
           if (!row) throw new Error('Batch row insert returned no row');
-          const steps = await tx
-            .insert(rowDomainSteps)
-            .values(
-              rowInput.requiredDomains.map((domain) => ({
-                batchRowId: row.id,
-                domain,
-              })),
-            )
-            .returning();
-          if (steps.length !== rowInput.requiredDomains.length)
-            throw new Error('Incomplete step insert');
-          createdRows.push({ row, steps });
+          return rowInput.requiredDomains.map((domain) => ({
+            batchRowId: row.id,
+            domain,
+          }));
+        });
+        const steps = stepInputs.length
+          ? await tx.insert(rowDomainSteps).values(stepInputs).returning()
+          : [];
+        if (steps.length !== stepInputs.length)
+          throw new Error('Incomplete step insert');
+        const stepsByRow = new Map<string, typeof steps>();
+        for (const step of steps) {
+          const group = stepsByRow.get(step.batchRowId) ?? [];
+          group.push(step);
+          stepsByRow.set(step.batchRowId, group);
         }
+        const createdRows = rows.map((row) => ({
+          row,
+          steps: stepsByRow.get(row.id) ?? [],
+        }));
         if (input.admissionIntent) {
           await tx.insert(inbox).values({
             messageId: input.batchId,
@@ -1162,6 +1217,19 @@ export class BulkPersistenceRepository {
           payload: input.payload,
           result: outcome,
         });
+        await tx
+          .update(outbox)
+          .set({
+            publishedAt: sql`coalesce(${outbox.publishedAt}, now())`,
+            lastError: null,
+          })
+          .where(
+            and(
+              eq(outbox.messageId, input.causationId),
+              eq(outbox.eventName, 'catalog.bulk.upsert.requested'),
+              sql`${outbox.publishedAt} IS NULL`,
+            ),
+          );
         return { processed: true, result: outcome };
       });
     } catch (error) {
@@ -1243,6 +1311,49 @@ export class BulkPersistenceRepository {
     }
   }
 
+  async loadBatchSnapshot(batchId: string): Promise<{
+    batch: typeof batchJobs.$inferSelect;
+    rows: Array<{
+      row: typeof batchRows.$inferSelect;
+      steps: Array<typeof rowDomainSteps.$inferSelect>;
+    }>;
+  } | null> {
+    try {
+      const result = await this.db
+        .select({ batch: batchJobs, row: batchRows, step: rowDomainSteps })
+        .from(batchJobs)
+        .leftJoin(batchRows, eq(batchRows.batchJobId, batchJobs.id))
+        .leftJoin(rowDomainSteps, eq(rowDomainSteps.batchRowId, batchRows.id))
+        .where(eq(batchJobs.batchId, batchId))
+        .orderBy(
+          asc(batchRows.createdAt),
+          asc(batchRows.id),
+          asc(rowDomainSteps.domain),
+        );
+      const first = result[0];
+      if (!first) return null;
+      const rows = new Map<
+        string,
+        {
+          row: typeof batchRows.$inferSelect;
+          steps: Array<typeof rowDomainSteps.$inferSelect>;
+        }
+      >();
+      for (const item of result) {
+        if (!item.row) continue;
+        let rowResult = rows.get(item.row.id);
+        if (!rowResult) {
+          rowResult = { row: item.row, steps: [] };
+          rows.set(item.row.id, rowResult);
+        }
+        if (item.step) rowResult.steps.push(item.step);
+      }
+      return { batch: first.batch, rows: [...rows.values()] };
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
   async updateWorkflowState(input: UpdateWorkflowStateInput): Promise<void> {
     try {
       await this.db.transaction((tx) => updateWorkflowStateIn(tx, input));
@@ -1251,7 +1362,7 @@ export class BulkPersistenceRepository {
     }
   }
 
-  /** Requeues only terminal batches that contain rows marked for reconciliation. */
+  /** Refuses to reopen failed rows until an approved domain retry can be emitted. */
   async requeueBatch(batchId: string): Promise<typeof batchJobs.$inferSelect> {
     try {
       return await this.db.transaction(async (tx) => {
@@ -1263,8 +1374,9 @@ export class BulkPersistenceRepository {
           .limit(1);
         if (!batch) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
         if (batch.status !== 'COMPLETED' || !batch.needsReconciliation) {
-          inconsistent(
-            'Only completed batches requiring reconciliation can be requeued',
+          throw new BulkPersistenceError(
+            'CHECK_VIOLATION',
+            new Error('BATCH_TRANSITION_NOT_ALLOWED'),
           );
         }
         const eligible = await tx
@@ -1278,58 +1390,17 @@ export class BulkPersistenceRepository {
           )
           .for('update');
         if (eligible.length === 0)
-          inconsistent('Batch has no rows eligible for reconciliation');
-        for (const { id } of eligible) {
-          await tx
-            .update(rowDomainSteps)
-            .set({ status: 'PENDING', errorCode: null, errorDetail: null })
-            .where(
-              and(
-                eq(rowDomainSteps.batchRowId, id),
-                eq(rowDomainSteps.status, 'FAILED'),
-              ),
-            );
-          await tx
-            .update(batchRows)
-            .set({
-              status: 'PENDING',
-              failedDomain: null,
-              needsReconciliation: false,
-              errorCode: null,
-              errorDetail: null,
-            })
-            .where(eq(batchRows.id, id));
-        }
-        const [completed] = await tx
-          .select({ count: sql<number>`count(*)::int` })
-          .from(batchRows)
-          .where(
-            and(
-              eq(batchRows.batchJobId, batch.id),
-              eq(batchRows.status, 'COMPLETED'),
-            ),
+          throw new BulkPersistenceError(
+            'CHECK_VIOLATION',
+            new Error('NO_RECONCILABLE_ROWS'),
           );
-        const [updated] = await tx
-          .update(batchJobs)
-          .set({
-            status: 'QUEUED',
-            completedRows: completed?.count ?? 0,
-            failedRows: 0,
-            needsReconciliation: false,
-          })
-          .where(eq(batchJobs.id, batch.id))
-          .returning();
-        if (!updated) throw new Error('Batch requeue returned no row');
-        const runId = randomUUID();
-        await tx.insert(inbox).values({
-          messageId: runId,
-          handler: 'bulk.batch.requeue',
-          eventName: 'bulk.batch.requeued',
-          correlationId: batch.correlationId,
-          payload: { batchId, runId },
-          result: 'REQUEUED',
-        });
-        return updated;
+        // Replaying an already admitted message cannot retry a failed domain:
+        // its original idempotency identity would return the same receipt.
+        // Keep the durable failed state until a reviewed retry protocol exists.
+        throw new BulkPersistenceError(
+          'NOT_CONFIGURED',
+          new Error('RETRY_PROTOCOL_NOT_APPROVED'),
+        );
       });
     } catch (error) {
       throw persistenceError(error);
@@ -1384,11 +1455,11 @@ export class BulkPersistenceRepository {
     try {
       return await this.db
         .update(exportJobs)
-        .set({ status: 'QUEUED' })
+        .set({ status: 'QUEUED', claimToken: null, leaseUntil: null })
         .where(
           and(
             eq(exportJobs.status, 'PROCESSING'),
-            sql`${exportJobs.updatedAt} <= ${staleBefore}`,
+            sql`(${exportJobs.leaseUntil} IS NOT NULL AND ${exportJobs.leaseUntil} <= now()) OR (${exportJobs.leaseUntil} IS NULL AND ${exportJobs.updatedAt} <= ${staleBefore})`,
           ),
         )
         .returning();
@@ -1403,7 +1474,11 @@ export class BulkPersistenceRepository {
     try {
       const [claimed] = await this.db
         .update(exportJobs)
-        .set({ status: 'PROCESSING' })
+        .set({
+          status: 'PROCESSING',
+          claimToken: randomUUID(),
+          leaseUntil: sql`now() + interval '60 seconds'`,
+        })
         .where(
           and(
             eq(exportJobs.exportId, exportId),
@@ -1412,9 +1487,51 @@ export class BulkPersistenceRepository {
         )
         .returning({
           job: exportJobs,
-          fence: sql<string>`xmin::text`,
+          fence: exportJobs.claimToken,
         });
-      return claimed ?? null;
+      return claimed?.fence ? { ...claimed, fence: claimed.fence } : null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async isExportClaimCurrent(
+    exportId: string,
+    fence: string,
+  ): Promise<boolean> {
+    try {
+      const [claimed] = await this.db
+        .select({ fence: exportJobs.claimToken })
+        .from(exportJobs)
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'PROCESSING'),
+            sql`${exportJobs.leaseUntil} > now()`,
+          ),
+        )
+        .limit(1);
+      return claimed?.fence === fence;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async renewExportClaim(exportId: string, fence: string): Promise<boolean> {
+    try {
+      const [renewed] = await this.db
+        .update(exportJobs)
+        .set({ leaseUntil: sql`now() + interval '60 seconds'` })
+        .where(
+          and(
+            eq(exportJobs.exportId, exportId),
+            eq(exportJobs.status, 'PROCESSING'),
+            eq(exportJobs.claimToken, fence),
+            sql`${exportJobs.leaseUntil} > now()`,
+          ),
+        )
+        .returning({ id: exportJobs.id });
+      return Boolean(renewed);
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1432,7 +1549,8 @@ export class BulkPersistenceRepository {
           and(
             eq(exportJobs.exportId, exportId),
             eq(exportJobs.status, 'PROCESSING'),
-            sql`xmin::text = ${fence}`,
+            eq(exportJobs.claimToken, fence),
+            sql`${exportJobs.leaseUntil} > now()`,
           ),
         )
         .returning();
@@ -1442,16 +1560,85 @@ export class BulkPersistenceRepository {
     }
   }
 
-  async findFileManifest(
-    id: string,
-  ): Promise<typeof fileManifests.$inferSelect | null> {
+  async findFileManifest(id: string): Promise<
+    | (typeof fileManifests.$inferSelect & {
+        metadata: Record<string, unknown>;
+      })
+    | null
+  > {
     try {
       const [manifest] = await this.db
-        .select()
+        .select({
+          id: fileManifests.id,
+          role: fileManifests.role,
+          format: fileManifests.format,
+          contentRef: fileManifests.contentRef,
+          metadata: sql<
+            Record<string, unknown>
+          >`coalesce(to_jsonb(file_manifests)->'metadata', '{}'::jsonb)`,
+          createdAt: fileManifests.createdAt,
+          updatedAt: fileManifests.updatedAt,
+        })
         .from(fileManifests)
         .where(eq(fileManifests.id, id))
         .limit(1);
       return manifest ?? null;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  /** Reconciles an upload after an uncertain completion response. Any durable manifest reference wins. */
+  async isExportArtifactReferenced(contentRef: string): Promise<boolean> {
+    try {
+      const result = await this.db.execute(sql`
+        SELECT EXISTS (
+          SELECT 1 FROM bulk.file_manifests
+          WHERE content_ref = ${contentRef}
+        ) OR EXISTS (
+          SELECT 1
+          FROM bulk.export_jobs AS job
+          JOIN bulk.file_manifests AS manifest ON manifest.id = job.output_file_id
+          WHERE job.status = 'COMPLETED' AND manifest.content_ref = ${contentRef}
+        ) AS referenced
+      `);
+      const rows = (
+        result as unknown as { rows?: Array<{ referenced: boolean }> }
+      ).rows;
+      if (!rows || typeof rows[0]?.referenced !== 'boolean')
+        throw new Error('Artifact reconciliation returned no durable result');
+      return rows[0].referenced;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  /** Stores an uncertain completion's object reference in the existing Inbox ledger. */
+  async recordExportArtifactForReconciliation(input: {
+    exportId: string;
+    fence: string;
+    contentRef: string;
+    reason: string;
+  }): Promise<void> {
+    try {
+      await this.db
+        .insert(inbox)
+        .values({
+          messageId: input.contentRef,
+          handler: 'bulk.export-artifact-reconciliation',
+          eventName: 'bulk.export.artifact.reconciliation-required',
+          correlationId: input.exportId,
+          payload: {
+            export_id: input.exportId,
+            claim_token: input.fence,
+            content_ref: input.contentRef,
+            reason: input.reason,
+          },
+          result: 'PENDING_RECONCILIATION',
+        })
+        .onConflictDoNothing({
+          target: [inbox.messageId, inbox.handler],
+        });
     } catch (error) {
       throw persistenceError(error);
     }
@@ -1488,18 +1675,21 @@ export class BulkPersistenceRepository {
   async completeExportJob(
     exportId: string,
     resultFile: Omit<FileManifestInput, 'role'>,
-  ): Promise<typeof exportJobs.$inferSelect> {
+    fence: string,
+    snapshot: ExportSnapshotMetadata,
+  ): Promise<typeof exportJobs.$inferSelect | null> {
     try {
       return await this.db.transaction(async (tx) => {
-        const [job] = await tx
+        const [claimed] = await tx
           .select()
           .from(exportJobs)
           .where(eq(exportJobs.exportId, exportId))
           .for('update')
           .limit(1);
-        if (!job) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
-        if (job.status !== 'PROCESSING')
-          inconsistent('Only a processing export can be completed');
+        if (!claimed) throw new BulkPersistenceError('FOREIGN_KEY_VIOLATION');
+        const job = claimed;
+        if (job.status !== 'PROCESSING' || job.claimToken !== fence)
+          return null;
         if (resultFile.format !== job.format)
           inconsistent('Export output format must match the requested format');
         if (
@@ -1511,6 +1701,17 @@ export class BulkPersistenceRepository {
           inconsistent(
             'Export output must reference a configured Bulk Storage object',
           );
+        if (
+          !matchesExportObjectIdentity(
+            resultFile.contentRef,
+            exportId,
+            fence,
+            resultFile.format,
+            process.env.BULK_STORAGE_BUCKET,
+          ) ||
+          Date.parse(snapshot.requestedAt) !== job.createdAt.getTime()
+        )
+          inconsistent('Export manifest identity or requested_at is invalid');
         // This checks adapter compatibility only. The caller must upload via
         // BulkStorageService.put(), which verifies the configured bucket ACL.
         const [manifest] = await tx
@@ -1520,9 +1721,24 @@ export class BulkPersistenceRepository {
             format: resultFile.format,
             contentRef: resultFile.contentRef,
           })
-          .returning();
+          .returning({ id: fileManifests.id });
         if (!manifest)
           throw new Error('Output manifest insert returned no row');
+        const metadata = {
+          export_id: exportId,
+          requested_at: snapshot.requestedAt,
+          catalog_observed_at: snapshot.catalogObservedAt,
+          pricing_observed_at: snapshot.pricingObservedAt,
+          inventory_observed_at: snapshot.inventoryObservedAt,
+          catalog_version: snapshot.catalogVersion,
+          pricing_version: snapshot.pricingVersion,
+          inventory_version: snapshot.inventoryVersion,
+        };
+        await tx.execute(sql`
+          UPDATE bulk.file_manifests
+          SET metadata = ${JSON.stringify(metadata)}::jsonb
+          WHERE id = ${manifest.id}
+        `);
         const [updated] = await tx
           .update(exportJobs)
           .set({
@@ -1531,10 +1747,16 @@ export class BulkPersistenceRepository {
             completedAt: new Date(),
           })
           .where(
-            and(eq(exportJobs.id, job.id), eq(exportJobs.status, 'PROCESSING')),
+            and(
+              eq(exportJobs.id, job.id),
+              eq(exportJobs.status, 'PROCESSING'),
+              eq(exportJobs.claimToken, fence),
+              sql`${exportJobs.leaseUntil} > now()`,
+            ),
           )
           .returning();
-        if (!updated) throw new Error('Export update returned no row');
+        if (!updated)
+          throw new Error('Locked export row changed during completion');
         return updated;
       });
     } catch (error) {
@@ -1573,12 +1795,17 @@ export class BulkPersistenceRepository {
 
   async findPendingOutbox(
     limit = 100,
+    onlyDue = false,
   ): Promise<Array<typeof outbox.$inferSelect>> {
     try {
       return await this.db
         .select()
         .from(outbox)
-        .where(sql`${outbox.publishedAt} IS NULL`)
+        .where(
+          onlyDue
+            ? sql`${outbox.publishedAt} IS NULL AND ${outbox.lastError} IS DISTINCT FROM 'CATALOG_ROUTE_REVIEW_REQUIRED' AND (coalesce(${outbox.lastError}, '') NOT LIKE 'AWAITING_CATALOG_RESULT:%' OR substring(${outbox.lastError} from 25)::timestamptz <= now())`
+            : sql`${outbox.publishedAt} IS NULL`,
+        )
         .orderBy(asc(outbox.occurredAt), asc(outbox.id))
         .limit(Math.max(1, Math.min(limit, 1000)));
     } catch (error) {
@@ -1616,6 +1843,137 @@ export class BulkPersistenceRepository {
                 : (result.lastError ?? null),
           })
           .where(eq(outbox.id, message.id));
+      });
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async deferOutboxUntilCatalogResult(
+    messageId: string,
+    attempts: number,
+  ): Promise<void> {
+    try {
+      const parked = attempts >= 8;
+      const retryAt = new Date(
+        Date.now() + Math.min(300_000, 30_000 * 2 ** Math.min(attempts - 1, 4)),
+      ).toISOString();
+      await this.db
+        .update(outbox)
+        .set({
+          attempts,
+          lastError: parked
+            ? 'CATALOG_ROUTE_REVIEW_REQUIRED'
+            : `AWAITING_CATALOG_RESULT:${retryAt}`,
+        })
+        .where(
+          and(
+            eq(outbox.messageId, messageId),
+            sql`${outbox.publishedAt} IS NULL`,
+          ),
+        );
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  /** Reactivates one parked Catalog command after externally verified topology. */
+  async reactivateParkedCatalogOutbox(input: {
+    messageId: string;
+    operatorIdentity: string;
+    approvalReference: string;
+    reason: string;
+    bindingEvidence: string;
+    consumerEvidence: string;
+  }): Promise<'REACTIVATED' | 'RESULT_ALREADY_RECORDED' | 'NOT_PARKED'> {
+    const operatorIdentity = input.operatorIdentity.trim();
+    const approvalReference = input.approvalReference.trim();
+    const reason = input.reason.trim();
+    const bindingEvidence = input.bindingEvidence.trim();
+    const consumerEvidence = input.consumerEvidence.trim();
+    if (
+      !operatorIdentity ||
+      !approvalReference ||
+      !reason ||
+      !bindingEvidence ||
+      !consumerEvidence
+    )
+      inconsistent(
+        'Recovery requires operator, approval, reason, and binding/consumer evidence',
+      );
+    try {
+      return await this.db.transaction(async (tx) => {
+        const [message] = await tx
+          .select()
+          .from(outbox)
+          .where(eq(outbox.messageId, input.messageId))
+          .for('update')
+          .limit(1);
+        if (!message || message.eventName !== 'catalog.bulk.upsert.requested')
+          return 'NOT_PARKED';
+
+        const [priorResult] = await tx
+          .select({ id: inbox.id })
+          .from(inbox)
+          .where(
+            and(
+              sql`${inbox.handler} IN ('bulk.catalog.bulk-upsert.result', 'bulk.contract-result-replay')`,
+              eq(inbox.correlationId, message.correlationId),
+              sql`${inbox.payload}->>'causation_id' = ${message.messageId}`,
+            ),
+          )
+          .limit(1);
+        if (priorResult) return 'RESULT_ALREADY_RECORDED';
+        if (
+          message.publishedAt !== null ||
+          message.lastError !== 'CATALOG_ROUTE_REVIEW_REQUIRED'
+        )
+          return 'NOT_PARKED';
+
+        const [principal] = await tx
+          .execute(sql`SELECT current_user AS actor`)
+          .then(
+            (result) =>
+              (result as unknown as { rows: Array<{ actor: string }> }).rows,
+          );
+        if (!principal?.actor)
+          throw new Error('Unable to record recovery database principal');
+        const auditHandler = `bulk.catalog.outbox-recovery:${message.attempts}`;
+        await tx
+          .insert(inbox)
+          .values({
+            messageId: message.messageId,
+            handler: auditHandler,
+            eventName: 'bulk.catalog.outbox.recovery-authorized',
+            correlationId: message.correlationId,
+            payload: {
+              message_id: message.messageId,
+              database_principal: principal.actor,
+              operator_identity: operatorIdentity,
+              approval_reference: approvalReference,
+              reason,
+              binding_evidence: bindingEvidence,
+              consumer_evidence: consumerEvidence,
+              attempts: message.attempts,
+            },
+            result: 'REACTIVATED',
+          })
+          .onConflictDoNothing({ target: [inbox.messageId, inbox.handler] });
+        // Use a fixed due instant so application/PostgreSQL clock skew cannot
+        // leave an authorized recovery waiting behind the normal backoff.
+        const retryAt = '2000-01-01T00:00:00.000Z';
+        const [updated] = await tx
+          .update(outbox)
+          .set({ lastError: `AWAITING_CATALOG_RESULT:${retryAt}` })
+          .where(
+            and(
+              eq(outbox.id, message.id),
+              sql`${outbox.publishedAt} IS NULL`,
+              eq(outbox.lastError, 'CATALOG_ROUTE_REVIEW_REQUIRED'),
+            ),
+          )
+          .returning({ id: outbox.id });
+        return updated ? 'REACTIVATED' : 'NOT_PARKED';
       });
     } catch (error) {
       throw persistenceError(error);
@@ -1687,6 +2045,112 @@ export class BulkPersistenceRepository {
       throw persistenceError(error);
     }
   }
+
+  async persistPendingContractResult(
+    input: PendingContractResult,
+  ): Promise<{ processed: boolean; result: string }> {
+    return this.processInboxOnce(
+      {
+        messageId: input.messageId,
+        handler: 'bulk.contract-result-replay',
+        eventName: input.eventName,
+        correlationId: input.correlationId,
+        payload: input.payload,
+      },
+      async () => 'PENDING_REPLAY',
+    );
+  }
+
+  async listPendingContractResults(
+    limit = 100,
+    eventNames?: string[],
+  ): Promise<PendingContractResult[]> {
+    try {
+      if (eventNames && eventNames.length === 0) return [];
+      const rows = await this.db
+        .select({
+          messageId: inbox.messageId,
+          eventName: inbox.eventName,
+          correlationId: inbox.correlationId,
+          payload: inbox.payload,
+        })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.handler, 'bulk.contract-result-replay'),
+            eq(inbox.result, 'PENDING_REPLAY'),
+            ...(eventNames ? [inArray(inbox.eventName, eventNames)] : []),
+          ),
+        )
+        .orderBy(asc(inbox.createdAt))
+        .limit(Math.max(1, Math.min(limit, 500)));
+      return rows.map((row) => ({
+        messageId: row.messageId,
+        eventName: row.eventName,
+        correlationId: row.correlationId ?? '',
+        payload: row.payload,
+      }));
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async countPendingContractResults(eventNames: string[]): Promise<number> {
+    if (eventNames.length === 0) return 0;
+    try {
+      const [row] = await this.db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.handler, 'bulk.contract-result-replay'),
+            eq(inbox.result, 'PENDING_REPLAY'),
+            inArray(inbox.eventName, eventNames),
+          ),
+        );
+      return row?.count ?? 0;
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async markContractResultReplayed(input: {
+    messageId: string;
+    eventName: string;
+    correlationId: string;
+    payload: Record<string, unknown>;
+  }): Promise<boolean> {
+    try {
+      const [updated] = await this.db
+        .update(inbox)
+        .set({ result: 'REPLAYED' })
+        .where(
+          and(
+            eq(inbox.messageId, input.messageId),
+            eq(inbox.handler, 'bulk.contract-result-replay'),
+            eq(inbox.eventName, input.eventName),
+            eq(inbox.correlationId, input.correlationId),
+            eq(inbox.result, 'PENDING_REPLAY'),
+            sql`${inbox.payload} = ${JSON.stringify(input.payload)}::jsonb`,
+          ),
+        )
+        .returning({ id: inbox.id });
+      if (updated) return true;
+      const [existing] = await this.db
+        .select({ result: inbox.result })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.messageId, input.messageId),
+            eq(inbox.handler, 'bulk.contract-result-replay'),
+          ),
+        )
+        .limit(1);
+      return existing?.result === 'REPLAYED';
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
 }
 
 async function findActiveRunStart(
@@ -1705,6 +2169,31 @@ async function findActiveRunStart(
     .orderBy(desc(inbox.createdAt))
     .limit(1);
   return latestRequeue?.createdAt ?? batch.createdAt;
+}
+
+function matchesExportObjectIdentity(
+  contentRef: string,
+  exportId: string,
+  fence: string,
+  format: BulkFileFormat,
+  bucket: string | undefined,
+): boolean {
+  if (
+    !bucket ||
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      fence,
+    )
+  )
+    return false;
+  const prefix = `supabase://${bucket}/exports/${exportId}/${fence}/`;
+  return new RegExp(
+    `^${escapeRegExp(prefix)}[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.${format.toLowerCase()}$`,
+    'i',
+  ).test(contentRef);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
 async function updateWorkflowStateIn(

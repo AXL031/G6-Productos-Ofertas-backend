@@ -268,7 +268,6 @@ try {
     BULK_SVC_PORT: String(bulkPort),
     DATABASE_URL: bulkDatabase,
     PGSSLROOTCERT: input.ca,
-    BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
     BULK_AMQP_ENABLED: 'true',
     BULK_AMQP_URL: input.broker,
     SUPABASE_URL: `http://127.0.0.1:${storagePort}`,
@@ -356,17 +355,14 @@ try {
   );
   if (
     successSnapshot.rows[0].applied_domains.length !== 1 ||
-    successSnapshot.rows[0].applied_domains[0] !== 'CATALOGO'
+    successSnapshot.rows[0].applied_domains[0] !== 'CATALOGO' ||
+    successSnapshot.rows[0].status !== 'COMPLETED'
   )
     throw new Error(
-      'Only Catalog may be applied while other domains are pending',
+      'ACTUALIZACION should complete after its only required domain, Catalog',
     );
-  if (
-    !successSnapshot.rows[0].steps.some(
-      (step) => step.dominio === 'INVENTARIO' && step.status === 'PENDING',
-    )
-  )
-    throw new Error('Inventory must remain pending');
+  if (successSnapshot.rows[0].steps.length !== 1)
+    throw new Error('ACTUALIZACION must not create a pending Inventory step');
   trace('catalog-result-persisted');
 
   const { Pool } = await import('pg');
@@ -517,9 +513,10 @@ try {
         correlationPreserved: true,
         outboxCommands: commandResult.rowCount,
         catalogApplied: successSnapshot.rows[0].applied_domains,
-        inventoryStatus: successSnapshot.rows[0].steps.find(
-          (step) => step.dominio === 'INVENTARIO',
-        ).status,
+        inventoryStatus:
+          successSnapshot.rows[0].steps.find(
+            (step) => step.dominio === 'INVENTARIO',
+          )?.status ?? null,
         catalogFailure: failedSnapshot.rows[0].code,
         reportStatus: report.status,
         reportContainsCatalogFailure: reportCsv.includes(

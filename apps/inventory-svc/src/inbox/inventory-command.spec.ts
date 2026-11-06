@@ -222,26 +222,28 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     expect(db.inbox).toHaveLength(1);
   });
 
-  it('sin ubicación explícita rechaza la ambigüedad, y resuelve cuando solo queda una activa', async () => {
+  it('sin ubicación explícita confirma identidad sin crear saldo ni elegir una ubicación', async () => {
     const command = {
       ...message(),
       data: { sku: 'SIN-UBICACION', product_id: 'PRODUCTO' },
     };
     expect(await service.process(command)).toMatchObject({
-      status: 'REJECTED',
+      status: 'INITIALIZED',
     });
-    for (const row of db.locations) row.active = row.id === location;
-    expect(
-      await service.process({
-        ...command,
-        operation_id: randomUUID(),
-        message_id: randomUUID(),
-      }),
-    ).toMatchObject({ status: 'INITIALIZED' });
-    expect(
-      db.stockBalance.find((row) => row.sku_id === 'SIN-UBICACION')
-        ?.location_id,
-    ).toBe(location);
+    expect(db.inbox[0].status).toBe('PROCESSED');
+    expect(db.operations[0].status).toBe('APLICADO');
+    expect(db.operations[0].request_payload).toMatchObject({
+      sku: 'SIN-UBICACION',
+      product_id: 'PRODUCTO',
+    });
+    expect(db.stockBalance.some((row) => row.sku_id === 'SIN-UBICACION')).toBe(
+      false,
+    );
+    expect(db.outbox[0]?.payload.data).toMatchObject({
+      sku: 'SIN-UBICACION',
+      status: 'INITIALIZED',
+      code: null,
+    });
   });
 
   it('mantiene bloqueado inventory.bulk.stock.adjust.requested mientras su contrato siga en GenericData', async () => {

@@ -19,7 +19,21 @@ describe('bulk import validation', () => {
         validateBulkImport({ format, templateVersion: 2, rows: [row()] })[0]
           ?.inventoryAdjustment,
       ).toBe('NOT_REQUIRED');
+      expect(
+        validateBulkImport({ format, templateVersion: 2, rows: [row()] })[0]
+          ?.requiredDomains,
+      ).toEqual(['CATALOGO', 'INVENTARIO']);
     }
+  });
+
+  it('ACTUALIZACION without authorized price or stock changes only waits for Catalog', () => {
+    expect(
+      validateBulkImport({
+        format: 'CSV',
+        templateVersion: 2,
+        rows: [row({ mode: 'ACTUALIZACION', precioRegular: null })],
+      })[0]?.requiredDomains,
+    ).toEqual(['CATALOGO']);
   });
 
   it('requires a location only for a positive initial stock adjustment', () => {
