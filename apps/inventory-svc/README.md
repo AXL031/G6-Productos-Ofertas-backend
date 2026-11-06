@@ -182,7 +182,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 
 | Issue | Estado | Implementación interna | Bloqueo externo (owner · operación · desbloqueo) |
 |---|---|---|---|
-| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline, dry-run contra baseline Supabase (diff: 2 insert, 5 unchanged, 31 conflict), propuesta SQL atómica (`proposal-load.sql`), reversión selectiva (`proposal-rollback.sql`) y script de preflight (`audit-readonly.sql`) en `data/data-f1/`; pruebas E2E en CI sobre PostgreSQL real | Marco emitió la 2da autorización condicionada a verificación previa de solo lectura contra Supabase (`audit-readonly.sql`). Ejecución coordinada con Infraestructura con privilegios mínimos. PR #176 activo en HEAD `2a8c4c3` |
+| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline, dry-run contra baseline Supabase (diff: 2 insert, 5 unchanged, 31 conflict), propuesta SQL atómica (`proposal-load.sql`), reversión selectiva (`proposal-rollback.sql`) y script de preflight (`audit-readonly.sql`) en `data/data-f1/`; pruebas E2E en CI sobre PostgreSQL real | Marco emitió la 2da autorización condicionada a verificación previa de solo lectura contra Supabase (`audit-readonly.sql`). Ejecución coordinada con Infraestructura con privilegios mínimos. PR #176 activo en HEAD `46a62eb` (merge con `master@5da1279`, que incluye #199) |
 | [#25](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/25) | IMPLEMENTAR_PARCIAL | GET comercial y POST verificador sin JWT solo desde el peer Gateway (`INVENTORY_DEMO_GATEWAY_IPS`) | Marco/`api-gateway` #106/#107 · propagación de errores del verificador y exposición demo de Inventory · contrato/registro corregidos y prueba conjunta |
 | [#30](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/30) | IMPLEMENTAR_PARCIAL | Ciclo M1 reserva/consumo/liberación/expiración, estados, errores, replay, correlación | G5/M1 + Marco · secuencia por canal y resultado definitivo · prueba bilateral con entorno identificado; G7 concede grants |
 | [#31](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/31) | IMPLEMENTAR_PARCIAL | Consulta informativa M2 y reintegro F3 internos | G5/M2 · recepción/aptitud física y destino real de `location_id` · prueba bilateral; G7 concede scopes |
@@ -266,7 +266,7 @@ una prueba aprobada.
 
 ## Integración Marketplace H4
 
-**Corte documental:** rama `taco`, código base mergeado en `master` vía PR #10 y PR #149 (merge commit `fc9d5c0`, HEAD `6ef2005`), con PR activo de seguimiento #176 (HEAD `2a8c4c39028a46725bfedd118dd1839c9ff9929d`) con sincronización total con `master` y outbox `userId` AMQP para Catálogo. CI GitHub Actions: PASS integral 18/18 checks (run 41496155990). Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
+**Corte documental:** rama `taco`, código base mergeado en `master` vía PR #10 y PR #149 (merge commit `fc9d5c0`, HEAD `6ef2005`), con PR activo de seguimiento #176 (código base `46a62eb26e66b6bd136afb1c1609aa2a161efb7b`, merge convencional con `master@5da1279` que incorpora #199) con sincronización total con `master`, inicialización sin inferencia de ubicación y outbox `userId` AMQP para Catálogo. CI GitHub Actions: run 42162189990. Este CI no demuestra deploy Oracle, grant G7 ni E2E G1.
 
 | OperationId | Método/ruta | Identidad/scope de contrato | Semántica |
 |---|---|---|---|
