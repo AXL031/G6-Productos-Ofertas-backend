@@ -1563,6 +1563,38 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           event_type: 'inventory.sku.initialization.completed',
           count: '2',
         });
+
+        // Catalog valida delivery.properties.userId contra su producerUsers.
+        // El publisher real debe propagar el usuario AMQP autenticado de la
+        // conexión (extraído de RABBITMQ_URL), no un valor del payload.
+        for (;;) {
+          const dispatched = await new OutboxPublisherService(
+            database,
+            outboxRepo,
+          ).dispatchPending(10);
+          if (dispatched.dispatched === 0) break;
+        }
+        const initializationUserIds = new Map<string, string | undefined>();
+        for (;;) {
+          const message = await brokerChannel.get(queue);
+          if (!message) break;
+          const payload = JSON.parse(message.content.toString('utf8')) as {
+            name?: string;
+          };
+          if (
+            payload.name === 'inventory.sku.initialization.completed' ||
+            payload.name === 'inventory.sku.initialization.rejected'
+          ) {
+            initializationUserIds.set(payload.name, message.properties.userId);
+          }
+          brokerChannel.ack(message);
+        }
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.completed'),
+        ).toBe('inventory_test');
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.rejected'),
+        ).toBe('inventory_test');
       } finally {
         await consumer.onModuleDestroy();
         await writer.close();
