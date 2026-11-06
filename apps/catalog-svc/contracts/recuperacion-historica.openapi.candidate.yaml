@@ -41,20 +41,100 @@ paths:
               schema:
                 $ref: '#/components/schemas/HistoricalRecoveryAccepted'
         '400':
-          { description: VALIDACION — selección, moneda o campos inválidos }
-        '401': { description: TOKEN_INVALIDO — identidad ausente o inválida }
+          description: >-
+            VALIDACION — selección, moneda o campos inválidos.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 400 }
+                      code: { const: VALIDACION }
+        '401':
+          description: TOKEN_INVALIDO — identidad ausente o inválida
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 401 }
+                      code: { const: TOKEN_INVALIDO }
         '403':
-          { description: SCOPE_INSUFICIENTE — humano/rol/capacidad requeridos }
-        '404': { description: PRODUCTO_NO_ENCONTRADO o VARIANTE_NO_ENCONTRADA }
+          description: SCOPE_INSUFICIENTE — humano/rol/capacidad requeridos
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 403 }
+                      code: { const: SCOPE_INSUFICIENTE }
+        '404':
+          description: PRODUCTO_NO_ENCONTRADO o VARIANTE_NO_ENCONTRADA
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 404 }
+                      code:
+                        {
+                          enum:
+                            [PRODUCTO_NO_ENCONTRADO, VARIANTE_NO_ENCONTRADA],
+                        }
         '409':
-          {
-            description: IDEMPOTENCY_CONFLICT,
-            PREPARACION_NO_REINTENTABLE o CAMBIO_ESTRUCTURAL_NO_PERMITIDO,
-          }
+          description: >-
+            IDEMPOTENCY_CONFLICT, PREPARACION_NO_REINTENTABLE o
+            CAMBIO_ESTRUCTURAL_NO_PERMITIDO.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 409 }
+                      code:
+                        {
+                          enum:
+                            [
+                              IDEMPOTENCY_CONFLICT,
+                              PREPARACION_NO_REINTENTABLE,
+                              CAMBIO_ESTRUCTURAL_NO_PERMITIDO,
+                            ],
+                        }
+        '413':
+          description: VALIDACION — cuerpo supera el límite JSON de entrada existente (100 KiB)
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 413 }
+                      code: { const: VALIDACION }
+        '500':
+          description: ERROR_INTERNO — fallo inesperado sanitizado
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 500 }
+                      code: { const: ERROR_INTERNO }
         '503':
-          {
-            description: SERVICIO_NO_DISPONIBLE — persistencia o nueva admisión Pricing deshabilitada,
-          }
+          description: SERVICIO_NO_DISPONIBLE — persistencia o nueva admisión Pricing deshabilitada
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 503 }
+                      code: { const: SERVICIO_NO_DISPONIBLE }
 components:
   securitySchemes:
     userBearer: { type: http, scheme: bearer, bearerFormat: JWT }
@@ -75,9 +155,11 @@ components:
           type: array
           uniqueItems: true
           items: { type: string, format: uuid }
-          description: Requerido no vacío para Inventory del padre; IDs deben pertenecerle. No permitido con contenido para simple o Pricing-only.
+          description: Requerido no vacío para Inventory del padre; IDs deben pertenecerle y ser únicos tras normalizar mayúsculas UUID. No permitido con contenido para simple o Pricing-only. Sin maxItems arbitrario; presupuesto transaccional y cardinalidad quedan pendientes de validación operativa.
         moneda:
           type: string
+          minLength: 3
+          maxLength: 3
           pattern: '^[A-Z]{3}$'
           description: Delta pendiente de aprobación. Moneda ISO conocida por ICU, explícita y sin default; Pricing valida coincidencia autoritativamente. No importe.
       allOf:
@@ -87,6 +169,24 @@ components:
             required: [dependencias]
           then: { required: [moneda] }
           else: { not: { required: [moneda] } }
+        - if:
+            properties:
+              dependencias: { contains: { const: INVENTARIO } }
+            required: [dependencias]
+          then: true
+          else:
+            properties:
+              variantIds: { maxItems: 0 }
+    HistoricalRecoveryProblem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code, correlationId]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string, minLength: 1 }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        code: { type: string, minLength: 1 }
+        correlationId: { type: string, format: uuid }
     HistoricalRecoveryAccepted:
       type: object
       additionalProperties: false

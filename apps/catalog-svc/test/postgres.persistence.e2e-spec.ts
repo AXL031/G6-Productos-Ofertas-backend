@@ -24,6 +24,10 @@ import { setTimeout as pause } from 'node:timers/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import { DisposableCatalogBroker } from './support/disposable-catalog-broker.js';
 import {
+  candidateValidators,
+  parseCandidateYaml,
+} from './support/openapi-candidate.js';
+import {
   pinnedInventorySource,
   INVENTORY_BILATERAL_SHA,
   pinnedPricingSource,
@@ -476,6 +480,22 @@ describe.skipIf(!dockerAvailable)(
         ]);
         expect(first.status).toBe(202);
         expect(replay.status).toBe(202);
+        const acceptedContract = candidateValidators(
+          await parseCandidateYaml(
+            readFileSync(
+              'apps/catalog-svc/contracts/recuperacion-historica.openapi.candidate.yaml',
+              'utf8',
+            ),
+          ),
+        ).component('HistoricalRecoveryAccepted');
+        expect(
+          acceptedContract(first.body),
+          JSON.stringify(acceptedContract.errors),
+        ).toBe(true);
+        expect(
+          acceptedContract(replay.body),
+          JSON.stringify(acceptedContract.errors),
+        ).toBe(true);
         expect(first.body).toEqual(replay.body);
         expect(first.body).toMatchObject({
           operation_id: input.solicitudId,

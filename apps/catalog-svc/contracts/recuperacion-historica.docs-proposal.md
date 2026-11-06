@@ -16,8 +16,34 @@ o PEN por defecto. La aprobación anterior de la operación no aprueba este delt
 
 ## OpenAPI
 
+Auditoría semántica posterior de #194: corregidas las descripciones 400/409
+(comas en un flow mapping introducían propiedades nulas) y la condición
+variantIds vacía/ausente cuando no se selecciona INVENTARIO. El candidato
+declara application/problem+json y su cuerpo real para 400/401/403/404/409/503,
+además de 500 sanitizado y 413 VALIDACION por tamaño HTTP. La regresión HTTP
+reprodujo que el filtro convertía entity.too.large en 500; ahora conserva 413
+sin exponer cuerpo, detalles ni aceptar estados arbitrarios de errores.
+
+### Evaluación de cardinalidad de variantIds
+
+No existe un máximo normativo por producto/solicitud ni un presupuesto aprobado
+de duración total de la transacción. El límite JSON existente de Nest/Express
+es 100 KiB, y query_timeout/statement_timeout son 10 s por consulta, no por
+transacción completa. Ninguno justifica elegir arbitrariamente 50/100 variantes.
+Pruebas: 1024 UUID únicos se aceptan estructuralmente y caben en el cuerpo;
+4096 UUID exceden el límite y producen 413 antes de admisión. El primer caso
+HTTP usa DB indisponible explícita y no se presenta como transacción masiva.
+
+Antes de habilitar producción, Poma/Marco deben fijar presupuesto de admisión
+y volumen por producto, medir latencia/grants/rollback bajo contención en
+PostgreSQL TLS representativo y probar N/N+1, atomicidad y replay. Si se adopta
+N, debe concordar en DTO y maxItems del contrato aprobado. Se recomienda ese
+límite explícito para acotar trabajo bajo lock; hoy no se inventa un número ni
+se afirma que el límite de cuerpo garantice una transacción corta. La restricción
+productiva del adaptador Pricing permanece intacta.
+
 Integrar/revisar el fragmento `recuperacion-historica.openapi.candidate.yaml`:
-ruta, DTO, 202 y errores existentes 400/401/403/404/409/503. El operationId
+ruta, DTO, 202 y errores 400/401/403/404/409/413/500/503. El operationId
 propuesto tampoco se presenta como publicado. Errores usan Problem existente,
 sin divulgar detalles internos. Mantener userBearer/rol y capacidad interna
 default cerrado; no añadir scopes G7. Gateway requiere trabajo externo separado.

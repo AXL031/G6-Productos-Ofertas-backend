@@ -1,5 +1,61 @@
 # Bloque A — preparación, integración y consultas
 
+## Auditoría del fragmento HTTP — 06/11/2026
+
+Continuación sobre b6ba5fc5027074080b3d3dee94a17a1c7db6b5dc, exclusivamente
+Catalog, #194 DRAFT. Este corte actualiza la validación del contrato candidato;
+no convierte el fragmento en contrato normativo ni habilita producción.
+
+- Corregidas propiedades YAML espurias verificadas en 400 y 409. Los tres
+  códigos 409 quedan en una sola descripción. Validación semántica OAS 3.1
+  offline con esquemas oficiales fijados por hash, referencias locales y
+  dialecto OAS/JSON Schema 2020-12; la regresión rechaza el YAML original
+  aunque sea parseable. No se agregan dependencias ni cambios compartidos.
+- Coherencia con DTO: Pricing-only rechaza variantIds no vacío también en
+  el esquema. Se contrastan selecciones válidas/inválidas y cuerpos Problem
+  reales; ICU y unicidad UUID normalizada se conservan como reglas runtime.
+  Los errores documentan application/problem+json, incluidos 413 y 500.
+- Defecto adicional reproducido por HTTP: un cuerpo demasiado grande devolvía
+  500. Corrección localizada del filtro conserva entity.too.large como 413
+  VALIDACION sanitizado; otros errores arbitrarios siguen siendo 500.
+- Cardinalidad evaluada: el límite HTTP existente de 100 KiB no garantiza
+  duración total de transacción. 1024 UUID caben/validan; 4096 exceden el cuerpo
+  y reciben 413 antes de admisión. No se ensayó una transacción de 1024 variantes:
+  ese HTTP usa DB indisponible explícita. No se impone un maxItems arbitrario.
+  Poma/Marco deben definir presupuesto operativo, medir contención PostgreSQL
+  TLS y probar N/N+1, atomicidad y replay antes de habilitar producción.
+- Pricing permanece cerrado por defecto y habilitable únicamente en pruebas;
+  sin cambios al adaptador ni a los peers. SHA Pricing 7398e6fbc577ec3d595a6c04d4aa9f884fbf527d
+  e Inventory 56aa4322725060b529bf316872f891582d7d1b2e se mantienen fijados.
+  La E2E PostgreSQL existente añade validación del 202 real y su replay contra
+  el esquema, conservando publicadores, bases, broker y consumidores auténticos.
+
+Pruebas locales del corte: 638 unitarias Catalog PASS; 179 E2E Catalog PASS /
+117 SKIP por infraestructura. Nueva suite semántica: 37 PASS; HTTP histórico:
+10 PASS. Compilación TypeScript estricta explícita de los archivos de prueba:
+PASS. General: 2291 unitarias PASS / 66 SKIP; E2E FAIL — Docker no disponible
+localmente (ENOENT Bulk :265), 941 PASS / 329 SKIP. Typecheck, lint, formato
+TypeScript/YAML, build:catalog-svc, build:all y git diff --check: PASS.
+SHA final y ambas CI (HEAD puro y compatibilidad PR) se registran con sus
+resultados exactos en #194 y el informe de entrega. Docker no está instalado
+localmente; el FAIL ENOENT se conserva y solo permite publicar por la excepción
+limitada ya autorizada.
+Los SKIP locales no son PASS; la CI debe ejecutar realmente las 98 pruebas
+PostgreSQL Catalog y las 2 de Bulk sobre el nuevo código.
+
+| Requisito | Estado de implementación / condición restante |
+| --- | --- |
+| YAML, semántica OAS, coherencia DTO/errores y regresión 413 | Implementados y probados localmente; CI del SHA final en #194 |
+| A1/A2 integración auténtica y activación simple/padre/variantes | Harness y peers inmutables conservados; nueva ejecución Docker obligatoria en CI |
+| A3 regresiones | Pruebas existentes conservadas, resultados por ejecución separados |
+| Cardinalidad operativa | Evaluación completa; presupuesto y límite justificado pendientes de Poma/Marco antes de producción |
+| Contrato definitivo | Marco/owners Docs: publicar HTTP/moneda y contratos candidatos homologados |
+| Uso compartido / despliegue | Owner DB/operación: aprobación separada de 0004, grants/ACL y prueba del SHA desplegado; no autorizado aquí |
+
+Sin cambios en Pricing, Inventory, Docs master, Gateway, frontend, Supabase ni
+infraestructura. Sin merge ni despliegue. Bloque A continúa PARTIAL por las
+dependencias contractuales y operativas; CI descartable no las concede.
+
 ## Continuación consolidada — encargo 06/11/2026
 
 Esta sección prevalece sobre los cortes anteriores. Rama poma, #194 DRAFT.

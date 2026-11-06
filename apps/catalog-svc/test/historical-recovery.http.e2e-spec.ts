@@ -16,6 +16,41 @@ describe('Historical recovery candidate HTTP authorization (signed JWT/JWKS, no 
     await enabled.close();
     await closed.close();
   });
+  it('rejects an oversized variant selection before admission with HTTP 413', async () => {
+    const selection = {
+      ...body,
+      variantIds: Array.from({ length: 4096 }, () => randomUUID()),
+    };
+    const response = await enabled.call(
+      'POST',
+      path,
+      selection,
+      enabled.token(),
+      true,
+    );
+    expect(response.status).toBe(413);
+    expect(response.type).toContain('application/problem+json');
+    expect(response.body).toMatchObject({ status: 413, code: 'VALIDACION' });
+    expect(response.body).not.toHaveProperty('body');
+  });
+  it('does not invent a variant cap below the existing JSON-body bound', async () => {
+    const selection = {
+      ...body,
+      variantIds: Array.from({ length: 1024 }, () => randomUUID()),
+    };
+    expect(Buffer.byteLength(JSON.stringify(selection))).toBeLessThan(
+      100 * 1024,
+    );
+    const response = await enabled.call(
+      'POST',
+      path,
+      selection,
+      enabled.token(),
+      true,
+    );
+    // Explicit unavailable database fixture: parsing/auth succeeded, no admission.
+    expect(response.status).toBe(503);
+  });
   it('denies the capability by default, including during restricted demo', async () => {
     expect(
       (await closed.call('POST', path, body, closed.token(), true)).status,
