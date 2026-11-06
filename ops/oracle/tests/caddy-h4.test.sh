@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Dependencies: bash, docker (daemon access), node, curl, grep, sed, mktemp, cat, head, sleep, rm.
+# Dependencies: bash, docker (daemon access), node, curl, grep, awk, sed, mktemp, cat, head, sleep, rm.
 # Official Caddy and Node images must already be present; CI pulls them explicitly.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CADDYFILE="$ROOT/ops/oracle/Caddyfile"
 CADDY_IMAGE="${CADDY_TEST_IMAGE:-caddy:2.11.6-alpine}"
 NODE_IMAGE="${CADDY_MOCK_IMAGE:-node:24-alpine}"
-for tool in bash docker node curl grep sed mktemp cat head sleep rm; do
+for tool in bash docker node curl grep awk sed mktemp cat head sleep rm; do
   command -v "$tool" >/dev/null 2>&1 || { printf 'FAIL: dependencia requerida ausente: %s\n' "$tool" >&2; exit 1; }
 done
 docker_exec() { MSYS_NO_PATHCONV=1 docker "$@"; }
@@ -144,13 +144,13 @@ wait_proxy
 
 assert_headers() {
   local headers="$1" auth="$2"
-  [[ "$(grep -Eci '^X-Content-Type-Options: nosniff\r?$' "$headers")" == 1 ]] || fail 'X-Content-Type-Options no coincide exactamente'
-  [[ "$(grep -Eci '^X-Frame-Options: DENY\r?$' "$headers")" == 1 ]] || fail 'X-Frame-Options no coincide exactamente'
-  [[ "$(grep -Eci '^Referrer-Policy: no-referrer\r?$' "$headers")" == 1 ]] || fail 'Referrer-Policy no coincide exactamente'
+  [[ "$(grep -Eci '^X-Content-Type-Options: nosniff$' "$headers")" == 1 ]] || fail 'X-Content-Type-Options no coincide exactamente'
+  [[ "$(grep -Eci '^X-Frame-Options: DENY$' "$headers")" == 1 ]] || fail 'X-Frame-Options no coincide exactamente'
+  [[ "$(grep -Eci '^Referrer-Policy: no-referrer$' "$headers")" == 1 ]] || fail 'Referrer-Policy no coincide exactamente'
   ! grep -Eqi '^Server:' "$headers" || fail 'se filtró el encabezado Server'
   if [[ "$auth" == preserve ]]; then
-    [[ "$(grep -Eci '^Content-Type: text/plain; charset=utf-8\r?$' "$headers")" == 1 ]] || fail 'Caddy alteró Content-Type del upstream'
-    [[ "$(grep -Eci '^X-Mock-Response: preserved\r?$' "$headers")" == 1 ]] || fail 'respuesta upstream alterada: falta encabezado X-Mock-Response'
+    [[ "$(grep -Eci '^Content-Type: text/plain; charset=utf-8$' "$headers")" == 1 ]] || fail 'Caddy alteró Content-Type del upstream'
+    [[ "$(grep -Eci '^X-Mock-Response: preserved$' "$headers")" == 1 ]] || fail 'respuesta upstream alterada: falta encabezado X-Mock-Response'
   fi
 }
 request() {
@@ -161,9 +161,10 @@ request() {
   code="$(curl --silent --show-error --max-time 3 --request "$method" "$@" \
     --dump-header "$TEMP_ROOT/headers" --output "$TEMP_ROOT/body" --write-out '%{http_code}' \
     "http://127.0.0.1:${PROXY_PORT}${path}")" || fail "curl falló para $method $path"
+  awk '{ sub(/\r$/, ""); print }' "$TEMP_ROOT/headers" > "$TEMP_ROOT/headers.normalized"
   [[ "$code" == "$expected_status" ]] || fail "$method $path status=$code esperado=$expected_status"
   [[ "$(cat "$TEMP_ROOT/body")" == "$expected_body" ]] || fail "$method $path cuerpo distinto: $(cat "$TEMP_ROOT/body")"
-  assert_headers "$TEMP_ROOT/headers" "$auth"
+  assert_headers "$TEMP_ROOT/headers.normalized" "$auth"
 }
 
 request GET /health 200 'mock-status-200;method=GET;url=/health;body='
@@ -186,16 +187,16 @@ for status in 401 403 404 503; do
   expected="mock-status-${status};method=GET;url=/api/v1/status;body="
   request GET /api/v1/status "$status" "$expected" preserve -H "X-Test-Status: $status"
   if [[ "$status" == 401 ]]; then
-    [[ "$(grep -Eci '^WWW-Authenticate: Bearer realm="mock", error="invalid_token"\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró WWW-Authenticate del 401'
+    [[ "$(grep -Eci '^WWW-Authenticate: Bearer realm="mock", error="invalid_token"$' "$TEMP_ROOT/headers.normalized")" == 1 ]] || fail 'Caddy alteró WWW-Authenticate del 401'
   fi
   if [[ "$status" == 403 ]]; then
-    [[ "$(grep -Eci '^X-Authz-Result: denied-by-mock\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró la respuesta 403 del upstream'
+    [[ "$(grep -Eci '^X-Authz-Result: denied-by-mock$' "$TEMP_ROOT/headers.normalized")" == 1 ]] || fail 'Caddy alteró la respuesta 403 del upstream'
   fi
 done
 
 for path in /ruta-inexistente /metrics /admin; do
   request GET "$path" 404 '{"codigo":"RUTA_NO_PUBLICADA"}' fallback
-  ! grep -Eqi '^X-Mock-Response:' "$TEMP_ROOT/headers" || fail "fallback $path alcanzó el upstream"
+  ! grep -Eqi '^X-Mock-Response:' "$TEMP_ROOT/headers.normalized" || fail "fallback $path alcanzó el upstream"
 done
 
 printf 'PASS: Caddy %s real validado y proxy HTTP local; auth no validada; POST/PATCH/DELETE solo prueban transporte\n' "$CADDY_IMAGE"
