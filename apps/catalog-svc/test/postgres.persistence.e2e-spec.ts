@@ -1849,6 +1849,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             },
           };
           await broker.wrongIdentityResult(badOrigin);
+          const observedBadOrigin = await nextResult(
+            (message) => message.message_id === badOrigin.message_id,
+          );
+          expect(observedBadOrigin.wire.properties.userId).toBe(
+            'catalog-joint',
+          );
+          expect(observedBadOrigin.message).toEqual(badOrigin);
           expect(
             (await checksFor(legacySimple.product_id)).every(
               (c) => c.state === 'PENDING',
