@@ -280,7 +280,7 @@ Las pruebas `ops/oracle/tests/validate-cd-source.test.sh`, `select-cd-services.t
 
 - Procedimiento futuro, reversible y sin despliegue: [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md).
 - Variables verificadas en parsers, límites de preparación y bloqueos externos: [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md).
-- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); simulación local: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
-- Pruebas locales de nueve servicios y redes: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
+- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); prueba dinámica aislada con la imagen oficial Caddy: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
+- Pruebas de registro, puertos, aliases y Compose JSON de nueve servicios: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
 
 El Caddyfile general es candidato local únicamente. No se instala ni activa mientras Gateway conserve un bypass demo o hasta cumplir los gates de autenticación y exposición del procedimiento H4.

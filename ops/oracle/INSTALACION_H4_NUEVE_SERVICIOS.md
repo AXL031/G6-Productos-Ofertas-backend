@@ -1,81 +1,54 @@
-# Instalación futura del ejecutor Oracle v5 y la red HTTP
+# Instalación documental del ejecutor Oracle v5 y topología HTTP
 
-Procedimiento documental, reversible y sin arranque/despliegue. Codex no ejecuta estos comandos en Oracle. Aplicar solo con autorización operativa, en el checkout autorizado y tras revisar su SHA. No cambia secretos, `active-image`, `previous-image` ni `runtime.env`; no altera `authorized_keys` ni habilita una shell general.
+Procedimiento exclusivamente documental. No se ejecutó en Oracle. Requiere checkout autorizado, aprobación operativa específica y ventana de mantenimiento. No cambia imágenes activas, active-image, previous-image, runtime.env, secretos, Caddy ni redes productivas. No ejecutar up, pull, reinicios ni comandos destructivos globales.
 
-## Secuencia ejecutable
+## Preflight y exclusión
 
-Detenerse ante cualquier error y guardar salidas sin valores secretos.
-
-### 1. Preflight de versión y checksums
+El ejecutor usa flock por servicio, pero no implementa un bloqueo global de instalación. Suspender CI/CD Oracle y lanzamientos manuales, confirmar que no hay procesos deploy-g6-service ni deploy-inventory-svc activos y mantener la suspensión hasta completar o restaurar. Si no se garantiza esa exclusión, detenerse.
 
 ```bash
 set -Eeuo pipefail
 cd /RUTA/AL/CHECKOUT_AUTORIZADO
 git status --short --branch
-git rev-parse HEAD
-git rev-parse origin/master
-test "$(git rev-parse HEAD)" = "$(git rev-parse origin/master)"
+test -z "$(git status --porcelain)"
+LOCAL_SHA="$(git rev-parse HEAD)"
+REMOTE_MASTER_SHA="$(git ls-remote origin refs/heads/master | awk 'NR==1 {print $1}')"
+[[ "$REMOTE_MASTER_SHA" =~ ^[0-9a-f]{40}$ ]]
+printf 'checkout=%s\norigin/master=%s\n' "$LOCAL_SHA" "$REMOTE_MASTER_SHA"
+test "$LOCAL_SHA" = "$REMOTE_MASTER_SHA"
 sha256sum ops/oracle/service-registry.sh ops/oracle/services.psv \
   ops/oracle/deploy-g6-service.sh ops/oracle/deploy-inventory-svc.sh \
   ops/oracle/docker-compose.service.yml ops/oracle/docker-compose.service.http.yml \
   ops/oracle/docker-compose.gateway.yml ops/oracle/docker-compose.inventory.http.yml
 ```
 
-Registrar SHA y checksums en la autorización. Si HEAD ya no es la punta actual de `master`, obtener y revisar el checkout vigente; no instalar un SHA anterior.
+git ls-remote consulta master remoto actual; origin/master local no basta. Si los SHA difieren, detenerse y revisar el checkout vigente. Registrar SHA, fecha y checksums.
 
-### 2. Inventariar destinos con stat y sha256sum
+## Respaldo recuperable
 
-```bash
-sudo stat --format='%n|%U:%G|%a|%y|%s' \
-  /usr/local/lib/g6-productos-ofertas/service-registry.sh \
-  /usr/local/lib/g6-productos-ofertas/services.psv \
-  /usr/local/lib/g6-productos-ofertas/deploy-g6-service \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.yml \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml \
-  /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml \
-  /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml \
-  /usr/local/sbin/deploy-inventory-svc 2>&1 || true
-sudo sha256sum \
-  /usr/local/lib/g6-productos-ofertas/service-registry.sh \
-  /usr/local/lib/g6-productos-ofertas/services.psv \
-  /usr/local/lib/g6-productos-ofertas/deploy-g6-service \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.yml \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml \
-  /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml \
-  /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml \
-  /usr/local/sbin/deploy-inventory-svc 2>&1 || true
-```
-
-Registrar cada ruta existente/ausente. No leer ni imprimir ningún `runtime.env`.
-
-### 3. Respaldar propietario, permisos y timestamps
+No leer ni imprimir runtime.env. Registrar dueño, grupo, modo, timestamp, tamaño y checksum de destinos existentes. cp --archive conserva contenido y metadata.
 
 ```bash
+DESTINOS=(/usr/local/lib/g6-productos-ofertas/service-registry.sh /usr/local/lib/g6-productos-ofertas/services.psv /usr/local/lib/g6-productos-ofertas/deploy-g6-service /opt/g6-productos-ofertas/shared/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml /usr/local/sbin/deploy-inventory-svc)
+sudo stat --format='%n|%U:%G|%a|%y|%s' "${DESTINOS[@]}" 2>&1 || true
+sudo sha256sum "${DESTINOS[@]}" 2>&1 || true
 BACKUP="/var/backups/g6-productos-ofertas/h4-$(date -u +%Y%m%dT%H%M%SZ)"
 sudo install --directory --owner root --group root --mode 0700 "$BACKUP"
-for path in \
-  /usr/local/lib/g6-productos-ofertas/service-registry.sh \
-  /usr/local/lib/g6-productos-ofertas/services.psv \
-  /usr/local/lib/g6-productos-ofertas/deploy-g6-service \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.yml \
-  /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml \
-  /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml \
-  /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml \
-  /usr/local/sbin/deploy-inventory-svc; do
+for path in "${DESTINOS[@]}"; do
   if sudo test -e "$path"; then
     name="$(printf '%s' "$path" | sed 's#^/##; s#/#__#g')"
     sudo cp --archive -- "$path" "$BACKUP/$name"
   fi
 done
 sudo find "$BACKUP" -maxdepth 1 -type f -exec stat --format='%n|%U:%G|%a|%y|%s' {} \;
-sudo sha256sum "$BACKUP"/*
+sudo bash -c 'shopt -s nullglob; files=("$1"/*); (("${#files[@]}" > 0)) && sha256sum -- "${files[@]}"' _ "$BACKUP"
 ```
 
-Guardar la ruta real de `BACKUP`, metadatos y checksums en el ticket. Exigir root:root 0700 para el directorio de respaldos.
+El wildcard se expande dentro de sudo bash, con permisos root. Guardar ruta, metadata y hashes del respaldo como evidencia.
 
-### 4. Instalar copias candidatas en las rutas existentes
+## Candidatos y validación antes de promover
 
-Los `.new` se crean junto a su destino para permitir renombre atómico. No ejecutar `compose up`, `pull`, reinicios, CD ni despliegues.
+Crear candidatos .new junto a cada destino, en el mismo filesystem. No reemplazar activos todavía. Verificar el SHA-256 completo de cada candidato contra el checkout y repetir la comparación justo antes de promover.
 
 ```bash
 sudo install -d -o root -g root -m 0755 /usr/local/lib/g6-productos-ofertas /opt/g6-productos-ofertas/shared /opt/g6-productos-ofertas/api-gateway /opt/g6-productos-ofertas/inventory
@@ -86,125 +59,93 @@ sudo install -o root -g root -m 0644 ops/oracle/docker-compose.service.yml /opt/
 sudo install -o root -g root -m 0644 ops/oracle/docker-compose.service.http.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new
 sudo install -o root -g root -m 0644 ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new
 sudo install -o root -g root -m 0644 ops/oracle/docker-compose.inventory.http.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new
+check_candidate() {
+  local source="$1" candidate="$2" expected actual
+  expected="$(sha256sum "$source" | awk '{print $1}')"
+  actual="$(sudo sha256sum "$candidate" | awk '{print $1}')"
+  [[ "$expected" == "$actual" ]]
+}
+check_candidate ops/oracle/service-registry.sh /usr/local/lib/g6-productos-ofertas/service-registry.sh.new
+check_candidate ops/oracle/services.psv /usr/local/lib/g6-productos-ofertas/services.psv.new
+check_candidate ops/oracle/deploy-g6-service.sh /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new
+check_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new
+check_candidate ops/oracle/docker-compose.service.http.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new
+check_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new
+check_candidate ops/oracle/docker-compose.inventory.http.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new
 ```
 
-Comparar hashes de los `.new` con el paso 1. Aún no instalar el shim Inventory.
+Instalar el candidato del overlay Inventory solo tras autorización operativa específica para ese cambio. El paso de staging no sustituye validación ni aprobación.
 
-Tras confirmar checksums, instalar las definiciones Compose en sus destinos oficiales mediante renombre atómico:
-
-```bash
-sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
-sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml
-sudo mv --no-target-directory /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
-sudo mv --no-target-directory /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml
-```
-
-### 5. Validar ejecutor y registro
-
-```bash
-sudo install -o root -g root -m 0644 ops/oracle/services.psv /usr/local/lib/g6-productos-ofertas/services.psv
-sudo install -o root -g root -m 0644 ops/oracle/service-registry.sh /usr/local/lib/g6-productos-ofertas/service-registry.sh
-sudo install -o root -g root -m 0755 ops/oracle/deploy-g6-service.sh /usr/local/lib/g6-productos-ofertas/deploy-g6-service
-sudo -u inventory-deploy env -u SSH_ORIGINAL_COMMAND /usr/local/lib/g6-productos-ofertas/deploy-g6-service --version
-sudo bash -c 'source /usr/local/lib/g6-productos-ofertas/service-registry.sh; g6_enabled_services_json'
-```
-
-Exigir `ejecutor=5 registro=2`, exactamente nueve servicios y los puertos del registro: Gateway 3000, Catalog 3001, Pricing 3002, Price Audit 3003, Promotions 3004, Inventory 3005, Taxonomy 3006, Combos 3007 y Bulk 3008.
-
-### 6. Comprobar permisos de `inventory-deploy`
-
-```bash
-sudo -u inventory-deploy test -r /usr/local/lib/g6-productos-ofertas/service-registry.sh
-sudo -u inventory-deploy test -r /usr/local/lib/g6-productos-ofertas/services.psv
-sudo -u inventory-deploy test -x /usr/local/lib/g6-productos-ofertas/deploy-g6-service
-```
-
-### 7. Inspeccionar redes/aliases existentes antes de overlays
-
-```bash
-sudo docker network inspect g6-edge g6-http
-sudo docker network inspect --format '{{range $id, $container := .Containers}}{{$container.Name}}{{"\n"}}{{end}}' g6-edge
-sudo docker network inspect --format '{{range $id, $container := .Containers}}{{$container.Name}}{{"\n"}}{{end}}' g6-http
-for container in $(sudo docker ps --filter network=g6-edge --format '{{.Names}}'); do sudo docker inspect --format '{{.Name}}|{{json .NetworkSettings.Networks}}' "$container"; done
-for container in $(sudo docker ps --filter network=g6-http --format '{{.Names}}'); do sudo docker inspect --format '{{.Name}}|{{json .NetworkSettings.Networks}}' "$container"; done
-```
-
-Confirmar `g6-edge` solo con Caddy y Gateway, alias `g6-api-gateway`; `g6-http` debe ser bridge local, `Internal=false`, con aliases canónicos sin colisión y sin Caddy/RabbitMQ. Si redes, aliases o miembros difieren, detenerse y escalar; este procedimiento no crea ni reconfigura redes.
-
-### 8. Validar Compose sin ejecutar `up`
-
-Usar archivo de entorno vacío para interpolaciones y `env_file` temporal; no leer archivos privados. `SHA_FIXTURE` solo permite validar sintaxis, nunca ejecutar `pull`.
-
-```bash
-FIXTURE="$(mktemp)"
-INVENTORY_COMPOSE="$(mktemp)"
-trap 'rm -f "$FIXTURE" "$INVENTORY_COMPOSE"' EXIT
-SHA_FIXTURE="$(printf 'a%.0s' {1..40})"
-for service in api-gateway bulk-svc catalog-svc combos-svc price-audit-svc pricing-svc promotions-svc taxonomy-svc; do
-  IFS='|' read -r _ _ port port_env _ _ image compose project unit container state runtime_env < <(awk -F'|' -v s="$service" '$1==s {print}' ops/oracle/services.psv)
-  export G6_SERVICE_IMAGE="ghcr.io/taller-sw-web/g6-productos-ofertas-backend/$service:$SHA_FIXTURE" G6_SERVICE_CONTAINER="$container" G6_SERVICE_PORT="$port" G6_SERVICE_PORT_ENV="$port_env" G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="$FIXTURE"
-  if [[ "$service" == api-gateway ]]; then base=ops/oracle/docker-compose.gateway.yml; else base=ops/oracle/docker-compose.service.yml; fi
-  docker compose --project-name "$project" --file "$base" config --quiet
-  docker compose --project-name "$project" --file "$base" --file ops/oracle/docker-compose.service.http.yml config --quiet
-done
-sed "s|/etc/g6-inventory/runtime.env|$FIXTURE|" docker-compose.inventory.yml > "$INVENTORY_COMPOSE"
-export INVENTORY_IMAGE="ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:$SHA_FIXTURE"
-docker compose --project-name g6-inventory --file "$INVENTORY_COMPOSE" config --quiet
-docker compose --project-name g6-inventory --file "$INVENTORY_COMPOSE" --file ops/oracle/docker-compose.inventory.http.yml config --quiet
-```
-
-Confirmar puertos 3000–3008 solo en `127.0.0.1`, Gateway único con `g6-edge`, ocho aliases HTTP en `g6-http`, e Inventory en su proyecto/Compose histórico. No utilizar `up`, `pull` ni iniciar servicios.
-
-### 9. Instalar shim Inventory solo después de validar el ejecutor
+El shim Inventory también se prepara únicamente después de aprobación para su cambio:
 
 ```bash
 sudo install -o root -g root -m 0755 ops/oracle/deploy-inventory-svc.sh /usr/local/sbin/deploy-inventory-svc.new
 sudo grep -F '/usr/local/lib/g6-productos-ofertas/deploy-g6-service' /usr/local/sbin/deploy-inventory-svc.new
+```
+
+Validar Compose candidato antes de reemplazar archivos activos. Usar env files temporales sin secretos, imagen SHA fixture y docker compose config --format json. Revisar JSON con jq: exactamente nueve identidades/puertos, publicaciones solo en 127.0.0.1, Gateway como único G6 en g6-edge, ocho aliases autorizados en g6-http, RabbitMQ fuera de g6-http, e Inventory con Compose, proyecto, servicio y puerto históricos. No usar up, pull ni crear redes.
+
+```bash
+FIXTURE="$(mktemp)"
+INVENTORY_FIXTURE="$(mktemp)"
+INVENTORY_CANDIDATE="$(mktemp --suffix=.yml)"
+trap 'rm -f "$FIXTURE" "$INVENTORY_FIXTURE" "$INVENTORY_CANDIDATE"' EXIT
+SHA_FIXTURE="$(printf 'a%.0s' {1..40})"
+for service in api-gateway bulk-svc catalog-svc combos-svc price-audit-svc pricing-svc promotions-svc taxonomy-svc; do
+  IFS='|' read -r _ _ port port_env _ _ _ _ project _ container _ _ < <(awk -F'|' -v s="$service" '$1==s {print}' ops/oracle/services.psv)
+  export G6_SERVICE_IMAGE="ghcr.io/taller-sw-web/g6-productos-ofertas-backend/$service:$SHA_FIXTURE" G6_SERVICE_CONTAINER="$container" G6_SERVICE_PORT="$port" G6_SERVICE_PORT_ENV="$port_env" G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="$FIXTURE"
+  if [[ "$service" == api-gateway ]]; then base=/opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new; else base=/opt/g6-productos-ofertas/shared/docker-compose.service.yml.new; fi
+  docker compose --project-name "$project" --file "$base" config --format json | jq -e '.services | length == 1' >/dev/null
+  docker compose --project-name "$project" --file "$base" --file /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new config --format json | jq -e '.services | length == 1' >/dev/null
+done
+sed "s|/etc/g6-inventory/runtime.env|$INVENTORY_FIXTURE|" docker-compose.inventory.yml > "$INVENTORY_CANDIDATE"
+export INVENTORY_IMAGE="ghcr.io/taller-sw-web/g6-productos-ofertas-backend/inventory-svc:$SHA_FIXTURE"
+docker compose --project-name g6-inventory --file "$INVENTORY_CANDIDATE" config --format json | jq -e '.name == "g6-inventory"' >/dev/null
+docker compose --project-name g6-inventory --file "$INVENTORY_CANDIDATE" --file /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new config --format json | jq -e '.services["inventory-svc"].ports[0].host_ip == "127.0.0.1" and .services["inventory-svc"].ports[0].published == "3005"' >/dev/null
+```
+
+Las aserciones del ejemplo son un mínimo; revisar la salida JSON completa. config no inicia contenedores ni crea redes.
+
+## Promoción ordenada y rollback
+
+Mantener congelados CI/CD y lanzamientos manuales; confirmar otra vez que no hay ejecutores activos. Promover con mv --no-target-directory, siempre en el mismo filesystem y verificando cada checksum antes y después: Compose genérico y Gateway; overlay genérico; registro; ejecutor; y shim Inventory al final. El overlay Inventory solo con su validación y autorización operativa propia. Esta guía no cambia Inventory ni Caddy; ambos requieren validaciones y autorización operativa separadas.
+
+La función check_candidate del paso anterior se vuelve a ejecutar inmediatamente antes de cada promoción. No continuar si cualquier comparación falla.
+
+```bash
+check_candidate() {
+  local source="$1" candidate="$2" expected actual
+  expected="$(sha256sum "$source" | awk '{print $1}')"
+  actual="$(sudo sha256sum "$candidate" | awk '{print $1}')"
+  [[ "$expected" == "$actual" ]]
+}
+check_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new
+sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
+check_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new
+sudo mv --no-target-directory /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
+check_candidate ops/oracle/docker-compose.service.http.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new
+sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml
+check_candidate ops/oracle/services.psv /usr/local/lib/g6-productos-ofertas/services.psv.new
+sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/services.psv.new /usr/local/lib/g6-productos-ofertas/services.psv
+check_candidate ops/oracle/service-registry.sh /usr/local/lib/g6-productos-ofertas/service-registry.sh.new
+sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/service-registry.sh.new /usr/local/lib/g6-productos-ofertas/service-registry.sh
+check_candidate ops/oracle/deploy-g6-service.sh /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new
+sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new /usr/local/lib/g6-productos-ofertas/deploy-g6-service
+# Solo tras autorización, validación y promoción separada del overlay Inventory:
+check_candidate ops/oracle/docker-compose.inventory.http.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new
+sudo mv --no-target-directory /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml
+# Solo tras autorización y validación específica del shim Inventory:
+check_candidate ops/oracle/deploy-inventory-svc.sh /usr/local/sbin/deploy-inventory-svc.new
 sudo mv --no-target-directory /usr/local/sbin/deploy-inventory-svc.new /usr/local/sbin/deploy-inventory-svc
 ```
 
-### 10. Rechazar probes y comandos no autorizados
+Ante cualquier fallo, detener la secuencia y mantener congelados despliegues. Para cada destino anotado como existente, restaurar solo su respaldo con metadata a un .restore junto al destino y renombrarlo atómicamente; no restaurar destinos que antes no existían. Comparar checksum, dueño, grupo, permisos y timestamp con el inventario. Revalidar Compose con config. No borrar directorios, imágenes, redes, datos o contenedores.
 
 ```bash
-for remote in connectivity-probe 'id' 'service-deploy unknown 0000000000000000000000000000000000000000'; do
-  if sudo -u inventory-deploy env SSH_ORIGINAL_COMMAND="$remote" /usr/local/sbin/deploy-inventory-svc; then
-    echo 'FALLO: el wrapper aceptó un comando no autorizado' >&2; exit 1
-  fi
-done
+sudo cp --archive -- "$BACKUP/usr__local__lib__g6-productos-ofertas__service-registry.sh" /usr/local/lib/g6-productos-ofertas/service-registry.sh.restore
+sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/service-registry.sh.restore /usr/local/lib/g6-productos-ofertas/service-registry.sh
+sudo sha256sum /usr/local/lib/g6-productos-ofertas/service-registry.sh
+sudo stat --format='%n|%U:%G|%a|%y|%s' /usr/local/lib/g6-productos-ofertas/service-registry.sh
 ```
 
-Cada intento debe fallar con `comando remoto no autorizado`. No se usa SSH durante esta instalación documental.
-
-### 11. Conservar el comando histórico Inventory
-
-La invocación compatible es `inventory-deploy <SHA hexadecimal de 40 caracteres>`. Su forwarding al ejecutor se comprueba con `bash ops/oracle/tests/deploy-inventory-svc.test.sh` y `bash ops/oracle/tests/deploy-g6-service.test.sh` en el checkout. No ejecutar un SHA productivo como smoke.
-
-### 12. Restaurar wrapper/archivos de forma atómica ante fallo
-
-Restaurar primero el wrapper si fue sustituido y luego solo los destinos anotados como existentes. Ejemplo:
-
-```bash
-sudo cp --archive -- "$BACKUP/usr__local__sbin__deploy-inventory-svc" /usr/local/sbin/deploy-inventory-svc.restore
-sudo mv --no-target-directory /usr/local/sbin/deploy-inventory-svc.restore /usr/local/sbin/deploy-inventory-svc
-```
-
-Repetir con el nombre respaldado correspondiente y el destino original. Si un archivo no existía antes, quitar únicamente el candidato instalado en esa ruta. No borrar directorios, secretos, datos, imágenes, redes o contenedores.
-
-### 13. Verificar checksums posteriores
-
-```bash
-sudo sha256sum /usr/local/lib/g6-productos-ofertas/service-registry.sh /usr/local/lib/g6-productos-ofertas/services.psv /usr/local/lib/g6-productos-ofertas/deploy-g6-service /opt/g6-productos-ofertas/shared/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml /usr/local/sbin/deploy-inventory-svc
-sudo stat --format='%n|%U:%G|%a|%y|%s' /usr/local/lib/g6-productos-ofertas/service-registry.sh /usr/local/lib/g6-productos-ofertas/services.psv /usr/local/lib/g6-productos-ofertas/deploy-g6-service /usr/local/sbin/deploy-inventory-svc
-```
-
-Comparar contra hashes del checkout o del respaldo utilizado; adjuntar permisos y timestamps al cierre.
-
-### 14. Finalizar sin arrancar ni desplegar
-
-Dejar archivos, respaldos y redes como están al terminar esta preparación. No arrancar contenedores ni ejecutar el CD. El despliegue posterior será individual, con workflow oficial y nueva comprobación de que el SHA sigue siendo HEAD de `master`; no habilitar CD automático.
-
-## Secuencia fija de liberación
-
-Primer grupo: **Taxonomy → Catalog → Gateway**. Después: Pricing, Price Audit, Promotions, Inventory, Combos y Bulk según dependencias aprobadas; cada uno se instala mediante el mismo registro/ejecutor y no requiere cambios a Caddy.
-
-Cambiar Caddy queda pendiente hasta que Gateway oficial esté desplegado, G7 real configurado, bypass demo desactivado, operaciones públicas no autorizadas denegadas, pruebas JWT válido/ausente/inválido/sin scope documentadas, Caddyfile previo respaldado y `caddy validate` pase. Una imagen aprobada no autoriza exposición pública. Docs mantiene cero operaciones `PUBLICA_APROBADA`.
+Registrar SHA remoto, hashes antes/después, respaldo y resultados. No ejecutar SSH remoto, CD, up, pull, probes contra Oracle ni cambios globales. Esta guía no acredita despliegue, readiness ni autorización de producción.

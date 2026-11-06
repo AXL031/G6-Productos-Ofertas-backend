@@ -371,6 +371,22 @@ jobs:
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Descargar Caddy oficial para la simulación efímera
+      run: docker pull caddy:2.11.6-alpine
+    - name: Descargar Node oficial para el mock HTTP efímero
+      run: docker pull node:24-alpine
+    - name: Validar proxy Caddy real con upstream HTTP local
+      env:
+        CADDY_TEST_IMAGE: caddy:2.11.6-alpine
+      run: bash ops/oracle/tests/caddy-h4.test.sh
+    - name: Validar topología de nueve servicios con Compose y fixtures
+      env:
+        G6_REQUIRE_DOCKER_COMPOSE: 'true'
+      run: bash ops/oracle/tests/topologia-nueve-servicios.test.sh
+    - name: Comprobar sintaxis de las pruebas H4
+      run: |
+        bash -n ops/oracle/tests/caddy-h4.test.sh
+        bash -n ops/oracle/tests/topologia-nueve-servicios.test.sh
     - name: Probar selección y recuperación de GitHub Deployments
       run: bash ops/oracle/tests/select-cd-services.test.sh
     - name: Probar el ciclo de GitHub Deployments con API simulada
