@@ -581,6 +581,80 @@ jobs:
           backend/apps/combos-svc/test/evidence-ci/vitest-results.json
           backend/apps/combos-svc/test/evidence-ci/run-summary.txt
         if-no-files-found: warn
+  gateway_inventory_postgres:
+    name: Probar E2E Gateway → Inventory → PostgreSQL 17 (obligatorio)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código del backend
+      uses: actions/checkout@v4
+    - name: Obtener migraciones oficiales de Inventory
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Compilar Gateway e Inventory
+      run: |
+        npm run build:api-gateway
+        npm run build:inventory-svc
+    - name: Verificar que Docker está disponible
+      run: docker info
+    - name: Ejecutar E2E autenticado con PostgreSQL 17 desechable
+      env:
+        G6_INVENTORY_GATEWAY_POSTGRES_E2E: '1'
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+      run: |
+        set -o pipefail
+        mkdir -p .ci/evidence
+        node_modules/.bin/vitest run --config ./vitest.config.e2e.ts \
+          --exclude 'node_modules/**' \
+          apps/api-gateway/test/inventory-postgres.gateway.e2e-spec.ts \
+          --maxWorkers=1 --reporter=verbose --reporter=json \
+          --outputFile=.ci/evidence/inventory-gateway-postgres-vitest.json \
+          2>&1 | tee .ci/evidence/inventory-gateway-postgres.log
+        node --input-type=module -e '
+          import fs from "node:fs";
+          const report = JSON.parse(fs.readFileSync(".ci/evidence/inventory-gateway-postgres-vitest.json", "utf8"));
+          const files = report.testResults ?? [];
+          const tests = files.flatMap((file) => file.assertionResults ?? []);
+          const passed = tests.filter((test) => test.status === "passed").length;
+          const skipped = tests.filter((test) => ["pending", "skipped", "todo"].includes(test.status)).length;
+          console.log(`Pruebas E2E: ${passed} aprobadas, ${skipped} omitidas, ${tests.length} totales`);
+          if (files.length !== 1 || passed !== 7 || skipped !== 0 || tests.length !== 7 || report.numTotalTests !== 7 || report.numPendingTests !== 0 || report.numTodoTests !== 0 || report.numFailedTests !== 0) process.exit(1);
+        '
+    - name: Verificar limpieza de recursos Docker desechables
+      if: always()
+      run: |
+        leftovers="$(docker ps -aq --filter label=g6.phase1.session)"
+        if [[ -n "$leftovers" ]]; then
+          docker ps -a --filter label=g6.phase1.session
+          echo 'Quedaron contenedores PostgreSQL E2E sin limpiar.'
+          exit 1
+        fi
+        temp_leftover="$(find /tmp -maxdepth 1 -type d -name 'g6-phase1-*' -print -quit)"
+        if [[ -n "$temp_leftover" ]]; then
+          echo "Quedó un directorio de certificados temporales: $temp_leftover"
+          exit 1
+        fi
+        echo 'Sin contenedores PostgreSQL ni directorios de certificados E2E residuales.'
+    - name: Conservar evidencia de la integración autenticada
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gateway-inventory-postgres-e2e-${{ github.sha }}
+        path: .ci/evidence/
+        if-no-files-found: error
   integral:
     name: Validación integral de integración continua
     runs-on: ubuntu-latest
@@ -601,6 +675,7 @@ jobs:
       - inventario
       - promotions
       - combos_catalogo
+      - gateway_inventory_postgres
     if: always()
     steps:
     - name: Obtener código fuente
@@ -614,7 +689,7 @@ jobs:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions gateway_inventory_postgres
   compatibilidad:
     name: Lint, Typecheck, Test, Build & Smoke Test
     runs-on: ubuntu-latest
@@ -635,6 +710,7 @@ jobs:
     - inventario
     - promotions
     - combos_catalogo
+    - gateway_inventory_postgres
     if: always()
     steps:
     - name: Obtener código fuente
@@ -648,4 +724,4 @@ jobs:
         RESULTADOS: ${{ toJSON(needs) }}
       run: |
         printf '%s\n' "$RESULTADOS"
-        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions
+        node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions gateway_inventory_postgres

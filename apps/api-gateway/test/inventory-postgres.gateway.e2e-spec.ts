@@ -71,15 +71,20 @@ async function stop(child?: ChildProcess): Promise<void> {
   if (!child || child.exitCode !== null) return;
   const exited = once(child, 'exit');
   child.kill();
-  await Promise.race([
-    exited,
-    new Promise<void>((resolveDelay) =>
-      setTimeout(() => {
-        child.kill('SIGKILL');
-        resolveDelay();
-      }, 5000),
-    ),
-  ]);
+  let forceTimer: NodeJS.Timeout | undefined;
+  try {
+    await Promise.race([
+      exited,
+      new Promise<void>((resolveDelay) => {
+        forceTimer = setTimeout(() => {
+          child.kill('SIGKILL');
+          resolveDelay();
+        }, 5000);
+      }),
+    ]);
+  } finally {
+    if (forceTimer) clearTimeout(forceTimer);
+  }
 }
 
 run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () => {
@@ -431,6 +436,8 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
       windowsHide: true,
     });
     try {
+      // Caracterización temporal: Taco debe cambiar ambos expects a 503
+      // SERVICIO_NO_DISPONIBLE cuando Inventory corrija la clasificación.
       const providerResponse = await request(inventoryOrigin)
         .get(`${commercial}?skus=${enoughSku}&canal=MARKETPLACE`)
         .set('Authorization', `Bearer ${token('modulo-productos')}`)
