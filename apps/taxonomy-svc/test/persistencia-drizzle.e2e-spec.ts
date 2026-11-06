@@ -2520,7 +2520,9 @@ describeIntegracion(
         // contract-test: 'obtenerSeoPorSlug'
         await request(nest.getHttpServer())
           .get(`/api/v1/seo/${slugOriginal}`)
-          .expect(200);
+          // La matriz H4 mantiene pendiente la revisión de sensibilidad;
+          // no se hereda el fixture anónimo legado en modo G7.
+          .expect(401);
         // contract-test: 'actualizarSeoCategoria'
         const seoActualizado = await request(nest.getHttpServer())
           .patch(`/api/v1/categorias/${categoryCreated}/seo`)
@@ -2568,18 +2570,14 @@ describeIntegracion(
           }),
         );
         // contract-test: 'resolverSlugAnterior'
-        const redireccion = await request(nest.getHttpServer())
+        await request(nest.getHttpServer())
           .get(`/api/v1/seo/resoluciones/${slugOriginal}`)
-          .expect(200);
-        expect(redireccion.body).toEqual({
-          old_slug: slugOriginal,
-          new_slug: `categoria-seo-${brandId}`,
-          resolution: 'PERMANENT',
-        });
+          // Las dos lecturas SEO siguen pendientes de revisión de sensibilidad.
+          .expect(401);
         // contract-test: 'obtenerSeoPorSlug'
         await request(nest.getHttpServer())
           .get(`/api/v1/seo/categoria-seo-${brandId}`)
-          .expect(200);
+          .expect(401);
       } finally {
         await nest?.close();
         if (tipoCreado) {
@@ -2667,12 +2665,16 @@ describeIntegracion(
       }
     });
 
-    it('demo en loopback lee registros reales en PostgreSQL sin aceptar credenciales falsas', async () => {
+    it('PUBLIC_READ_ONLY expone solo las dos lecturas aprobadas y mantiene protegidas escrituras', async () => {
       const fixture = await Test.createTestingModule({
         imports: [
           TaxonomySvcModule.forRoot({
             databaseUrl: urlApp,
-            env: { NODE_ENV: 'test', ALLOW_DEMO_UNAUTHENTICATED: 'true' },
+            env: {
+              NODE_ENV: 'test',
+              G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+              TAXONOMY_PUBLIC_OPERATION_IDS: 'listarCategorias,listarMarcas',
+            },
           }),
         ],
       }).compile();
@@ -2692,11 +2694,14 @@ describeIntegracion(
               (row: { status: string }) => row.status === 'ACTIVA',
             ),
           ).toBe(true);
-          await request(demo.getHttpServer())
-            .get(`/api/v1/${path}`)
-            .set('Authorization', 'Bearer invalid')
-            .expect(401);
         }
+        await request(demo.getHttpServer())
+          .post('/api/v1/categorias')
+          .send({ nombre: 'Sin autorización' })
+          .expect(401);
+        await request(demo.getHttpServer())
+          .get('/api/v1/categorias/administracion')
+          .expect(401);
       } finally {
         await demo.close();
       }

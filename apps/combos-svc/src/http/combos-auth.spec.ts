@@ -44,7 +44,7 @@ describe('Combos JWT security', () => {
       iss: issuer,
       sub: '00000000-0000-4000-8000-000000000001',
       tipo: 'acceso',
-      aud: ['api-productos'],
+      aud: undefined,
       roles: ['admin'],
       iat: now,
       exp: now + 300,
@@ -109,7 +109,7 @@ describe('Combos JWT security', () => {
     }
   });
 
-  it('verifies RS256 issuer, API audience, identity type, timestamps and roles', async () => {
+  it('verifies RS256 issuer, human identity type, timestamps and roles without an audience', async () => {
     const verifier = new ComboTokenVerifier();
     await expect(verifier.verify(token())).resolves.toMatchObject({
       kind: 'user',
@@ -117,7 +117,7 @@ describe('Combos JWT security', () => {
       roles: ['admin'],
     });
     await expect(
-      verifier.verify(token({ aud: 'wrong-api' })),
+      verifier.verify(token({ tipo: 'servicio', aud: 'wrong-api' })),
     ).rejects.toThrow();
     await expect(verifier.verify(token({ exp: 1 }))).rejects.toThrow();
     await expect(
@@ -228,6 +228,7 @@ describe('Combos JWT security', () => {
     const service = token({
       tipo: 'servicio',
       sub: 'modulo-productos',
+      aud: 'api-productos',
       scope: 'combos:leer',
     });
     await expect(
@@ -335,6 +336,7 @@ describe('Combos JWT security', () => {
       const auth = token({
         tipo: 'servicio',
         sub: client,
+        aud: 'api-productos',
         scope: 'combos:leer',
       });
       const ctx = {

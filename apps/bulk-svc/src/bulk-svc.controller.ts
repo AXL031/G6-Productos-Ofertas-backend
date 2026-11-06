@@ -46,10 +46,10 @@ export class BulkSvcController {
   }
 
   @Get('health/readiness') async getReadiness(
-    @Req() request: Request,
+    @Req() _request: Request,
     @Res() response: Response,
   ) {
-    const result = await this.readiness.probe(request.socket.remoteAddress);
+    const result = await this.readiness.probe();
     return response
       .status(result.ready ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE)
       .json({

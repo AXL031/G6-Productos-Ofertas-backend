@@ -91,6 +91,31 @@ describe('readiness boundary', () => {
     expect(close).toHaveBeenCalledOnce();
   });
 
+  it('checks public read configuration without claiming commercial eligibility', async () => {
+    const output: string[] = [];
+    const exitCode = await runReadinessCliProbe(
+      async (progress) => {
+        progress('database');
+        progress('catalog-read');
+      },
+      vi.fn().mockResolvedValue(undefined),
+      {
+        marketplaceDemoPreview: false,
+        readDemo: {
+          enabled: false,
+          securityMode: 'PUBLIC_READ_ONLY',
+          publicOperations: ['listarProductos'],
+        },
+      },
+      (line) => output.push(line),
+    );
+    expect(exitCode).toBe(0);
+    expect(JSON.parse(output[0])).toMatchObject({
+      status: 'ready',
+      eligibility: 'not_evaluated_demo',
+    });
+  });
+
   it('marks CLI readiness not_ready on timeout and drains the operation before closing', async () => {
     vi.useFakeTimers();
     let finish!: () => void;

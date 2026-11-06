@@ -40,14 +40,14 @@ describe('Excepción comercial demo — límites de #25/#100', () => {
     return { req, ctx };
   }
 
-  it('solo autoriza los dos handlers aprobados sin fabricar identidad', () => {
+  it('legacy socket-IP demo configuration no longer bypasses authentication', async () => {
     for (const [handler, method] of [
       [InventoryController.prototype.consultarDisponibilidadComercial, 'GET'],
       [InventoryController.prototype.verificarCantidadComercial, 'POST'],
     ] as const) {
       const { req, ctx } = context(handler, '::ffff:192.0.2.10', method);
-      expect(guard.canActivate(ctx)).toBe(true);
-      expect(isCommercialDemoRequest(req)).toBe(true);
+      await expect(guard.canActivate(ctx)).rejects.toThrow();
+      expect(isCommercialDemoRequest(req)).toBe(false);
       expect(req.clientId).toBeUndefined();
       expect('user' in req).toBe(false);
     }
@@ -55,29 +55,29 @@ describe('Excepción comercial demo — límites de #25/#100', () => {
 
   it.each([undefined, 'false'])(
     'sin flag activo mantiene JWT requerido: %s',
-    (flag) => {
+    async (flag) => {
       vi.stubEnv('INVENTORY_DEMO_NO_AUTH_ENABLED', flag);
       const { req, ctx } = context();
-      expect(() => guard.canActivate(ctx)).toThrow();
+      await expect(guard.canActivate(ctx)).rejects.toThrow();
       expect(isCommercialDemoRequest(req)).toBe(false);
     },
   );
 
   it.each(['198.51.100.20', undefined, 'host.invalid'])(
     'rechaza un peer no confiable aunque falsifique headers: %s',
-    (peer) => {
+    async (peer) => {
       const { req, ctx } = context();
       Object.assign(req.socket, { remoteAddress: peer });
       req.headers['x-forwarded-for'] = '192.0.2.10';
       req.headers.forwarded = 'for=192.0.2.10';
       req.headers['x-real-ip'] = '192.0.2.10';
       req.headers['x-inventory-demo'] = 'true';
-      expect(() => guard.canActivate(ctx)).toThrow();
+      await expect(guard.canActivate(ctx)).rejects.toThrow();
       expect(isCommercialDemoRequest(req)).toBe(false);
     },
   );
 
-  it('no autoriza otro método ni otras operaciones aunque el peer sea Gateway', () => {
+  it('no autoriza otro método ni otras operaciones aunque el peer sea Gateway', async () => {
     for (const handler of [
       InventoryController.prototype.solicitarReserva,
       InventoryController.prototype.confirmarReserva,
@@ -88,26 +88,26 @@ describe('Excepción comercial demo — límites de #25/#100', () => {
       InventoryController.prototype.reportarIncidencia,
       InventoryController.prototype.resolverIncidencia,
     ]) {
-      expect(() => guard.canActivate(context(handler).ctx)).toThrow();
+      await expect(guard.canActivate(context(handler).ctx)).rejects.toThrow();
     }
-    expect(() =>
+    await expect(
       guard.canActivate(context(undefined, undefined, 'HEAD').ctx),
-    ).toThrow();
-    expect(() =>
+    ).rejects.toThrow();
+    await expect(
       guard.canActivate(context(undefined, undefined, 'POST').ctx),
-    ).toThrow();
+    ).rejects.toThrow();
   });
 
-  it('normaliza IPv6 equivalentes y admite solo las IP exactas configuradas', () => {
+  it('validates canonical peer helpers without using them as authentication', async () => {
     expect(canonicalPeerIp('2001:0db8:0:0:0:0:0:10')).toBe(
       canonicalPeerIp('2001:db8::10'),
     );
     expect(canonicalPeerIp('192.0.2.10')).toBe(
       canonicalPeerIp('::ffff:c000:20a'),
     );
-    expect(
+    await expect(
       guard.canActivate(context(undefined, '2001:0db8:0:0:0:0:0:10').ctx),
-    ).toBe(true);
+    ).rejects.toThrow();
   });
 
   it.each(['true', 'false', undefined])(

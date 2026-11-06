@@ -10,7 +10,48 @@ import {
 
 describe('Promotions configuration', () => {
   const fixture = createEnvironmentFixture();
+  it('permits explicit HTTP-only Phase 1 without a fake broker, but requires messaging for enabled workers', () => {
+    const environment = {
+      ...fixture.environment,
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+      PROMOTIONS_PUBLIC_OPERATION_IDS: 'listarPromociones',
+      RABBITMQ_URL: undefined,
+      PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false',
+      PROMOTIONS_COUPON_RUNTIME_ENABLED: 'false',
+    };
+    expect(
+      validatePromotionsConfiguration(environment).rabbitmqUrl,
+    ).toBeUndefined();
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...environment,
+        PROMOTIONS_COUPON_RUNTIME_ENABLED: 'true',
+      }),
+    ).toThrow(PromotionsConfigurationError);
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...environment,
+        PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'true',
+      }),
+    ).toThrow(PromotionsConfigurationError);
+  });
   afterAll(() => fixture.cleanup());
+  it('selects an independent simulated issuer and JWKS while keeping public operations empty', () => {
+    const settings = validatePromotionsConfiguration({
+      ...fixture.environment,
+      G6_SECURITY_MODE: 'SIMULATED_AUTH',
+      SIMULATED_AUTH_ISSUER: 'http://127.0.0.1:8080/sim',
+      SIMULATED_AUTH_JWKS_URL: 'http://127.0.0.1:8080/jwks',
+    });
+    expect(settings).toMatchObject({
+      securityMode: 'SIMULATED_AUTH',
+      auth: {
+        issuer: 'http://127.0.0.1:8080/sim',
+        jwksUrl: 'http://127.0.0.1:8080/jwks',
+      },
+      publicOperations: [],
+    });
+  });
   it('validates paired service credentials against the HTTPS G7 issuer without exposing the secret', () => {
     const credentials = {
       AUTH_ISSUER: 'https://g7.test/api/v1/auth',
@@ -103,7 +144,6 @@ describe('Promotions configuration', () => {
     expect(
       validatePromotionsConfiguration({
         ...fixture.environment,
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         GATEWAY_CATALOG_SVC_URL: 'http://catalog-svc:3001',
         GATEWAY_TAXONOMY_SVC_URL: 'http://127.0.0.1:3006',
       }).upstreams,
@@ -112,7 +152,6 @@ describe('Promotions configuration', () => {
       taxonomy: 'http://127.0.0.1:3006',
     });
     for (const url of [
-      'https://public.example',
       'http://pricing-svc:3002',
       'http://user:secret@catalog-svc:3001',
       'http://catalog-svc:3001/path',
@@ -120,37 +159,17 @@ describe('Promotions configuration', () => {
       expect(() =>
         validatePromotionsConfiguration({
           ...fixture.environment,
-          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
           GATEWAY_CATALOG_SVC_URL: url,
         }),
       ).toThrow('GATEWAY_CATALOG_SVC_URL');
   });
 
-  it('enables token-free local development explicitly and binds only loopback', () => {
+  it('rejects the legacy token-free local demo flag in every environment', () => {
     expect(validatePromotionsConfiguration(fixture.environment)).toMatchObject({
       localDemoEnabled: false,
       listenHost: '::',
     });
-    for (const NODE_ENV of ['development', 'test'])
-      expect(
-        validatePromotionsConfiguration({
-          ...fixture.environment,
-          NODE_ENV,
-          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-        }),
-      ).toMatchObject({ localDemoEnabled: true, listenHost: '127.0.0.1' });
-    expect(
-      validatePromotionsConfiguration({
-        ...fixture.environment,
-        NODE_ENV: 'production',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-      }),
-    ).toMatchObject({
-      localDemoEnabled: true,
-      listenHost: '0.0.0.0',
-      couponRuntimeEnabled: false,
-    });
-    for (const NODE_ENV of [undefined])
+    for (const NODE_ENV of ['development', 'test', 'production'])
       expect(() =>
         validatePromotionsConfiguration({
           ...fixture.environment,

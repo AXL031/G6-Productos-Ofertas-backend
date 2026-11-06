@@ -11,6 +11,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PRICE_AUDIT_CONFIG, type AuditConfig } from '../config/environment.js';
 import { AuditHttpError } from './audit-http.error.js';
 import { SafeLogger } from '../logging/safe-logger.js';
@@ -61,6 +62,24 @@ export class AuditReadGuard implements CanActivate {
       (typeof correlation !== 'string' || !uuid.test(correlation))
     )
       throw new AuditHttpError(400, 'VALIDACION');
+    const operationId = (
+      {
+        list: 'listarAuditoriaPrecios',
+        detail: 'obtenerAuditoriaPrecio',
+        exportJob: 'obtenerExportacionAuditoriaPrecios',
+        file: 'descargarExportacionAuditoriaPrecios',
+      } as Readonly<Record<string, string>>
+    )[context.getHandler().name];
+    if (
+      operationId &&
+      isPhase1PublicRead(
+        request,
+        this.config.securityMode,
+        this.config.publicOperations,
+        operationId,
+      )
+    )
+      return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
       request.headers.authorization ?? '',
     );

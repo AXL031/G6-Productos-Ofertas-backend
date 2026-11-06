@@ -113,6 +113,34 @@ export class PricingReadController {
     return this.reads.schedules({ sku }, pagina, tamanio);
   }
 
+  @Get('importaciones/:batchId/reporte')
+  async importReport(
+    @Param('batchId') batchId: string,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ) {
+    if (!uuid.test(batchId) || Object.keys(query).length)
+      throw new PricingHttpError(400, 'VALIDACION');
+    const result = await this.reads.imported(batchId);
+    const quote = (value: unknown) =>
+      '"' + String(value ?? '').replace(/"/g, '""') + '"';
+    const lines = [
+      'row_id,sku,status,code',
+      ...(result.rows ?? []).map((row) =>
+        [row.row_id, row.sku, row.status, row.code].map(quote).join(','),
+      ),
+    ];
+    response
+      .type('text/csv')
+      .setHeader(
+        'Content-Disposition',
+        'attachment; filename="reporte-importacion-precios-' +
+          batchId +
+          '.csv"',
+      );
+    return response.status(200).send(lines.join('\r\n') + '\r\n');
+  }
+
   @Get('importaciones/:batchId')
   imported(
     @Param('batchId') batchId: string,

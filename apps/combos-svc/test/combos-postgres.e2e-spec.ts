@@ -707,8 +707,8 @@ describe.skipIf(!isolatedHarnessEnabled)(
         .get('/api/v1/combos')
         .set('X-Forwarded-For', '203.0.113.10')
         .set('X-Real-IP', '203.0.113.10')
-        .expect(403)
-        .expect((r) => expect(r.body.code).toBe('SCOPE_INSUFICIENTE'));
+        .expect(401)
+        .expect((r) => expect(r.body.code).toBe('TOKEN_INVALIDO'));
       process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS =
         '127.0.0.1,::1,::ffff:127.0.0.1';
       await request(app.getHttpServer())

@@ -45,13 +45,16 @@ describe('Marketplace demo preview (HTTP fixtures; Pricing is mocked)', () => {
   };
   const pricing = { currentPrice: vi.fn() };
 
-  async function start(enabled = true, readDemo = false) {
+  async function start(enabled = true, securityMode = 'G7_AUTHENTICATED') {
     app = (
       await Test.createTestingModule({
         controllers: [CommercialController],
         providers: [
           CommercialService,
-          { provide: CATALOG_READ_DEMO, useValue: { enabled: readDemo } },
+          {
+            provide: CATALOG_READ_DEMO,
+            useValue: { enabled: false, securityMode, publicOperations: [] },
+          },
           { provide: CATALOG_MARKETPLACE_PREVIEW, useValue: enabled },
           {
             provide: CatalogTokenVerifier,
@@ -99,13 +102,15 @@ describe('Marketplace demo preview (HTTP fixtures; Pricing is mocked)', () => {
   });
   afterEach(async () => app?.close());
 
-  it('allows anonymous preview only for the approved Marketplace reads', async () => {
+  it('requires a verified identity for Marketplace preview reads in G7 mode', async () => {
     await start();
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE')
+      .set('Authorization', 'Bearer fixture')
       .expect(200);
     await request(app.getHttpServer())
       .get('/api/v1/productos/por-slug/fixture?canal=MARKETPLACE')
+      .set('Authorization', 'Bearer fixture')
       .expect(200);
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=CHATBOT')
@@ -123,8 +128,8 @@ describe('Marketplace demo preview (HTTP fixtures; Pricing is mocked)', () => {
     expect(repository.listCandidates).not.toHaveBeenCalled();
   });
 
-  it('gives the internal read-only demo precedence when both flags are enabled', async () => {
-    await start(true, true);
+  it('keeps draft listing behind the ordinary validated G7 query contract', async () => {
+    await start(true, 'G7_AUTHENTICATED');
     repository.listCandidates.mockResolvedValue({
       items: [product],
       pagina: 1,
@@ -133,16 +138,14 @@ describe('Marketplace demo preview (HTTP fixtures; Pricing is mocked)', () => {
     });
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE&estado=BORRADOR')
-      .expect(200);
-    expect(repository.listCandidates).toHaveBeenCalledWith(
-      expect.objectContaining({ estado: 'BORRADOR' }),
-      true,
-    );
+      .set('Authorization', 'Bearer fixture')
+      .expect(400);
+    expect(repository.listCandidates).not.toHaveBeenCalled();
     expect(repository.listDemoCandidates).not.toHaveBeenCalled();
     expect(pricing.currentPrice).not.toHaveBeenCalled();
   });
 
-  it('HTTP list includes a draft with real image fixture and positive Pricing mock; total is after filtering and before pagination', async () => {
+  it('HTTP list includes a draft with a verified identity, real image fixture and Pricing mock; total is after filtering and before pagination', async () => {
     await start();
     repository.listDemoCandidates.mockResolvedValue([
       product,

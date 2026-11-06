@@ -144,7 +144,6 @@ export function createDemoIssuer(options = {}) {
         return signClaims({
           iss: normalizedIssuer,
           sub: '11111111-2222-4333-8444-555555555555',
-          aud: 'api-productos',
           tipo: 'acceso',
           roles: ['GESTOR_COMERCIAL'],
           iat: now - 5,
@@ -155,7 +154,6 @@ export function createDemoIssuer(options = {}) {
         return signClaims({
           iss: normalizedIssuer,
           sub: '22222222-2222-4333-8444-555555555555',
-          aud: 'api-productos',
           tipo: 'acceso',
           roles: ['LECTOR_EXTERNO'],
           iat: now - 5,
@@ -254,7 +252,8 @@ export function createDemoIssuer(options = {}) {
           const requestedScopes = scope.split(/\s+/).filter(Boolean);
           if (
             requestedScopes.length === 0 ||
-            requestedScopes.some((s) => !client.allowedScopes.includes(s))
+            requestedScopes.some((s) => !client.allowedScopes.includes(s)) ||
+            (requestedScopes.includes('tokens:introspeccion') && requestedScopes.length !== 1)
           ) {
             res.statusCode = 403;
             res.end(JSON.stringify({ code: 'SCOPE_INSUFICIENTE' }));
@@ -264,7 +263,9 @@ export function createDemoIssuer(options = {}) {
           const accessToken = signClaims({
             iss: `${origin}/api/v1/auth`,
             sub: clientId,
-            aud: 'api-productos',
+            client_id: clientId,
+            aud: requestedScopes.length === 1 && requestedScopes[0] === 'tokens:introspeccion'
+              ? 'api-seguridad' : 'api-productos',
             tipo: 'servicio',
             scope: requestedScopes.join(' '),
             iat: now,

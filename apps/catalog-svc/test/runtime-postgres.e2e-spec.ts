@@ -209,8 +209,8 @@ describe.skipIf(!dockerAvailable)(
         CATALOG_SVC_HOST: '127.0.0.1',
         CATALOG_AMQP_ENABLED: 'false',
         CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'false',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'false',
-        G6_READ_ONLY_DEMO_ENABLED: String(readDemo),
+        G6_SECURITY_MODE: readDemo ? 'PUBLIC_READ_ONLY' : 'G7_AUTHENTICATED',
+        CATALOG_PUBLIC_OPERATION_IDS: readDemo ? 'listarProductos' : '',
         PGHOST: 'localhost',
         G6_CONNECT_HOST: '127.0.0.1',
         PGPORT: databasePort,
@@ -292,7 +292,7 @@ describe.skipIf(!dockerAvailable)(
       60000,
     );
 
-    it('uses lightweight read-only demo readiness in HTTP and CLI, and fails closed on missing privileges or relations', async () => {
+    it('uses PUBLIC_READ_ONLY readiness in HTTP and CLI, and fails closed on missing privileges or relations', async () => {
       const port = await freePort();
       const env = environment('session', port, true);
       const child = spawn(process.execPath, [main], {

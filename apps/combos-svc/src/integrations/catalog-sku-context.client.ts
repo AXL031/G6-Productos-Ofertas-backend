@@ -1,3 +1,4 @@
+import { usePublicDependencyReads } from '../phase1-public-reads.js';
 export interface PricingCatalogContext {
   sku: string;
   productId: string;
@@ -95,8 +96,12 @@ export class CatalogSkuContextClient {
     const requestSignal = operationSignal
       ? AbortSignal.any([deadline, operationSignal])
       : deadline;
-    let bearer = await this.serviceBearer(requestSignal);
-    if (!bearer) throw new IntegrationFailure('CATALOG', 'AUTH_NOT_CONFIGURED');
+    const publicRead = usePublicDependencyReads();
+    let bearer = publicRead
+      ? undefined
+      : await this.serviceBearer(requestSignal);
+    if (!publicRead && !bearer)
+      throw new IntegrationFailure('CATALOG', 'AUTH_NOT_CONFIGURED');
     const url = new URL(
       `/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
       this.baseUrl,
@@ -120,7 +125,7 @@ export class CatalogSkuContextClient {
           redirect: 'error',
           headers: {
             accept: 'application/json',
-            authorization: `Bearer ${bearer}`,
+            ...(bearer ? { authorization: `Bearer ${bearer}` } : {}),
             'x-correlation-id': correlationId,
           },
           signal: AbortSignal.any([requestSignal, AbortSignal.timeout(5000)]),
@@ -134,7 +139,12 @@ export class CatalogSkuContextClient {
             : 'NETWORK_FAILURE',
         );
       }
-      if (response.status !== 401 || attempt > 0 || !this.invalidateBearer)
+      if (
+        publicRead ||
+        response.status !== 401 ||
+        attempt > 0 ||
+        !this.invalidateBearer
+      )
         break;
       await response.body?.cancel();
       this.invalidateBearer();

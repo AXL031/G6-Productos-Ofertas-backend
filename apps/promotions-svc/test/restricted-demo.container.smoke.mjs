@@ -42,8 +42,6 @@ function request(caller, target, path, method = 'POST', headers = {}) {
 try {
   docker(['network', 'create', '--internal', network]);
   networkCreated = true;
-  const gateway = run('g6-api-gateway', 'setInterval(() => {}, 1000)');
-  const neighbor = run('untrusted-peer', 'setInterval(() => {}, 1000)');
   const environment = {
     NODE_ENV: 'production', PORT: '3004', PROMOTIONS_SVC_PORT: '3004',
     PGHOST: '127.0.0.1', PGPORT: '1', PGDATABASE: 'isolated', PGUSER: 'isolated',
@@ -53,9 +51,11 @@ try {
     PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'false', PROMOTIONS_COUPON_RUNTIME_ENABLED: 'false',
     AUTH_ISSUER: 'https://issuer.invalid', AUTH_JWKS_URL: 'https://issuer.invalid/jwks',
   };
-  const demo = run('promotions-demo', undefined, { ...environment, GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' });
-  const authenticated = run('promotions-auth', undefined, environment);
-  for (const name of [demo, authenticated]) {
+  const service = run('promotions-auth', undefined, {
+    ...environment,
+    G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+  });
+  for (const name of [service]) {
     let ready = false;
     for (let attempt = 0; attempt < 40; attempt++) {
       try {
@@ -67,25 +67,26 @@ try {
     assert.ok(ready, 'production container starts');
     assert.equal(docker(['inspect', name, '--format', '{{json .HostConfig.PortBindings}}']), '{}');
   }
-  const nominal = request(gateway, 'promotions-demo', '/api/v1/cupones');
-  assert.equal(nominal.status, 400);
-  assert.equal(nominal.body.code, 'VALIDACION');
-  assert.equal(request(gateway, 'promotions-demo', '/api/v1/cupones', 'POST', { Authorization: 'Bearer untrusted' }).status, 400);
-  const spoofed = request(neighbor, 'promotions-demo', '/api/v1/cupones', 'POST', {
-    'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '127.0.0.1',
-    'X-User-Role': 'GESTOR_COMERCIAL', Authorization: 'Bearer untrusted',
+  const nominal = request(service, 'promotions-auth', '/api/v1/promociones', 'GET');
+  assert.equal(nominal.status, 401);
+  assert.equal(nominal.body.code, 'TOKEN_INVALIDO');
+  const invalidToken = request(service, 'promotions-auth', '/api/v1/promociones', 'GET', {
+    Authorization: 'Bearer untrusted',
   });
-  assert.equal(spoofed.status, 403);
-  assert.equal(spoofed.body.code, 'SCOPE_INSUFICIENTE');
-  assert.equal(request(gateway, 'promotions-demo', '/api/v1/not-contractual', 'GET').status, 404);
-  assert.equal(request(gateway, 'promotions-auth', '/api/v1/cupones').status, 401);
-  assert.equal(request(gateway, 'promotions-auth', '/api/v1/cupones', 'POST', { Authorization: 'Bearer untrusted' }).status, 401);
-  const missing = request(gateway, 'promotions-demo', '/api/v1/promociones/evaluar');
-  assert.equal(missing.status, 400); // DTO still validated before unavailable upstreams.
+  assert.equal(invalidToken.status, 401);
+  assert.equal(invalidToken.body.code, 'TOKEN_INVALIDO');
+  const spoofed = request(service, 'promotions-auth', '/api/v1/promociones', 'GET', {
+    'X-Forwarded-For': '127.0.0.1', 'X-Real-IP': '127.0.0.1',
+    'X-User-Role': 'GESTOR_COMERCIAL',
+  });
+  assert.equal(spoofed.status, 401);
+  assert.equal(spoofed.body.code, 'TOKEN_INVALIDO');
+  assert.equal(request(service, 'promotions-auth', '/api/v1/not-contractual', 'GET').status, 404);
+  assert.equal(request(service, 'promotions-auth', '/api/v1/cupones', 'POST').status, 401);
   console.log(JSON.stringify({
     status: 'PASS', imageId: docker(['image', 'inspect', image, '--format', '{{.Id}}']),
     environment: 'isolated Docker internal network, NODE_ENV=production',
-    checks: ['Gateway TCP peer reaches real validation without JWT', 'untrusted neighbor with spoofed headers denied', 'no published service ports', 'unknown route 404', 'flag absent restores JWT 401', 'invalid bearer never enables fallback'],
+    checks: ['G7 mode starts with explicit issuer/JWKS and no demo bypass flags', 'anonymous and invalid JWT reads/writes return 401', 'spoofed identity headers do not authenticate', 'no published service ports', 'unknown route 404'],
     persistence: 'not asserted here; separate PostgreSQL suite',
     externalPerimeter: 'PENDING_ORACLE', couponRuntime: 'disabled',
   }));

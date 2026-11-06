@@ -30,60 +30,28 @@ describe('Pricing configuration', () => {
       }),
     ).toThrow(InvalidPricingConfig);
   });
-  it('demo es explícita, desactivada por defecto y sin dependencia de G7', () => {
-    expect(validateEnvironment(valid).demoNoAuthEnabled).not.toBe(true);
-    expect(
-      validateEnvironment({ ...valid, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
-        .demoNoAuthEnabled,
-    ).not.toBe(true);
-    const demo = validateEnvironment({
-      ...valid,
-      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-      AUTH_ISSUER: 'invalid-unused',
-    });
-    expect(demo.demoNoAuthEnabled).toBe(true);
-    expect(demo.auth).toBeUndefined();
+  it('rejects legacy anonymous bypass and accepts independent simulated auth', () => {
+    expect(() =>
+      validateEnvironment({ ...valid, GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' }),
+    ).toThrow('bypasses demo heredados están deshabilitados');
     expect(
       validateEnvironment({
         ...valid,
-        NODE_ENV: 'development',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-      }).demoNoAuthEnabled,
-    ).toBe(true);
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        AUTH_ISSUER: 'https://g7.example',
+        AUTH_JWKS_URL: 'https://g7.example/jwks',
+        SIMULATED_AUTH_ISSUER: 'http://127.0.0.1:8080/sim',
+        SIMULATED_AUTH_JWKS_URL: 'http://127.0.0.1:8080/jwks',
+      }),
+    ).toMatchObject({
+      securityMode: 'SIMULATED_AUTH',
+      auth: {
+        issuer: 'http://127.0.0.1:8080/sim',
+        jwksUrl: 'http://127.0.0.1:8080/jwks',
+      },
+    });
   });
-  it.each(['1', 'TRUE', '', ' true', 'yes'])(
-    'rechaza flag demo inválido %j',
-    (flag) => {
-      expect(() =>
-        validateEnvironment({ ...valid, GATEWAY_DEMO_NO_AUTH_ENABLED: flag }),
-      ).toThrow(InvalidPricingConfig);
-    },
-  );
-  it.each([undefined, 'false'])(
-    'rechaza demo production sin confirmación true (%j)',
-    (confirmation) => {
-      expect(() =>
-        validateEnvironment({
-          ...valid,
-          NODE_ENV: 'production',
-          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-          PRICING_DEMO_PRODUCTION_CONFIRMED: confirmation,
-        }),
-      ).toThrow('requiere PRICING_DEMO_PRODUCTION_CONFIRMED=true');
-    },
-  );
-  it.each(['1', 'TRUE', '', ' true', 'yes'])(
-    'rechaza confirmación production inválida %j',
-    (confirmation) => {
-      expect(() =>
-        validateEnvironment({
-          ...valid,
-          PRICING_DEMO_PRODUCTION_CONFIRMED: confirmation,
-        }),
-      ).toThrow(InvalidPricingConfig);
-    },
-  );
-  it('production admite demo sin G7 solo con ambos flags y mantiene TLS obligatorio', () => {
+  it('production rechaza el bypass legado y mantiene TLS obligatorio', () => {
     const production = {
       ...valid,
       NODE_ENV: 'production',
@@ -92,30 +60,21 @@ describe('Pricing configuration', () => {
       PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
       AUTH_ISSUER: 'ignored-invalid',
     };
-    const config = validateEnvironment(production);
-    expect(config.demoNoAuthEnabled).toBe(true);
-    expect(config.auth).toBeUndefined();
-    expect(config.databaseSsl).toMatchObject({
-      rejectUnauthorized: true,
-      checkServerIdentity,
-    });
     expect(() =>
       validateEnvironment({ ...production, DATABASE_URL: valid.DATABASE_URL }),
-    ).toThrow('sslmode=verify-full');
+    ).toThrow('bypasses demo heredados están deshabilitados');
   });
   it.each([undefined, 'false'])(
-    'production conserva autenticación con demo %j aunque exista confirmación',
+    'production conserva autenticación cuando el flag heredado es %j',
     (demo) => {
       const config = validateEnvironment({
         ...valid,
         NODE_ENV: 'production',
         DATABASE_URL: valid.DATABASE_URL + '?sslmode=verify-full',
         GATEWAY_DEMO_NO_AUTH_ENABLED: demo,
-        PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
         AUTH_ISSUER: 'https://identity.test',
         AUTH_JWKS_URL: 'https://identity.test/jwks',
       });
-      expect(config.demoNoAuthEnabled).not.toBe(true);
       expect(config.auth).toEqual({
         issuer: 'https://identity.test',
         jwksUrl: 'https://identity.test/jwks',
@@ -158,6 +117,8 @@ describe('Pricing configuration', () => {
       port: 3002,
       databaseUrl: valid.DATABASE_URL,
       databaseSsl: false,
+      securityMode: 'G7_AUTHENTICATED',
+      publicOperations: [],
     });
     expect(
       validateEnvironment({
@@ -166,6 +127,30 @@ describe('Pricing configuration', () => {
         PORT: '4002',
       }).port,
     ).toBe(4002);
+  });
+
+  it('selects an independent simulated issuer/JWKS and keeps the selector reversible', () => {
+    const simulated = validateEnvironment({
+      ...valid,
+      G6_SECURITY_MODE: 'SIMULATED_AUTH',
+      SIMULATED_AUTH_ISSUER: 'http://127.0.0.1:8080/sim',
+      SIMULATED_AUTH_JWKS_URL: 'http://127.0.0.1:8080/jwks',
+    });
+    expect(simulated).toMatchObject({
+      securityMode: 'SIMULATED_AUTH',
+      auth: {
+        issuer: 'http://127.0.0.1:8080/sim',
+        jwksUrl: 'http://127.0.0.1:8080/jwks',
+      },
+    });
+    expect(() =>
+      validateEnvironment({
+        ...valid,
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: valid.AUTH_ISSUER,
+        SIMULATED_AUTH_JWKS_URL: valid.AUTH_JWKS_URL,
+      }),
+    ).toThrow(InvalidPricingConfig);
   });
 
   it.each(['NODE_ENV', 'PRICING_SVC_PORT', 'DATABASE_URL'])(

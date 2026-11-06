@@ -56,11 +56,11 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
   afterEach(async () => {
     await app?.close();
   });
-  it('is opt-in, rejects invalid flags, and never activates public operations automatically in PUBLIC_READ_ONLY', () => {
+  it('rejects legacy bypasses and never activates public operations automatically in PUBLIC_READ_ONLY', () => {
     expect(readCatalogReadDemo({}).enabled).toBe(false);
-    expect(
-      readCatalogReadDemo({ G6_READ_ONLY_DEMO_ENABLED: 'true' }).enabled,
-    ).toBe(true);
+    expect(() =>
+      readCatalogReadDemo({ G6_READ_ONLY_DEMO_ENABLED: 'true' }),
+    ).toThrow();
     // Requisito #3: sin CATALOG_PUBLIC_OPERATION_IDS explícito, PUBLIC_READ_ONLY mantiene enabled: false y 0 operaciones
     expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'PUBLIC_READ_ONLY' }),
@@ -79,9 +79,9 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
       securityMode: 'PUBLIC_READ_ONLY',
       publicOperations: ['listarProductos'],
     });
-    expect(() =>
+    expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-    ).toThrow();
+    ).toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
     expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'G7_AUTHENTICATED' }),
     ).toMatchObject({ enabled: false, securityMode: 'G7_AUTHENTICATED' });
@@ -90,9 +90,6 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
         G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
         CATALOG_PUBLIC_OPERATION_IDS: 'crearProducto',
       }),
-    ).toThrow();
-    expect(() =>
-      readCatalogReadDemo({ G6_READ_ONLY_DEMO_ENABLED: 'yes' }),
     ).toThrow();
     expect(() =>
       readCatalogReadDemo({ G6_SECURITY_MODE: 'INVALID' }),
@@ -109,43 +106,36 @@ describe('Explicit internal read-only demo (HTTP provider, isolated repositories
       true,
     );
   });
-  it('reads drafts without JWT or commercial eligibility and keeps input validation', async () => {
+  it('rejects anonymous candidate reads even when legacy demo providers are injected', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE&estado=BORRADOR')
-      .expect(200);
-    expect(repository.listCandidates).toHaveBeenCalledWith(
-      expect.objectContaining({ estado: 'BORRADOR' }),
-      true,
-    );
+      .expect(401);
+    expect(repository.listCandidates).not.toHaveBeenCalled();
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE&pagina=0')
-      .expect(400);
+      .expect(401);
     await request(app.getHttpServer())
       .get('/api/v1/productos?canal=invalid')
-      .expect(400);
+      .expect(401);
   });
-  it('reads existing detail without fabricating a JWT principal', async () => {
+  it('rejects malformed bearer tokens for candidate detail reads', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/productos/fixture?canal=MARKETPLACE')
       .set('Authorization', 'Bearer ignored-demo-input')
-      .expect(200);
-    expect(repository.findCandidateByProductId).toHaveBeenCalledWith(
-      'fixture',
-      'MARKETPLACE',
-      true,
-    );
+      .expect(401);
+    expect(repository.findCandidateByProductId).not.toHaveBeenCalled();
   });
-  it('rejects writes and keeps unrelated protected reads protected', async () => {
+  it('rejects unauthenticated writes and protected reads', async () => {
     for (const path of [
       '/api/v1/productos',
       '/api/v1/productos/fixture/activar',
       '/api/v1/productos/fixture/preparacion/reintentar',
     ])
-      await request(app.getHttpServer()).post(path).send({}).expect(403);
+      await request(app.getHttpServer()).post(path).send({}).expect(401);
     await request(app.getHttpServer())
       .patch('/api/v1/productos/fixture')
       .send({})
-      .expect(403);
+      .expect(401);
     await request(app.getHttpServer())
       .get('/api/v1/productos/fixture/preparacion')
       .expect(401);
@@ -311,17 +301,13 @@ describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin 
         .expect(401);
       await appPhase1Explicit.close();
 
-      // SIMULATED_AUTH is deliberately unavailable. Cryptographic fixtures below
-      // exercise the existing JWT path, not an approved Phase 2 or real G7 grant.
-      expect(() =>
-        readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-      ).toThrow();
+      // Phase 2 uses its own fixture issuer and JWKS; credentials are changed
+      // through configuration while the exact same application build remains live.
       taxonomyPhase = 'AUTHENTICATED';
       const appPhase2 = await bootCatalog({
-        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
-        SECURITY_ISSUER: simServer.issuer,
-        SECURITY_DISCOVERY_URL: simServer.discoveryUrl,
-        SECURITY_JWKS_URL: simServer.jwksUrl,
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: simServer.issuer,
+        SIMULATED_AUTH_JWKS_URL: simServer.jwksUrl,
       });
       await request(appPhase2.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
@@ -331,6 +317,14 @@ describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin 
         issuer: simServer.issuer,
         profile: 'm2m-marketplace',
       });
+      const g7TokenBeforeActivation = g7Issuer.mintProfile({
+        issuer: g7Server.issuer,
+        profile: 'm2m-marketplace',
+      });
+      await request(appPhase2.getHttpServer())
+        .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
+        .set('Authorization', `Bearer ${g7TokenBeforeActivation}`)
+        .expect(401);
       observedTaxonomyCalls.length = 0;
       await request(appPhase2.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
@@ -388,7 +382,7 @@ describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin 
 
       await appPhase2.close();
 
-      // Changing the configured trust rejects tokens from the previous fixture issuer.
+      // Changing only mode and credentials restores G7 and rejects phase 2 tokens.
       const appPhase3G7 = await bootCatalog({
         G6_SECURITY_MODE: 'G7_AUTHENTICATED',
         SECURITY_ISSUER: g7Server.issuer,

@@ -25,6 +25,40 @@ async function fixture(
 }
 
 describe('Internal HTTP credential boundary (PR143)', () => {
+  it('uses anonymous GETs only with explicitly selected Phase 1 and never retries as anonymous', async () => {
+    await fixture(
+      (request, response) => {
+        expect(request.method).toBe('GET');
+        expect(request.headers.authorization).toBeUndefined();
+        response
+          .writeHead(200, { 'content-type': 'application/json' })
+          .end('{}');
+      },
+      async (origin) => {
+        const tokens = vi.fn(async () => 'unused');
+        const reader = new InternalHttpReader({
+          origin,
+          mode: 'PUBLIC_READ_ONLY',
+          getServiceAccessToken: tokens,
+        });
+        await expect(
+          reader.read(
+            'obtenerProducto',
+            '/productos/fixture',
+            new AbortController().signal,
+          ),
+        ).resolves.toEqual({});
+        expect(tokens).not.toHaveBeenCalled();
+        await expect(
+          new InternalHttpReader({ origin, mode: 'AUTHENTICATED' }).read(
+            'obtenerProducto',
+            '/productos/fixture',
+            new AbortController().signal,
+          ),
+        ).rejects.toThrow('COMMERCIAL_SESSION_UNAVAILABLE');
+      },
+    );
+  });
   it('preserves a validated request correlation and rejects invalid metadata before credentials', async () => {
     const trace = '11111111-1111-4111-8111-111111111111';
     await fixture(
