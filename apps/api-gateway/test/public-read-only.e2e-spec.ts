@@ -217,6 +217,25 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
     await restart('PUBLIC_READ_ONLY', false);
     for (const path of paths)
       await request(gateway!.getHttpServer()).get(path).expect(401);
+    for (const path of [
+      '/api/v1/seo/visible',
+      '/api/v1/seo/resoluciones/anterior',
+    ]) {
+      const response = await request(gateway!.getHttpServer())
+        .get(path)
+        .expect(403);
+      expect(response.body).toMatchObject({
+        status: 403,
+        code: 'SCOPE_INSUFICIENTE',
+      });
+      expect(Object.keys(response.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
+    }
+    expect(snapshot()).toEqual(persistedBefore);
   });
 
   it('serves the five exact public reads and real Catalog ID/slug -> Taxonomy enrichment', async () => {
