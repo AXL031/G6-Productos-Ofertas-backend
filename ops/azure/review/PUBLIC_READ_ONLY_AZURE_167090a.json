@@ -1,0 +1,423 @@
+{
+  "checkedAtUtc": "2026-11-06T04:36:59.904Z",
+  "sourceSha": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+  "baseUrl": "https://g6-po-axl031-167090a.chilecentral.cloudapp.azure.com",
+  "mode": "PUBLIC_READ_ONLY",
+  "authorization": {
+    "actor": "requesting user AXL031",
+    "source": "explicit chat instruction to enable the five discussed public reads",
+    "quote": "hay que hacer eso entonces",
+    "scope": {
+      "taxonomy-svc": [
+        "listarCategorias",
+        "listarMarcas"
+      ],
+      "catalog-svc": [
+        "listarProductos",
+        "obtenerProducto",
+        "obtenerProductoPorSlug"
+      ],
+      "api-gateway": [
+        "listarCategorias",
+        "listarMarcas",
+        "listarProductos",
+        "obtenerProducto",
+        "obtenerProductoPorSlug"
+      ]
+    },
+    "externalArchitectureOwnerApproval": "not asserted or fabricated",
+    "emptyCatalogAcceptedByUser": true
+  },
+  "results": [
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "pass": true,
+      "body": {
+        "status": "ok",
+        "service": "api-gateway"
+      }
+    },
+    {
+      "name": "categories_public",
+      "method": "GET",
+      "path": "/api/v1/categorias",
+      "status": 200,
+      "pass": true,
+      "body": {
+        "categories": [
+          {
+            "categoria_id": "fcb3cac1-b14a-b935-fc1a-c147b878a5c6",
+            "parent_id": "49a1dbd0-666d-0d43-6d1e-1053d4564455",
+            "name": "Balones",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "cd8aa953-eafd-ce4e-628b-4988ebbcded4",
+            "parent_id": null,
+            "name": "Calzado",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "69bda117-9700-d41d-9ccf-f207717068e0",
+            "parent_id": "3523cb0c-0f00-27dd-d300-2daffdaf285a",
+            "name": "Entrenamiento",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "49a1dbd0-666d-0d43-6d1e-1053d4564455",
+            "parent_id": null,
+            "name": "Equipamiento y Accesorios",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "dbd02734-85f5-b47b-5c95-ee768d5dc875",
+            "parent_id": "cd8aa953-eafd-ce4e-628b-4988ebbcded4",
+            "name": "Fútbol",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "3894c641-982c-5db5-a9d2-3897b16d9cb3",
+            "parent_id": "3523cb0c-0f00-27dd-d300-2daffdaf285a",
+            "name": "Medias deportivas",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "3523cb0c-0f00-27dd-d300-2daffdaf285a",
+            "parent_id": null,
+            "name": "Ropa",
+            "status": "ACTIVA"
+          },
+          {
+            "categoria_id": "303886ae-f3f0-bc9c-145a-660979597595",
+            "parent_id": "cd8aa953-eafd-ce4e-628b-4988ebbcded4",
+            "name": "Running",
+            "status": "ACTIVA"
+          }
+        ]
+      }
+    },
+    {
+      "name": "brands_public",
+      "method": "GET",
+      "path": "/api/v1/marcas",
+      "status": 200,
+      "pass": true,
+      "body": {
+        "brands": [
+          {
+            "marca_id": "d05cc621-2d16-faa3-f620-19fb3173737c",
+            "name": "adidas",
+            "description": null,
+            "logo_url": null,
+            "country_code": "DE",
+            "status": "ACTIVA"
+          },
+          {
+            "marca_id": "07cb79e8-33ee-54d5-aec8-0dbae3cae5b4",
+            "name": "Marathon Sports",
+            "description": "Empresa ecuatoriana de confeccion y distribucion de ropa y calzado deportivo, fundada en Quito en 1980; equipa a la seleccion de futbol de Ecuador desde 1994.",
+            "logo_url": null,
+            "country_code": "EC",
+            "status": "ACTIVA"
+          },
+          {
+            "marca_id": "d5649b17-23aa-dbf2-cb87-60164737fcf9",
+            "name": "Nike",
+            "description": null,
+            "logo_url": null,
+            "country_code": "US",
+            "status": "ACTIVA"
+          },
+          {
+            "marca_id": "c489b6d1-08e1-5dcb-cb4d-2864df0c2ed4",
+            "name": "Puma",
+            "description": null,
+            "logo_url": null,
+            "country_code": "DE",
+            "status": "ACTIVA"
+          },
+          {
+            "marca_id": "514d9c18-b418-559b-a692-e304183560ad",
+            "name": "Under Armour",
+            "description": "Marca estadounidense de indumentaria y calzado deportivo (fundada en 1996).",
+            "logo_url": null,
+            "country_code": "US",
+            "status": "ACTIVA"
+          },
+          {
+            "marca_id": "2ae5529a-b33e-507f-900d-b4a04fc0f831",
+            "name": "Walon",
+            "description": "Marca peruana de indumentaria deportiva (fundada en Lima, 1989).",
+            "logo_url": null,
+            "country_code": "PE",
+            "status": "ACTIVA"
+          }
+        ]
+      }
+    },
+    {
+      "name": "marketplace_products_public",
+      "method": "GET",
+      "path": "/api/v1/productos?canal=MARKETPLACE",
+      "status": 200,
+      "pass": true,
+      "body": {
+        "items": [],
+        "pagina": 1,
+        "tamanio": 20,
+        "total": 0
+      }
+    },
+    {
+      "name": "missing_product_id",
+      "method": "GET",
+      "path": "/api/v1/productos/00000000-0000-4000-8000-000000000001?canal=MARKETPLACE",
+      "status": 404,
+      "pass": true,
+      "body": {
+        "title": "Error interno",
+        "status": 404,
+        "code": "PRODUCTO_NO_ENCONTRADO",
+        "correlationId": "a8ad26b8-015c-4138-a664-0e7760e4c6aa"
+      }
+    },
+    {
+      "name": "missing_slug",
+      "method": "GET",
+      "path": "/api/v1/productos/por-slug/nonexistent-azure-read-check-167090a?canal=MARKETPLACE",
+      "status": 404,
+      "pass": true,
+      "body": {
+        "title": "Error interno",
+        "status": 404,
+        "code": "PRODUCTO_NO_ENCONTRADO",
+        "correlationId": "5bba6e08-4882-4c33-95cb-9e63380ffdeb"
+      }
+    },
+    {
+      "name": "inactive_visibility",
+      "status": "NOT_EXECUTED",
+      "reason": "No authorized existing INACTIVO product found; no writes/seeds performed"
+    },
+    {
+      "name": "inactive_filter_does_not_widen",
+      "method": "GET",
+      "path": "/api/v1/productos?canal=MARKETPLACE&estado=INACTIVO",
+      "status": 403,
+      "pass": true,
+      "body": {
+        "title": "Permisos insuficientes",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "c4568240-76e7-4220-ac6b-4722f465fb36"
+      }
+    },
+    {
+      "name": "draft_by_id",
+      "method": "GET",
+      "path": "/api/v1/productos/<redacted-negative-fixture>?canal=MARKETPLACE",
+      "status": 404,
+      "pass": true,
+      "body": {
+        "title": "Error interno",
+        "status": 404,
+        "code": "PRODUCTO_NO_ENCONTRADO",
+        "correlationId": "cf0a46bf-a6f3-437a-af43-15ab9c985145"
+      }
+    },
+    {
+      "name": "draft_by_slug",
+      "method": "GET",
+      "path": "/api/v1/productos/<redacted-negative-fixture>?canal=MARKETPLACE",
+      "status": 404,
+      "pass": true,
+      "body": {
+        "title": "Error interno",
+        "status": 404,
+        "code": "PRODUCTO_NO_ENCONTRADO",
+        "correlationId": "33635ad0-aa8f-49fd-b88d-eeecae0c4e81"
+      }
+    },
+    {
+      "name": "draft_filter_does_not_widen",
+      "method": "GET",
+      "path": "/api/v1/productos?canal=MARKETPLACE&estado=BORRADOR",
+      "status": 403,
+      "pass": true,
+      "body": {
+        "title": "Permisos insuficientes",
+        "status": 403,
+        "code": "SCOPE_INSUFICIENTE",
+        "correlationId": "8a4c23ac-2ba2-4cee-9aae-32c873200f17"
+      }
+    },
+    {
+      "name": "anonymous_write",
+      "method": "POST",
+      "path": "/api/v1/productos",
+      "status": 401,
+      "pass": true,
+      "body": {
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "9c09024b-9a15-4aa0-8498-3fa261c413cf"
+      }
+    },
+    {
+      "name": "private_category_detail",
+      "method": "GET",
+      "path": "/api/v1/categorias/00000000-0000-4000-8000-000000000001",
+      "status": 401,
+      "pass": true,
+      "body": {
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "d4fb08ed-a2e5-46aa-8f0b-69e099bc944f"
+      }
+    },
+    {
+      "name": "private_brand_detail",
+      "method": "GET",
+      "path": "/api/v1/marcas/00000000-0000-4000-8000-000000000001",
+      "status": 401,
+      "pass": true,
+      "body": {
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "127ea74e-dec7-48f8-bf2e-2050ffa6e12d"
+      }
+    },
+    {
+      "name": "private_product_variants",
+      "method": "GET",
+      "path": "/api/v1/productos/00000000-0000-4000-8000-000000000001/variantes",
+      "status": 401,
+      "pass": true,
+      "body": {
+        "title": "No autenticado",
+        "status": 401,
+        "code": "TOKEN_INVALIDO",
+        "correlationId": "3cf045fc-3d6f-40ce-80aa-465bc547edca"
+      }
+    },
+    {
+      "name": "invalid_jwt_never_anonymous",
+      "method": "GET",
+      "path": "/api/v1/categorias",
+      "status": 503,
+      "pass": null,
+      "body": {
+        "title": "Servicio no disponible",
+        "status": 503,
+        "code": "SERVICIO_NO_DISPONIBLE",
+        "correlationId": "28d3e573-545e-4ae7-890c-0ca79967af07"
+      },
+      "failClosed": true,
+      "realJwtValidation": "NOT_EXECUTED: actual issuer/discovery/JWKS unavailable; 503 is fail-closed configuration unavailability"
+    }
+  ],
+  "countsBefore": {
+    "catalog-svc": {
+      "products": "20",
+      "variants": "51",
+      "inbox": "0",
+      "outbox": "0"
+    },
+    "taxonomy-svc": {
+      "categories": "8",
+      "brands": "6",
+      "inbox": "0",
+      "outbox": "0"
+    }
+  },
+  "realProductTest": {
+    "status": "NOT_EXECUTED",
+    "owner": "Catalog/Poma",
+    "reason": "No commercially eligible published product in current shared dataset; no business state was changed"
+  },
+  "jwtNote": "503 with supplied token remains G7-unconfigured fail-closed; not claimed as real JWT validation",
+  "countsAfter": {
+    "catalog-svc": {
+      "products": "20",
+      "variants": "51",
+      "inbox": "0",
+      "outbox": "0"
+    },
+    "taxonomy-svc": {
+      "categories": "8",
+      "brands": "6",
+      "inbox": "0",
+      "outbox": "0"
+    }
+  },
+  "countsUnchanged": true,
+  "countsScope": "Counts of selected tables in a shared database; not a full proof against concurrent updates",
+  "publicOperationLists": [
+    {
+      "service": "taxonomy-svc",
+      "mode": "PUBLIC_READ_ONLY",
+      "operations": "listarCategorias,listarMarcas",
+      "legacy": "false",
+      "readOnlyLegacy": "false",
+      "allowDemo": "false"
+    },
+    {
+      "service": "catalog-svc",
+      "mode": "PUBLIC_READ_ONLY",
+      "operations": "listarProductos,obtenerProducto,obtenerProductoPorSlug",
+      "legacy": "false",
+      "readOnlyLegacy": "false",
+      "allowDemo": "false"
+    },
+    {
+      "service": "api-gateway",
+      "mode": "PUBLIC_READ_ONLY",
+      "operations": "listarCategorias,listarMarcas,listarProductos,obtenerProducto,obtenerProductoPorSlug",
+      "legacy": "false",
+      "readOnlyLegacy": "false",
+      "allowDemo": "false"
+    }
+  ],
+  "summary": "PARTIAL: public routes active and tested; positive real product ID/slug pending published data",
+  "reversal": {
+    "checkedAtUtc": "2026-11-06T04:36:00.167Z",
+    "sourceSha": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+    "closedChecks": [
+      {
+        "path": "/api/v1/categorias",
+        "status": 401
+      },
+      {
+        "path": "/api/v1/marcas",
+        "status": 401
+      },
+      {
+        "path": "/api/v1/productos?canal=MARKETPLACE",
+        "status": 401
+      },
+      {
+        "path": "/api/v1/productos/00000000-0000-4000-8000-000000000001?canal=MARKETPLACE",
+        "status": 401
+      },
+      {
+        "path": "/api/v1/productos/por-slug/reversal-check?canal=MARKETPLACE",
+        "status": 401
+      }
+    ],
+    "g7RealAuthenticationTested": false,
+    "phaseReversal": "PASS",
+    "finalRequestedPhase": "PUBLIC_READ_ONLY",
+    "reactivated": true
+  },
+  "userAcceptedCurrentDataset": true,
+  "g7Configured": false,
+  "actualImageRevision": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+  "activationStatus": "PASS: exactly five public reads enabled; current empty catalog accepted",
+  "commercialPositiveIdAndSlug": "PENDING: no published eligible product"
+}

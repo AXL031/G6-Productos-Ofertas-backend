@@ -1,5 +1,11 @@
 # Revisión técnica — Fase 1 y preparación Azure
 
+Estado más reciente: [cinco lecturas públicas activadas](PUBLIC_READ_ONLY_AZURE_167090a.md)
+y [evidencia HTTPS/reversión](PUBLIC_READ_ONLY_AZURE_167090a.json). Categorías,
+marcas y listado Marketplace devuelven 200 sin JWT. El catálogo está vacío porque
+sus 20 productos siguen en BORRADOR; se conservó esa visibilidad por instrucción
+del usuario. El corte de despliegue cerrado que sigue es histórico.
+
 Estado operativo posterior: [Azure desplegado con consultas cerradas](DESPLIEGUE_AZURE_167090a.md)
 y [evidencia real no secreta](AZURE_DESPLEGADO_167090a.json). Los tres servicios
 y Caddy están en Azure usando el SHA oficial `167090af...`; HTTPS health responde
