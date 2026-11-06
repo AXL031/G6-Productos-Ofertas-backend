@@ -1,5 +1,10 @@
 # Artefactos oficiales disponibles — SHA 167090af
 
+Actualización posterior: el acceso GHCR quedó resuelto mediante autorización de
+`read:packages`; los tres pulls por digest y las etiquetas se verificaron desde
+el operador y desde la VM Azure. Ver [despliegue real](DESPLIEGUE_AZURE_167090a.md).
+Los errores de acceso descritos más abajo corresponden al corte anterior.
+
 Fuente común: Backend oficial, SHA
 `167090af6d4ae93adbde54b6741dd994d91bf70b`, con #195 y #196 integradas y
 [CI push/master satisfactoria, 18/18](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42154976533).

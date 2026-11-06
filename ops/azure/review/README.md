@@ -1,5 +1,11 @@
 # Revisión técnica — Fase 1 y preparación Azure
 
+Estado operativo posterior: [Azure desplegado con consultas cerradas](DESPLIEGUE_AZURE_167090a.md)
+y [evidencia real no secreta](AZURE_DESPLEGADO_167090a.json). Los tres servicios
+y Caddy están en Azure usando el SHA oficial `167090af...`; HTTPS health responde
+200. Las cinco consultas sin JWT siguen en 401. G7 real y aceptación pública
+están pendientes. Los SHA y pruebas de la revisión inicial que siguen son históricos.
+
 Código revisado: a51eb22f9704ac56eaad21a4b9ebd2c5729abd8e
 Commit aplicación: dc9f9bfbb1206aee9d382e649818ad2ec9600547
 Base oficial: 15941b6fa3e6f00e595995abca4b328da65ff73f

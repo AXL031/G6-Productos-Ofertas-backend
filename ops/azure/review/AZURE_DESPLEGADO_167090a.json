@@ -1,0 +1,358 @@
+{
+  "checkedAtUtc": "2026-11-06T04:14:29.920Z",
+  "baseUrl": "https://g6-po-axl031-167090a.chilecentral.cloudapp.azure.com",
+  "sourceSha": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+  "publicOperationsEnabled": false,
+  "g7Configured": false,
+  "vmSmoke": "================================================================\n1. Verificando Liveness y Readiness en Loopback (127.0.0.1)\n================================================================\nLiveness 127.0.0.1:3000/health -> {\"status\":\"ok\",\"service\":\"api-gateway\"}\nLiveness 127.0.0.1:3001/health -> {\"status\":\"ok\",\"service\":\"catalog-svc\"}\nLiveness 127.0.0.1:3006/health -> {\"status\":\"ok\",\"service\":\"taxonomy-svc\"}\nReadiness taxonomy-svc (127.0.0.1:3006/health/ready) -> {\"status\":\"ready\",\"service\":\"taxonomy-svc\"}\nReadiness catalog-svc (127.0.0.1:3001/health/ready) -> {\"status\":\"ready\",\"service\":\"catalog-svc\"}\nReadiness api-gateway (bundle readiness.js) -> {\"service\":\"api-gateway\",\"status\":\"ready\",\"dependencies\":{\"catalog-svc\":\"ready\",\"taxonomy-svc\":\"ready\",\"pricing-svc\":\"not_configured\",\"promotions-svc\":\"not_configured\",\"combos-svc\":\"not_configured\",\"inventory-svc\":\"not_configured\",\"price-audit-svc\":\"not_configured\",\"bulk-svc\":\"not_configured\"},\"coverage\":\"partial\",\"gateway\":\"live\"}\n================================================================\n2. Verificando Redes Privadas (g6-edge y g6-http)\n================================================================\nMiembros de g6-edge (esperado: solo g6-caddy y g6-api-gateway):\ng6-caddy g6-api-gateway \n\nMiembros de g6-http (esperado: g6-api-gateway, g6-catalog-svc, g6-taxonomy-svc):\ng6-taxonomy-svc g6-catalog-svc g6-api-gateway \n\n================================================================\n3. Verificando HTTPS Público a través de Caddy (g6-po-axl031-167090a.chilecentral.cloudapp.azure.com)\n================================================================\n{\"status\":\"ok\",\"service\":\"api-gateway\"}\nPASS: health/readiness y referencias oficiales verificadas.\nNO EJECUTADO: rollback remoto ni autenticación funcional. Ejecutar ensayos aislados y adjuntar evidencia independiente.\n",
+  "containers": [
+    {
+      "Command": "\"docker-entrypoint.s…\"",
+      "CreatedAt": "2026-11-06 04:11:46 +0000 UTC",
+      "HealthStatus": "healthy",
+      "ID": "a85c1945b65c",
+      "Image": "de3d0f11ed5f",
+      "Labels": "com.docker.compose.config-hash=c6e3e8d3755956a3858237cf9aecbc49f1cf1f1e019d47369d2fd3bb27f40fc5,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:de3d0f11ed5fbeb76c42745d17e5e5926805783bb20f74cdd1e3d0c7c1a12ca0,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml,/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml,com.docker.compose.project.working_dir=/opt/g6-productos-ofertas/api-gateway,com.docker.compose.project=g6-api-gateway,com.docker.compose.service=service,com.docker.compose.version=5.7.0,org.opencontainers.image.revision=167090af6d4ae93adbde54b6741dd994d91bf70b,org.opencontainers.image.source=https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend,org.opencontainers.image.title=api-gateway",
+      "LocalVolumes": "0",
+      "Mounts": "/etc/g6-postgr…",
+      "Names": "g6-api-gateway",
+      "Networks": "g6-api-gateway_default,g6-edge,g6-http",
+      "Platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "Ports": "127.0.0.1:3000->3000/tcp",
+      "RunningFor": "2 minutes ago",
+      "Size": "12.3kB (virtual 245MB)",
+      "State": "running",
+      "Status": "Up 2 minutes (healthy)"
+    },
+    {
+      "Command": "\"docker-entrypoint.s…\"",
+      "CreatedAt": "2026-11-06 04:11:32 +0000 UTC",
+      "HealthStatus": "healthy",
+      "ID": "973fe2913a71",
+      "Image": "16c9d940be74",
+      "Labels": "com.docker.compose.config-hash=6bdeebb61ad9c4c8cc52602a5e333f6fee92718c2eb491e8375d28841af37fd5,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:16c9d940be74e1b67ef010099ca8b563eb765eba2e27aa3ea5672bb9d7e89e20,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/opt/g6-productos-ofertas/shared/docker-compose.service.yml,/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml,com.docker.compose.project.working_dir=/opt/g6-productos-ofertas/shared,com.docker.compose.project=g6-catalog-svc,com.docker.compose.service=service,com.docker.compose.version=5.7.0,org.opencontainers.image.revision=167090af6d4ae93adbde54b6741dd994d91bf70b,org.opencontainers.image.source=https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend,org.opencontainers.image.title=catalog-svc",
+      "LocalVolumes": "0",
+      "Mounts": "/etc/g6-postgr…",
+      "Names": "g6-catalog-svc",
+      "Networks": "g6-catalog-svc_default,g6-http",
+      "Platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "Ports": "127.0.0.1:3001->3001/tcp",
+      "RunningFor": "3 minutes ago",
+      "Size": "12.3kB (virtual 246MB)",
+      "State": "running",
+      "Status": "Up 3 minutes (healthy)"
+    },
+    {
+      "Command": "\"docker-entrypoint.s…\"",
+      "CreatedAt": "2026-11-06 04:11:17 +0000 UTC",
+      "HealthStatus": "healthy",
+      "ID": "115b9c86fcd1",
+      "Image": "1ccf97dbb238",
+      "Labels": "com.docker.compose.config-hash=0cbf9154e40b6f08081bd7e296e7a4eef098e0db31befd23d570e61580f35ef2,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:1ccf97dbb238f870330266f7ae4d7a5a5ddf16b5927a1f7f2f3d9f25ce5caa94,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/opt/g6-productos-ofertas/shared/docker-compose.service.yml,/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml,com.docker.compose.project.working_dir=/opt/g6-productos-ofertas/shared,com.docker.compose.project=g6-taxonomy-svc,com.docker.compose.service=service,com.docker.compose.version=5.7.0,org.opencontainers.image.revision=167090af6d4ae93adbde54b6741dd994d91bf70b,org.opencontainers.image.source=https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend,org.opencontainers.image.title=taxonomy-svc",
+      "LocalVolumes": "0",
+      "Mounts": "/etc/g6-postgr…",
+      "Names": "g6-taxonomy-svc",
+      "Networks": "g6-taxonomy-svc_default,g6-http",
+      "Platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "Ports": "127.0.0.1:3006->3006/tcp",
+      "RunningFor": "3 minutes ago",
+      "Size": "12.3kB (virtual 245MB)",
+      "State": "running",
+      "Status": "Up 3 minutes (healthy)"
+    },
+    {
+      "Command": "\"caddy run --config …\"",
+      "CreatedAt": "2026-11-06 04:10:51 +0000 UTC",
+      "HealthStatus": "none",
+      "ID": "40d68f262487",
+      "Image": "caddy:2.11.6-alpine",
+      "Labels": "com.docker.compose.config-hash=46ddb47ca6d3c462585813eb20c96ac7c825e16e5263d1609ac35e62f6e08b7e,com.docker.compose.container-number=1,com.docker.compose.depends_on=,com.docker.compose.image=sha256:86d4376ad067063d998533bf06e0c78b97cc8d99cd7cc66f84393165a95a65ed,com.docker.compose.oneoff=False,com.docker.compose.project.config_files=/opt/g6-productos-ofertas/caddy/docker-compose.caddy.yml,com.docker.compose.project.working_dir=/opt/g6-productos-ofertas/caddy,com.docker.compose.project=g6-caddy,com.docker.compose.service=caddy,com.docker.compose.version=5.7.0,org.opencontainers.image.description=a powerful, enterprise-ready, open source web server with automatic HTTPS written in Go,org.opencontainers.image.documentation=https://caddyserver.com/docs,org.opencontainers.image.licenses=Apache-2.0,org.opencontainers.image.source=https://github.com/caddyserver/caddy-docker,org.opencontainers.image.title=Caddy,org.opencontainers.image.url=https://caddyserver.com,org.opencontainers.image.vendor=Light Code Labs,org.opencontainers.image.version=v2.11.6",
+      "LocalVolumes": "2",
+      "Mounts": "g6-caddy_g6_ca…,g6-caddy_g6_ca…,/etc/g6-caddy/…",
+      "Names": "g6-caddy",
+      "Networks": "g6-edge",
+      "Platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "Ports": "0.0.0.0:80->80/tcp, [::]:80->80/tcp, 0.0.0.0:443->443/tcp, [::]:443->443/tcp, 0.0.0.0:443->443/udp, [::]:443->443/udp, 2019/tcp",
+      "RunningFor": "3 minutes ago",
+      "Size": "4.1kB (virtual 67.9MB)",
+      "State": "running",
+      "Status": "Up 3 minutes"
+    }
+  ],
+  "resources": {
+    "docker": [
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.00%",
+        "Container": "a85c1945b65cfb6d8578bc653b2ec5802657b4fa5a7cee64fae6a40c2ffd7ec0",
+        "ID": "a85c1945b65c",
+        "MemPerc": "0.81%",
+        "MemUsage": "31.81MiB / 3.815GiB",
+        "Name": "g6-api-gateway",
+        "NetIO": "15.4kB / 12.9kB",
+        "PIDs": "7"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.00%",
+        "Container": "973fe2913a71028b666388576df90495d30b7c785e1c6f28bb559f4ba0a1019c",
+        "ID": "973fe2913a71",
+        "MemPerc": "1.03%",
+        "MemUsage": "40.2MiB / 3.815GiB",
+        "Name": "g6-catalog-svc",
+        "NetIO": "58.1kB / 51.3kB",
+        "PIDs": "11"
+      },
+      {
+        "BlockIO": "0B / 0B",
+        "CPUPerc": "0.00%",
+        "Container": "115b9c86fcd10e0e41d9b93cbf0b45504fce8c0ba7ac334d4eaca2c112f9f748",
+        "ID": "115b9c86fcd1",
+        "MemPerc": "1.03%",
+        "MemUsage": "40.37MiB / 3.815GiB",
+        "Name": "g6-taxonomy-svc",
+        "NetIO": "53.9kB / 80.4kB",
+        "PIDs": "11"
+      },
+      {
+        "BlockIO": "0B / 65.5kB",
+        "CPUPerc": "0.00%",
+        "Container": "40d68f262487fb66ef79be482976c888b6a648368f96206429f1bfaf9110ccc7",
+        "ID": "40d68f262487",
+        "MemPerc": "0.33%",
+        "MemUsage": "12.88MiB / 3.815GiB",
+        "Name": "g6-caddy",
+        "NetIO": "73.2kB / 90.5kB",
+        "PIDs": "8"
+      }
+    ],
+    "host": "               total        used        free      shared  buff/cache   available\nMem:            3906         799        1477           4        1913        3107\nSwap:           2047           0        2047\nFilesystem      Size  Used Avail Use% Mounted on\n/dev/root        29G  5.2G   23G  19% /\n 04:14:38 up  1:04,  1 user,  load average: 0.34, 0.41, 0.27\n"
+  },
+  "images": [
+    {
+      "service": "taxonomy-svc",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/taxonomy-svc@sha256:1ccf97dbb238f870330266f7ae4d7a5a5ddf16b5927a1f7f2f3d9f25ce5caa94",
+      "revision": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+      "healthy": true,
+      "restartCount": 0
+    },
+    {
+      "service": "catalog-svc",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc@sha256:16c9d940be74e1b67ef010099ca8b563eb765eba2e27aa3ea5672bb9d7e89e20",
+      "revision": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+      "healthy": true,
+      "restartCount": 0
+    },
+    {
+      "service": "api-gateway",
+      "image": "ghcr.io/taller-sw-web/g6-productos-ofertas-backend/api-gateway@sha256:de3d0f11ed5fbeb76c42745d17e5e5926805783bb20f74cdd1e3d0c7c1a12ca0",
+      "revision": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+      "healthy": true,
+      "restartCount": 0
+    }
+  ],
+  "security": [
+    {
+      "service": "taxonomy-svc",
+      "mode": "G7_AUTHENTICATED",
+      "publicOperations": "",
+      "legacyDemo": "false",
+      "readOnlyDemo": "false",
+      "g7Configured": false
+    },
+    {
+      "service": "catalog-svc",
+      "mode": "G7_AUTHENTICATED",
+      "publicOperations": "",
+      "legacyDemo": "false",
+      "readOnlyDemo": "false",
+      "g7Configured": false
+    },
+    {
+      "service": "api-gateway",
+      "mode": "G7_AUTHENTICATED",
+      "publicOperations": "",
+      "legacyDemo": "false",
+      "readOnlyDemo": "false",
+      "g7Configured": false
+    }
+  ],
+  "database": [
+    {
+      "service": "taxonomy-svc",
+      "role": "taxonomy_dev_login",
+      "clientTlsValidated": true,
+      "poolerBackendTlsReported": false,
+      "readOnly": true
+    },
+    {
+      "service": "catalog-svc",
+      "role": "catalog_dev_login",
+      "clientTlsValidated": true,
+      "poolerBackendTlsReported": false,
+      "readOnly": true
+    }
+  ],
+  "catalogToTaxonomyReadiness": {
+    "status": 200,
+    "body": {
+      "status": "ready",
+      "service": "taxonomy-svc"
+    },
+    "scope": "HTTP readiness from Catalog container; commercial anonymous enrichment pending public authorization"
+  },
+  "tls": {
+    "authorized": true,
+    "hostname": "g6-po-axl031-167090a.chilecentral.cloudapp.azure.com",
+    "subject": {
+      "CN": "g6-po-axl031-167090a.chilecentral.cloudapp.azure.com"
+    },
+    "issuer": {
+      "C": "US",
+      "O": "Let's Encrypt",
+      "CN": "YE1"
+    },
+    "validFrom": "Nov  6 03:12:27 2026 GMT",
+    "validTo": "Feb  4 03:12:26 2027 GMT",
+    "fingerprint256": "66:28:21:D3:74:9C:0D:90:0B:89:13:E0:9E:CA:9C:26:47:AB:26:26:E8:8D:1F:90:C9:F8:73:D8:9F:00:A7:31",
+    "protocol": "TLSv1.3"
+  },
+  "httpsCases": [
+    {
+      "name": "health",
+      "method": "GET",
+      "path": "/health",
+      "status": 200,
+      "tlsVerifyResult": 0,
+      "seconds": 0.844707,
+      "body": "{\"status\":\"ok\",\"service\":\"api-gateway\"}",
+      "pass": true
+    },
+    {
+      "name": "categorias_closed",
+      "method": "GET",
+      "path": "/api/v1/categorias",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.206009,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"6b52f461-8f75-4bc2-8c45-614e3568c578\"}",
+      "pass": true
+    },
+    {
+      "name": "marcas_closed",
+      "method": "GET",
+      "path": "/api/v1/marcas",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.272377,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"41af83f9-8fc4-41af-b54f-583057fad526\"}",
+      "pass": true
+    },
+    {
+      "name": "productos_closed",
+      "method": "GET",
+      "path": "/api/v1/productos?canal=MARKETPLACE",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.197724,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"8d024b3b-990d-44d0-8885-22227f02dea2\"}",
+      "pass": true
+    },
+    {
+      "name": "producto_id_closed",
+      "method": "GET",
+      "path": "/api/v1/productos/00000000-0000-4000-8000-000000000001?canal=MARKETPLACE",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.218179,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"9d89cab2-a691-42bb-bd28-14c40d098fb4\"}",
+      "pass": true
+    },
+    {
+      "name": "producto_slug_closed",
+      "method": "GET",
+      "path": "/api/v1/productos/por-slug/azure-auth-boundary-check?canal=MARKETPLACE",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.287023,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"17260310-04cd-4ac5-be59-888f68a85b0e\"}",
+      "pass": true
+    },
+    {
+      "name": "invalid_jwt",
+      "method": "GET",
+      "path": "/api/v1/categorias",
+      "status": 503,
+      "tlsVerifyResult": 0,
+      "seconds": 0.221121,
+      "body": "{\"title\":\"Servicio no disponible\",\"status\":503,\"code\":\"SERVICIO_NO_DISPONIBLE\",\"correlationId\":\"4931dca4-a934-4634-8a0d-a0b2194fb0fd\"}",
+      "pass": null,
+      "failClosed": true,
+      "contractualJwtVerification": "PENDING: actual G7 issuer/discovery/JWKS not configured; 503 is not an authenticated acceptance or a completed 401 JWT validation test"
+    },
+    {
+      "name": "anonymous_write",
+      "method": "POST",
+      "path": "/api/v1/productos",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.289887,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"1cf77fc8-7980-44aa-bb40-1d8dd6c0cd62\"}",
+      "pass": true
+    },
+    {
+      "name": "private_category_detail",
+      "method": "GET",
+      "path": "/api/v1/categorias/00000000-0000-4000-8000-000000000001",
+      "status": 401,
+      "tlsVerifyResult": 0,
+      "seconds": 0.196656,
+      "body": "{\"title\":\"No autenticado\",\"status\":401,\"code\":\"TOKEN_INVALIDO\",\"correlationId\":\"42621f8e-5802-49df-b372-2d11c5eb45fb\"}",
+      "pass": true
+    }
+  ],
+  "certificateValidationDisabled": false,
+  "publicPositiveReads": "NOT EXECUTED: individual operation approvals missing",
+  "g7AuthenticatedPositive": "NOT EXECUTED: real G7 issuer/JWKS configuration not supplied",
+  "realRollback": "NOT EXECUTED: first deployment, no previous official version and no fault-injection authorization",
+  "verificationScope": "Deployment/ingress/readiness and fail-closed access, not public Marketplace acceptance",
+  "dnsNormalHttpsHealth": {
+    "status": 200,
+    "certificateValidation": true
+  },
+  "httpRedirect": {
+    "status": 308
+  },
+  "applicationPorts": [
+    {
+      "port": 3000,
+      "publiclyReachable": false,
+      "result": "timeout"
+    },
+    {
+      "port": 3001,
+      "publiclyReachable": false,
+      "result": "timeout"
+    },
+    {
+      "port": 3006,
+      "publiclyReachable": false,
+      "result": "timeout"
+    }
+  ],
+  "caddyImage": "caddy@sha256:d44355d3c2149dc580ce2cac735955d1c08d3d00882c30489c241aa51a5c10d9",
+  "temporaryRuntimeCopiesRemoved": true,
+  "overallStatus": "PARTIAL: deployment healthy; public operation approval, G7 and acceptance tests remain pending"
+}
