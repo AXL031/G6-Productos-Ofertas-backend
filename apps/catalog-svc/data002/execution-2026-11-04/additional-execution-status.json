@@ -1,0 +1,128 @@
+{
+  "status": "APPLIED_VERIFIED",
+  "authorized_insert_count": 14,
+  "inserted": {
+    "product_images": 4,
+    "product_identifying_characteristics": 8,
+    "product_attribute_values": 2
+  },
+  "previous_rows_unchanged": true,
+  "pitch_attributes": [
+    {
+      "id": "b38d61cc-e6b4-4004-8ca4-5e23ece0b627",
+      "valor": null,
+      "valor_id": "52d4b91a-f829-c05e-d60e-31ada29b0513",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "nombre_snapshot": "Talla",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "id": "ae27b7af-8129-4a8e-8c3f-20eb820254f0",
+      "valor": null,
+      "valor_id": "c0b1a113-b479-5f84-9fa3-0e6cb3a41fea",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "nombre_snapshot": "Color",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    }
+  ],
+  "covers": [
+    {
+      "id": "65b2040c-604f-4399-8cec-c8ddea860b96",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/puma-ultra-play-negro.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-11-04T04:53:51.359718+00:00",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "updated_at": "2026-11-04T04:53:51.359718+00:00"
+    },
+    {
+      "id": "57eb1c4b-9fa1-4012-9876-9e8d8f20cd40",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-entrada22-azul.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-11-04T04:53:51.359718+00:00",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "updated_at": "2026-11-04T04:53:51.359718+00:00"
+    },
+    {
+      "id": "c00c2ce9-23e0-43a6-b5ae-2de0194a40d1",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/adidas-runfalcon3-gris.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-11-04T04:53:51.359718+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "updated_at": "2026-11-04T04:53:51.359718+00:00"
+    },
+    {
+      "id": "e4538406-f72a-47d2-9bfa-8306213e5b52",
+      "url": "https://slzglmtiyrzygpkiuthf.supabase.co/storage/v1/object/public/catalog-products/nike-revolution7-negro.jpg",
+      "posicion": 0,
+      "principal": true,
+      "created_at": "2026-11-04T04:53:51.359718+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "updated_at": "2026-11-04T04:53:51.359718+00:00"
+    }
+  ],
+  "identifying": [
+    {
+      "id": "9360c679-401b-4033-949c-3219fab6ff0a",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "id": "69352db7-e622-437b-a7e8-facf83eae3c2",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    },
+    {
+      "id": "ee56fbb5-9848-4b0f-a39d-11128e8d3e6e",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "id": "f1a7f218-2ecb-444a-9d6c-f9ff02735682",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    },
+    {
+      "id": "e649dbab-7a59-42c7-a17f-015e97805343",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "id": "24147d78-10c2-4ddc-974e-10e4d633da95",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    },
+    {
+      "id": "77b4a033-8a92-40ec-87b8-afd610486295",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "id": "6f155796-0a30-476d-8fda-23a10ab13fda",
+      "created_at": "2026-11-04T04:54:10.202079+00:00",
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "updated_at": "2026-11-04T04:54:10.202079+00:00",
+      "caracteristica_id": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    }
+  ]
+}

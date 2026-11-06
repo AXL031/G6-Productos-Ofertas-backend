@@ -61,13 +61,16 @@ describe('focused Gateway contract route generation', () => {
     writeFileSync(
       specPath,
       JSON.stringify({
-        info: { version: '0.6.0-rc.2' },
+        info: { version: '0.6.0-rc.3' },
         servers: [{ url: '/api/v1' }],
         paths: {
           '/inventario/disponibilidad/comercial/verificar': {
             post: {
               operationId,
               security: [{ serviceBearer: [] }],
+              'x-required-scope': 'catalogo:leer',
+              'x-service-audience': 'api-productos',
+              'x-allowed-client-ids': ['modulo-productos'],
               parameters: [],
               responses,
               'x-error-codes': errorCodes,
@@ -80,7 +83,7 @@ describe('focused Gateway contract route generation', () => {
       routesPath,
       `// fixture header\nimport type { ContractRoute } from './contract-route.js';\nexport const CONTRACT_ROUTES: readonly ContractRoute[] = [\n` +
         `  {\n    method: 'GET',\n    path: '/api/v1/productos',\n    operationId: 'listarProductos',\n    responses: { '200': { codes: [] } },\n  },\n` +
-        `  {\n    method: 'POST',\n    path: '/api/v1/inventario/disponibilidad/comercial/verificar',\n    operationId: '${operationId}',\n    responses: {\n` +
+        `  {\n    method: 'POST',\n    path: '/api/v1/inventario/disponibilidad/comercial/verificar',\n    operationId: '${operationId}',\n    service: 'inventory-svc',\n    security: ['userBearer'],\n    scope: 'precios:leer',\n    audience: 'api-productos',\n    clients: ['modulo-ventas'],\n    responses: {\n` +
         `      '200': { codes: [] },\n` +
         Object.keys(errorCodes)
           .map((status) => `      '${status}': { codes: [] },\n`)
@@ -136,7 +139,13 @@ describe('focused Gateway contract route generation', () => {
       /  \{[\s\S]*?operationId: 'listarProductos',[\s\S]*?\n  \},/,
     )?.[0];
     expect(otherOperationAfter).toBe(otherOperation);
+    expect(afterFirstRun).toContain(
+      '// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: verificarCantidadComercial.',
+    );
     expect(afterFirstRun).toContain("'400': { codes: ['VALIDACION'] }");
+    expect(afterFirstRun).toContain("security: ['serviceBearer']");
+    expect(afterFirstRun).toContain("scope: 'catalogo:leer'");
+    expect(afterFirstRun).toContain("clients: ['modulo-productos']");
     expect(afterFirstRun).toContain(
       "'422': { codes: ['CONTEXTO_ABASTECIMIENTO_INVALIDO'] }",
     );

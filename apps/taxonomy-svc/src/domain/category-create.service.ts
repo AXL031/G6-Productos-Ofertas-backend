@@ -45,6 +45,13 @@ export class CategoryCreateService {
     return this.database.read(async (db) => {
       try {
         return await db.transaction(async (tx) => {
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtextextended(${entrada.slugConfirmado}, 0))`,
+          );
+          const slugAnterior = await tx.execute(
+            sql`SELECT 1 FROM taxonomy.slug_history WHERE old_slug=${entrada.slugConfirmado}`,
+          );
+          if (slugAnterior.rows.length) throw new SlugDuplicado();
           let nivel = 1;
           if (entrada.categoriaPadreId) {
             const parent = await tx.execute(

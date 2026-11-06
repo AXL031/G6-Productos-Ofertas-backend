@@ -4,6 +4,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import {
+  existsSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
@@ -29,7 +30,40 @@ const catalogPass = randomBytes(20).toString('hex');
 const tmp = mkdtempSync(join(tmpdir(), 'g6-cross-e2e-'));
 const key = join(tmp, 'server.key'),
   cert = join(tmp, 'server.crt');
-const docs = resolve('../G6-Productos-Ofertas-docs/datos');
+const docsCheckout = () => {
+  const candidates = [
+    process.env.G6_E2E_DOCS_PATH,
+    '../G6-Productos-Ofertas-docs',
+    '../docs',
+  ].filter((candidate) => typeof candidate === 'string' && candidate.trim());
+  for (const candidate of candidates) {
+    const root = resolve(candidate);
+    if (
+      !existsSync(join(root, '.git')) &&
+      !existsSync(join(root, '.git', 'HEAD'))
+    )
+      continue;
+    const gitRoot = spawnSync(
+      'git',
+      ['-C', root, 'rev-parse', '--show-toplevel'],
+      { encoding: 'utf8', windowsHide: true },
+    );
+    if (gitRoot.error || gitRoot.status !== 0) continue;
+    const checkoutRoot = resolve(gitRoot.stdout.trim());
+    if (
+      checkoutRoot !== root ||
+      !existsSync(
+        join(root, 'datos/taxonomy/migrations/0001_create_taxonomy.sql'),
+      ) ||
+      !existsSync(
+        join(root, 'datos/catalog-svc/migrations/0001_create_catalog.sql'),
+      )
+    )
+      continue;
+    return root;
+  }
+  return undefined;
+};
 const reportPath = resolve(
   process.env.G6_E2E_EVIDENCE_PATH ??
     'apps/taxonomy-svc/test/e2e-catalog/evidence-latest.json',
@@ -107,16 +141,22 @@ const row = async (query, params = []) =>
 try {
   process.env.NODE_ENV = 'test';
   report.taxonomySha = git('rev-parse', 'HEAD');
+  const docsRoot = docsCheckout();
+  if (!docsRoot)
+    throw new Error(
+      'Falta un checkout Git de Docs con las migraciones normativas de Taxonomy y Catalog',
+    );
+  const docs = join(docsRoot, 'datos');
   report.docsSha = git(
     '-C',
-    resolve('../G6-Productos-Ofertas-docs'),
+    docsRoot,
     'rev-parse',
     'HEAD',
   );
   if (
     git(
       '-C',
-      resolve('../G6-Productos-Ofertas-docs'),
+      docsRoot,
       'status',
       '--porcelain',
       '--',
@@ -199,9 +239,14 @@ try {
     await import('../../../../dist/apps/catalog-svc/database.js'));
   report.build = 'PASS';
   const openssl =
-    process.platform === 'win32'
-      ? 'C:/Program Files/Git/ucrt64/bin/openssl.exe'
-      : 'openssl';
+    process.env.TAXONOMY_TEST_OPENSSL_BIN ??
+    (process.platform === 'win32'
+      ? [
+          'C:/Program Files/Git/ucrt64/bin/openssl.exe',
+          'C:/Program Files/Git/mingw64/bin/openssl.exe',
+          'C:/Program Files/Git/usr/bin/openssl.exe',
+        ].find((candidate) => existsSync(candidate)) ?? 'openssl'
+      : 'openssl');
   const certRun = spawnSync(
     openssl,
     [
@@ -344,6 +389,10 @@ try {
     resolve(
       'apps/taxonomy-svc/migrations/0003_deactivation_timeout_setting.sql',
     ),
+    resolve(
+      'apps/taxonomy-svc/migrations/0004_product_type_pending_version.sql',
+    ),
+    resolve('apps/taxonomy-svc/migrations/0005_configurable_list_values.sql'),
   ]);
   await migrate('po_catalog_owner', [
     join(docs, 'catalog-svc/migrations/0001_create_catalog.sql'),
@@ -474,6 +523,7 @@ try {
     PGPASSWORD: password,
     G6_EXPECTED_ROLE: 'catalog_app',
     G6_DATABASE_SCHEMA: 'catalog',
+    CATALOG_AMQP_ENABLED: 'true',
     PORT: String(await freePort()),
     RABBITMQ_URL: catalogUrl,
     CATALOG_AMQP_PRODUCER_USERS: JSON.stringify({
@@ -959,6 +1009,147 @@ try {
       resultado: response.result,
       estado,
     };
+  }
+  for (const entityType of [
+    'PRODUCT_TYPE',
+    'CHARACTERISTIC_VALUE',
+    'PRODUCT_TYPE_CHARACTERISTIC',
+  ]) {
+    for (const outcome of ['CLEAR', 'IN_USE']) {
+      stage = `${entityType} ${outcome} real`;
+      const typeId = randomUUID(),
+        characteristicId = randomUUID(),
+        valueId = randomUUID(),
+        associationId = randomUUID(),
+        operationId = randomUUID(),
+        correlationId = randomUUID();
+      await admin.query(
+        'INSERT INTO taxonomy.product_types(id,nombre) VALUES($1,$2)',
+        [typeId, `type-${typeId}`],
+      );
+      await admin.query(
+        "INSERT INTO taxonomy.characteristics(id,nombre,tipo) VALUES($1,$2,'LISTA')",
+        [characteristicId, `characteristic-${characteristicId}`],
+      );
+      await admin.query(
+        "INSERT INTO taxonomy.characteristic_values(id,caracteristica_id,nombre) VALUES($1,$2,'valor')",
+        [valueId, characteristicId],
+      );
+      await admin.query(
+        'INSERT INTO taxonomy.product_type_characteristics(id,tipo_producto_id,caracteristica_id) VALUES($1,$2,$3)',
+        [associationId, typeId, characteristicId],
+      );
+      const product = (
+        await row('SELECT id FROM catalog.products WHERE marca_id=$1', [
+          ids.inUse,
+        ])
+      )[0];
+      if (outcome === 'IN_USE') {
+        await admin.query(
+          'UPDATE catalog.products SET tipo_producto_id=$1 WHERE id=$2',
+          [typeId, product.id],
+        );
+        await admin.query(
+          "INSERT INTO catalog.product_attribute_values(product_id,caracteristica_id,nombre_snapshot,valor_id,valor) VALUES($1,$2,'valor',$3,'{}'::jsonb)",
+          [product.id, characteristicId, valueId],
+        );
+      }
+      const entityId =
+        entityType === 'PRODUCT_TYPE'
+          ? typeId
+          : entityType === 'CHARACTERISTIC_VALUE'
+            ? valueId
+            : associationId;
+      const version =
+        entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+          ? Number(
+              (
+                await row(
+                  'SELECT schema_version FROM taxonomy.product_types WHERE id=$1',
+                  [typeId],
+                )
+              )[0].schema_version,
+            )
+          : 0;
+      assert.equal(
+        await intents().registrar({
+          operationId,
+          correlationId,
+          entityType,
+          entityId,
+          version,
+          ...(entityType === 'PRODUCT_TYPE_CHARACTERISTIC'
+            ? { tipoProductoId: typeId, caracteristicaId: characteristicId }
+            : {}),
+        }),
+        'REGISTRADA',
+      );
+      const expected = outcome === 'CLEAR' ? 'COMPLETED' : 'REJECTED';
+      await wait(
+        stage,
+        async () =>
+          (
+            await row(
+              'SELECT status FROM taxonomy.master_deactivation_operations WHERE operation_id=$1',
+              [operationId],
+            )
+          )[0]?.status === expected,
+      );
+      const checked = (
+        await row(
+          "SELECT payload->>'result' AS result FROM catalog.outbox WHERE operation_id=$1 AND event_name='catalog.master.deactivation.checked'",
+          [operationId],
+        )
+      )[0];
+      assert.equal(checked?.result, outcome);
+      const table =
+        entityType === 'PRODUCT_TYPE'
+          ? 'product_types'
+          : entityType === 'CHARACTERISTIC_VALUE'
+            ? 'characteristic_values'
+            : 'product_type_characteristics';
+      const state = (
+        await row(`SELECT estado FROM taxonomy.${table} WHERE id=$1`, [
+          entityId,
+        ])
+      )[0].estado;
+      assert.equal(state, outcome === 'CLEAR' ? 'INACTIVO' : 'ACTIVO');
+      await wait(
+        `liberación de barrera ${entityType} ${outcome}`,
+        async () =>
+          (
+            await row(
+              'SELECT is_blocking FROM catalog.master_barriers WHERE operation_id=$1',
+              [operationId],
+            )
+          )[0]?.is_blocking === false,
+      );
+      report.scenarios[`${entityType}_${outcome}`] = {
+        operationId,
+        entityId,
+        status: expected,
+        resultado: checked.result,
+        estado: state,
+        taxonomyInbox: await row(
+          "SELECT event_name, result FROM taxonomy.inbox WHERE payload->>'operation_id'=$1",
+          [operationId],
+        ),
+        taxonomyOutbox: await row(
+          'SELECT event_name, published_at IS NOT NULL AS publicado FROM taxonomy.outbox WHERE operation_id=$1 ORDER BY occurred_at',
+          [operationId],
+        ),
+        catalogInbox: await row(
+          'SELECT event_name, result FROM catalog.inbox WHERE operation_id=$1',
+          [operationId],
+        ),
+        catalogBarrier: (
+          await row(
+            'SELECT is_blocking, source_version FROM catalog.master_barriers WHERE operation_id=$1',
+            [operationId],
+          )
+        )[0],
+      };
+    }
   }
   stage = 'Duplicado real';
   let original;

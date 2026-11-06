@@ -7,10 +7,38 @@ import {
   esquemaTaxonomia,
   marcas,
   operacionesBaja,
+  caracteristicas,
+  valoresCaracteristica,
+  tiposProducto,
+  asociacionesTipoCaracteristica,
 } from './taxonomy.schema.js';
 
 describe('taxonomy.schema (#35)', () => {
   const db = drizzle.mock({ schema: esquemaTaxonomia });
+
+  it('mapea las entidades oficiales y sus relaciones exclusivamente en taxonomy', () => {
+    for (const [table, name, foreignKeys] of [
+      [caracteristicas, 'characteristics', 0],
+      [valoresCaracteristica, 'characteristic_values', 1],
+      [tiposProducto, 'product_types', 0],
+      [asociacionesTipoCaracteristica, 'product_type_characteristics', 2],
+    ] as const) {
+      const config = getTableConfig(table);
+      expect(config.schema).toBe('taxonomy');
+      expect(config.name).toBe(name);
+      expect(config.foreignKeys).toHaveLength(foreignKeys);
+      for (const fk of config.foreignKeys)
+        expect(getTableConfig(fk.reference().foreignTable).schema).toBe(
+          'taxonomy',
+        );
+    }
+    expect(
+      getTableConfig(asociacionesTipoCaracteristica).columns.map((c) => c.name),
+    ).not.toContain('taxonomy_version');
+    expect(getTableConfig(tiposProducto).columns.map((c) => c.name)).toContain(
+      'schema_version',
+    );
+  });
 
   it('mapea SEO de categoría con unicidad y FK solo al esquema propio', () => {
     const tabla = getTableConfig(categorySeo);

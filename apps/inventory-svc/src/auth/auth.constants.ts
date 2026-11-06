@@ -30,6 +30,7 @@ export const KNOWN_CLIENTS = {
   MARKETPLACE: 'modulo-marketplace',
   CHATBOT: 'modulo-chatbot',
   RETAIL: 'modulo-retail',
+  PRODUCTOS: 'modulo-productos',
 } as const;
 
 /**

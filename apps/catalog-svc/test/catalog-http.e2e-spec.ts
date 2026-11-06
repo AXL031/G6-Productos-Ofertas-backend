@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import {
   ServiceUnavailableException,
+  HttpException,
   type INestApplication,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
@@ -348,6 +349,103 @@ describe('Catalog HTTP routes and security (isolated use-case fixtures)', () => 
       .get('/api/v1/productos/p?canal=MARKETPLACE&invented=1')
       .set('Authorization', 'Bearer channel')
       .expect(400);
+  });
+
+  it.each([
+    { skus: [] },
+    { skus: Array.from({ length: 101 }, (_, i) => 'SKU' + i) },
+    { skus: ['000', '000'] },
+    { skus: [''] },
+    { skus: [null] },
+    { skus: [123] },
+    {},
+  ])('OPEN-09 rejects invalid physical batch %j', async (body) => {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/productos/datos-fisicos/consulta')
+      .set('Authorization', 'Bearer dispatch')
+      .send(body)
+      .expect(422);
+    expect(response.type).toBe('application/problem+json');
+    expect(response.body.code).toBe('SKU_INVALIDO');
+    expect(response.body).not.toHaveProperty('details');
+    expect(queryRepository.physicalData).not.toHaveBeenCalled();
+  });
+
+  it('OPEN-09 returns affected SKU only, never a partial 200 or internal details', async () => {
+    queryRepository.physicalData.mockRejectedValueOnce(
+      new HttpException(
+        {
+          code: 'DATOS_FISICOS_INCOMPLETOS',
+          details: {
+            skusAfectados: ['000Bad', 'ñ,/SKU'],
+            secret: 'private SQL',
+          },
+          secret: 'private SQL',
+        },
+        422,
+      ),
+    );
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/productos/datos-fisicos/consulta')
+      .set('Authorization', 'Bearer dispatch')
+      .set('X-Correlation-Id', correlation)
+      .send({ skus: ['valid', '000Bad', 'ñ,/SKU', 'missing'] })
+      .expect(422);
+    expect(response.type).toBe('application/problem+json');
+    expect(response.body).toEqual({
+      type: '/errores/datos-fisicos-incompletos',
+      title: 'DATOS_FISICOS_INCOMPLETOS',
+      status: 422,
+      code: 'DATOS_FISICOS_INCOMPLETOS',
+      correlationId: correlation,
+      details: { skusAfectados: ['000Bad', 'ñ,/SKU'] },
+    });
+    expect(response.headers['x-correlation-id']).toBe(correlation);
+  });
+
+  it.each([
+    new Error('SELECT private password'),
+    new ServiceUnavailableException('private upstream'),
+  ])('OPEN-09 maps technical failure to sanitized 503', async (error) => {
+    queryRepository.physicalData.mockRejectedValueOnce(error);
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/productos/datos-fisicos/consulta')
+      .set('Authorization', 'Bearer dispatch')
+      .send({ skus: ['000'] })
+      .expect(503);
+    expect(response.type).toBe('application/problem+json');
+    expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+    expect(JSON.stringify(response.body)).not.toContain('private');
+    expect(response.body).not.toHaveProperty('details');
+  });
+
+  it('OPEN-09 preserves all three states and 100 opaque identities (repository fixtures)', async () => {
+    const skus = [
+      '000AbC,/ñ',
+      'ABC',
+      'abc',
+      ...Array.from({ length: 97 }, (_, i) => '000' + i),
+    ];
+    const productos = ['ACTIVO', 'INACTIVO', 'BORRADOR'].map((estado, i) => ({
+      sku: skus[i],
+      estado,
+      pesoKg: 1,
+      dimensionesCm: { largo: 1, ancho: 2, alto: 3 },
+      actualizadoEn: '2026-11-02T12:00:00.000Z',
+    }));
+    const result = { productos, noEncontrados: skus.slice(3) };
+    queryRepository.physicalData.mockResolvedValueOnce(result as never);
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/productos/datos-fisicos/consulta')
+      .set('Authorization', 'Bearer dispatch')
+      .send({ skus })
+      .expect(200);
+    expect(response.body).toEqual(result);
+    expect(queryRepository.physicalData).toHaveBeenCalledWith(skus);
+    expect([
+      ...response.body.productos.map((p: { sku: string }) => p.sku),
+      ...response.body.noEncontrados,
+    ]).toEqual(skus);
   });
   it.each([
     '/productos/not-a-uuid/variantes',

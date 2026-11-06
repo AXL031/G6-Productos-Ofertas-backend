@@ -79,6 +79,7 @@ describe('CatalogConfig PG contract', () => {
       () =>
         new CatalogConfig({
           ...validEnv(),
+          CATALOG_AMQP_ENABLED: 'true',
           RABBITMQ_URL: 'amqp://user:fixture@localhost/',
         }),
     ).toThrow();

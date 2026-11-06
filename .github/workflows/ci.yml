@@ -7,6 +7,7 @@ name: Integración continua (CI)
   pull_request:
     branches:
     - master
+    - correccion/inventory-cierre-integral-marco
   workflow_dispatch:
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -151,6 +152,13 @@ jobs:
       with:
         name: artefactos-compilados
         path: dist/
+    - name: Obtener migraciones oficiales fijadas de Inventory
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
     - name: Configurar Node.js para las comprobaciones de arranque
       uses: actions/setup-node@v4
       with:
@@ -160,6 +168,10 @@ jobs:
       run: npm ci
     - name: Construir la imagen de Inventory
       run: docker build --file Dockerfile.inventory-svc --tag inventory-svc:ci .
+    - name: Simular despliegue Oracle y validar aliases Docker reales (obligatorio)
+      env:
+        G6_REQUIRE_DOCKER_RUNTIME: 'true'
+      run: bash ops/oracle/tests/deploy-g6-service.test.sh
     - name: Validar el registro cerrado de servicios Oracle
       run: "set -euo pipefail\nfor file in ops/oracle/service-registry.sh ops/oracle/deploy-g6-service.sh ops/oracle/deploy-inventory-svc.sh\
         \ ops/oracle/build-service.sh ops/oracle/select-cd-services.sh ops/oracle/validate-cd-source.sh ops/oracle/github-deployment-api.sh\
@@ -222,6 +234,10 @@ jobs:
           [[ -n "$service" && "$service" != \#* ]] || continue
           [[ "$enabled" == true ]] || continue
           case "$service" in
+            inventory-svc)
+              printf 'INVENTORY: omitido del bucle sin dependencias; lo valida el smoke especializado PostgreSQL/TLS.\n'
+              continue
+              ;;
             catalog-svc|taxonomy-svc)
               printf 'NO EJECUTADO: %s requiere configuración PostgreSQL runtime ausente en CI.\n' "$service"
               continue
@@ -259,6 +275,10 @@ jobs:
               --env 'PGDATABASE=combos_ci' --env 'PGUSER=combos_ci'
               --env 'PGPASSWORD=ci-only-unused' --env 'PGSSLMODE=verify-full'
               --env 'PGSSLROOTCERT=/run/g6-ci-certs/ca.crt'
+              --env 'G6_SECURITY_MODE=G7_AUTHENTICATED'
+              --env 'SECURITY_ISSUER=https://identity.invalid'
+              --env 'SECURITY_DISCOVERY_URL=https://identity.invalid/.well-known/openid-configuration'
+              --env 'SECURITY_JWKS_URL=https://identity.invalid/jwks'
               --env 'COMBOS_RESTRICTED_DEMO_ENABLED=false'
               --mount "type=bind,source=$combos_ca,target=/run/g6-ci-certs/ca.crt,readonly")
           fi
@@ -316,15 +336,26 @@ jobs:
           printf 'CORRECTO: Dockerfile.service %s escuchó en %s/%s y su healthcheck quedó saludable.\n' "$service" "$port_env" "$port"
         done < ops/oracle/services.psv
 
-    - name: Probar salud de Inventory en contenedor
-      run: "set -euo pipefail\ntrap 'docker rm --force inventory-svc-ci >/dev/null 2>&1 || true' EXIT\ndocker run\
-        \ --detach --name inventory-svc-ci --publish 127.0.0.1::3005 inventory-svc:ci\nport=\"$(docker port inventory-svc-ci\
-        \ 3005/tcp | awk -F: '{print $NF}')\"\nresponse=''\nfor attempt in {1..30}; do\n  if response=\"$(curl --fail\
-        \ --silent \"http://127.0.0.1:${port}/health\")\"; then\n    break\n  fi\n  sleep 2\ndone\nnode -e '\n \
-        \ const payload = JSON.parse(process.argv[1]);\n  if (payload.status !== \"ok\" || payload.service !== \"\
-        inventory-svc\") {\n    console.error(\"Respuesta de salud inesperada de inventory-svc:\", payload);\n    process.exit(1);\n\
-        \  }\n  console.log(\"inventory-svc salud del proceso correcta; esto no verifica readiness de Supabase.\");\n\
-        ' \"$response\"\n"
+    - name: Probar imagen Oracle de Inventory con PostgreSQL TLS desechable
+      env:
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        INVENTORY_TEST_IMAGE: g6-service:inventory-svc-ci
+      run: |
+        set -euo pipefail
+        for attempt in 1 2; do
+          printf 'Smoke Oracle Inventory aislado %s/2\n' "$attempt"
+          bash scripts/ci/inventory-container-smoke.sh
+        done
+    - name: Probar imagen independiente de Inventory con PostgreSQL TLS desechable
+      env:
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        INVENTORY_TEST_IMAGE: inventory-svc:ci
+      run: |
+        set -euo pipefail
+        for attempt in 1 2; do
+          printf 'Smoke Inventory independiente aislado %s/2\n' "$attempt"
+          bash scripts/ci/inventory-container-smoke.sh
+        done
     - name: Rechazar arranques sin configuración PostgreSQL
       run: node scripts/ci/invalid-startup.mjs
     - name: Probar Marketplace con PostgreSQL TLS desechable
@@ -335,11 +366,11 @@ jobs:
   oracle:
     name: Verificar infraestructura Oracle
     runs-on: ubuntu-latest
+    needs:
+    - contenedores
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
-    - name: Simular despliegue Oracle, aislamiento y recuperación
-      run: bash ops/oracle/tests/deploy-g6-service.test.sh
     - name: Probar selección y recuperación de GitHub Deployments
       run: bash ops/oracle/tests/select-cd-services.test.sh
     - name: Probar el ciclo de GitHub Deployments con API simulada
@@ -371,6 +402,19 @@ jobs:
         cache: npm
     - name: Instalar dependencias de forma reproducible
       run: npm ci
+    - name: Obtener OpenAPI oficial fijado
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 4d285c5ffb91611b60385e0fab5a7295c95e3ed6
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Verificar correspondencia estructural de rutas Taxonomy
+      run: |
+        set -euo pipefail
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD)" = '4d285c5ffb91611b60385e0fab5a7295c95e3ed6'
+        test "$(git -C .ci/G6-Productos-Ofertas-docs rev-parse HEAD:contratos/http/openapi.yaml)" = '6ff062c563d381d4bcf7976f223590b400ace4ec'
+        node scripts/ci/check-taxonomy-contract.mjs .ci/G6-Productos-Ofertas-docs/contratos/http/openapi.yaml
     - name: Rechazar URL de base aportada antes de acceder a Docker
       run: node --test scripts/ci/run-taxonomy-integration.test.mjs
     - name: Ejecutar pruebas de integración Taxonomy (obligatorias)
@@ -468,6 +512,7 @@ jobs:
       env:
         PRICING_TEST_POSTGRES: '1'
         PRICING_TEST_AMQP: '1'
+        PRICING_TEST_AUDIT: '1'
         PRICE_AUDIT_TEST_POSTGRES: '1'
         PRICE_AUDIT_TEST_AMQP: '1'
       run: npm run test:e2e -- apps/pricing-svc apps/price-audit-svc --reporter=verbose
@@ -492,6 +537,50 @@ jobs:
       run: node apps/promotions-svc/test/persistence.isolated.smoke.mjs
     - name: Validar transporte de cupones y Outbox con dependencias desechables
       run: node apps/promotions-svc/test/coupons.isolated.smoke.mjs
+  combos_catalogo:
+    name: Probar integración de Combos con PostgreSQL, RabbitMQ y Catalog desechables
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener backend y su historia de integración
+      uses: actions/checkout@v4
+      with:
+        path: backend
+        fetch-depth: 0
+    - name: Obtener Docs fijado en AsyncAPI rc.4
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: 40b566976fb94d924116dcd01d41b3276c2bc9e3
+        path: docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+        cache-dependency-path: backend/package-lock.json
+    - name: Instalar dependencias
+      run: npm ci
+    - name: Ejecutar las cuatro suites E2E de Combos con Catalog y Pricing reales
+      env:
+        COMBOS_TEST_DOCS_ROOT: ${{ github.workspace }}/docs
+        COMBOS_TEST_EVIDENCE_DIR: apps/combos-svc/test/evidence-ci
+      run: bash apps/combos-svc/test/run-postgres-isolated.sh
+    - name: Conservar evidencia E2E de Combos
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: combos-catalog-e2e-${{ github.sha }}
+        path: |
+          backend/apps/combos-svc/test/evidence-ci/vitest-results.json
+          backend/apps/combos-svc/test/evidence-ci/run-summary.txt
+        if-no-files-found: warn
   integral:
     name: Validación integral de integración continua
     runs-on: ubuntu-latest
@@ -511,10 +600,15 @@ jobs:
       - taxonomia_catalogo
       - inventario
       - promotions
+      - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}
@@ -540,10 +634,15 @@ jobs:
     - taxonomia_catalogo
     - inventario
     - promotions
+    - combos_catalogo
     if: always()
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
+    - name: Comprobar integración de Combos obligatoria
+      env:
+        RESULTADOS: ${{ toJSON(needs) }}
+      run: node scripts/ci/verify-ci-results.mjs "$RESULTADOS" combos_catalogo
     - name: Comprobar cada resultado obligatorio
       env:
         RESULTADOS: ${{ toJSON(needs) }}

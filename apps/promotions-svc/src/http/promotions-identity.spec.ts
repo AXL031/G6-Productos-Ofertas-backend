@@ -150,6 +150,27 @@ describe('Promotions signed identity', () => {
       identity().authorize(httpContracts.listarCupones, 'Bearer ' + token()),
     ).rejects.toMatchObject({ status: 403 });
   });
+  it('keeps the existing commercial recommendation allowlist without inferring a G7 grant', async () => {
+    // Local signed issuer only. The pending registry lists Chatbot; that does
+    // not authorize us to rewrite either the operation allowlist or G7 grants.
+    for (const sub of ['modulo-marketplace', 'modulo-chatbot', 'modulo-retail'])
+      await expect(
+        identity().authorize(
+          httpContracts.obtenerRecomendaciones,
+          'Bearer ' + token({ sub, scope: 'recomendaciones:leer' }),
+        ),
+      ).resolves.toBeUndefined();
+    for (const changes of [
+      { sub: 'modulo-productos', scope: 'recomendaciones:leer' },
+      { sub: 'modulo-marketplace', scope: 'catalogo:leer' },
+    ])
+      await expect(
+        identity().authorize(
+          httpContracts.obtenerRecomendaciones,
+          'Bearer ' + token(changes),
+        ),
+      ).rejects.toMatchObject({ status: 403 });
+  });
   it('never derives the human role from permisos or a technical identity', async () => {
     await expect(
       identity().authorize(

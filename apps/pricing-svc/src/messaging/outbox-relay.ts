@@ -6,21 +6,122 @@ import {
   type OnApplicationShutdown,
 } from '@nestjs/common';
 import { connect, type ChannelModel, type ConfirmChannel } from 'amqplib';
-import { asc, eq, isNull, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, ne, sql } from 'drizzle-orm';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import { outbox } from '../persistence/pricing.schema.js';
 
-export function priceEnvelope(row: typeof outbox.$inferSelect) {
+const EVENT_NAMES = new Set(['pricing.price.changed']);
+const RESULT_NAMES = new Set([
+  'pricing.product.initialization.completed',
+  'pricing.product.initialization.rejected',
+]);
+
+function validResult(name: string, data: Record<string, unknown>): boolean {
+  if (!name.startsWith('pricing.product.initialization.')) return false;
+  const completed = name.endsWith('.completed');
+  return (
+    typeof data.product_id === 'string' &&
+    data.product_id.length > 0 &&
+    typeof data.sku_base === 'string' &&
+    data.sku_base.length > 0 &&
+    data.status === (completed ? 'READY' : 'REJECTED') &&
+    typeof data.completed_at === 'string' &&
+    Number.isFinite(Date.parse(data.completed_at)) &&
+    (data.price_version === null ||
+      (Number.isSafeInteger(data.price_version) &&
+        Number(data.price_version) >= 1)) &&
+    (data.vigencia_id === null || typeof data.vigencia_id === 'string') &&
+    (data.code === null || typeof data.code === 'string') &&
+    (completed
+      ? Number.isSafeInteger(data.price_version) &&
+        typeof data.vigencia_id === 'string' &&
+        data.code === null
+      : typeof data.code === 'string' &&
+        data.code.length > 0 &&
+        data.price_version === null &&
+        data.vigencia_id === null)
+  );
+}
+
+function validPriceChanged(data: Record<string, unknown>): boolean {
+  const decimal = (value: unknown) =>
+    value === null ||
+    (typeof value === 'string' && /^\d{1,10}\.\d{2}$/.test(value));
+  const actor = object(data.actor) ? data.actor : undefined;
+  return (
+    [
+      'target_type',
+      'product_id',
+      'sku',
+      'channel_id',
+      'currency',
+      'price_type',
+      'previous_price',
+      'new_price',
+      'operation',
+      'reason',
+      'price_version',
+      'valid_from',
+      'batch_id',
+      'actor',
+    ].every((key) => Object.hasOwn(data, key)) &&
+    (data.target_type === 'PRODUCTO' || data.target_type === 'SKU') &&
+    typeof data.product_id === 'string' &&
+    data.product_id.length > 0 &&
+    (data.target_type === 'PRODUCTO'
+      ? data.sku === null
+      : typeof data.sku === 'string' && data.sku.length > 0) &&
+    (data.channel_id === null || typeof data.channel_id === 'string') &&
+    typeof data.currency === 'string' &&
+    data.currency.length === 3 &&
+    (data.price_type === 'REGULAR' || data.price_type === 'OFERTA') &&
+    decimal(data.previous_price) &&
+    decimal(data.new_price) &&
+    (data.operation === 'CREACION' ||
+      data.operation === 'MODIFICACION' ||
+      data.operation === 'RETIRO_OFERTA') &&
+    typeof data.reason === 'string' &&
+    data.reason.trim().length > 0 &&
+    Number.isSafeInteger(data.price_version) &&
+    Number(data.price_version) >= 1 &&
+    typeof data.valid_from === 'string' &&
+    Number.isFinite(Date.parse(data.valid_from)) &&
+    data.batch_id === null &&
+    actor !== undefined &&
+    (actor.user_id === null || typeof actor.user_id === 'string') &&
+    (actor.email === null || typeof actor.email === 'string') &&
+    (actor.ip === null || typeof actor.ip === 'string')
+  );
+}
+
+function object(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function pricingEnvelope(row: typeof outbox.$inferSelect) {
+  const validKind =
+    (row.kind === 'event' && EVENT_NAMES.has(row.eventName)) ||
+    (row.kind === 'result' && RESULT_NAMES.has(row.eventName));
   if (
-    row.eventName !== 'pricing.price.changed' ||
-    row.kind !== 'event' ||
+    !validKind ||
     row.schemaVersion !== 1 ||
     !row.payload ||
     typeof row.payload !== 'object' ||
     Array.isArray(row.payload)
   )
     throw new Error('Hecho Outbox incompatible.');
+  if (
+    row.eventName === 'pricing.price.changed' &&
+    !validPriceChanged(row.payload)
+  )
+    throw new Error('Hecho de cambio de precio incompatible.');
+  if (
+    row.kind === 'result' &&
+    row.eventName.startsWith('pricing.product.initialization.') &&
+    !validResult(row.eventName, row.payload)
+  )
+    throw new Error('Resultado Outbox incompatible.');
   const body = Buffer.from(
     JSON.stringify({
       message_id: row.messageId,
@@ -89,6 +190,7 @@ export class PricingOutboxRelay
     let connection: ChannelModel | undefined;
     let channel: ConfirmChannel | undefined;
     try {
+      const producerUser = decodeURIComponent(new URL(url).username);
       connection = await connect(url, {
         timeout: 2000,
         rejectUnauthorized: true,
@@ -101,6 +203,7 @@ export class PricingOutboxRelay
         this.available = false;
       });
       await channel.checkExchange('po.eventos.x');
+      await channel.checkExchange('po.resultados.x');
       const returned = new Set<string>();
       channel.on('return', (message) => {
         if (message.properties.messageId)
@@ -111,14 +214,23 @@ export class PricingOutboxRelay
         const rows = await tx
           .select()
           .from(outbox)
-          .where(isNull(outbox.publishedAt))
+          .where(
+            and(
+              isNull(outbox.publishedAt),
+              this.config.priceChangedPublishingEnabled === true
+                ? undefined
+                : ne(outbox.eventName, 'pricing.price.changed'),
+            ),
+          )
           .orderBy(asc(outbox.occurredAt), asc(outbox.id))
           .limit(10)
           .for('update', { skipLocked: true });
         let published = 0;
         for (const row of rows) {
           try {
-            const body = priceEnvelope(row);
+            const body = pricingEnvelope(row);
+            const exchange =
+              row.kind === 'result' ? 'po.resultados.x' : 'po.eventos.x';
             await new Promise<void>((resolve, reject) => {
               const timeout = setTimeout(
                 () => reject(new Error('Confirmación AMQP no disponible.')),
@@ -126,7 +238,7 @@ export class PricingOutboxRelay
               );
               try {
                 publisher.publish(
-                  'po.eventos.x',
+                  exchange,
                   row.eventName,
                   body,
                   {
@@ -136,6 +248,7 @@ export class PricingOutboxRelay
                     contentEncoding: 'utf-8',
                     messageId: row.messageId,
                     correlationId: row.correlationId,
+                    userId: producerUser,
                   },
                   (error: unknown) => {
                     clearTimeout(timeout);

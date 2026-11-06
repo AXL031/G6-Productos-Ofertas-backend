@@ -3,6 +3,7 @@ set -Eeuo pipefail
 
 readonly REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 readonly TEMP_ROOT="$(mktemp -d)"
+readonly REQUIRE_DOCKER_RUNTIME="${G6_REQUIRE_DOCKER_RUNTIME:-false}"
 readonly STAGED_OPS="${TEMP_ROOT}/opt/g6-productos-ofertas/lib"
 readonly MOCK_BIN="${TEMP_ROOT}/bin"
 readonly STATE_ROOT="${TEMP_ROOT}/var/lib"
@@ -34,6 +35,20 @@ trap cleanup_test EXIT
 fail() {
   printf 'FALLO: %s\n' "$1" >&2
   exit 1
+}
+
+[[ "$REQUIRE_DOCKER_RUNTIME" == true || "$REQUIRE_DOCKER_RUNTIME" == false ]] ||
+  fail 'G6_REQUIRE_DOCKER_RUNTIME debe ser true o false'
+
+docker_host_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -m "$path"
+  elif command -v wslpath >/dev/null 2>&1 && [[ "$path" == /mnt/* ]]; then
+    wslpath -m "$path"
+  else
+    printf '%s\n' "$path"
+  fi
 }
 
 source "${REPO_ROOT}/ops/oracle/service-registry.sh"
@@ -82,7 +97,7 @@ sed -i "s|/usr/local/lib/g6-productos-ofertas/deploy-g6-service|${STAGED_OPS}/de
 chmod +x "$STAGED_OPS/deploy-g6-service.sh"
 
 version_output="$(env -u SSH_ORIGINAL_COMMAND bash "$STAGED_OPS/deploy-g6-service.sh" --version)"
-[[ "$version_output" == 'ejecutor=4 registro=2' ]] || fail "versiones instaladas inesperadas: $version_output"
+[[ "$version_output" == 'ejecutor=5 registro=2' ]] || fail "versiones instaladas inesperadas: $version_output"
 cp "$STAGED_OPS/services.psv" "${TEMP_ROOT}/services.psv.version-backup"
 sed -i 's/^#registry-version=2$/#registry-version=9/' "$STAGED_OPS/services.psv"
 if env -u SSH_ORIGINAL_COMMAND bash "$STAGED_OPS/deploy-g6-service.sh" --version >"${TEMP_ROOT}/result.log" 2>&1; then
@@ -95,7 +110,9 @@ touch "${TEMP_ROOT}/opt/g6-productos-ofertas/shared/docker-compose.service.yml"
 printf '%s\n' 'DATABASE_URL=test-only' > "${TEMP_ROOT}/etc/g6-inventory/runtime.env"
 : > "${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env"
 cp "${REPO_ROOT}/docker-compose.inventory.yml" "${TEMP_ROOT}/docker-compose.inventory.yml"
-sed -i "s|/etc/g6-inventory/runtime.env|${TEMP_ROOT}/etc/g6-inventory/runtime.env|g" \
+INVENTORY_RUNTIME_ENV_DOCKER_PATH="$(docker_host_path "${TEMP_ROOT}/etc/g6-inventory/runtime.env")"
+CATALOG_RUNTIME_ENV_DOCKER_PATH="$(docker_host_path "${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env")"
+sed -i "s|/etc/g6-inventory/runtime.env|${INVENTORY_RUNTIME_ENV_DOCKER_PATH}|g" \
   "${TEMP_ROOT}/docker-compose.inventory.yml"
 
 validate_compose_files() {
@@ -104,7 +121,7 @@ validate_compose_files() {
     [[ -n "$service" && "$service" != \#* && "$service" != inventory-svc ]] || continue
     config="$(env G6_SERVICE_IMAGE="ghcr.io/example/${service}:0123456789012345678901234567890123456789" \
       G6_SERVICE_CONTAINER="g6-${service}" G6_SERVICE_PORT="$port" G6_SERVICE_PORT_ENV="$port_env" \
-      G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="${TEMP_ROOT}/etc/g6-catalog-svc/runtime.env" \
+      G6_SERVICE_IMAGE_NAME="$service" G6_SERVICE_ENV_FILE="$CATALOG_RUNTIME_ENV_DOCKER_PATH" \
       docker compose --project-name "g6-${service}" \
         --file "${REPO_ROOT}/ops/oracle/docker-compose.service.yml" \
         --file "${REPO_ROOT}/ops/oracle/docker-compose.service.http.yml" config --format yaml)" ||
@@ -155,12 +172,13 @@ REQUIRED_COMPOSE_ENV
       --file "${REPO_ROOT}/ops/oracle/docker-compose.inventory.http.yml" config --quiet >/dev/null 2>&1; then
     fail 'Compose aceptó la ausencia de INVENTORY_IMAGE'
   fi
-  printf 'CORRECTO: Compose base y opt-in validados; aliases únicos, healthchecks y puertos loopback conservados\n'
+  printf 'CORRECTO: docker compose config validado para los nueve servicios y overlays; aliases, healthchecks y puertos loopback conservados\n'
 }
 
 if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1; then
   validate_compose_files
 else
+  [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] || fail 'Docker Compose es obligatorio pero no está disponible'
   printf 'NO EJECUTADO: docker compose config no está disponible en este entorno\n'
 fi
 
@@ -293,18 +311,60 @@ cat > "${MOCK_BIN}/curl" <<'MOCK_CURL'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 readonly ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+output_file=''
+url=''
+while (($#)); do
+  case "$1" in
+    --output) output_file="$2"; shift 2 ;;
+    --write-out) [[ "$2" == '%{http_code}' ]] || exit 9; shift 2 ;;
+    --max-time) [[ "$2" == 2 ]] || exit 10; shift 2 ;;
+    --fail|--silent|--show-error) shift ;;
+    http://*) url="$1"; shift ;;
+    *) exit 11 ;;
+  esac
+done
 container="$(<"${ROOT}/target-container")"
 active_file="${ROOT}/var/lib/containers/${container}"
 [[ -f "$active_file" ]] || exit 7
 image="$(<"$active_file")"
-if [[ -f "${ROOT}/unhealthy-http-image" && "$(<"${ROOT}/unhealthy-http-image")" == "$image" ]]; then exit 8; fi
-[[ "${1:-}" == --fail && "${2:-}" == --silent && "${3:-}" == "http://127.0.0.1:${MOCK_EXPECTED_PORT}/health" ]]
+[[ "$url" == "http://127.0.0.1:${MOCK_EXPECTED_PORT}/health" ||
+  "$url" == "http://127.0.0.1:${MOCK_EXPECTED_PORT}/health/ready" ]] || exit 12
+if [[ -z "$output_file" ]]; then
+  [[ "$url" == "http://127.0.0.1:${MOCK_EXPECTED_PORT}/health" ]] || exit 13
+  if [[ -f "${ROOT}/unhealthy-http-image" && "$(<"${ROOT}/unhealthy-http-image")" == "$image" ]]; then exit 8; fi
+  exit 0
+fi
+if [[ -f "${ROOT}/unhealthy-http-image" && "$(<"${ROOT}/unhealthy-http-image")" == "$image" && "$url" == */health ]]; then exit 8; fi
+if [[ "$url" == */health/ready ]]; then
+  printf '%s\n' "$image" >> "${ROOT}/readiness-probes.log"
+  if [[ -f "${ROOT}/forbid-active-image" && "$(<"${ROOT}/forbid-active-image")" == "$image" &&
+    -f "${MOCK_ACTIVE_IMAGE_FILE:-/nonexistent}" && "$(<"${MOCK_ACTIVE_IMAGE_FILE}")" == "$image" ]]; then
+    exit 29
+  fi
+  if [[ -f "${ROOT}/timeout-readiness-image" && "$(<"${ROOT}/timeout-readiness-image")" == "$image" ]]; then exit 28; fi
+  if [[ -f "${ROOT}/unready-readiness-image" && "$(<"${ROOT}/unready-readiness-image")" == "$image" ]]; then
+    printf '%s\n' '{"service":"catalog-svc","status":"not_ready"}' > "$output_file"
+    printf '503'
+    exit 0
+  fi
+  printf '%s\n' '{"service":"catalog-svc","status":"ready","database":"ready"}' > "$output_file"
+else
+  : > "$output_file"
+fi
+printf '200'
 MOCK_CURL
+cat > "${MOCK_BIN}/jq" <<'MOCK_JQ'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+[[ "${1:-}" == -e && "${2:-}" == 'type == "object" and .service == "catalog-svc" and .status == "ready"' ]]
+[[ "$(<"${3:?}")" == '{"service":"catalog-svc","status":"ready","database":"ready"}' ]]
+printf 'true\n'
+MOCK_JQ
 cat > "${MOCK_BIN}/sleep" <<'MOCK_SLEEP'
 #!/usr/bin/env bash
 exit 0
 MOCK_SLEEP
-chmod +x "${MOCK_BIN}/docker" "${MOCK_BIN}/curl" "${MOCK_BIN}/sleep"
+chmod +x "${MOCK_BIN}/docker" "${MOCK_BIN}/curl" "${MOCK_BIN}/jq" "${MOCK_BIN}/sleep"
 printf '%s\n' 'bridge|local|false|false|false|false|default|1|0' > "${TEMP_ROOT}/g6-http-config"
 : > "${TEMP_ROOT}/network-members.tsv"
 
@@ -312,10 +372,12 @@ reset_simulation() {
   rm -rf "${TEMP_ROOT}/var/lib/containers"
   mkdir -p "${TEMP_ROOT}/var/lib/containers"
   rm -f "${TEMP_ROOT}/docker.log" "${TEMP_ROOT}/target-container" \
-    "${TEMP_ROOT}/docker-args.log" \
+    "${TEMP_ROOT}/docker-args.log" "${TEMP_ROOT}/readiness-probes.log" \
     "${TEMP_ROOT}/network.log" \
     "${TEMP_ROOT}/fail-pull" "${TEMP_ROOT}/fail-up" \
     "${TEMP_ROOT}/unhealthy-docker-image" "${TEMP_ROOT}/unhealthy-http-image" \
+    "${TEMP_ROOT}/unready-readiness-image" "${TEMP_ROOT}/timeout-readiness-image" \
+    "${TEMP_ROOT}/forbid-active-image" \
     "${TEMP_ROOT}/block-pull" "${TEMP_ROOT}/block-up" \
     "${TEMP_ROOT}/pull-started" "${TEMP_ROOT}/pull-release" \
     "${TEMP_ROOT}/rollback-started" "${TEMP_ROOT}/rollback-release"
@@ -325,6 +387,7 @@ run_deploy() {
   local command="$1" port="$2" expected_status="$3" executable="${4:-${STAGED_OPS}/deploy-g6-service.sh}" result
   if printf '%s\n%s\n' 'simulation-only-user' 'simulation-only-token' |
     env PATH="${MOCK_BIN}:${PATH}" SSH_ORIGINAL_COMMAND="$command" MOCK_EXPECTED_PORT="$port" \
+      MOCK_ACTIVE_IMAGE_FILE="${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" \
       bash "$executable" > "${TEMP_ROOT}/result.log" 2>&1; then
     result=0
   else
@@ -376,10 +439,12 @@ printf 'CORRECTO: comando SSH anterior y aislamiento de inventory-svc\n'
 reset_simulation
 printf '%s\n' "$OLD_INVENTORY_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc"
 printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
+printf '%s\n' "$CATALOG_IMAGE" > "${TEMP_ROOT}/forbid-active-image"
 run_deploy "service-deploy catalog-svc ${IMAGE_SHA}" 3001 0
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$CATALOG_IMAGE"
 assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/previous-image" "$OLD_CATALOG_IMAGE"
 assert_value "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc" "$OLD_INVENTORY_IMAGE"
+grep -Fq "${CATALOG_IMAGE}" "${TEMP_ROOT}/readiness-probes.log" || fail 'Catalog no ejecutó su gate de readiness'
 [[ "$(<"${TEMP_ROOT}/docker.log")" == $'g6-catalog-svc pull ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:0123456789012345678901234567890123456789\ng6-catalog-svc up ghcr.io/taller-sw-web/g6-productos-ofertas-backend/catalog-svc:0123456789012345678901234567890123456789' ]] || fail 'catalog-svc alteró un proyecto o servicio no seleccionado'
 printf 'CORRECTO: ejecución genérica de catalog-svc aislada de Inventario\n'
 
@@ -510,6 +575,38 @@ assert_value "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc" "$OLD_INVENTORY_
 printf 'CORRECTO: rollback catalog-svc sin modificar inventory-svc\n'
 
 reset_simulation
+printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
+printf '%s\n' "$CATALOG_NEXT_IMAGE" > "${TEMP_ROOT}/unready-readiness-image"
+run_deploy "service-deploy catalog-svc ${NEXT_SHA}" 3001 1
+assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$OLD_CATALOG_IMAGE"
+assert_value "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" "$OLD_CATALOG_IMAGE"
+[[ "$(grep -Fxc "$CATALOG_NEXT_IMAGE" "${TEMP_ROOT}/readiness-probes.log")" == 30 ]] ||
+  fail 'Catalog no limitó a 30 intentos la readiness 503'
+printf 'CORRECTO: Catalog healthy con readiness 503 falla y restaura la imagen anterior\n'
+
+reset_simulation
+printf '%s\n' "$OLD_CATALOG_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc"
+printf '%s\n' "$CATALOG_NEXT_IMAGE" > "${TEMP_ROOT}/timeout-readiness-image"
+run_deploy "service-deploy catalog-svc ${NEXT_SHA}" 3001 1
+assert_value "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" "$OLD_CATALOG_IMAGE"
+assert_value "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" "$OLD_CATALOG_IMAGE"
+[[ "$(grep -Fxc "$CATALOG_NEXT_IMAGE" "${TEMP_ROOT}/readiness-probes.log")" == 30 ]] ||
+  fail 'Catalog no limitó a 30 intentos el timeout de readiness'
+printf 'CORRECTO: timeout de readiness Catalog falla y restaura la imagen anterior\n'
+
+reset_simulation
+rm -f "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" \
+  "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" \
+  "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/previous-image"
+printf '%s\n' "$CATALOG_NEXT_IMAGE" > "${TEMP_ROOT}/unready-readiness-image"
+run_deploy "service-deploy catalog-svc ${NEXT_SHA}" 3001 1
+[[ ! -e "${STATE_ROOT}/g6-productos-ofertas/catalog-svc/active-image" ]] ||
+  fail 'Catalog sin imagen anterior declaró active-image pese a readiness fallida'
+[[ ! -e "${TEMP_ROOT}/var/lib/containers/g6-catalog-svc" ]] ||
+  fail 'Catalog sin imagen anterior no eliminó el contenedor candidato fallido'
+printf 'CORRECTO: sin versión previa no se declara Catalog activo y se elimina el candidato\n'
+
+reset_simulation
 printf '%s\n' "$OLD_INVENTORY_IMAGE" > "${TEMP_ROOT}/var/lib/containers/g6-inventory-svc"
 printf '%s\n' "$INVENTORY_NEXT_IMAGE" > "${TEMP_ROOT}/unhealthy-http-image"
 run_deploy "inventory-deploy ${NEXT_SHA}" 3005 1 "${STAGED_OPS}/deploy-inventory-svc.sh"
@@ -600,6 +697,8 @@ if command -v docker >/dev/null 2>&1 && docker compose version >/dev/null 2>&1 &
     [[ -n "$(docker ps -aq --filter label=com.docker.compose.project="$RUNTIME_PROJECT_TAXONOMY")" ]] ||
     docker network inspect "${RUNTIME_PROJECT_CATALOG}_default" >/dev/null 2>&1 ||
     docker network inspect "${RUNTIME_PROJECT_TAXONOMY}_default" >/dev/null 2>&1; then
+    [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] ||
+      fail 'los recursos Docker requeridos para aliases reales ya existen; no se modificaron'
     printf 'NO EJECUTADO: recursos Docker de los proyectos del registro ya existen; se evita tocarlos\n'
   else
     candidate_network="g6-h5-${BASHPID}"
@@ -688,6 +787,8 @@ RUNTIME_COMPOSE
     printf 'CORRECTO: preflight real aceptó ambos miembros; se detuvo luego en el gate de imagen antes de login/pull/up\n'
   fi
 else
+  [[ "$REQUIRE_DOCKER_RUNTIME" != true ]] ||
+    fail 'Docker, Compose, daemon e inventory-svc:ci son obligatorios para validar aliases reales'
   printf 'NO EJECUTADO: Docker daemon e imagen inventory-svc:ci requeridos para verificar aliases runtime\n'
 fi
 

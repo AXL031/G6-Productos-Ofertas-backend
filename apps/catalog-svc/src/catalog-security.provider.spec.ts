@@ -7,8 +7,11 @@ import request from 'supertest';
 import { AppModule } from './app.module.js';
 import {
   CATALOG_SECURITY_CONFIG,
+  CatalogTokenVerifier,
   type CatalogSecurityConfig,
 } from './catalog-auth.js';
+import { CatalogBulkIdentity } from './catalog-bulk.service.js';
+import type { CatalogConfig } from './config.js';
 import { CATALOG_AMQP_SETTINGS } from './catalog-amqp.js';
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import { BarcodeRepository } from './barcode.repository.js';
@@ -20,6 +23,13 @@ describe('Marketplace provider security and invalid pagination regression', () =
     origin: string,
     app: INestApplication,
     unconfigured: INestApplication;
+  let serviceClaims: Record<string, unknown> = {
+    sub: 'modulo-productos',
+    tipo: 'servicio',
+    aud: ['api-productos'],
+    scope: 'catalogo:leer',
+  };
+  let tokenRequest = '';
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const key = {
     ...pair.publicKey.export({ format: 'jwk' }),
@@ -70,7 +80,20 @@ describe('Marketplace provider security and invalid pagination regression', () =
       if (req.url === '/discovery')
         res.end(JSON.stringify({ issuer: origin, jwks_uri: origin + '/keys' }));
       else if (req.url === '/keys') res.end(JSON.stringify({ keys: [key] }));
-      else {
+      else if (req.url === '/api/v1/auth/token' && req.method === 'POST') {
+        req.setEncoding('utf8');
+        req.on('data', (chunk: string) => (tokenRequest += chunk));
+        req.on('end', () =>
+          res.end(
+            JSON.stringify({
+              accessToken: token(serviceClaims),
+              tokenType: 'Bearer',
+              expiresIn: 600,
+              scopes: ['catalogo:leer'],
+            }),
+          ),
+        );
+      } else {
         res.statusCode = 404;
         res.end('{}');
       }
@@ -165,6 +188,87 @@ describe('Marketplace provider security and invalid pagination regression', () =
           .expect(503)
       ).body.code,
     ).toBe('SERVICIO_NO_DISPONIBLE');
+  });
+
+  it('obtains and verifies the approved Catalog-to-Taxonomy service identity', async () => {
+    tokenRequest = '';
+    serviceClaims = {
+      sub: 'modulo-productos',
+      tipo: 'servicio',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+    };
+    const config = {
+      security: {
+        issuer: origin,
+        discoveryUrl: origin + '/discovery',
+        jwksUrl: origin + '/keys',
+      },
+      serviceCredentials: {
+        tokenUrl: origin + '/api/v1/auth/token',
+        clientSecret: 'local-fixture-secret',
+      },
+    } as CatalogConfig;
+    const identity = new CatalogBulkIdentity(
+      config,
+      new CatalogTokenVerifier(config.security),
+    );
+    const authorization = await identity.authorization(
+      AbortSignal.timeout(5000),
+    );
+    const principal = await new CatalogTokenVerifier(config.security).verify(
+      authorization.slice('Bearer '.length),
+    );
+    expect(principal).toMatchObject({
+      kind: 'service',
+      subject: 'modulo-productos',
+      audiences: ['api-productos'],
+      scopes: ['catalogo:leer'],
+    });
+    expect(new URLSearchParams(tokenRequest)).toMatchObject(
+      new URLSearchParams({
+        grant_type: 'client_credentials',
+        client_id: 'modulo-productos',
+        client_secret: 'local-fixture-secret',
+        scope: 'catalogo:leer',
+      }),
+    );
+  });
+
+  it.each([
+    ['wrong audience', { aud: ['another-api'] }],
+    ['missing scope', { scope: 'precios:leer' }],
+    ['different client', { sub: 'modulo-otro' }],
+    [
+      'human user token',
+      { tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] },
+    ],
+  ])('rejects the Taxonomy identity when it has %s', async (_case, claims) => {
+    serviceClaims = {
+      sub: 'modulo-productos',
+      tipo: 'servicio',
+      aud: ['api-productos'],
+      scope: 'catalogo:leer',
+      ...claims,
+    };
+    const config = {
+      security: {
+        issuer: origin,
+        discoveryUrl: origin + '/discovery',
+        jwksUrl: origin + '/keys',
+      },
+      serviceCredentials: {
+        tokenUrl: origin + '/api/v1/auth/token',
+        clientSecret: 'local-fixture-secret',
+      },
+    } as CatalogConfig;
+    const identity = new CatalogBulkIdentity(
+      config,
+      new CatalogTokenVerifier(config.security),
+    );
+    await expect(
+      identity.authorization(AbortSignal.timeout(5000)),
+    ).rejects.toMatchObject({ status: 503 });
   });
 
   it('resolves exact barcode text only for Retail and preserves the contractual 404', async () => {

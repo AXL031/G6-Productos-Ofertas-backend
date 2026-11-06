@@ -356,3 +356,105 @@ test('un reporte no puede sobrescribir los archivos de entrada', () => {
     /REPORT_WOULD_OVERWRITE_INPUT/,
   );
 });
+
+test('la ratificación estructurada de Catálogo sustituye al bloqueo hardcodeado', () => {
+  const { proposal, catalog } = inputs();
+  const baseline = loaded(buildCandidate(proposal, catalog));
+  // El baseline real de Supabase no tiene umbrales; el candidato pre-cargado
+  // los tendria todos y el escenario autorizado es la insercion de los dos.
+  baseline.tables.stock_threshold_override = [];
+  const report = prepareData(proposal, catalog, baseline);
+  assert.equal(report.catalog_ratification.covered, true);
+  assert.equal(report.catalog_ratification.covered_skus, 7);
+  assert.ok(!report.blockers.includes('CURRENT_CATALOG_CONFIRMATION_REQUIRED'));
+  assert.ok(!report.blockers.includes('CATALOG_RATIFICATION_REQUIRED'));
+  assert.equal(report.limited_load.technical_ready, true);
+  assert.equal(report.limited_load.authorized, false);
+  assert.equal(report.limited_load.ready_for_load, false);
+});
+
+test('sin ratificación declarada el dry-run es fail-closed', () => {
+  const { proposal, catalog } = inputs();
+  const sinRatificar = structuredClone(catalog);
+  delete sinRatificar.source.ratified;
+  const report = prepareData(
+    proposal,
+    sinRatificar,
+    loaded(buildCandidate(proposal, sinRatificar)),
+  );
+  assert.equal(report.catalog_ratification, null);
+  assert.ok(report.blockers.includes('CATALOG_RATIFICATION_REQUIRED'));
+  assert.equal(report.limited_load.technical_ready, false);
+  assert.equal(report.limited_load.ready_for_load, false);
+  assert.equal(report.ready_for_load, false);
+});
+
+test('una ratificación declarada pero malformada aborta en lugar de asumirse', () => {
+  const { proposal, catalog } = inputs();
+  const rota = structuredClone(catalog);
+  rota.source.ratified_by = '';
+  assert.throws(
+    () =>
+      prepareData(proposal, rota, loaded(buildCandidate(proposal, rota))),
+    /INVALID_CATALOG_RATIFICATION/,
+  );
+});
+
+test('una ratificación duplicada o incompleta no se acepta', () => {
+  const { proposal, catalog } = inputs();
+  const duplicada = structuredClone(catalog);
+  duplicada.source.ratified_skus = [
+    duplicada.source.ratified_skus[0],
+    duplicada.source.ratified_skus[0],
+  ];
+  assert.throws(
+    () =>
+      prepareData(
+        proposal,
+        duplicada,
+        loaded(buildCandidate(proposal, duplicada)),
+      ),
+    /INVALID_CATALOG_RATIFICATION/,
+  );
+
+  const parcial = structuredClone(catalog);
+  parcial.source.ratified_skus = parcial.source.ratified_skus.slice(0, 3);
+  const report = prepareData(
+    proposal,
+    parcial,
+    loaded(buildCandidate(proposal, parcial)),
+  );
+  assert.ok(report.blockers.includes('CATALOG_RATIFICATION_INCOMPLETE'));
+  assert.equal(report.catalog_ratification.covered, false);
+  assert.equal(report.limited_load.technical_ready, false);
+});
+
+test('los conflictos de saldos siguen visibles y solo bloquean el alcance completo', () => {
+  const { proposal, catalog } = inputs();
+  const baseline = loaded(buildCandidate(proposal, catalog));
+  baseline.tables.stock_threshold_override = [];
+  baseline.tables.stock_balance[0].on_hand++;
+  const report = prepareData(proposal, catalog, baseline);
+  assert.ok(report.summary.conflict > 0);
+  assert.ok(report.blockers.includes('BALANCE_AND_SEED_CONFLICTS_PRESENT'));
+  assert.equal(report.full_load.scope, 'ALL_PROPOSED_ROWS');
+  assert.equal(report.full_load.technical_ready, false);
+  assert.equal(report.full_load.conflicts, report.summary.conflict);
+  assert.equal(report.limited_load.scope, 'THRESHOLDS_ONLY');
+  assert.equal(report.limited_load.conflicts, 0);
+  assert.equal(report.limited_load.inserts, 2);
+  assert.equal(report.limited_load.technical_ready, true);
+});
+
+test('un conflicto de umbral sí bloquea el alcance limitado', () => {
+  const { proposal, catalog } = inputs();
+  const baseline = loaded(buildCandidate(proposal, catalog));
+  const global = baseline.tables.stock_threshold_override.find(
+    (row) => row.sku_id === null,
+  );
+  global.umbral_efectivo = 9;
+  const report = prepareData(proposal, catalog, baseline);
+  assert.equal(report.limited_load.conflicts, 1);
+  assert.ok(report.limited_load.blockers.includes('THRESHOLD_CONFLICT_PRESENT'));
+  assert.equal(report.limited_load.technical_ready, false);
+});

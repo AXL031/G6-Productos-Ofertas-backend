@@ -1,0 +1,392 @@
+{
+  "profiles": 55,
+  "values": 220,
+  "estimates": 213,
+  "published_not_homologated": 7,
+  "distinct_templates": 27,
+  "skus_sharing_template": 39,
+  "packaged_presentations": 51,
+  "unpackaged_balls": 4,
+  "methodology": "Heurística declarada por el usuario: categoría, talla, modelo y presentación logística; sin medición directa ni ajuste estadístico; plantillas reutilizadas sin diferencias artificiales.",
+  "templates": [
+    {
+      "template": "T01",
+      "measures": [
+        "0.185",
+        "32",
+        "23",
+        "3"
+      ],
+      "skus": [
+        "ADI-ENT22-AZU-M",
+        "ADI-ENT26-AZU-M",
+        "ADI-ENT26-BLA-M",
+        "ADI-SQUA25-JG5832-NEG-M",
+        "NIK-PARK7-BV6708-NEG-M",
+        "PUM-SC-782244-BLA-M"
+      ],
+      "count": 6
+    },
+    {
+      "template": "T02",
+      "measures": [
+        "0.145",
+        "30",
+        "22",
+        "4"
+      ],
+      "skus": [
+        "ADI-ENT22-SHORT-GRI-S"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T03",
+      "measures": [
+        "0.165",
+        "33.7",
+        "24.2",
+        "4.5"
+      ],
+      "skus": [
+        "ADI-ENT22-SHORT-GRI-M"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T04",
+      "measures": [
+        "0.19",
+        "35",
+        "25",
+        "5"
+      ],
+      "skus": [
+        "ADI-ENT22-SHORT-GRI-L"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T05",
+      "measures": [
+        "0.17",
+        "30",
+        "22",
+        "2.5"
+      ],
+      "skus": [
+        "ADI-ENT26-AZU-S",
+        "ADI-ENT26-BLA-S",
+        "ADI-SQUA25-JG5832-NEG-S",
+        "NIK-PARK7-BV6708-NEG-S",
+        "PUM-SC-782244-BLA-S"
+      ],
+      "count": 5
+    },
+    {
+      "template": "T06",
+      "measures": [
+        "0.205",
+        "34",
+        "24",
+        "3"
+      ],
+      "skus": [
+        "ADI-ENT26-AZU-L",
+        "ADI-ENT26-BLA-L",
+        "ADI-SQUA25-JG5832-NEG-L",
+        "NIK-PARK7-BV6708-NEG-L",
+        "PUM-SC-782244-BLA-L"
+      ],
+      "count": 5
+    },
+    {
+      "template": "T07",
+      "measures": [
+        "0.42",
+        "22",
+        "22",
+        "22"
+      ],
+      "skus": [
+        "ADI-MESSI-JI8291-05"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T08",
+      "measures": [
+        "0.82",
+        "32",
+        "20",
+        "12"
+      ],
+      "skus": [
+        "ADI-PRED-IG7760-MUL-38"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T09",
+      "measures": [
+        "0.87",
+        "34",
+        "22",
+        "12.5"
+      ],
+      "skus": [
+        "ADI-PRED-IG7760-MUL-40"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T10",
+      "measures": [
+        "0.93",
+        "35",
+        "23",
+        "13"
+      ],
+      "skus": [
+        "ADI-PRED-IG7760-MUL-42",
+        "PUM-ULP-NEG-42"
+      ],
+      "count": 2
+    },
+    {
+      "template": "T11",
+      "measures": [
+        "0.97",
+        "36",
+        "24",
+        "13"
+      ],
+      "skus": [
+        "ADI-PRED-IG7760-MUL-43"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T12",
+      "measures": [
+        "0.85",
+        "32",
+        "20",
+        "12"
+      ],
+      "skus": [
+        "ADI-RF3-GRI-38"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T13",
+      "measures": [
+        "0.88",
+        "33",
+        "21",
+        "12"
+      ],
+      "skus": [
+        "ADI-RF3-GRI-39"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T14",
+      "measures": [
+        "0.08",
+        "20",
+        "12",
+        "3"
+      ],
+      "skus": [
+        "ADI-RUNX-JD9558-NEG-EU3436",
+        "NIK-EVP-FQ0327-NEG-EU3438",
+        "NIK-EVP-FQ0327-BLA-EU3438"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T15",
+      "measures": [
+        "0.09",
+        "21",
+        "13",
+        "3"
+      ],
+      "skus": [
+        "ADI-RUNX-JD9558-NEG-EU3739",
+        "NIK-EVP-FQ0327-NEG-EU3842",
+        "NIK-EVP-FQ0327-BLA-EU3842"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T16",
+      "measures": [
+        "0.1",
+        "22",
+        "14",
+        "3"
+      ],
+      "skus": [
+        "ADI-RUNX-JD9558-NEG-EU4042",
+        "NIK-EVP-FQ0327-NEG-EU4246",
+        "NIK-EVP-FQ0327-BLA-EU4246"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T17",
+      "measures": [
+        "0.145",
+        "27",
+        "20",
+        "3"
+      ],
+      "skus": [
+        "ADI-SQUA25-JH3407-AZU-S",
+        "NIK-PARK3-M-BV6855-NEG-S",
+        "NIK-PARK3-W-BV6860-NEG-S"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T18",
+      "measures": [
+        "0.165",
+        "29",
+        "21",
+        "3.5"
+      ],
+      "skus": [
+        "ADI-SQUA25-JH3407-AZU-M",
+        "NIK-PARK3-M-BV6855-NEG-M",
+        "NIK-PARK3-W-BV6860-NEG-M"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T19",
+      "measures": [
+        "0.185",
+        "31",
+        "22",
+        "4"
+      ],
+      "skus": [
+        "ADI-SQUA25-JH3407-AZU-L",
+        "NIK-PARK3-M-BV6855-NEG-L",
+        "NIK-PARK3-W-BV6860-NEG-L"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T20",
+      "measures": [
+        "0.43",
+        "22",
+        "22",
+        "22"
+      ],
+      "skus": [
+        "NIK-ACADEMY-HV4386-05",
+        "NIK-PITCH-05",
+        "PUM-ORBITA-084641-05"
+      ],
+      "count": 3
+    },
+    {
+      "template": "T21",
+      "measures": [
+        "0.13",
+        "25",
+        "18",
+        "3"
+      ],
+      "skus": [
+        "NIK-PARK3-W-BV6860-NEG-XS"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T22",
+      "measures": [
+        "0.21",
+        "33",
+        "23",
+        "4"
+      ],
+      "skus": [
+        "NIK-PARK3-W-BV6860-NEG-XL"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T23",
+      "measures": [
+        "0.95",
+        "34",
+        "22",
+        "13"
+      ],
+      "skus": [
+        "NIK-REV7-NEG-41"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T24",
+      "measures": [
+        "0.98",
+        "35",
+        "23",
+        "13"
+      ],
+      "skus": [
+        "NIK-REV7-NEG-42"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T25",
+      "measures": [
+        "0.125",
+        "28",
+        "19",
+        "1.5"
+      ],
+      "skus": [
+        "UA-TECH20-1326413-NEG-S"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T26",
+      "measures": [
+        "0.138",
+        "30",
+        "20",
+        "1.6"
+      ],
+      "skus": [
+        "UA-TECH20-1326413-NEG-M"
+      ],
+      "count": 1
+    },
+    {
+      "template": "T27",
+      "measures": [
+        "0.149",
+        "31",
+        "20.5",
+        "1.7"
+      ],
+      "skus": [
+        "UA-TECH20-1326413-NEG-L"
+      ],
+      "count": 1
+    }
+  ]
+}

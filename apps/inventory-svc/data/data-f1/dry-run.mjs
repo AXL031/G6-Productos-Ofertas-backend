@@ -534,6 +534,60 @@ export function prepareData(proposal, catalog, baseline) {
       (ref.kind === 'VARIANTE' && ref.variant_status !== 'ACTIVA')
     );
   });
+  // La ratificación de Catálogo es evidencia estructurada, no un supuesto.
+  // Si falta, el resultado es fail-closed; si está declarada pero es
+  // inconsistente, el preparador aborta en lugar de asumirla.
+  const ratified = catalog.source.ratified === true;
+  if (ratified) {
+    if (
+      !text(catalog.source.ratified_by) ||
+      !instant(catalog.source.ratified_at) ||
+      !Array.isArray(catalog.source.ratified_skus) ||
+      catalog.source.ratified_skus.length === 0 ||
+      !catalog.source.ratified_skus.every((sku) => text(sku)) ||
+      new Set(catalog.source.ratified_skus).size !==
+        catalog.source.ratified_skus.length
+    )
+      fail('INVALID_CATALOG_RATIFICATION');
+  }
+  const ratifiedSkus = new Set(ratified ? catalog.source.ratified_skus : []);
+  const ratifiedCoverage = used.every((sku) => ratifiedSkus.has(sku));
+  const ratificationBlockers = !ratified
+    ? ['CATALOG_RATIFICATION_REQUIRED']
+    : ratifiedCoverage
+      ? []
+      : ['CATALOG_RATIFICATION_INCOMPLETE'];
+  const realBaseline = baseline.source.kind === 'READ_ONLY_EXPORT';
+  const baselineBlockers = realBaseline ? [] : ['NO_REAL_BASELINE'];
+  // El dry-run distingue el alcance completo (bloqueado por los conflictos de
+  // saldos/evidencia) del alcance limitado a umbrales, que puede autorizarse
+  // por separado. La autorización nunca se infiere del propio reporte.
+  const thresholdDiff = diff.filter(
+    (entry) => entry.table === 'stock_threshold_override',
+  );
+  const thresholdConflicts = thresholdDiff.filter(
+    (entry) => entry.action === 'CONFLICT',
+  ).length;
+  const thresholdInserts = thresholdDiff.filter(
+    (entry) => entry.action === 'INSERT',
+  ).length;
+  const fullLoadBlockers = [
+    ...ratificationBlockers,
+    ...baselineBlockers,
+    ...(unpublished.length ? ['CATALOG_REFERENCE_NOT_PUBLISHED'] : []),
+    'INVENTORY_SEED_REGISTRY_REVIEW_REQUIRED',
+    'OUTBOX_SEED_GRANT_NOT_APPROVED',
+    'MARCO_LOAD_AUTHORIZATION_REQUIRED',
+    ...(counts.conflict ? ['BALANCE_AND_SEED_CONFLICTS_PRESENT'] : []),
+  ];
+  // La publicación comercial (BORRADOR) es un gate comercial, no una
+  // precondición de integridad para insertar umbrales por sku_id.
+  const limitedLoadBlockers = [
+    ...ratificationBlockers,
+    ...baselineBlockers,
+    ...(thresholdConflicts ? ['THRESHOLD_CONFLICT_PRESENT'] : []),
+    ...(thresholdInserts ? [] : ['NO_THRESHOLD_INSERTS']),
+  ];
   return {
     version: 1,
     mode: 'OFFLINE_DRY_RUN',
@@ -551,16 +605,31 @@ export function prepareData(proposal, catalog, baseline) {
       opening_movements: proposed.kardex.length,
       ...counts,
     },
-    blockers: [
-      'CURRENT_CATALOG_CONFIRMATION_REQUIRED',
-      'INVENTORY_SEED_REGISTRY_REVIEW_REQUIRED',
-      'OUTBOX_SEED_GRANT_NOT_APPROVED',
-      'MARCO_LOAD_AUTHORIZATION_REQUIRED',
-      ...(baseline.source.kind === 'SYNTHETIC_EMPTY'
-        ? ['NO_REAL_BASELINE']
-        : []),
-      ...(unpublished.length ? ['CATALOG_REFERENCE_NOT_PUBLISHED'] : []),
-    ],
+    blockers: fullLoadBlockers,
+    full_load: {
+      scope: 'ALL_PROPOSED_ROWS',
+      technical_ready: fullLoadBlockers.length === 0,
+      ready_for_load: false,
+      conflicts: counts.conflict,
+      blockers: fullLoadBlockers,
+    },
+    limited_load: {
+      scope: 'THRESHOLDS_ONLY',
+      technical_ready: limitedLoadBlockers.length === 0,
+      ready_for_load: false,
+      authorized: false,
+      inserts: thresholdInserts,
+      conflicts: thresholdConflicts,
+      blockers: [...limitedLoadBlockers, 'MARCO_LOAD_AUTHORIZATION_REQUIRED'],
+    },
+    catalog_ratification: ratified
+      ? {
+          ratified_by: catalog.source.ratified_by,
+          ratified_at: catalog.source.ratified_at,
+          covered_skus: used.length,
+          covered: ratifiedCoverage,
+        }
+      : null,
     unpublished_skus: unpublished,
     commercial_routes: 'NO_PROPOSED_MAPPING',
     diff,
@@ -620,6 +689,9 @@ if (
         ready_for_load: false,
         summary: report.summary,
         blockers: report.blockers,
+        full_load: report.full_load,
+        limited_load: report.limited_load,
+        catalog_ratification: report.catalog_ratification,
         candidate_sha256: report.candidate_sha256,
       }) + '\n',
     );

@@ -1,5 +1,6 @@
 import {
   Inject,
+  HttpException,
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
@@ -66,91 +67,129 @@ export class CatalogQueryRepository {
     productos: PhysicalSkuData[];
     noEncontrados: string[];
   }> {
-    return this.database.read((db) =>
-      db.transaction(
-        async (tx) => {
-          const rows = await tx
-            .select({
-              sku: skuIdentity.sku,
-              identityId: skuIdentity.id,
-              variantId: skuIdentity.variant_id,
-              productId: products.id,
-              productHasVariants: products.tiene_variantes,
-              productStatus: products.estado,
-              variantStatus: variants.estado,
-              weight: skuPhysicalProfiles.peso_kg,
-              length: skuPhysicalProfiles.largo_cm,
-              width: skuPhysicalProfiles.ancho_cm,
-              height: skuPhysicalProfiles.alto_cm,
-              profileUpdatedAt: skuPhysicalProfiles.updated_at,
-            })
-            .from(skuIdentity)
-            .leftJoin(variants, eq(skuIdentity.variant_id, variants.id))
-            .leftJoin(
-              products,
-              or(
-                eq(skuIdentity.product_id, products.id),
-                eq(variants.product_id, products.id),
-              ),
-            )
-            .leftJoin(
-              skuPhysicalProfiles,
-              eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
-            )
-            .where(inArray(skuIdentity.sku, [...new Set(skus)]));
-          const bySku = new Map(rows.map((row) => [row.sku, row]));
-          const productos: PhysicalSkuData[] = [];
-          const noEncontrados: string[] = [];
-          for (const sku of skus) {
-            const row = bySku.get(sku);
-            if (
-              !row ||
-              !row.productId ||
-              (row.productHasVariants && !row.variantId)
-            ) {
-              noEncontrados.push(sku);
-              continue;
-            }
-            const estado = row.variantId
-              ? row.variantStatus === 'ACTIVA'
-                ? 'ACTIVO'
-                : row.variantStatus === 'INACTIVA'
-                  ? 'INACTIVO'
-                  : undefined
-              : row.productStatus === 'ACTIVO'
-                ? 'ACTIVO'
-                : row.productStatus === 'INACTIVO'
-                  ? 'INACTIVO'
-                  : undefined;
-            if (!estado) {
-              noEncontrados.push(sku);
-              continue;
-            }
-            const values = numericValues([
-              row.weight,
-              row.length,
-              row.width,
-              row.height,
-            ]);
-            if (!row.profileUpdatedAt || !values)
-              throw new ServiceUnavailableException();
-            productos.push({
-              sku,
-              estado,
-              pesoKg: values[0]!,
-              dimensionesCm: {
-                largo: values[1]!,
-                ancho: values[2]!,
-                alto: values[3]!,
-              },
-              actualizadoEn: row.profileUpdatedAt.toISOString(),
+    return this.database
+      .read((db) =>
+        db.transaction(
+          async (tx) => {
+            const rows = await tx
+              .select({
+                sku: skuIdentity.sku,
+                identityId: skuIdentity.id,
+                variantId: skuIdentity.variant_id,
+                productId: products.id,
+                productHasVariants: products.tiene_variantes,
+                productStatus: products.estado,
+                variantStatus: variants.estado,
+                weight: skuPhysicalProfiles.peso_kg,
+                length: skuPhysicalProfiles.largo_cm,
+                width: skuPhysicalProfiles.ancho_cm,
+                height: skuPhysicalProfiles.alto_cm,
+                profileUpdatedAt: skuPhysicalProfiles.updated_at,
+              })
+              .from(skuIdentity)
+              .leftJoin(variants, eq(skuIdentity.variant_id, variants.id))
+              .leftJoin(
+                products,
+                or(
+                  eq(skuIdentity.product_id, products.id),
+                  eq(variants.product_id, products.id),
+                ),
+              )
+              .leftJoin(
+                skuPhysicalProfiles,
+                eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
+              )
+              .where(inArray(skuIdentity.sku, [...new Set(skus)]));
+            const bySku = new Map(rows.map((row) => [row.sku, row]));
+            // D-G2-02: an existing base with variants is not a physical unit.
+            // Validate the whole batch before profiles, regardless of SKU order.
+            const basesNoFisicas = [...new Set(skus)].filter((sku) => {
+              const row = bySku.get(sku);
+              return row?.productHasVariants && !row.variantId;
             });
-          }
-          return { productos, noEncontrados };
-        },
-        { isolationLevel: 'repeatable read', accessMode: 'read only' },
-      ),
-    );
+            if (basesNoFisicas.length)
+              throw new HttpException(
+                {
+                  code: 'SKU_INVALIDO',
+                  details: { skusAfectados: basesNoFisicas },
+                },
+                422,
+              );
+            const productos: PhysicalSkuData[] = [];
+            const noEncontrados: string[] = [];
+            const skusAfectados: string[] = [];
+            for (const sku of skus) {
+              const row = bySku.get(sku);
+              if (!row || !row.productId) {
+                noEncontrados.push(sku);
+                continue;
+              }
+              const estado = row.variantId
+                ? row.variantStatus === 'ACTIVA'
+                  ? ['ACTIVO', 'INACTIVO', 'BORRADOR'].includes(
+                      row.productStatus ?? '',
+                    )
+                    ? (row.productStatus as PhysicalSkuData['estado'])
+                    : undefined
+                  : row.variantStatus === 'INACTIVA'
+                    ? 'INACTIVO'
+                    : row.variantStatus === 'BORRADOR'
+                      ? 'BORRADOR'
+                      : undefined
+                : row.productStatus === 'ACTIVO'
+                  ? 'ACTIVO'
+                  : row.productStatus === 'INACTIVO'
+                    ? 'INACTIVO'
+                    : row.productStatus === 'BORRADOR'
+                      ? 'BORRADOR'
+                      : undefined;
+              if (!estado) {
+                throw new ServiceUnavailableException();
+              }
+              const values = numericValues([
+                row.weight,
+                row.length,
+                row.width,
+                row.height,
+              ]);
+              if (
+                !values ||
+                !(row.profileUpdatedAt instanceof Date) ||
+                !Number.isFinite(row.profileUpdatedAt.getTime())
+              ) {
+                skusAfectados.push(sku);
+                continue;
+              }
+              productos.push({
+                sku,
+                estado,
+                pesoKg: values[0]!,
+                dimensionesCm: {
+                  largo: values[1]!,
+                  ancho: values[2]!,
+                  alto: values[3]!,
+                },
+                actualizadoEn: row.profileUpdatedAt.toISOString(),
+              });
+            }
+            if (skusAfectados.length)
+              throw new HttpException(
+                {
+                  code: 'DATOS_FISICOS_INCOMPLETOS',
+                  details: { skusAfectados },
+                },
+                422,
+              );
+            return { productos, noEncontrados };
+          },
+          { isolationLevel: 'repeatable read', accessMode: 'read only' },
+        ),
+      )
+      .catch((error: unknown) => {
+        if (error instanceof HttpException && error.getStatus() === 422)
+          throw error;
+        throw new ServiceUnavailableException();
+      });
   }
 
   listVariants(
@@ -239,39 +278,67 @@ export class CatalogQueryRepository {
     tx: CatalogTransaction,
     rows: VariantRow[],
   ): Promise<AdminVariant[]> {
+    if (!rows.length) return [];
+    const ids = rows.map((row) => row.variant_id);
+    const values = await tx
+      .select({
+        variant_id: variantAttributes.variant_id,
+        caracteristica_id: variantAttributes.caracteristica_id,
+        nombre: variantAttributes.nombre_snapshot,
+        valor_id: variantAttributes.valor_id,
+        valor: variantAttributes.valor,
+        identifying: variantAttributes.es_identificador,
+      })
+      .from(variantAttributes)
+      .where(inArray(variantAttributes.variant_id, ids))
+      .orderBy(
+        asc(variantAttributes.variant_id),
+        asc(variantAttributes.caracteristica_id),
+      );
+    const images = await tx
+      .select({ variant_id: variantImages.variant_id, url: variantImages.url })
+      .from(variantImages)
+      .where(inArray(variantImages.variant_id, ids))
+      .orderBy(
+        asc(variantImages.variant_id),
+        asc(variantImages.posicion),
+        asc(variantImages.id),
+      );
+    const profiles = await tx
+      .select({
+        variantId: skuIdentity.variant_id,
+        weight: skuPhysicalProfiles.peso_kg,
+        length: skuPhysicalProfiles.largo_cm,
+        width: skuPhysicalProfiles.ancho_cm,
+        height: skuPhysicalProfiles.alto_cm,
+        updatedAt: skuPhysicalProfiles.updated_at,
+      })
+      .from(skuIdentity)
+      .innerJoin(
+        skuPhysicalProfiles,
+        eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
+      )
+      .where(inArray(skuIdentity.variant_id, ids));
+    const attributesByVariant = new Map<string, typeof values>();
+    for (const value of values) {
+      const group = attributesByVariant.get(value.variant_id) ?? [];
+      group.push(value);
+      attributesByVariant.set(value.variant_id, group);
+    }
+    const imagesByVariant = new Map<string, typeof images>();
+    for (const image of images) {
+      const group = imagesByVariant.get(image.variant_id) ?? [];
+      group.push(image);
+      imagesByVariant.set(image.variant_id, group);
+    }
+    const profileByVariant = new Map(
+      profiles.map((profile) => [profile.variantId, profile]),
+    );
     const items: AdminVariant[] = [];
     for (const row of rows) {
-      const values = await tx
-        .select({
-          caracteristica_id: variantAttributes.caracteristica_id,
-          nombre: variantAttributes.nombre_snapshot,
-          valor_id: variantAttributes.valor_id,
-          valor: variantAttributes.valor,
-          identifying: variantAttributes.es_identificador,
-        })
-        .from(variantAttributes)
-        .where(eq(variantAttributes.variant_id, row.variant_id))
-        .orderBy(asc(variantAttributes.caracteristica_id));
-      const images = await tx
-        .select({ url: variantImages.url })
-        .from(variantImages)
-        .where(eq(variantImages.variant_id, row.variant_id))
-        .orderBy(asc(variantImages.posicion), asc(variantImages.id));
-      const [profile] = await tx
-        .select({
-          weight: skuPhysicalProfiles.peso_kg,
-          length: skuPhysicalProfiles.largo_cm,
-          width: skuPhysicalProfiles.ancho_cm,
-          height: skuPhysicalProfiles.alto_cm,
-          updatedAt: skuPhysicalProfiles.updated_at,
-        })
-        .from(skuIdentity)
-        .innerJoin(
-          skuPhysicalProfiles,
-          eq(skuIdentity.id, skuPhysicalProfiles.sku_identity_id),
-        )
-        .where(eq(skuIdentity.variant_id, row.variant_id))
-        .limit(1);
+      const rowValues = attributesByVariant.get(row.variant_id) ?? [];
+      const rowImages = imagesByVariant.get(row.variant_id) ?? [];
+      const profile = profileByVariant.get(row.variant_id);
       const version = Number(row.catalog_version);
       if (!Number.isSafeInteger(version) || version < 0)
         throw new ServiceUnavailableException();
@@ -301,16 +368,22 @@ export class CatalogQueryRepository {
             }
           : null;
       const attributeProjection = (identifying: boolean): Attribute[] =>
-        values
+        rowValues
           .filter((value) => value.identifying === identifying)
-          .map(({ identifying: _internal, ...attribute }) => attribute);
+          .map(
+            ({
+              variant_id: _variantId,
+              identifying: _internal,
+              ...attribute
+            }) => attribute,
+          );
       items.push({
         variant_id: row.variant_id,
         sku: row.sku,
         status: row.status,
         identifying_attributes: attributeProjection(true),
         non_identifying_attributes: attributeProjection(false),
-        images: images.map((image) => image.url),
+        images: rowImages.map((image) => image.url),
         physical_profile: physicalProfile,
         catalog_version: version,
       });

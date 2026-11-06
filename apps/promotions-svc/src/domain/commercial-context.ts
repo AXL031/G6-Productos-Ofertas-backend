@@ -19,21 +19,30 @@ export interface ResolvedLine {
 export interface ResolvedBasket {
   lines: ResolvedLine[];
 }
+// Request metadata is separate from commercial DTOs and credentials. Callers
+// capture one instant and correlation for all dependency reads of a response.
+export interface CommercialReadContext {
+  correlationId: string;
+  at: string;
+}
 export interface CommercialContext {
   basket(
     request: BasketRequest,
     at: string,
     signal?: AbortSignal,
+    context?: CommercialReadContext,
   ): Promise<ResolvedBasket>;
   recommendationOrigin(
     productId: string,
     channel: string,
     signal?: AbortSignal,
+    context?: CommercialReadContext,
   ): Promise<{ active: boolean; channelEligible: boolean; categoryId: string }>;
   recommendationProducts(
     ids: readonly string[],
     channel: string,
     signal?: AbortSignal,
+    context?: CommercialReadContext,
   ): Promise<
     ReadonlyMap<
       string,

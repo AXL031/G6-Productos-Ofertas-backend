@@ -34,23 +34,23 @@ entorno por request. Las herramientas existentes que lo construyen sin DI usan
 el mismo validador al crear la instantánea; una configuración inyectada siempre
 prevalece sobre el entorno, incluso si cambia después de validar.
 
-| Variable | Requisito y descripción |
-| --- | --- |
-| `NODE_ENV` | Obligatoria: `development`, `test` o `production`. |
-| `CATALOG_SVC_PORT` | Puerto HTTP decimal entre 1 y 65535. |
-| `PORT` | Alternativa solo cuando `CATALOG_SVC_PORT` no existe. Un valor específico inválido no usa fallback. |
-| `CATALOG_SVC_HOST` | Opcional; `127.0.0.1` por defecto. Admite también `0.0.0.0`, `::1` y `::`. |
-| `PGHOST` | Obligatoria; identidad DNS/IP del servidor, utilizada para verificar el certificado TLS. |
-| `G6_CONNECT_HOST` | Dirección TCP opcional. Permite conectar a otro host/IP conservando la verificación TLS contra `PGHOST`. |
-| `PGPORT` | Obligatoria; puerto PostgreSQL decimal entre 1 y 65535. |
-| `PGDATABASE` | Obligatoria; base esperada durante la comprobación de identidad. |
-| `PGUSER` | Obligatoria; identidad propia de Catálogo. En Session Pooler puede incluir el sufijo del proyecto. En modo directo debe coincidir con `G6_EXPECTED_ROLE`. |
-| `PGPASSWORD` | Obligatoria; contraseña privada de esa identidad. Nunca se registra. |
-| `PGSSLMODE` | Obligatoria: `verify-full`. No se permite desactivar TLS ni la validación del certificado. |
-| `PGSSLROOTCERT` | Obligatoria; ruta absoluta a una CA PEM existente y legible. |
-| `G6_DATABASE_SCHEMA` | Obligatoria: `catalog`. |
-| `G6_EXPECTED_ROLE` | Obligatoria: `catalog_dev_login` o `catalog_app`; debe corresponder a `PGUSER`. |
-| `G6_CONNECTION_MODE` | Obligatoria: `session` o `direct`. Ambos modos mantienen TLS estricto y verificación de identidad. |
+| Variable               | Requisito y descripción                                                                                                                                                                                                                                                         |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NODE_ENV`             | Obligatoria: `development`, `test` o `production`.                                                                                                                                                                                                                              |
+| `CATALOG_SVC_PORT`     | Puerto HTTP decimal entre 1 y 65535.                                                                                                                                                                                                                                            |
+| `PORT`                 | Alternativa solo cuando `CATALOG_SVC_PORT` no existe. Un valor específico inválido no usa fallback.                                                                                                                                                                             |
+| `CATALOG_SVC_HOST`     | Opcional; `127.0.0.1` por defecto. Admite también `0.0.0.0`, `::1` y `::`.                                                                                                                                                                                                      |
+| `PGHOST`               | Obligatoria; identidad DNS/IP del servidor, utilizada para verificar el certificado TLS.                                                                                                                                                                                        |
+| `G6_CONNECT_HOST`      | Dirección TCP opcional. Permite conectar a otro host/IP conservando la verificación TLS contra `PGHOST`.                                                                                                                                                                        |
+| `PGPORT`               | Obligatoria; puerto PostgreSQL decimal entre 1 y 65535.                                                                                                                                                                                                                         |
+| `PGDATABASE`           | Obligatoria; base esperada durante la comprobación de identidad.                                                                                                                                                                                                                |
+| `PGUSER`               | Obligatoria; identidad propia de Catálogo. En Session Pooler puede incluir el sufijo del proyecto. En modo directo debe coincidir con `G6_EXPECTED_ROLE`.                                                                                                                       |
+| `PGPASSWORD`           | Obligatoria; contraseña privada de esa identidad. Nunca se registra.                                                                                                                                                                                                            |
+| `PGSSLMODE`            | Obligatoria: `verify-full`. No se permite desactivar TLS ni la validación del certificado.                                                                                                                                                                                      |
+| `PGSSLROOTCERT`        | Obligatoria; ruta absoluta a una CA PEM existente y legible.                                                                                                                                                                                                                    |
+| `G6_DATABASE_SCHEMA`   | Obligatoria: `catalog`.                                                                                                                                                                                                                                                         |
+| `G6_EXPECTED_ROLE`     | Obligatoria: `catalog_dev_login` o `catalog_app`; debe corresponder a `PGUSER`.                                                                                                                                                                                                 |
+| `G6_CONNECTION_MODE`   | Obligatoria: `session` o `direct`. Ambos modos mantienen TLS estricto y verificación de identidad.                                                                                                                                                                              |
 | `CATALOG_TAXONOMY_URL` | Origen HTTP(S) del servicio de Taxonomía para las consultas comerciales. Si se proporciona, se valida antes del arranque: sin credenciales, path adicional, query ni fragmento. Su ausencia no habilita una integración ficticia; las operaciones dependientes fallan cerradas. |
 
 Desde la raíz se carga `apps/catalog-svc/.env.local` y después `.env`, sin
@@ -86,7 +86,12 @@ no sus valores. Bootstrap registra JSON sanitizado con `APPLICATION_STARTED` o
 - Tras completar la comprobación, el próximo sondeo consulta identidad otra vez;
   no reutiliza un éxito anterior. Al cerrar Nest se cierra su pool.
 - El sondeo CLI existente sigue en `node dist/apps/catalog-svc/readiness.js` y no
-  se ejecuta al importar el controlador desde Nest o tests.
+  se ejecuta al importar el controlador desde Nest o tests. Su comprobación
+  funcional comparte el deadline de 2 s del endpoint HTTP. Si vence, el CLI
+  informa `not_ready`, drena la operación antes de cerrar Nest y termina con
+  código distinto de cero. La inicialización de Nest y el drenaje/cierre no
+  están dentro del deadline; por ello el tiempo total del proceso puede superar
+  2 s. Las consultas y conexiones PostgreSQL mantienen sus timeouts finitos.
 
 Los logs JSON redactan secretos por clave, URLs, Bearer/JWT, objetos Error y los
 valores sensibles del entorno. `X-Correlation-Id` usa UUID hexadecimal 8-4-4-4-12

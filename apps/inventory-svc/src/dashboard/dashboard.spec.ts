@@ -18,6 +18,7 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
     dbService.setCustomService(mockDb);
     service = new DashboardService(
       new DrizzleStockBalanceRepository(dbService),
+      dbService,
     );
   });
 
@@ -66,6 +67,76 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
     const res = await service.obtenerDashboard({});
     expect(res.skusDisponibles).toBe(0);
     expect(res.skusStockBajo).toBe(3);
+  });
+
+  it('calcula los indicadores SPEC-016 internos sin ampliar el DTO HTTP vigente', async () => {
+    mockDb.stockBalance[0].reserved = 2;
+    mockDb.stockBalance[0].blocked = 3;
+    mockDb.stockBalance[0].available = 13;
+    mockDb.traslados = [
+      {
+        id: 't1',
+        traslado_id: 't1',
+        sku_id: skuNik,
+        source_location_id: locLurin,
+        target_location_id: locMiraflores,
+        quantity_shipped: 1,
+        quantity_received: 0,
+        estado: 'EN_TRANSITO',
+      },
+      {
+        id: 't3',
+        traslado_id: 't3',
+        sku_id: 'OTRO-SKU',
+        source_location_id: locMiraflores,
+        target_location_id: locLurin,
+        quantity_shipped: 1,
+        quantity_received: 0,
+        estado: 'EN_TRANSITO',
+      },
+      {
+        id: 't2',
+        traslado_id: 't2',
+        sku_id: skuNik,
+        source_location_id: locLurin,
+        target_location_id: locMiraflores,
+        quantity_shipped: 1,
+        quantity_received: 1,
+        estado: 'COMPLETADO_CON_DISCREPANCIA',
+      },
+    ];
+    const internal = await service.obtenerMetricasInternas();
+    expect(internal).toMatchObject({
+      unidadesFisicas: 34,
+      unidadesReservadas: 2,
+      unidadesBloqueadas: 3,
+      unidadesDisponibles: 29,
+      trasladosPendientes: 2,
+      trasladosConDiscrepancia: 1,
+    });
+    const publicDto = await service.obtenerDashboard({});
+    expect(publicDto).not.toHaveProperty('unidadesBloqueadas');
+    expect(publicDto).not.toHaveProperty('trasladosPendientes');
+
+    expect(
+      (await service.obtenerMetricasInternas({ sku: skuNik }))
+        .trasladosPendientes,
+    ).toBe(1);
+    expect(
+      (await service.obtenerMetricasInternas({ locationId: locMiraflores }))
+        .trasladosPendientes,
+    ).toBe(2);
+    expect(
+      (
+        await service.obtenerMetricasInternas({
+          sku: skuNik,
+          locationId: locMiraflores,
+        })
+      ).trasladosConDiscrepancia,
+    ).toBe(1);
+    expect(
+      await service.obtenerMetricasInternas({ sku: 'SKU-AUSENTE' }),
+    ).toMatchObject({ trasladosPendientes: 0, trasladosConDiscrepancia: 0 });
   });
 
   it('el override por SKU prevalece sobre el global', async () => {

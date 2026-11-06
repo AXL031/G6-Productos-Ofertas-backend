@@ -13,14 +13,19 @@ import type { ILocationsRepository } from '../repositories/interfaces/locations.
 import type { IOperationsRepository } from '../repositories/interfaces/operations.repository.interface.js';
 import type { IStockBalanceRepository } from '../repositories/interfaces/stock-balance.repository.interface.js';
 import type { IDatabaseClient } from '../database/database.interface.js';
+import { loadInventoryConfig } from '../config/inventory.config.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const INITIALIZATION = 'inventory.sku.initialization.requested';
+const SKU_DEACTIVATED = 'catalog.sku.deactivated';
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 
 export class InventoryMessageError extends Error {
-  constructor(public readonly reason: 'INVALID_MESSAGE' | 'BLOCKED_CONTRACT') {
+  constructor(
+    public readonly reason:
+      'INVALID_MESSAGE' | 'BLOCKED_CONTRACT' | 'FEATURE_DISABLED',
+  ) {
     super(reason);
   }
 }
@@ -62,6 +67,12 @@ export class InventoryCommandService {
   async process(
     payload: unknown,
   ): Promise<{ duplicate: boolean; status?: InitializationResult['status'] }> {
+    if (record(payload) && payload.name === SKU_DEACTIVATED) {
+      if (!loadInventoryConfig().catalogSkuDeactivationEnabled) {
+        throw new InventoryMessageError('FEATURE_DISABLED');
+      }
+      return { duplicate: await this.processSkuDeactivated(payload) };
+    }
     const message = this.validate(payload);
     const fingerprint = this.idempotency.computeFingerprint({
       name: INITIALIZATION,
@@ -180,10 +191,7 @@ export class InventoryCommandService {
 
   private validate(payload: unknown): Initialization {
     if (!record(payload)) throw new InventoryMessageError('INVALID_MESSAGE');
-    if (
-      payload.name === 'inventory.bulk.stock.adjust.requested' ||
-      payload.name === 'catalog.sku.deactivated'
-    ) {
+    if (payload.name === 'inventory.bulk.stock.adjust.requested') {
       throw new InventoryMessageError('BLOCKED_CONTRACT');
     }
     if (
@@ -216,6 +224,112 @@ export class InventoryCommandService {
       throw new InventoryMessageError('INVALID_MESSAGE');
     }
     return payload as unknown as Initialization;
+  }
+
+  private async processSkuDeactivated(
+    payload: Record<string, unknown>,
+  ): Promise<boolean> {
+    const data = payload.data;
+    const requiredEnvelope =
+      typeof payload.message_id === 'string' &&
+      UUID.test(payload.message_id) &&
+      typeof payload.correlation_id === 'string' &&
+      UUID.test(payload.correlation_id) &&
+      typeof payload.operation_id === 'string' &&
+      UUID.test(payload.operation_id) &&
+      typeof payload.occurred_at === 'string' &&
+      Number.isFinite(Date.parse(payload.occurred_at));
+    if (
+      payload.name !== SKU_DEACTIVATED ||
+      payload.kind !== 'event' ||
+      payload.producer !== 'catalog-svc' ||
+      payload.schema_version !== 1 ||
+      !requiredEnvelope ||
+      !record(data) ||
+      Object.keys(data).sort().join(',') !==
+        'changed_at,product_id,sku,sku_version' ||
+      typeof data.sku !== 'string' ||
+      !data.sku.trim() ||
+      typeof data.product_id !== 'string' ||
+      !UUID.test(data.product_id) ||
+      !Number.isSafeInteger(data.sku_version) ||
+      Number(data.sku_version) < 1 ||
+      typeof data.changed_at !== 'string' ||
+      !Number.isFinite(Date.parse(data.changed_at))
+    ) {
+      throw new InventoryMessageError('INVALID_MESSAGE');
+    }
+
+    const sku = data.sku;
+    const productId = data.product_id;
+    const skuVersion = Number(data.sku_version);
+    const changedAt = new Date(data.changed_at).toISOString();
+    return this.database.transaction(async (client) => {
+      await this.operations.lockIdempotencyKey(
+        client,
+        `inbox:${String(payload.message_id)}`,
+      );
+      const delivery = await this.inbox.register(client, {
+        message_id: String(payload.message_id),
+        message_type: SKU_DEACTIVATED,
+        source: 'catalog-svc',
+        payload,
+      });
+      if (
+        this.idempotency.computeFingerprint(delivery.payload) !==
+        this.idempotency.computeFingerprint(payload)
+      ) {
+        throw new InventoryMessageError('INVALID_MESSAGE');
+      }
+      if (delivery.status === 'PROCESSED') return true;
+
+      // Reservations use the same lock to serialize their active-SKU check
+      // with the authoritative Catalog version update.
+      await this.operations.lockIdempotencyKey(client, `sku-active:${sku}`);
+      const current = await client.query<{
+        product_id: string;
+        sku_version: number;
+        active: boolean;
+        changed_at: string | Date;
+      }>(
+        `SELECT product_id, sku_version, active, changed_at
+           FROM inventory.sku_lifecycle
+          WHERE sku_id = $1
+          FOR UPDATE`,
+        [sku],
+      );
+      const previous = current.rows[0];
+      if (previous && previous.product_id !== productId) {
+        throw new InventoryMessageError('INVALID_MESSAGE');
+      }
+      if (previous && Number(previous.sku_version) > skuVersion) {
+        await this.inbox.markProcessed(client, String(payload.message_id));
+        return false;
+      }
+      if (previous && Number(previous.sku_version) === skuVersion) {
+        const previousChangedAt = new Date(previous.changed_at).toISOString();
+        if (previous.active || previousChangedAt !== changedAt) {
+          throw new InventoryMessageError('INVALID_MESSAGE');
+        }
+        await this.inbox.markProcessed(client, String(payload.message_id));
+        return false;
+      }
+      await client.query(
+        `INSERT INTO inventory.sku_lifecycle
+           (sku_id, product_id, sku_version, active, changed_at, updated_at)
+         VALUES ($1, $2, $3, false, $4, now())
+         ON CONFLICT (sku_id) DO UPDATE
+           SET product_id = EXCLUDED.product_id,
+               sku_version = EXCLUDED.sku_version,
+               active = false,
+               changed_at = EXCLUDED.changed_at,
+               updated_at = now()
+         WHERE inventory.sku_lifecycle.sku_version < EXCLUDED.sku_version`,
+        [sku, productId, skuVersion, changedAt],
+      );
+      await this.inbox.markProcessed(client, String(payload.message_id));
+      return false;
+    });
   }
 
   private result(

@@ -1,0 +1,70 @@
+{
+  "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
+  "ref": "e5c8aeac01e9742e12406723cfba3883095cb85b",
+  "files": [
+    {
+      "path": "datos/catalog-svc/physical-model.md",
+      "blob_sha": "7eb15b16ef3ddadf7a8f88760a8cf7816fd219bb"
+    },
+    {
+      "path": "datos/catalog-svc/migrations/0001_create_catalog.sql",
+      "blob_sha": "5861536e31b2eb0ccb94d8ad2a4e10f4e792d6d2"
+    },
+    {
+      "path": "datos/catalog-svc/validation.sql",
+      "blob_sha": "5d39787ff581a625f54b54b84659ebeeea7c8d35"
+    },
+    {
+      "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+      "blob_sha": "fb5f916d38fcb091e285841eff9b0442cb6239df"
+    },
+    {
+      "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+      "blob_sha": "fa79b797b92e875defcb3122b20322ccf4fbeefb"
+    },
+    {
+      "path": "requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md",
+      "blob_sha": "8653d68ebc2c82e5c4dfcddacf01aaef1a0fe18c"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-003-gestion-productos-crud.md",
+      "blob_sha": "442d41b4c41d0440d8969d2603fdd38473188cc8"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-004-gestion-variantes-skus.md",
+      "blob_sha": "949f7ee370439350977d499f9b937b3e2aab1bdd"
+    },
+    {
+      "path": "arquitectura/decisiones/REGISTRO_DEC_F.md",
+      "blob_sha": "bd9dff451e9c1bad8483bb54d70ee5167e78a7d9"
+    },
+    {
+      "path": "arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md",
+      "blob_sha": "f1227543a6404a1484e7e4cbf66069aa0505c230"
+    },
+    {
+      "path": "integraciones/MATRIZ_INTERMODULAR_BACKEND.md",
+      "blob_sha": "9936c9306a2277265b11da1759b52b3bdfcecdb8"
+    },
+    {
+      "path": "integraciones/ACUERDO_G2_G6_H4_2026-11-02.md",
+      "blob_sha": "be268a8ed80a974461f2d194e68dd402f7830a04"
+    },
+    {
+      "path": "datos/deploy/README.md",
+      "blob_sha": "2d9ea15955c31ca7f9ac224bd07368d87f60ffcf"
+    },
+    {
+      "path": "datos/deploy/migrate.py",
+      "blob_sha": "a3c15176cb62474f68923904c91ddf39699135c7"
+    },
+    {
+      "path": "contratos/http/openapi.yaml",
+      "blob_sha": "b1f80fa204520ee6de47183e634af7c7f09486c8"
+    },
+    {
+      "path": "contratos/eventos/asyncapi.yaml",
+      "blob_sha": "fc01fbad8e3175404da0a7ceb87db653c1206218"
+    }
+  ]
+}

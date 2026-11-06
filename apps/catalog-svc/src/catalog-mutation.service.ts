@@ -22,7 +22,10 @@ import {
   variants,
 } from './catalog.schema.js';
 import type { CatalogTransaction } from './database.js';
-import { CatalogPersistenceError } from './database-errors.js';
+import {
+  CatalogPersistenceError,
+  translatePostgresFailure,
+} from './database-errors.js';
 import {
   attribute,
   domainProfile,
@@ -67,6 +70,16 @@ export interface CatalogProductCreationPolicy {
 }
 type Action = 'activate' | 'deactivate' | 'reactivate';
 type Actor = { authorization: string; correlationId: string };
+function transitionVersion(version: bigint): number {
+  if (version < 1n || version > BigInt(Number.MAX_SAFE_INTEGER))
+    throw new ServiceUnavailableException();
+  return Number(version);
+}
+function transitionTimestamp(value: Date): string {
+  if (!(value instanceof Date) || !Number.isFinite(value.getTime()))
+    throw new ServiceUnavailableException();
+  return value.toISOString();
+}
 @Injectable()
 export class CatalogMutationService {
   constructor(
@@ -89,10 +102,14 @@ export class CatalogMutationService {
       | 'activateVariant'
       | 'deactivateVariant',
     work: (tx: CatalogTransaction) => Promise<T>,
+    transaction?: CatalogTransaction,
   ): Promise<T> {
     try {
-      return await this.transactions.run(work);
-    } catch (error) {
+      return await (transaction
+        ? transaction.transaction(work)
+        : this.transactions.run(work));
+    } catch (cause) {
+      const error = translatePostgresFailure(cause) ?? cause;
       if (error instanceof UnresolvedCatalogAttempt)
         throw new ServiceUnavailableException();
       if (error instanceof CatalogPersistenceError) {
@@ -108,8 +125,12 @@ export class CatalogMutationService {
           )
             catalogError(409, 'SKU_DUPLICADO');
         }
-        if (error.failure === 'serialization' || error.failure === 'deadlock')
+        if (error.failure === 'serialization' || error.failure === 'deadlock') {
+          // Bulk owns the enclosing transaction: a transient SQL failure must
+          // roll back the chunk, not become a durable business rejection.
+          if (transaction) throw error;
           catalogError(409, 'VERSION_CONFLICT');
+        }
         if (
           ['check', 'deferred_constraint', 'foreign_key', 'not_null'].includes(
             error.failure,
@@ -330,362 +351,403 @@ export class CatalogMutationService {
       catalogError(422, 'DATOS_INCOMPLETOS');
   }
 
-  async createProduct(body: unknown, actor: Actor) {
+  async createProduct(
+    body: unknown,
+    actor: Actor,
+    transaction?: CatalogTransaction,
+  ) {
     const input = parseMutation(body, 'createProduct');
     if (!this.creationPolicy) throw new ServiceUnavailableException();
     const id = randomUUID(),
       context = await this.creationPolicy.resolve(input, id);
     if (!context.slug || !/^.{3}$/.test(context.moneda))
       throw new ServiceUnavailableException();
-    return this.run('createProduct', async (tx) => {
-      const fields = {
-        nombre: input.nombre!,
-        descripcion: input.descripcion!,
-        categoria_id: input.categoriaId!,
-        marca_id: input.marcaId!,
-        tipo_producto_id: input.tipoProductoId!,
-      };
-      if (
-        input.tieneVariantes &&
-        input.perfilFisico !== undefined &&
-        input.perfilFisico !== null
-      )
-        catalogError(422, 'PERFIL_FISICO_INVALIDO');
-      await this.references(tx, fields, input.atributos ?? []);
-      await this.masters.masters(
-        fields,
-        actor.authorization,
-        actor.correlationId,
-      );
-      const attrs = await this.masters.attributes(
-        fields.tipo_producto_id,
-        input.atributos ?? [],
-        false,
-        actor.authorization,
-        actor.correlationId,
-      );
-      const product = await this.repository.insertProduct(tx, {
-        id,
-        ...fields,
-        sku_base: input.skuBase!,
-        slug: context.slug,
-        tiene_variantes: input.tieneVariantes!,
-        estado: 'BORRADOR',
-        publicado_alguna_vez: false,
-      });
-      if (!product) throw new Error('PRODUCT_INSERT_FAILED');
-      await this.repository.replaceProductCollections(tx, id, {
-        ...input,
-        atributos: attrs,
-      });
-      if (input.perfilFisico !== undefined && !input.tieneVariantes)
-        await this.repository.replaceProfile(
-          tx,
-          'product_id',
-          id,
-          input.perfilFisico,
+    return this.run(
+      'createProduct',
+      async (tx) => {
+        const fields = {
+          nombre: input.nombre!,
+          descripcion: input.descripcion!,
+          categoria_id: input.categoriaId!,
+          marca_id: input.marcaId!,
+          tipo_producto_id: input.tipoProductoId!,
+        };
+        if (
+          input.tieneVariantes &&
+          input.perfilFisico !== undefined &&
+          input.perfilFisico !== null
+        )
+          catalogError(422, 'PERFIL_FISICO_INVALIDO');
+        await this.references(tx, fields, input.atributos ?? []);
+        await this.masters.masters(
+          fields,
+          actor.authorization,
+          actor.correlationId,
         );
-      await this.prepare(
-        tx,
-        id,
-        null,
-        input.skuBase!,
-        'PRICING',
-        {
-          product_id: id,
+        const attrs = await this.masters.attributes(
+          fields.tipo_producto_id,
+          input.atributos ?? [],
+          false,
+          actor.authorization,
+          actor.correlationId,
+        );
+        const product = await this.repository.insertProduct(tx, {
+          id,
+          ...fields,
           sku_base: input.skuBase!,
-          precio_regular: input.precioBaseInicial!,
-          moneda: context.moneda,
-          channel_id: null,
-          motivo_cambio: 'ALTA_PRODUCTO',
-        },
-        actor,
-      );
-      if (!input.tieneVariantes)
+          slug: context.slug,
+          tiene_variantes: input.tieneVariantes!,
+          estado: 'BORRADOR',
+          publicado_alguna_vez: false,
+        });
+        if (!product) throw new Error('PRODUCT_INSERT_FAILED');
+        await this.repository.replaceProductCollections(tx, id, {
+          ...input,
+          atributos: attrs,
+        });
+        if (input.perfilFisico !== undefined && !input.tieneVariantes)
+          await this.repository.replaceProfile(
+            tx,
+            'product_id',
+            id,
+            input.perfilFisico,
+          );
         await this.prepare(
           tx,
           id,
           null,
           input.skuBase!,
-          'INVENTORY',
-          { sku: input.skuBase!, product_id: id, variant_id: null },
+          'PRICING',
+          {
+            product_id: id,
+            sku_base: input.skuBase!,
+            precio_regular: input.precioBaseInicial!,
+            moneda: context.moneda,
+            channel_id: null,
+            motivo_cambio: 'ALTA_PRODUCTO',
+          },
           actor,
         );
-      return presentProduct(await this.repository.aggregate(tx, product));
-    });
-  }
-  async createVariant(productId: string, body: unknown, actor: Actor) {
-    const input = parseMutation(body, 'createVariant');
-    return this.run('createVariant', async (tx) => {
-      const aggregate = await this.locked(tx, productId);
-      if (!aggregate.tiene_variantes)
-        catalogError(409, 'PRODUCTO_NO_ADMITE_VARIANTES');
-      const id = randomUUID();
-      const sku = input.sku!;
-      const identifying = input.atributosIdentificadores!;
-      const other = input.atributosNoIdentificadores ?? [];
-      if (
-        other.some((a) =>
-          identifying.some((i) => i.caracteristica_id === a.caracteristica_id),
-        )
-      )
-        catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
-      await this.references(tx, aggregate, [...identifying, ...other]);
-      await this.masters.masters(
-        aggregate,
-        actor.authorization,
-        actor.correlationId,
-      );
-      const attrs = await this.masters.attributes(
-        aggregate.tipo_producto_id,
-        [...identifying, ...other],
-        false,
-        actor.authorization,
-        actor.correlationId,
-      );
-      const selected = await tx
-        .select()
-        .from(productIdentifyingCharacteristics)
-        .where(eq(productIdentifyingCharacteristics.product_id, aggregate.id));
-      if (
-        selected.length &&
-        (selected.length !== identifying.length ||
-          selected.some(
-            (s) =>
-              !identifying.some(
-                (a) => a.caracteristica_id === s.caracteristica_id,
-              ),
-          ))
-      )
-        catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
-      if (
-        aggregate.children.some((c) => {
-          const keys = c.attributes
-            .filter((a) => a.es_identificador)
-            .map((a) => a.caracteristica_id);
-          return (
-            keys.length !== identifying.length ||
-            keys.some(
-              (k) => !identifying.some((a) => a.caracteristica_id === k),
-            )
+        if (!input.tieneVariantes)
+          await this.prepare(
+            tx,
+            id,
+            null,
+            input.skuBase!,
+            'INVENTORY',
+            { sku: input.skuBase!, product_id: id, variant_id: null },
+            actor,
           );
-        })
-      )
-        catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
-      if (!selected.length)
-        for (const a of identifying)
-          await this.repository.insertIdentifyingCharacteristic(tx, {
-            product_id: aggregate.id,
-            caracteristica_id: a.caracteristica_id,
-          });
-      const key = Object.fromEntries(
-        identifying.map((a) => [
-          a.caracteristica_id,
-          a.valor_id !== null ? { valor_id: a.valor_id } : { valor: a.valor },
-        ]),
-      );
-      await this.repository.insertVariant(tx, {
-        id,
-        product_id: aggregate.id,
-        sku,
-        identifying_key: key,
-        estado: 'BORRADOR',
-      });
-      for (const a of attrs)
-        await this.repository.insertVariantAttribute(tx, {
-          variant_id: id,
-          caracteristica_id: a.caracteristica_id,
-          nombre_snapshot: a.nombre,
-          valor_id: a.valor_id,
-          valor: a.valor,
-          es_identificador: identifying.some(
-            (i) => i.caracteristica_id === a.caracteristica_id,
-          ),
-        });
-      await this.repository.replaceVariantCollections(tx, id, {
-        imagenUrl: input.imagenUrl,
-      });
-      if (input.perfilFisico !== undefined)
-        await this.repository.replaceProfile(
-          tx,
-          'variant_id',
-          id,
-          input.perfilFisico,
+        return presentProduct(await this.repository.aggregate(tx, product));
+      },
+      transaction,
+    );
+  }
+  async createVariant(
+    productId: string,
+    body: unknown,
+    actor: Actor,
+    transaction?: CatalogTransaction,
+    parentAlreadyMutated = false,
+  ) {
+    if (parentAlreadyMutated && !transaction)
+      throw new ServiceUnavailableException();
+    const input = parseMutation(body, 'createVariant');
+    return this.run(
+      'createVariant',
+      async (tx) => {
+        const aggregate = await this.locked(tx, productId);
+        if (!aggregate.tiene_variantes)
+          catalogError(409, 'PRODUCTO_NO_ADMITE_VARIANTES');
+        const id = randomUUID();
+        const sku = input.sku!;
+        const identifying = input.atributosIdentificadores!;
+        const other = input.atributosNoIdentificadores ?? [];
+        if (
+          other.some((a) =>
+            identifying.some(
+              (i) => i.caracteristica_id === a.caracteristica_id,
+            ),
+          )
+        )
+          catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
+        await this.references(tx, aggregate, [...identifying, ...other]);
+        await this.masters.masters(
+          aggregate,
+          actor.authorization,
+          actor.correlationId,
         );
-      await this.prepare(
-        tx,
-        aggregate.id,
-        id,
-        sku,
-        'INVENTORY',
-        { sku, product_id: aggregate.id, variant_id: id },
-        actor,
-      );
-      const [parent] = await tx
-        .update(products)
-        .set({ nombre: aggregate.nombre })
-        .where(eq(products.id, aggregate.id))
-        .returning();
-      return presentVariant(
-        this.child(await this.repository.aggregate(tx, parent!), id),
-      );
-    });
+        const attrs = await this.masters.attributes(
+          aggregate.tipo_producto_id,
+          [...identifying, ...other],
+          false,
+          actor.authorization,
+          actor.correlationId,
+        );
+        const selected = await tx
+          .select()
+          .from(productIdentifyingCharacteristics)
+          .where(
+            eq(productIdentifyingCharacteristics.product_id, aggregate.id),
+          );
+        if (
+          selected.length &&
+          (selected.length !== identifying.length ||
+            selected.some(
+              (s) =>
+                !identifying.some(
+                  (a) => a.caracteristica_id === s.caracteristica_id,
+                ),
+            ))
+        )
+          catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
+        if (
+          aggregate.children.some((c) => {
+            const keys = c.attributes
+              .filter((a) => a.es_identificador)
+              .map((a) => a.caracteristica_id);
+            return (
+              keys.length !== identifying.length ||
+              keys.some(
+                (k) => !identifying.some((a) => a.caracteristica_id === k),
+              )
+            );
+          })
+        )
+          catalogError(422, 'ATRIBUTO_IDENTIFICADOR_INVALIDO');
+        if (!selected.length)
+          for (const a of identifying)
+            await this.repository.insertIdentifyingCharacteristic(tx, {
+              product_id: aggregate.id,
+              caracteristica_id: a.caracteristica_id,
+            });
+        const key = Object.fromEntries(
+          identifying.map((a) => [
+            a.caracteristica_id,
+            a.valor_id !== null ? { valor_id: a.valor_id } : { valor: a.valor },
+          ]),
+        );
+        await this.repository.insertVariant(tx, {
+          id,
+          product_id: aggregate.id,
+          sku,
+          identifying_key: key,
+          estado: 'BORRADOR',
+        });
+        for (const a of attrs)
+          await this.repository.insertVariantAttribute(tx, {
+            variant_id: id,
+            caracteristica_id: a.caracteristica_id,
+            nombre_snapshot: a.nombre,
+            valor_id: a.valor_id,
+            valor: a.valor,
+            es_identificador: identifying.some(
+              (i) => i.caracteristica_id === a.caracteristica_id,
+            ),
+          });
+        await this.repository.replaceVariantCollections(tx, id, {
+          imagenUrl: input.imagenUrl,
+        });
+        if (input.perfilFisico !== undefined)
+          await this.repository.replaceProfile(
+            tx,
+            'variant_id',
+            id,
+            input.perfilFisico,
+          );
+        await this.prepare(
+          tx,
+          aggregate.id,
+          id,
+          sku,
+          'INVENTORY',
+          { sku, product_id: aggregate.id, variant_id: id },
+          actor,
+        );
+        const parent = parentAlreadyMutated
+          ? aggregate
+          : (
+              await tx
+                .update(products)
+                .set({ nombre: aggregate.nombre })
+                .where(eq(products.id, aggregate.id))
+                .returning()
+            )[0];
+        return presentVariant(
+          this.child(await this.repository.aggregate(tx, parent!), id),
+        );
+      },
+      transaction,
+    );
   }
   async update(
     productId: string,
     variantId: string | undefined,
     body: unknown,
     actor: Actor,
+    transaction?: CatalogTransaction,
+    parentAlreadyMutated = false,
   ) {
+    if (parentAlreadyMutated && !transaction)
+      throw new ServiceUnavailableException();
     const kind = variantId ? 'updateVariant' : 'updateProduct',
       input = parseMutation(body, kind);
-    return this.run(kind, async (tx) => {
-      const aggregate = await this.locked(tx, productId, variantId),
-        child = variantId ? this.child(aggregate, variantId) : undefined;
-      this.assertVersion(
-        child?.catalog_version ?? aggregate.catalog_version,
-        input,
-      );
-      const changingType =
-        !child &&
-        input.tipoProductoId !== undefined &&
-        input.tipoProductoId !== aggregate.tipo_producto_id;
-      if (changingType) {
-        if (
-          aggregate.estado !== 'BORRADOR' ||
-          aggregate.tiene_variantes ||
-          aggregate.children.length !== 0 ||
-          aggregate.publicado_alguna_vez !== false
-        )
-          catalogError(409, 'CAMBIO_ESTRUCTURAL_NO_PERMITIDO');
-        if (input.catalogVersion === undefined) catalogError(400, 'VALIDACION');
-      }
-      const attributes =
-        input.atributos ??
-        input.atributosNoIdentificadores ??
-        (changingType ? aggregate.attributes.map(attribute) : undefined);
-      const refs = {
-        ...aggregate,
-        categoria_id: input.categoriaId ?? aggregate.categoria_id,
-        marca_id: input.marcaId ?? aggregate.marca_id,
-        tipo_producto_id: input.tipoProductoId ?? aggregate.tipo_producto_id,
-      };
-      const finalReferences = masterReferences(refs, [
-        ...(attributes ?? aggregate.attributes),
-        ...aggregate.children.flatMap((c) => c.attributes),
-      ]);
-      const previousReferences = masterReferences(aggregate, [
-        ...aggregate.attributes,
-        ...aggregate.children.flatMap((c) => c.attributes),
-      ]);
-      const introducedReferences = finalReferences.filter(
-        (r) =>
-          !previousReferences.some(
-            (old) => old.type === r.type && old.id === r.id,
-          ),
-      );
-      const oldAttributes = child?.attributes ?? aggregate.attributes;
-      if (
-        attributes?.some(
-          (a) =>
-            !oldAttributes.some(
-              (old) => old.caracteristica_id === a.caracteristica_id,
+    return this.run(
+      kind,
+      async (tx) => {
+        const aggregate = await this.locked(tx, productId, variantId),
+          child = variantId ? this.child(aggregate, variantId) : undefined;
+        this.assertVersion(
+          child?.catalog_version ?? aggregate.catalog_version,
+          input,
+        );
+        const changingType =
+          !child &&
+          input.tipoProductoId !== undefined &&
+          input.tipoProductoId !== aggregate.tipo_producto_id;
+        if (changingType) {
+          if (
+            aggregate.estado !== 'BORRADOR' ||
+            aggregate.tiene_variantes ||
+            aggregate.children.length !== 0 ||
+            aggregate.publicado_alguna_vez !== false
+          )
+            catalogError(409, 'CAMBIO_ESTRUCTURAL_NO_PERMITIDO');
+          if (input.catalogVersion === undefined)
+            catalogError(400, 'VALIDACION');
+        }
+        const attributes =
+          input.atributos ??
+          input.atributosNoIdentificadores ??
+          (changingType ? aggregate.attributes.map(attribute) : undefined);
+        const refs = {
+          ...aggregate,
+          categoria_id: input.categoriaId ?? aggregate.categoria_id,
+          marca_id: input.marcaId ?? aggregate.marca_id,
+          tipo_producto_id: input.tipoProductoId ?? aggregate.tipo_producto_id,
+        };
+        const finalReferences = masterReferences(refs, [
+          ...(attributes ?? aggregate.attributes),
+          ...aggregate.children.flatMap((c) => c.attributes),
+        ]);
+        const previousReferences = masterReferences(aggregate, [
+          ...aggregate.attributes,
+          ...aggregate.children.flatMap((c) => c.attributes),
+        ]);
+        const introducedReferences = finalReferences.filter(
+          (r) =>
+            !previousReferences.some(
+              (old) => old.type === r.type && old.id === r.id,
             ),
-        )
-      )
-        introducedReferences.push({
-          type: 'PRODUCT_TYPE',
-          id: refs.tipo_producto_id,
-          characteristicIds: attributes
-            .filter(
-              (a) =>
-                !oldAttributes.some(
-                  (old) => old.caracteristica_id === a.caracteristica_id,
-                ),
-            )
-            .map((a) => a.caracteristica_id),
-        });
-      await assertMasterReferences(tx, introducedReferences);
-      const schema = await this.masters.masters(
-        refs,
-        actor.authorization,
-        actor.correlationId,
-      );
-      const canonicalAttrs =
-        attributes === undefined
-          ? undefined
-          : await this.masters.attributes(
-              refs.tipo_producto_id,
-              attributes,
-              false,
-              actor.authorization,
-              actor.correlationId,
-              changingType ? schema?.schemaVersion : undefined,
-            );
-      if (child) {
+        );
+        const oldAttributes = child?.attributes ?? aggregate.attributes;
         if (
-          canonicalAttrs?.some((a) =>
-            child.attributes.some(
-              (i) =>
-                i.es_identificador &&
-                i.caracteristica_id === a.caracteristica_id,
-            ),
+          attributes?.some(
+            (a) =>
+              !oldAttributes.some(
+                (old) => old.caracteristica_id === a.caracteristica_id,
+              ),
           )
         )
-          catalogError(409, 'CAMBIO_ESTRUCTURAL_NO_PERMITIDO');
-        await this.repository.replaceVariantCollections(tx, child.id, {
-          ...input,
-          atributosNoIdentificadores: canonicalAttrs,
-        });
-        if (input.perfilFisico !== undefined)
-          await this.repository.replaceProfile(
-            tx,
-            'variant_id',
-            child.id,
-            input.perfilFisico,
-          );
-        await tx
-          .update(variants)
-          .set({ estado: child.estado })
-          .where(eq(variants.id, child.id));
-      } else {
-        if (
-          aggregate.tiene_variantes &&
-          input.perfilFisico !== undefined &&
-          input.perfilFisico !== null
-        )
-          catalogError(422, 'PERFIL_FISICO_INVALIDO');
-        await this.repository.replaceProductCollections(tx, aggregate.id, {
-          ...input,
-          atributos: canonicalAttrs,
-        });
-        if (input.perfilFisico !== undefined && !aggregate.tiene_variantes)
-          await this.repository.replaceProfile(
-            tx,
-            'product_id',
-            aggregate.id,
-            input.perfilFisico,
-          );
-      }
-      const [parent] = await tx
-        .update(products)
-        .set({
-          nombre: input.nombre ?? aggregate.nombre,
-          descripcion: input.descripcion ?? aggregate.descripcion,
-          categoria_id: refs.categoria_id,
-          marca_id: refs.marca_id,
-          tipo_producto_id: refs.tipo_producto_id,
-        })
-        .where(eq(products.id, aggregate.id))
-        .returning();
-      const final = await this.repository.aggregate(tx, parent!);
-      if (child?.estado === 'ACTIVA')
-        await this.validate(final, actor, child.id);
-      if (final.estado === 'ACTIVO') await this.validate(final, actor);
-      return variantId
-        ? presentVariant(this.child(final, variantId))
-        : presentProduct(final);
-    });
+          introducedReferences.push({
+            type: 'PRODUCT_TYPE',
+            id: refs.tipo_producto_id,
+            characteristicIds: attributes
+              .filter(
+                (a) =>
+                  !oldAttributes.some(
+                    (old) => old.caracteristica_id === a.caracteristica_id,
+                  ),
+              )
+              .map((a) => a.caracteristica_id),
+          });
+        await assertMasterReferences(tx, introducedReferences);
+        const schema = await this.masters.masters(
+          refs,
+          actor.authorization,
+          actor.correlationId,
+        );
+        const canonicalAttrs =
+          attributes === undefined
+            ? undefined
+            : await this.masters.attributes(
+                refs.tipo_producto_id,
+                attributes,
+                false,
+                actor.authorization,
+                actor.correlationId,
+                changingType ? schema?.schemaVersion : undefined,
+              );
+        if (child) {
+          if (
+            canonicalAttrs?.some((a) =>
+              child.attributes.some(
+                (i) =>
+                  i.es_identificador &&
+                  i.caracteristica_id === a.caracteristica_id,
+              ),
+            )
+          )
+            catalogError(409, 'CAMBIO_ESTRUCTURAL_NO_PERMITIDO');
+          await this.repository.replaceVariantCollections(tx, child.id, {
+            ...input,
+            atributosNoIdentificadores: canonicalAttrs,
+          });
+          if (input.perfilFisico !== undefined)
+            await this.repository.replaceProfile(
+              tx,
+              'variant_id',
+              child.id,
+              input.perfilFisico,
+            );
+          await tx
+            .update(variants)
+            .set({ estado: child.estado })
+            .where(eq(variants.id, child.id));
+        } else {
+          if (
+            aggregate.tiene_variantes &&
+            input.perfilFisico !== undefined &&
+            input.perfilFisico !== null
+          )
+            catalogError(422, 'PERFIL_FISICO_INVALIDO');
+          await this.repository.replaceProductCollections(tx, aggregate.id, {
+            ...input,
+            atributos: canonicalAttrs,
+          });
+          if (input.perfilFisico !== undefined && !aggregate.tiene_variantes)
+            await this.repository.replaceProfile(
+              tx,
+              'product_id',
+              aggregate.id,
+              input.perfilFisico,
+            );
+        }
+        const parent = parentAlreadyMutated
+          ? aggregate
+          : (
+              await tx
+                .update(products)
+                .set({
+                  nombre: input.nombre ?? aggregate.nombre,
+                  descripcion: input.descripcion ?? aggregate.descripcion,
+                  categoria_id: refs.categoria_id,
+                  marca_id: refs.marca_id,
+                  tipo_producto_id: refs.tipo_producto_id,
+                })
+                .where(eq(products.id, aggregate.id))
+                .returning()
+            )[0];
+        const final = await this.repository.aggregate(tx, parent!);
+        if (child?.estado === 'ACTIVA')
+          await this.validate(final, actor, child.id);
+        if (final.estado === 'ACTIVO') await this.validate(final, actor);
+        return variantId
+          ? presentVariant(this.child(final, variantId))
+          : presentProduct(final);
+      },
+      transaction,
+    );
   }
   async state(
     productId: string,
@@ -740,10 +802,12 @@ export class CatalogMutationService {
         }
         let parentState = aggregate.estado;
         if (child) {
-          await tx
+          const [updatedChild] = await tx
             .update(variants)
             .set({ estado: action === 'deactivate' ? 'INACTIVA' : 'ACTIVA' })
-            .where(eq(variants.id, child.id));
+            .where(eq(variants.id, child.id))
+            .returning();
+          if (!updatedChild) throw new ServiceUnavailableException();
           if (action === 'deactivate') {
             await this.emit(
               tx,
@@ -751,8 +815,9 @@ export class CatalogMutationService {
                 'catalog.sku.deactivated',
                 {
                   product_id: aggregate.id,
-                  variant_id: child.id,
                   sku: child.sku,
+                  sku_version: transitionVersion(updatedChild.catalog_version),
+                  changed_at: transitionTimestamp(updatedChild.updated_at),
                 },
                 actor.correlationId,
                 randomUUID(),
@@ -764,40 +829,49 @@ export class CatalogMutationService {
                 (c) => c.id !== child.id && c.estado === 'ACTIVA',
               ).length,
             );
-            if (parentState !== aggregate.estado)
-              await this.emit(
-                tx,
-                envelope(
-                  'catalog.product.deactivated',
-                  { product_id: aggregate.id },
-                  actor.correlationId,
-                  randomUUID(),
-                ),
-              );
+            if (parentState !== aggregate.estado) parentState = 'INACTIVO';
           }
         } else {
           parentState = action === 'deactivate' ? 'INACTIVO' : 'ACTIVO';
-          if (action === 'deactivate')
-            await this.emit(
-              tx,
-              envelope(
-                'catalog.product.deactivated',
-                {
-                  product_id: aggregate.id,
-                  ...(input.motivo !== undefined
-                    ? { motivo: input.motivo }
-                    : {}),
-                },
-                actor.correlationId,
-                randomUUID(),
-              ),
-            );
         }
         const [parent] = await tx
           .update(products)
           .set({ estado: parentState })
           .where(eq(products.id, aggregate.id))
           .returning();
+        if (!parent) throw new ServiceUnavailableException();
+        if (action === 'deactivate' && !child)
+          await this.emit(
+            tx,
+            envelope(
+              'catalog.product.deactivated',
+              {
+                product_id: parent.id,
+                product_version: transitionVersion(parent.catalog_version),
+                changed_at: transitionTimestamp(parent.updated_at),
+              },
+              actor.correlationId,
+              randomUUID(),
+            ),
+          );
+        if (
+          action === 'deactivate' &&
+          child &&
+          parentState !== aggregate.estado
+        )
+          await this.emit(
+            tx,
+            envelope(
+              'catalog.product.deactivated',
+              {
+                product_id: parent.id,
+                product_version: transitionVersion(parent.catalog_version),
+                changed_at: transitionTimestamp(parent.updated_at),
+              },
+              actor.correlationId,
+              randomUUID(),
+            ),
+          );
         const final = await this.repository.aggregate(tx, parent!);
         return child
           ? presentVariant(this.child(final, child.id))

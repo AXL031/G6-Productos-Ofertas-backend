@@ -44,6 +44,7 @@ describe('parseBulkEnvironment', () => {
       nodeEnv: 'test',
       host: '127.0.0.1',
       port: 3008,
+      catalogCommandV2Enabled: false,
       httpRequestTimeoutMs: 15000,
       httpHeadersTimeoutMs: 10000,
       httpKeepAliveTimeoutMs: 5000,
@@ -56,6 +57,33 @@ describe('parseBulkEnvironment', () => {
     });
     expect(Object.isFrozen(config)).toBe(true);
   });
+
+  it('enables Catalog command v2 only for the explicit true value', () => {
+    expect(
+      parseBulkEnvironment({
+        ...valid,
+        BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
+      }).catalogCommandV2Enabled,
+    ).toBe(true);
+    expect(
+      parseBulkEnvironment({
+        ...valid,
+        BULK_CATALOG_COMMAND_V2_ENABLED: 'false',
+      }).catalogCommandV2Enabled,
+    ).toBe(false);
+  });
+
+  it.each(['', 'TRUE', '1', 'yes'])(
+    'rejects invalid BULK_CATALOG_COMMAND_V2_ENABLED value %j',
+    (value) => {
+      expect(() =>
+        parseBulkEnvironment({
+          ...valid,
+          BULK_CATALOG_COMMAND_V2_ENABLED: value,
+        }),
+      ).toThrow('BULK_CATALOG_COMMAND_V2_ENABLED debe ser true o false.');
+    },
+  );
 
   it('prefers BULK_SVC_PORT and accepts the deployment PORT pair', () => {
     expect(

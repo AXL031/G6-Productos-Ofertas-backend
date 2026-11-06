@@ -12,6 +12,7 @@ export interface PricingConfig {
   auth?: { issuer: string; jwksUrl: string };
   demoNoAuthEnabled?: boolean;
   amqpUrl?: string;
+  priceChangedPublishingEnabled?: boolean;
   catalogUrl?: string;
   serviceToken?: { url: string; secret: string };
 }
@@ -49,6 +50,11 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
     );
   }
   const demoNoAuthEnabled = demoFlag === 'true';
+  const priceChangedFlag = env.PRICING_PRICE_CHANGED_PUBLISH_ENABLED ?? 'false';
+  if (!['true', 'false'].includes(priceChangedFlag))
+    throw new InvalidPricingConfig(
+      'PRICING_PRICE_CHANGED_PUBLISH_ENABLED debe ser true o false.',
+    );
   const rawPort = env.PRICING_SVC_PORT ?? env.PORT;
   const port = Number(rawPort);
   if (
@@ -228,18 +234,28 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       );
     }
   }
+  const amqpUrl =
+    env.PRICING_AMQP_URL === undefined
+      ? undefined
+      : validateAmqpUrl(env.PRICING_AMQP_URL, nodeEnv);
+  const priceChangedPublishingEnabled = priceChangedFlag === 'true';
+  if (priceChangedPublishingEnabled && !amqpUrl)
+    throw new InvalidPricingConfig(
+      'La publicación de cambios de precio requiere PRICING_AMQP_URL.',
+    );
   return {
     nodeEnv,
     port,
     databaseUrl: url.toString(),
     databaseSsl,
+    ...(amqpUrl ? { amqpUrl } : {}),
+    ...(priceChangedPublishingEnabled
+      ? { priceChangedPublishingEnabled: true }
+      : {}),
     ...(catalogUrl ? { catalogUrl } : {}),
     ...(serviceToken ? { serviceToken } : {}),
     ...(auth ? { auth } : {}),
     ...(demoNoAuthEnabled ? { demoNoAuthEnabled: true } : {}),
-    ...(env.PRICING_AMQP_URL === undefined
-      ? {}
-      : { amqpUrl: validateAmqpUrl(env.PRICING_AMQP_URL, nodeEnv) }),
   };
 }
 

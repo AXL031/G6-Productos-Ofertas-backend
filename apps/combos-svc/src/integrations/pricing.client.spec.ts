@@ -31,14 +31,14 @@ describe('PricingClient', () => {
     const prices = await client.getPrices(
       ['0001', '0002'],
       '2026-11-02T00:00:00.000Z',
-      'WEB',
+      'MARKETPLACE',
       'corr',
     );
     const url = new URL(requestUrl);
     expect(url.pathname).toBe('/api/v1/precios');
     expect(url.searchParams.get('skus')).toBe('0001,0002');
     expect(url.searchParams.get('at')).toBe('2026-11-02T00:00:00.000Z');
-    expect(url.searchParams.get('canal')).toBe('WEB');
+    expect(url.searchParams.get('canal')).toBe('MARKETPLACE');
     expect(new Headers(requestHeaders).get('authorization')).toBe(
       'Bearer pricing-token',
     );
@@ -82,6 +82,68 @@ describe('PricingClient', () => {
     );
     expect(new URL(requestUrl).pathname).toBe('/api/v1/precios/skus/SKU%2C002');
     expect(prices[0]?.sku).toBe('SKU,002');
+  });
+  it('splits 101 SKU across contractual batches of at most 100', async () => {
+    const groups: string[][] = [];
+    const client = new PricingClient(
+      'http://pricing-svc:3002',
+      () => 't',
+      async (url) => {
+        const skus = new URL(String(url)).searchParams.get('skus')!.split(',');
+        groups.push(skus);
+        return Response.json({ items: skus.map((sku) => row(sku)) });
+      },
+    );
+    const skus = Array.from({ length: 101 }, (_item, index) => `SKU-${index}`);
+    const result = await client.getPrices(
+      skus,
+      '2026-11-02T00:00:00Z',
+      undefined,
+      'c',
+    );
+    expect(groups.map((group) => group.length)).toEqual([100, 1]);
+    expect(result).toHaveLength(101);
+  });
+  it('rejects duplicate or unexpected price rows', async () => {
+    const duplicate = new PricingClient(
+      'http://pricing-svc',
+      () => 't',
+      async () => Response.json({ items: [row('1'), row('1')] }),
+    );
+    await expect(
+      duplicate.getPrices(['1', '2'], '2026-11-02T00:00:00Z', undefined, 'c'),
+    ).rejects.toMatchObject({ reason: 'DUPLICATE_PRICE' });
+    const unexpected = new PricingClient(
+      'http://pricing-svc',
+      () => 't',
+      async () => Response.json({ items: [row('other')] }),
+    );
+    await expect(
+      unexpected.getPrices(['1'], '2026-11-02T00:00:00Z', undefined, 'c'),
+    ).rejects.toMatchObject({ reason: 'INVALID_RESPONSE' });
+  });
+  it('invalidates a rejected M2M bearer and retries once with a fresh token', async () => {
+    let token = 'old';
+    let invalidations = 0;
+    let calls = 0;
+    const client = new PricingClient(
+      'http://pricing-svc',
+      () => token,
+      async (_url, init) => {
+        calls += 1;
+        if (new Headers(init?.headers).get('authorization') === 'Bearer old')
+          return new Response(null, { status: 401 });
+        return Response.json({ items: [row('1')] });
+      },
+      () => {
+        invalidations += 1;
+        token = 'new';
+      },
+    );
+    await expect(
+      client.getPrices(['1'], '2026-11-02T00:00:00Z', undefined, 'c'),
+    ).resolves.toHaveLength(1);
+    expect({ calls, invalidations }).toEqual({ calls: 2, invalidations: 1 });
   });
   it('uses regular as public effective price when there is no valid offer', async () => {
     const client = new PricingClient(

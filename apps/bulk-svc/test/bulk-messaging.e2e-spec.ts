@@ -8,6 +8,7 @@ import { BULK_TEMPLATE_HEADERS } from '../src/domain/bulk-template-v2.js';
 import { CatalogBulkResultConsumer } from '../src/messaging/catalog-bulk-result-consumer.js';
 import { bulkSchema } from '../src/persistence/bulk.schema.js';
 import { BulkPersistenceRepository } from '../src/persistence/bulk.repository.js';
+import { parseBulkEnvironment } from '../src/config/bulk-environment.js';
 import { IsolatedBulkRabbitmq } from './isolated-bulk-rabbitmq.js';
 
 const databaseUrl = process.env.BULK_TEST_DATABASE_URL;
@@ -86,7 +87,10 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       '',
       '0',
     ];
-    const service = new BulkImportService(repository);
+    const service = new BulkImportService(
+      repository,
+      parseBulkEnvironment({ NODE_ENV: 'test' }),
+    );
     const importInput = {
       bytes: Buffer.from(
         `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.join(',')}\r\n`,
@@ -126,6 +130,83 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     ).toBe(false);
   }, 30000);
 
+  it('persists and republishes the exact v2 variant-update command on replay', async () => {
+    const batchId = id();
+    const correlationId = id();
+    const values = [
+      'ACTUALIZACION',
+      '11111111-1111-4111-8111-111111111111',
+      '{"producto":3,"variante":2}',
+      'BASE-V2',
+      '000, ñ SKU',
+      'Producto',
+      'Descripción',
+      'cat-1',
+      'marca-1',
+      'tipo-1',
+      'true',
+      '',
+      '[]',
+      '{"identificadores":[],"no_identificadores":[]}',
+      '',
+      '0',
+    ];
+    const input = {
+      bytes: Buffer.from(
+        `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
+        'utf8',
+      ),
+      format: 'CSV' as const,
+      templateVersion: 2,
+      correlationId,
+      batchId,
+      contentRef: `test://${id()}`,
+    };
+    const service = new BulkImportService(
+      repository,
+      parseBulkEnvironment({
+        NODE_ENV: 'test',
+        BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
+      }),
+    );
+    await service.receiveImport(input);
+    const admission = await repository.findImportAdmissionIntent(batchId);
+    const original = (
+      admission!.catalogCommands as Array<Record<string, unknown>>
+    )[0]!;
+    expect(original).toMatchObject({
+      schema_version: 2,
+      data: {
+        mode: 'ACTUALIZACION',
+        template_version: 2,
+        rows: [
+          {
+            variant_id: null,
+            sku_variante: '000, ñ SKU',
+            product: { catalogVersion: 3 },
+            variant: { catalogVersion: 2 },
+          },
+        ],
+      },
+    });
+
+    await service.receiveImport(input);
+    const replay = await repository.findImportAdmissionIntent(batchId);
+    expect(replay?.catalogCommands).toEqual([original]);
+    const pending = (await repository.findPendingOutbox(10)).filter(
+      (item) => item.correlationId === correlationId,
+    );
+    expect(pending).toHaveLength(1);
+    expect(pending[0]?.payload).toEqual(original);
+
+    const relay = new BulkOutboxRelay(repository, broker.url);
+    await relay.flush();
+    const delivered = await broker.nextCommandDelivery();
+    expect(delivered.payload).toEqual(original);
+    expect(delivered.messageId).toBe(original.message_id);
+    expect(delivered.correlationId).toBe(correlationId);
+    expect(delivered.routingKey).toBe('catalog.bulk.upsert.requested');
+  }, 30000);
   it('RabbitMQ rechaza un userId distinto al usuario AMQP autenticado', async () => {
     await expect(
       broker.publishCommandWithUserId('bulk93-usuario-distinto'),
@@ -135,7 +216,10 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   }, 30000);
 
   it('isolates row operation identities across independent batches with identical CSV and preserves each replay', async () => {
-    const service = new BulkImportService(repository);
+    const service = new BulkImportService(
+      repository,
+      parseBulkEnvironment({ NODE_ENV: 'test' }),
+    );
     const batchIds = [id(), id()] as const;
     const correlationIds = [id(), id()] as const;
     const values = [
@@ -290,7 +374,10 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   it('persists, replays and consolidates multiple 1 MiB chunks with distinct chunk identities', async () => {
     const batchId = id();
     const correlationId = id();
-    const service = new BulkImportService(repository);
+    const service = new BulkImportService(
+      repository,
+      parseBulkEnvironment({ NODE_ENV: 'test' }),
+    );
     const rows = [
       { rowId: id(), rowOperationId: id(), rowNumber: 2, skuBase: 'FAMILY-A' },
       { rowId: id(), rowOperationId: id(), rowNumber: 3, skuBase: 'FAMILY-A' },

@@ -11,7 +11,12 @@ const MANAGED_KEYS = [
   'PGPORT',
   'PGHOST',
   'PGUSER',
+  'PGDATABASE',
+  'PGPASSWORD',
+  'PGSSLMODE',
+  'PGSSLROOTCERT',
   'DATABASE_URL',
+  'INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED',
   'INVENTORY_DEMO_NO_AUTH_ENABLED',
   'INVENTORY_DEMO_GATEWAY_IPS',
 ] as const;
@@ -42,6 +47,14 @@ describe('loadInventoryConfig — configuración fail-closed', () => {
     expect(config.workerIntervalMs).toBe(5000);
     expect(config.workerBatchSize).toBe(50);
     expect(config.pgPort).toBe(5432);
+    expect(config.catalogSkuDeactivationEnabled).toBe(false);
+  });
+
+  it('rechaza un valor inválido para el gate del evento de baja SKU', () => {
+    process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED = 'yes';
+    expect(() => loadInventoryConfig()).toThrow(
+      /INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED/,
+    );
   });
 
   it('rechaza DEFAULT_LOW_STOCK_THRESHOLD no numérico (fail-closed)', () => {

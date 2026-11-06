@@ -9,6 +9,7 @@ export interface InventoryConfig {
   pgPassword?: string;
   pgSslMode?: string;
   pgSslRootCert?: string;
+  catalogSkuDeactivationEnabled: boolean;
   rabbitMqUrl?: string;
   port: number;
   reservationTtlSeconds: number;
@@ -110,6 +111,13 @@ export function loadInventoryConfig(): InventoryConfig {
     500,
   );
   const pgPort = integerSetting('PGPORT', 5432, 1, 65535);
+  const skuDeactivationGate =
+    process.env.INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED ?? 'false';
+  if (skuDeactivationGate !== 'true' && skuDeactivationGate !== 'false') {
+    throw new Error(
+      '[inventory-svc] INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED debe ser true o false',
+    );
+  }
 
   return {
     databaseUrl: process.env.DATABASE_URL,
@@ -120,6 +128,7 @@ export function loadInventoryConfig(): InventoryConfig {
     pgPassword: process.env.PGPASSWORD,
     pgSslMode: process.env.PGSSLMODE,
     pgSslRootCert: process.env.PGSSLROOTCERT,
+    catalogSkuDeactivationEnabled: skuDeactivationGate === 'true',
     rabbitMqUrl: process.env.RABBITMQ_URL,
     port,
     reservationTtlSeconds,

@@ -1,0 +1,129 @@
+{
+  "audited_at": "2026-11-03T22:38:17.121678+00:00",
+  "original_products": [
+    "96c6972f-2bd2-5528-8028-5293fe719db9",
+    "8be3020b-0f9c-5343-ad74-41740393bece",
+    "ad478840-d9fa-5c02-8e4f-d6bdbd0b1914",
+    "9d5e65cb-10c9-5a2b-a69d-090e3208bd77",
+    "457f749f-2aaf-56a3-9776-a95df5d24d59",
+    "59022191-2fb1-5db3-903f-05f8e6be19b1",
+    "536287fd-b2fa-5c1d-a086-7db284725485",
+    "2ee6399e-2333-5916-847b-f6d2a0f03527",
+    "ff8e9b30-f939-51cd-9294-4753cdae05b8",
+    "b8224b4b-8268-57e4-9d61-d4424828544c",
+    "0f9cc95c-6502-54ce-82d5-72f192bbd33c",
+    "79c03413-cf12-56fe-bcd1-32e45cf40221",
+    "7b1abfe1-87c2-5e60-81dc-cfb6daf247cc",
+    "8111028a-4a0e-5cb1-a4b8-8095cc098a83",
+    "858ed760-beb9-5fdf-aa6d-b6b543b162d2"
+  ],
+  "additional_products": [
+    {
+      "id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "sku": "PUM-ULP-BASE"
+    },
+    {
+      "id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "sku": "ADI-ENT22-BASE"
+    },
+    {
+      "id": "abab3400-46eb-58f7-78d5-8204418b60d9",
+      "sku": "NIK-PITCH-05"
+    },
+    {
+      "id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "sku": "ADI-RF3-BASE"
+    },
+    {
+      "id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "sku": "NIK-REV7-BASE"
+    }
+  ],
+  "sellable_skus": 55,
+  "non_sellable_bases": 16,
+  "manifest_differences": [],
+  "missing_master_references": [],
+  "attribute_findings": [
+    {
+      "sku": "NIK-PITCH-05",
+      "reason": "MISSING_REQUIRED_ATTRIBUTE",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd"
+    },
+    {
+      "sku": "NIK-PITCH-05",
+      "reason": "MISSING_REQUIRED_ATTRIBUTE",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff"
+    }
+  ],
+  "identifying_findings": [
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "08f2c67c-d79a-3e61-c7ee-0262885f68e7",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "32a4172c-81b2-b643-1d0f-ae66f627f2ef",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "abaf9767-7431-9b50-495c-aeb880dc3055",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "characteristic": "fe3fe43d-f3a4-6fe7-4a2f-34e8bdfa0abd",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    },
+    {
+      "product_id": "fedeecfb-c7f5-56cf-c31b-9cdf10b47058",
+      "characteristic": "acee6db1-ba1c-f020-caf8-f439b09556ff",
+      "reason": "MISSING_PRODUCT_IDENTIFYING_CHARACTERISTIC"
+    }
+  ],
+  "integrity_findings": [],
+  "missing_storage_references": [
+    {
+      "image_id": "e807b012-00ba-4d17-a4e5-f47546cd8980",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    },
+    {
+      "image_id": "aba3e97a-6575-4c13-81e7-fe35a2e14d0a",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    },
+    {
+      "image_id": "bdf64a75-0ee8-4fd2-aeae-e85e27c67cae",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    },
+    {
+      "image_id": "739bdf11-ce20-4f19-a49e-8fa09bda60f3",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    },
+    {
+      "image_id": "e26d7736-b820-4e43-b92b-4f95cc773186",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    },
+    {
+      "image_id": "c9b5f3d3-542e-4c1b-bd87-e50a53aa0703",
+      "url": "https://placehold.co/800x800/png?text=Imagen+referencial"
+    }
+  ],
+  "no_profiles": true,
+  "no_preparations": true
+}

@@ -12,7 +12,7 @@ import { dirname, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import pg from 'pg';
 
-const MINIMO_PRUEBAS = 19;
+const MINIMO_PRUEBAS = 21;
 const ESPEC = 'apps/taxonomy-svc/test/persistencia-drizzle.e2e-spec.ts';
 const HARNESS_VARIABLE = 'TAXONOMY_TEST_HARNESS_ID';
 const ACK_VARIABLE = 'TAXONOMY_TEST_DB_ACK';
@@ -564,10 +564,25 @@ async function ejecutar() {
     const omitidas = reporte.numPendingTests ?? 0;
     const fallidas = reporte.numFailedTests ?? 0;
 
+    if (fallidas > 0) {
+      const detalles = (reporte.testResults ?? [])
+        .flatMap((archivo) =>
+          (archivo.assertionResults ?? [])
+            .filter((prueba) => prueba.status === 'failed')
+            .map((prueba) => {
+              const mensaje = (prueba.failureMessages ?? []).join(' ');
+              return `${archivo.name}: ${prueba.fullName ?? prueba.title}: ${mensaje}`;
+            }),
+        )
+        .join('\n')
+        .slice(0, MAXIMO_CARACTERES_DIAGNOSTICO);
+      fallar(
+        `${fallidas} prueba(s) fallaron.${detalles ? `\n${sanitizarDiagnostico(detalles)}` : ''}`,
+      );
+    }
     if ((resultado.status ?? 1) !== 0) {
       fallar(`vitest terminó con código ${resultado.status}.`);
     }
-    if (fallidas > 0) fallar(`${fallidas} prueba(s) fallaron.`);
     if (omitidas > 0) {
       fallar(
         `${omitidas} prueba(s) omitidas: las pruebas de integración no pueden saltarse.`,

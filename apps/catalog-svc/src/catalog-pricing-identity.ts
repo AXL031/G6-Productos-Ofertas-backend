@@ -51,6 +51,9 @@ async function aborted<T>(work: Promise<T>, signal: AbortSignal): Promise<T> {
 }
 @Injectable()
 export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
+  protected get scope(): string {
+    return 'precios:leer';
+  }
   private cached?: { authorization: string; expiresAt: number };
   private loading?: Promise<{ authorization: string; expiresAt: number }>;
   constructor(
@@ -77,7 +80,7 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
           grant_type: 'client_credentials',
           client_id: 'modulo-productos',
           client_secret: credentials.clientSecret,
-          scope: 'precios:leer',
+          scope: this.scope,
         }).toString(),
       });
       const body = await json(response);
@@ -89,7 +92,7 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
         (body.expiresIn as number) <= 0 ||
         !Array.isArray(body.scopes) ||
         !body.scopes.every((s) => typeof s === 'string') ||
-        !body.scopes.includes('precios:leer')
+        !body.scopes.includes(this.scope)
       )
         throw new Error();
       const principal = await this.verifier.verify(body.accessToken);
@@ -98,7 +101,7 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
         principal.kind !== 'service' ||
         principal.subject !== 'modulo-productos' ||
         !principal.audiences.includes('api-productos') ||
-        !principal.scopes.includes('precios:leer') ||
+        !principal.scopes.includes(this.scope) ||
         principal.scopes.length !== body.scopes.length ||
         principal.scopes.some((s) => !grantedScopes.includes(s))
       )

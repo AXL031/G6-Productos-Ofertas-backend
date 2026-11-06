@@ -1,0 +1,12 @@
+[
+  {"prefix":"ADI-RUNX-","code":"JD9558","color":"Black / White / Black","url":"https://www.adidas.co.uk/runxcushioned-socks-1-pair/JD9558.html","evidence":"PRIMARY_SOURCE_VERIFIED; IDENTICAL_OFFICIAL_IMAGE_SHA256"},
+  {"prefix":"ADI-ENT26-AZU-","code":"JZ2506","color":"Royal Blue / White","url":"https://www.adidas.es/camiseta-entrada26/JZ2506.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"ADI-ENT26-BLA-","code":"JZ2508","color":"White / Black","url":"https://www.adidas.pl/koszulka-entrada26/JZ2508.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"ADI-ENT22-AZU-","code":"HG6283","color":"Royal Blue","url":"https://www.adidas.co.uk/entrada-22-jersey/HG6283.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"ADI-RF3-GRI-","code":"HP7552","color":"Grey Six / Court Green / Core Black","url":"https://www.adidas.com.au/runfalcon-3.0-shoes/HP7552.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"NIK-REV7-NEG-","code":"FB2207-005","color":"Black / Off-Noir","url":"https://www.nike.com/sg/t/revolution-7-road-running-shoes-dC34tK/FB2207-005","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"PUM-ULP-NEG-","code":"107224_02","color":"PUMA Black / PUMA White","url":"https://sa.puma.com/sa/en/pd/ultra-play-fg-ag-football-boots-men/107224.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"NIK-PITCH-05","code":"FZ2636-101","color":"White / Blue Fury / Glacier Blue","url":"https://www.nike.ae/en/pitch-football/NKFZ2636-101.html","evidence":"PRIMARY_SOURCE_VERIFIED; IMAGE_COHERENCE_REVIEW"},
+  {"prefix":"NIK-EVP-FQ0327-NEG-","code":"FQ0327-010","color":"Black / White","url":"https://www.nike.ae/en/everyday-plus-cushioned-crew-socks-1-pair/NKFQ0327-010.html","evidence":"PRIMARY_SOURCE_VERIFIED"},
+  {"prefix":"NIK-EVP-FQ0327-BLA-","code":"FQ0327-100","color":"White / Black","url":"https://www.nike.ae/en/everyday-plus-cushioned-crew-socks-1-pair/NKFQ0327-100.html","evidence":"HISTORICAL_MANIFEST_AND_IMAGE; COLOR_SPECIFIC_REFERENCE"}
+]

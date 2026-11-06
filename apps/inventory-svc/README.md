@@ -96,7 +96,7 @@ Prefijo de las operaciones: `/api/v1` (el Gateway reenvía `originalUrl`). Los
 
 Nunca se exponen DSN, credenciales ni detalles internos.
 
-## 4. Mensajería (AsyncAPI `0.6.0-rc.3` / Topología Oracle)
+## 4. Mensajería (AsyncAPI `0.6.0-rc.4` / Topología Oracle)
 
 Cola principal consumida: `po.inventario.q` (prefetch 20, ACK manual tras el
 commit de Inbox + saldo + operación + resultado Outbox).
@@ -123,8 +123,10 @@ commit de Inbox + saldo + operación + resultado Outbox).
 | Evento | Estado |
 |---|---|
 | `inventory.sku.initialization.requested` | Handler implementado (crea saldo cero, versión 0) |
-| `inventory.bulk.stock.adjust.requested` | **BLOCKED_CONTRACT** — AsyncAPI lo declara `GenericData`, sin semántica ejecutable |
-| `catalog.sku.deactivated` | **BLOCKED_CONTRACT** — mismo motivo |
+| `inventory.bulk.stock.adjust.requested` | **BLOCKED_CONTRACT** — AsyncAPI `0.6.0-rc.4` aún lo declara `GenericData`. Owner productor: Bulk (Marco Castilla); Inventory participa como consumidor. Versión candidata tipada prevista para el 04/11. No se implementa el handler hasta contrato aprobado y versionado. |
+| `catalog.sku.deactivated` | El handler Inventory valida el esquema AsyncAPI `0.6.0-rc.4` (`{product_id, sku, sku_version, changed_at}`, `schema_version=1`). `master` previo al merge (`a74b954`) emitía el payload legado `{product_id, variant_id, sku}`; Catalog PR #185 (`263bd2655184c3cd559ab1f682a75f3730f5f85f`) está fusionada en `master@c18a91f51c4702b0e24a166cc0eb1d9cd478e6d6` y es compatible con rc.4 en esquema. La prueba de contrato y la integración aislada Inventory con PostgreSQL/RabbitMQ no equivalen a E2E bilateral. Pendientes: despliegue coordinado, verificación del binding y E2E real. Gate `INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED` permanece `false` por defecto. Owner: Poma / Catálogo + Marco / Integración. |
+
+La baja de un producto simple sin variantes sigue siendo una dependencia contractual distinta: Catalog publica `catalog.product.deactivated` con identidad y versión de producto, pero sin identidad SKU; AsyncAPI `0.6.0-rc.4` no declara a Inventory como consumidor de ese evento. Inventory no puede inactivar el SKU asociado a partir de esa notificación; si existe saldo positivo, el evento por sí solo tampoco evita que su proyección comercial aparezca disponible. Owner: Poma / Catálogo y Docs / Arquitectura. Desbloqueo: acordar y versionar una resolución contractual verificable de la identidad SKU afectada para esa baja, y homologarla con Inventory. No se inventa un evento, payload ni consulta alternativos.
 
 Ante mensaje inválido o contrato bloqueado, el consumer **pausa y cierra el
 canal sin ACK**; se recupera con causa resuelta y `resume()` o reinicio
@@ -132,11 +134,11 @@ coordinado. `getMetrics()` expone contadores locales (conexión, pausa, ACK,
 duplicados, rechazos, fallos, reconexiones). No hay endpoint/exportador de
 métricas.
 
-### 4.1 Topología física AMQP adoptada (Resolución de nombres físicos / AsyncAPI 0.6.0-rc.3 — alcance parcial #29)
+### 4.1 Topología física AMQP adoptada (nombres adoptados en AsyncAPI 0.6.0-rc.3, vigentes en 0.6.0-rc.4 — alcance parcial #29)
 
 El código de Inventory adopta la nomenclatura física en español oficial de Oracle y las ACLs del usuario `g6_inventario`:
 
-| Elemento | Nombre físico en código (AsyncAPI 0.6.0-rc.3) | Referencia histórica (AsyncAPI 0.6.0-rc.2) | ACL del usuario `g6_inventario` | Estado |
+| Elemento | Nombre físico en código (vigente en AsyncAPI 0.6.0-rc.4) | Referencia histórica (AsyncAPI 0.6.0-rc.2) | ACL del usuario `g6_inventario` | Estado |
 |---|---|---|---|---|
 | Cola de consumo | `po.inventario.q` | `po.inventory.q` | **read** `po.inventario.q` | **Alineado** |
 | Exchange de eventos | `po.eventos.x` | `po.events.x` | **write** `po.eventos.x` | **Alineado** |
@@ -180,7 +182,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 
 | Issue | Estado | Implementación interna | Bloqueo externo (owner · operación · desbloqueo) |
 |---|---|---|---|
-| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline, dry-run contra baseline Supabase (diff: 2 insert, 5 unchanged, 31 conflict) y propuesta SQL atómica (`proposal-load.sql`) en `data/data-f1/`; `ready_for_load=false` | Poma/#12 ratificó los 7 SKU en BORRADOR · Marco autorizó export de lectura · pendiente 2da autorización escrita de Marco para aplicar carga en Supabase |
+| [#14](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/14) | IMPLEMENTAR_PARCIAL | Preparador offline, dry-run contra baseline Supabase (diff: 2 insert, 5 unchanged, 31 conflict) y propuesta SQL atómica (`proposal-load.sql`) en `data/data-f1/`; validador con ratificación estructurada y alcance `full_load`/`limited_load`; `ready_for_load=false` | Marco autorizó la carga limitada de los 2 umbrales, condicionada a preflight inmediato; pendiente `DATABASE_URL`/`PG*` (el `.env` local solo tiene `RABBITMQ_URL`). La publicación comercial de los productos en BORRADOR sigue como gate separado |
 | [#25](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/25) | IMPLEMENTAR_PARCIAL | GET comercial y POST verificador sin JWT solo desde el peer Gateway (`INVENTORY_DEMO_GATEWAY_IPS`) | Marco/`api-gateway` #106/#107 · propagación de errores del verificador y exposición demo de Inventory · contrato/registro corregidos y prueba conjunta |
 | [#30](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/30) | IMPLEMENTAR_PARCIAL | Ciclo M1 reserva/consumo/liberación/expiración, estados, errores, replay, correlación | G5/M1 + Marco · secuencia por canal y resultado definitivo · prueba bilateral con entorno identificado; G7 concede grants |
 | [#31](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/31) | IMPLEMENTAR_PARCIAL | Consulta informativa M2 y reintegro F3 internos | G5/M2 · recepción/aptitud física y destino real de `location_id` · prueba bilateral; G7 concede scopes |
@@ -189,7 +191,7 @@ identifica **owner · operación afectada · condición verificable de desbloque
 | [#99](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/99) | IMPLEMENTAR_PARCIAL | Invariantes de saldo/reserva/incidencia/traslado/reintegro y política offline pura | Marco + G4/G5/G7 · identidad estable de venta offline, dedupe, actor y ubicación (DEC-F-009/014/015) · política y contrato ejecutables |
 | [#100](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/100) | IMPLEMENTAR_PARCIAL | Lecturas, umbrales, dashboard, traslados y consultas comerciales | Poma/Catálogo · mapping producto/categoría/marca→SKU · Marco · métricas SPEC-016 ausentes del schema HTTP y errores de Gateway |
 | [#101](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/101) | IMPLEMENTAR_PARCIAL | Escrituras contractuales salvo frontera offline | Marco + G4/G5/G7 · autorización offline · homologación antes de conectar la política pura a una mutación persistente |
-| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia; topología física `po.inventario.q`/`po.eventos.x`/`po.resultados.x` adoptada en código y acreditada en CI (alcance parcial #29) | Marco + owners Bulk/Catálogo · payload tipado de bulk/deactivated · contrato ejecutable · Marco/Infra · conexión al broker Oracle con las credenciales individuales, validación bilateral y recuperación AMQP. Retry/DLX no implementado por diseño: el servicio no crea topología y no dispone de retry/DLX |
+| [#102](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/102) | IMPLEMENTAR_PARCIAL | Inbox/Outbox, inicialización SKU, workers, resiliencia; topología física `po.inventario.q`/`po.eventos.x`/`po.resultados.x` adoptada en código y acreditada en CI (alcance parcial #29) | Marco + Bulk · `inventory.bulk.stock.adjust.requested` sigue en `GenericData`; contrato tipado pendiente. Poma/Catálogo + Marco/Integración · `catalog.sku.deactivated` es compatible con rc.4 en Catalog PR #185 SHA `263bd2655184c3cd559ab1f682a75f3730f5f85f`, fusionada como `c18a91f51c4702b0e24a166cc0eb1d9cd478e6d6`; quedan despliegue coordinado, binding y E2E bilateral. La baja de producto simple carece de identidad SKU para Inventory y requiere resolución versionada con Catalog/Docs. Conexión al broker Oracle y recuperación AMQP siguen separadas. Retry/DLX no implementado por diseño: el servicio no crea topología |
 | [#103](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/103) | IMPLEMENTAR_PARCIAL | Límites, timeouts, errores sanitizados, contadores internos | Infra/G5 · validar fallos y recuperación con DB/broker reales; sin exporter/endpoint de métricas no contratado |
 | [#104](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/104) | BLOQUEADO_ESPECÍFICO | Provider HTTP; adaptador Frontend de umbrales, KPIs autoritativos de dashboard, distribución `porUbicacion` y traslados con solicitud inmutable, confirmación separada de presentación (`TAC-P0-05`), protección `UNCERTAIN` y matriz de transición (`TAC-P0-02`/`TAC-P1-07`) (33 pruebas unitarias/flujo + 60 Playwright, SHA Frontend `db7c2e6`, `src/features/inventory/INTEGRACION_HTTP.md`); lecturas sin fuente contractual fallan con `CONTRATO_BLOQUEADO` | Marco · cliente compartido #109 y rutas #106/#107 · integración React↔Gateway validada (área Frontend) |
 | [#105](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/105) | BLOQUEADO_ESPECÍFICO | Suites locales/provider (no son E2E real) | Marco/Infra · #104, stack aislado PostgreSQL/RabbitMQ, datos autorizados y #110 · recorrido real React→Gateway→Inventory→persistencia |
