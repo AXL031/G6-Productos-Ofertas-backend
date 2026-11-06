@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Dependencies: bash, awk, docker Compose v2, jq, rg, sed, sort, mktemp, head, tr, grep, rm.
+# Dependencies: bash, awk, docker Compose v2, jq, sed, sort, mktemp, head, tr, grep, rm.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 REGISTRY="$ROOT/ops/oracle/services.psv"
 TEMP_ROOT="$(mktemp -d)"
@@ -11,7 +11,7 @@ fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 host_path() {
   if [[ -n "${MSYSTEM:-}" ]] && command -v cygpath >/dev/null 2>&1; then cygpath -m "$1"; else printf '%s' "$1"; fi
 }
-for tool in bash awk docker jq rg sed sort mktemp head tr grep rm; do
+for tool in bash awk docker jq sed sort mktemp head tr grep rm; do
   command -v "$tool" >/dev/null 2>&1 || fail "dependencia requerida ausente: $tool"
 done
 
@@ -41,18 +41,18 @@ expected_sorted="$(printf '%s\n' $expected | sort | tr '\n' ' ' | sed 's/ $//')"
 [[ "$actual" == "$expected_sorted" ]] || fail "identidades/puertos del registro incorrectos: $actual"
 
 # Static assertions are reported separately from Compose rendering.
-rg -n 'internal:[[:space:]]*true|g6-amqp|rabbitmq|caddy' \
+grep -En 'internal:[[:space:]]*true|g6-amqp|rabbitmq|caddy' \
   "$ROOT/ops/oracle/docker-compose.service.http.yml" \
   "$ROOT/ops/oracle/docker-compose.inventory.http.yml" \
   "$ROOT/ops/oracle/docker-compose.gateway.yml" && fail 'Compose HTTP incluye una red o miembro fuera del alcance HTTP'
-[[ "$(rg -c 'name: g6-edge' "$ROOT/ops/oracle/docker-compose.gateway.yml")" == 1 ]] || fail 'g6-edge no está limitado al Compose de Gateway'
-[[ "$(rg -c 'name: g6-http' "$ROOT/ops/oracle/docker-compose.service.http.yml")" == 1 ]] || fail 'overlay genérico no declara g6-http externa'
-rg -n 'g6-http' "$ROOT"/ops/oracle/*rabbit* "$ROOT"/ops/oracle/*amqp* 2>/dev/null && fail 'manifiesto RabbitMQ/AMQP declara g6-http'
+[[ "$(grep -Ec 'name: g6-edge' "$ROOT/ops/oracle/docker-compose.gateway.yml")" == 1 ]] || fail 'g6-edge no está limitado al Compose de Gateway'
+[[ "$(grep -Ec 'name: g6-http' "$ROOT/ops/oracle/docker-compose.service.http.yml")" == 1 ]] || fail 'overlay genérico no declara g6-http externa'
+grep -En 'g6-http' "$ROOT"/ops/oracle/*rabbit* "$ROOT"/ops/oracle/*amqp* 2>/dev/null && fail 'manifiesto RabbitMQ/AMQP declara g6-http'
 grep -Fq 'publicaciones solo en 127.0.0.1' "$ROOT/ops/oracle/INSTALACION_H4_NUEVE_SERVICIOS.md" || fail 'la guía no exige puertos loopback'
-[[ "$(rg -c 'reverse_proxy g6-api-gateway:3000' "$ROOT/ops/oracle/Caddyfile")" == 2 ]] || fail 'Caddy depende de rutas/servicios individuales'
-! rg -n 'docker-compose\.service\.http\.yml|docker-compose\.inventory\.http\.yml|Caddyfile|services\.psv' "$ROOT/ops/oracle/deploy-g6-service.sh" | rg -n 'install|cp |mv |sed |tee ' || fail 'el despliegue intenta modificar infraestructura compartida'
+[[ "$(grep -Ec 'reverse_proxy g6-api-gateway:3000' "$ROOT/ops/oracle/Caddyfile")" == 2 ]] || fail 'Caddy depende de rutas/servicios individuales'
+! grep -En 'docker-compose\.service\.http\.yml|docker-compose\.inventory\.http\.yml|Caddyfile|services\.psv' "$ROOT/ops/oracle/deploy-g6-service.sh" | grep -En 'install|cp |mv |sed |tee ' || fail 'el despliegue intenta modificar infraestructura compartida'
 for f in "$ROOT/ops/oracle/deploy-g6-service.sh" "$ROOT/ops/oracle/service-registry.sh" "$ROOT/.github/workflows/cd-services-oracle.yml"; do
-  rg -n '^[[:space:]]*(docker|docker-compose)[[:space:]].*(down[[:space:]]+-v|--remove-orphans|network[[:space:]]+prune)' "$f" && fail "acción global en procedimiento/CD: $f"
+  grep -En '^[[:space:]]*(docker|docker-compose)[[:space:]].*(down[[:space:]]+-v|--remove-orphans|network[[:space:]]+prune)' "$f" && fail "acción global en procedimiento/CD: $f"
 done
 printf 'PASS ESTÁTICO: registro v2, nueve identidades/puertos únicos, red HTTP aislada y sin RabbitMQ en g6-http\n'
 

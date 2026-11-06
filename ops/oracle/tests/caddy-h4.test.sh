@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Dependencies: bash, docker (daemon access), node, curl, rg, sed, mktemp, cat, head, sleep, rm.
+# Dependencies: bash, docker (daemon access), node, curl, grep, sed, mktemp, cat, head, sleep, rm.
 # Official Caddy and Node images must already be present; CI pulls them explicitly.
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 CADDYFILE="$ROOT/ops/oracle/Caddyfile"
 CADDY_IMAGE="${CADDY_TEST_IMAGE:-caddy:2.11.6-alpine}"
 NODE_IMAGE="${CADDY_MOCK_IMAGE:-node:24-alpine}"
-for tool in bash docker node curl rg sed mktemp cat head sleep rm; do
+for tool in bash docker node curl grep sed mktemp cat head sleep rm; do
   command -v "$tool" >/dev/null 2>&1 || { printf 'FAIL: dependencia requerida ausente: %s\n' "$tool" >&2; exit 1; }
 done
 docker_exec() { MSYS_NO_PATHCONV=1 docker "$@"; }
@@ -16,13 +16,13 @@ docker_exec image inspect "$CADDY_IMAGE" >/dev/null 2>&1 || { printf 'FAIL: imag
 docker_exec image inspect "$NODE_IMAGE" >/dev/null 2>&1 || { printf 'FAIL: imagen oficial Node mock no disponible: %s\n' "$NODE_IMAGE" >&2; exit 1; }
 
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
-rg -q '^\s*admin off\s*$' "$CADDYFILE" || fail 'Caddy admin debe estar deshabilitado'
-rg -q 'g6-productos-ofertas\.duckdns\.org' "$CADDYFILE" || fail 'dominio productivo ausente del candidato'
-[[ "$(rg -c 'reverse_proxy g6-api-gateway:3000' "$CADDYFILE")" == 2 ]] || fail 'upstream productivo debe conservar dos referencias a Gateway'
-if rg -n 'handle_path|request_body|read_timeout|write_timeout|GATEWAY_DEMO_NO_AUTH_ENABLED|G6_READ_ONLY_DEMO_ENABLED' "$CADDYFILE"; then
+grep -Eq '^[[:space:]]*admin off[[:space:]]*$' "$CADDYFILE" || fail 'Caddy admin debe estar deshabilitado'
+grep -Eq 'g6-productos-ofertas\.duckdns\.org' "$CADDYFILE" || fail 'dominio productivo ausente del candidato'
+[[ "$(grep -Ec 'reverse_proxy g6-api-gateway:3000' "$CADDYFILE")" == 2 ]] || fail 'upstream productivo debe conservar dos referencias a Gateway'
+if grep -En 'handle_path|request_body|read_timeout|write_timeout|GATEWAY_DEMO_NO_AUTH_ENABLED|G6_READ_ONLY_DEMO_ENABLED' "$CADDYFILE"; then
   fail 'Caddy incluye rewrite, límites globales o bypass de autenticación'
 fi
-if rg -n 'reverse_proxy\s+(catalog-svc|pricing-svc|price-audit-svc|promotions-svc|inventory-svc|taxonomy-svc|combos-svc|bulk-svc)' "$CADDYFILE"; then
+if grep -En 'reverse_proxy[[:space:]]+(catalog-svc|pricing-svc|price-audit-svc|promotions-svc|inventory-svc|taxonomy-svc|combos-svc|bulk-svc)' "$CADDYFILE"; then
   fail 'Caddy no puede dirigir tráfico directamente a servicios de negocio'
 fi
 
@@ -92,8 +92,8 @@ NODE
 sed -e "s|g6-productos-ofertas.duckdns.org {|http://127.0.0.1:${PROXY_PORT} {|" \
     -e "s|g6-api-gateway:3000|127.0.0.1:${UPSTREAM_PORT}|g" \
     "$CADDYFILE" >"$TEMP_ROOT/Caddyfile"
-[[ "$(rg -c "reverse_proxy 127.0.0.1:${UPSTREAM_PORT}" "$TEMP_ROOT/Caddyfile")" == 2 ]] || fail 'copia temporal no sustituyó ambos upstreams'
-[[ "$(rg -c 'g6-api-gateway:3000' "$CADDYFILE")" == 2 ]] || fail 'Caddyfile productivo fue alterado'
+[[ "$(grep -Ec "reverse_proxy 127.0.0.1:${UPSTREAM_PORT}" "$TEMP_ROOT/Caddyfile")" == 2 ]] || fail 'copia temporal no sustituyó ambos upstreams'
+[[ "$(grep -Ec 'g6-api-gateway:3000' "$CADDYFILE")" == 2 ]] || fail 'Caddyfile productivo fue alterado'
 
 wait_http_valid() {
   local url="$1" expected="$2" label="$3" code body
@@ -144,13 +144,13 @@ wait_proxy
 
 assert_headers() {
   local headers="$1" auth="$2"
-  [[ "$(rg -ci '^X-Content-Type-Options: nosniff\r?$' "$headers")" == 1 ]] || fail 'X-Content-Type-Options no coincide exactamente'
-  [[ "$(rg -ci '^X-Frame-Options: DENY\r?$' "$headers")" == 1 ]] || fail 'X-Frame-Options no coincide exactamente'
-  [[ "$(rg -ci '^Referrer-Policy: no-referrer\r?$' "$headers")" == 1 ]] || fail 'Referrer-Policy no coincide exactamente'
-  ! rg -qi '^Server:' "$headers" || fail 'se filtró el encabezado Server'
+  [[ "$(grep -Eci '^X-Content-Type-Options: nosniff\r?$' "$headers")" == 1 ]] || fail 'X-Content-Type-Options no coincide exactamente'
+  [[ "$(grep -Eci '^X-Frame-Options: DENY\r?$' "$headers")" == 1 ]] || fail 'X-Frame-Options no coincide exactamente'
+  [[ "$(grep -Eci '^Referrer-Policy: no-referrer\r?$' "$headers")" == 1 ]] || fail 'Referrer-Policy no coincide exactamente'
+  ! grep -Eqi '^Server:' "$headers" || fail 'se filtró el encabezado Server'
   if [[ "$auth" == preserve ]]; then
-    [[ "$(rg -ci '^Content-Type: text/plain; charset=utf-8\r?$' "$headers")" == 1 ]] || fail 'Caddy alteró Content-Type del upstream'
-    [[ "$(rg -ci '^X-Mock-Response: preserved\r?$' "$headers")" == 1 ]] || fail 'respuesta upstream alterada: falta encabezado X-Mock-Response'
+    [[ "$(grep -Eci '^Content-Type: text/plain; charset=utf-8\r?$' "$headers")" == 1 ]] || fail 'Caddy alteró Content-Type del upstream'
+    [[ "$(grep -Eci '^X-Mock-Response: preserved\r?$' "$headers")" == 1 ]] || fail 'respuesta upstream alterada: falta encabezado X-Mock-Response'
   fi
 }
 request() {
@@ -186,16 +186,16 @@ for status in 401 403 404 503; do
   expected="mock-status-${status};method=GET;url=/api/v1/status;body="
   request GET /api/v1/status "$status" "$expected" preserve -H "X-Test-Status: $status"
   if [[ "$status" == 401 ]]; then
-    [[ "$(rg -ci '^WWW-Authenticate: Bearer realm="mock", error="invalid_token"\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró WWW-Authenticate del 401'
+    [[ "$(grep -Eci '^WWW-Authenticate: Bearer realm="mock", error="invalid_token"\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró WWW-Authenticate del 401'
   fi
   if [[ "$status" == 403 ]]; then
-    [[ "$(rg -ci '^X-Authz-Result: denied-by-mock\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró la respuesta 403 del upstream'
+    [[ "$(grep -Eci '^X-Authz-Result: denied-by-mock\r?$' "$TEMP_ROOT/headers")" == 1 ]] || fail 'Caddy alteró la respuesta 403 del upstream'
   fi
 done
 
 for path in /ruta-inexistente /metrics /admin; do
   request GET "$path" 404 '{"codigo":"RUTA_NO_PUBLICADA"}' fallback
-  ! rg -qi '^X-Mock-Response:' "$TEMP_ROOT/headers" || fail "fallback $path alcanzó el upstream"
+  ! grep -Eqi '^X-Mock-Response:' "$TEMP_ROOT/headers" || fail "fallback $path alcanzó el upstream"
 done
 
 printf 'PASS: Caddy %s real validado y proxy HTTP local; auth no validada; POST/PATCH/DELETE solo prueban transporte\n' "$CADDY_IMAGE"

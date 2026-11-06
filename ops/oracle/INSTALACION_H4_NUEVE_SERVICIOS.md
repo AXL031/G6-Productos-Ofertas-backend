@@ -100,10 +100,17 @@ sudo stat --format='%n|%U:%G|%a|%y|%s' "${DESTINOS[@]}" 2>&1 || true
 sudo sha256sum "${DESTINOS[@]}" 2>&1 || true
 BACKUP="/var/backups/g6-productos-ofertas/h4-$(date -u +%Y%m%dT%H%M%SZ)"
 sudo install --directory --owner root --group root --mode 0700 "$BACKUP"
+sudo install --owner root --group root --mode 0600 /dev/null "$BACKUP/destinos.tsv"
 for path in "${DESTINOS[@]}"; do
+  name="$(printf '%s' "$path" | sed 's#^/##; s#/#__#g')"
   if sudo test -e "$path"; then
-    name="$(printf '%s' "$path" | sed 's#^/##; s#/#__#g')"
+    sudo test -f "$path" || { printf 'FALLO: destino no regular: %s\n' "$path" >&2; exit 1; }
+    before_sha="$(sudo sha256sum -- "$path" | awk '{print $1}')"
+    IFS='|' read -r before_owner before_mode before_time before_size < <(sudo stat --format='%U:%G|%a|%y|%s' "$path")
+    printf '%s|existia|%s|%s|%s|%s|%s|%s\n' "$path" "$name" "$before_sha" "$before_owner" "$before_mode" "$before_time" "$before_size" | sudo tee -a "$BACKUP/destinos.tsv" >/dev/null
     sudo cp --archive -- "$path" "$BACKUP/$name"
+  else
+    printf '%s|ausente||||||\n' "$path" | sudo tee -a "$BACKUP/destinos.tsv" >/dev/null
   fi
 done
 sudo find "$BACKUP" -maxdepth 1 -type f -exec stat --format='%n|%U:%G|%a|%y|%s' {} \;
@@ -185,35 +192,95 @@ check_candidate() {
   actual="$(sudo sha256sum "$candidate" | awk '{print $1}')"
   [[ "$expected" == "$actual" ]]
 }
+authorized_destination() {
+  case "$1" in
+    /usr/local/lib/g6-productos-ofertas/service-registry.sh|/usr/local/lib/g6-productos-ofertas/services.psv|/usr/local/lib/g6-productos-ofertas/deploy-g6-service|/opt/g6-productos-ofertas/shared/docker-compose.service.yml|/opt/g6-productos-ofertas/shared/docker-compose.service.http.yml|/opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml|/opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml|/usr/local/sbin/deploy-inventory-svc) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+record_promotion() {
+  local destination="$1" installed_sha installed_stat
+  installed_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')"
+  installed_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")"
+  printf '%s|%s|%s\n' "$destination" "$installed_sha" "$installed_stat" | sudo tee -a "$BACKUP/promovidos.tsv" >/dev/null
+}
+promote_candidate() {
+  local source="$1" candidate="$2" destination="$3"
+  authorized_destination "$destination" || { printf 'FALLO: destino no autorizado: %s\n' "$destination" >&2; return 1; }
+  check_candidate "$source" "$candidate" || { printf 'FALLO: checksum del candidato cambió: %s\n' "$candidate" >&2; return 1; }
+  sudo mv --no-target-directory -- "$candidate" "$destination"
+  record_promotion "$destination"
+}
 PROMOTION_SHA="$(verify_official_master)"
 [[ "$PROMOTION_SHA" == "$INSTALL_SHA" ]] || fail_source 'master oficial cambió desde el preflight; no se promueve ningún archivo'
-check_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new
-sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
-check_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new
-sudo mv --no-target-directory /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
-check_candidate ops/oracle/docker-compose.service.http.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new
-sudo mv --no-target-directory /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml
-check_candidate ops/oracle/services.psv /usr/local/lib/g6-productos-ofertas/services.psv.new
-sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/services.psv.new /usr/local/lib/g6-productos-ofertas/services.psv
-check_candidate ops/oracle/service-registry.sh /usr/local/lib/g6-productos-ofertas/service-registry.sh.new
-sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/service-registry.sh.new /usr/local/lib/g6-productos-ofertas/service-registry.sh
-check_candidate ops/oracle/deploy-g6-service.sh /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new
-sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new /usr/local/lib/g6-productos-ofertas/deploy-g6-service
+sudo install --owner root --group root --mode 0600 /dev/null "$BACKUP/promovidos.tsv"
+# Orden fijo: Compose genérico, Gateway, overlay genérico, registro y ejecutor.
+promote_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
+promote_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
+promote_candidate ops/oracle/docker-compose.service.http.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml
+promote_candidate ops/oracle/services.psv /usr/local/lib/g6-productos-ofertas/services.psv.new /usr/local/lib/g6-productos-ofertas/services.psv
+promote_candidate ops/oracle/service-registry.sh /usr/local/lib/g6-productos-ofertas/service-registry.sh.new /usr/local/lib/g6-productos-ofertas/service-registry.sh
+promote_candidate ops/oracle/deploy-g6-service.sh /usr/local/lib/g6-productos-ofertas/deploy-g6-service.new /usr/local/lib/g6-productos-ofertas/deploy-g6-service
 # Solo tras autorización, validación y promoción separada del overlay Inventory:
-check_candidate ops/oracle/docker-compose.inventory.http.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new
-sudo mv --no-target-directory /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml
+# promote_candidate ops/oracle/docker-compose.inventory.http.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml.new /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml
 # Solo tras autorización y validación específica del shim Inventory:
-check_candidate ops/oracle/deploy-inventory-svc.sh /usr/local/sbin/deploy-inventory-svc.new
-sudo mv --no-target-directory /usr/local/sbin/deploy-inventory-svc.new /usr/local/sbin/deploy-inventory-svc
+# promote_candidate ops/oracle/deploy-inventory-svc.sh /usr/local/sbin/deploy-inventory-svc.new /usr/local/sbin/deploy-inventory-svc
 ```
 
-Ante cualquier fallo, detener la secuencia y mantener congelados despliegues. Para cada destino anotado como existente, restaurar solo su respaldo con metadata a un .restore junto al destino y renombrarlo atómicamente; no restaurar destinos que antes no existían. Comparar checksum, dueño, grupo, permisos y timestamp con el inventario. Revalidar Compose con config. No borrar directorios, imágenes, redes, datos o contenedores.
+Ante cualquier fallo, mantener congelados despliegues y recuperar **solo** los destinos registrados en `promovidos.tsv`, en orden inverso. La tabla `destinos.tsv`, escrita antes del staging, marca si cada destino existía originalmente y conserva nombre de respaldo, checksum, propietario/grupo, permisos, timestamp y tamaño. Cada promoción se registra con su checksum y metadata instalados. Si la secuencia se interrumpe entre el renombre y el registro de promoción, detenerse: conciliar manualmente ese único destino con evidencia; no adivinar ni reanudar.
+
+El ejemplo siguiente falla cerrado ante destinos fuera de la lista, metadatos faltantes, cambios posteriores o discrepancias. Para un archivo originalmente existente, compara primero el destino con el estado instalado y solo entonces copia el respaldo a un temporal hermano y lo renombra atómicamente. Para uno originalmente ausente, retira solo el archivo exacto, únicamente si checksum y metadata siguen idénticos al estado recién promovido. Un destino no promovido no se toca. Al finalizar compara checksum y metadata restaurados contra el inventario original. No reanudar despliegues si recuperación, verificaciones o validación Compose fallan.
 
 ```bash
-sudo cp --archive -- "$BACKUP/usr__local__lib__g6-productos-ofertas__service-registry.sh" /usr/local/lib/g6-productos-ofertas/service-registry.sh.restore
-sudo mv --no-target-directory /usr/local/lib/g6-productos-ofertas/service-registry.sh.restore /usr/local/lib/g6-productos-ofertas/service-registry.sh
-sudo sha256sum /usr/local/lib/g6-productos-ofertas/service-registry.sh
-sudo stat --format='%n|%U:%G|%a|%y|%s' /usr/local/lib/g6-productos-ofertas/service-registry.sh
+rollback_promotions() {
+  local -a promotions=()
+  local row destination installed_sha installed_owner installed_mode installed_time installed_size
+  local original_state backup_name original_sha original_owner original_mode original_time original_size
+  local current_sha current_stat restore_path restore_sha restore_stat restored_sha restored_stat found i
+  mapfile -t promotions < <(sudo cat "$BACKUP/promovidos.tsv")
+  for ((i=${#promotions[@]}-1; i>=0; i--)); do
+    row="${promotions[i]}"
+    IFS='|' read -r destination installed_sha installed_owner installed_mode installed_time installed_size <<<"$row"
+    authorized_destination "$destination" || { printf 'CONFLICTO: destino no autorizado: %s\n' "$destination" >&2; return 1; }
+    found=0
+    while IFS='|' read -r manifest_dest original_state backup_name original_sha original_owner original_mode original_time original_size; do
+      if [[ "$manifest_dest" == "$destination" ]]; then found=1; break; fi
+    done < <(sudo cat "$BACKUP/destinos.tsv")
+    [[ "$found" == 1 ]] || { printf 'CONFLICTO: falta estado original de %s\n' "$destination" >&2; return 1; }
+    current_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')" || { printf 'CONFLICTO: falta destino promovido %s\n' "$destination" >&2; return 1; }
+    current_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")" || return 1
+    [[ "$current_sha" == "$installed_sha" && "$current_stat" == "$installed_owner|$installed_mode|$installed_time|$installed_size" ]] || {
+      printf 'CONFLICTO: %s cambió después de la promoción; no se modifica\n' "$destination" >&2; return 1;
+    }
+    if [[ "$original_state" == existia ]]; then
+      [[ -n "$backup_name" && -n "$original_sha" ]] || { printf 'CONFLICTO: respaldo incompleto de %s\n' "$destination" >&2; return 1; }
+      restore_path="${destination}.rollback.$$"
+      sudo test ! -e "$restore_path" || { printf 'CONFLICTO: temporal ya existe: %s\n' "$restore_path" >&2; return 1; }
+      sudo cp --archive -- "$BACKUP/$backup_name" "$restore_path"
+      restore_sha="$(sudo sha256sum -- "$restore_path" | awk '{print $1}')"
+      restore_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$restore_path")"
+      [[ "$restore_sha" == "$original_sha" && "$restore_stat" == "$original_owner|$original_mode|$original_time|$original_size" ]] || {
+        printf 'CONFLICTO: copia temporal no coincide con respaldo/inventario: %s\n' "$destination" >&2; sudo rm -- "$restore_path"; return 1;
+      }
+      sudo mv --no-target-directory -- "$restore_path" "$destination"
+      restored_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')"
+      restored_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")"
+      [[ "$restored_sha" == "$original_sha" && "$restored_stat" == "$original_owner|$original_mode|$original_time|$original_size" ]] || {
+        printf 'FALLO: restauración no coincide con respaldo/inventario: %s\n' "$destination" >&2; return 1;
+      }
+    elif [[ "$original_state" == ausente ]]; then
+      sudo rm -- "$destination"
+      sudo test ! -e "$destination" || { printf 'FALLO: no se retiró el archivo creado %s\n' "$destination" >&2; return 1; }
+    else
+      printf 'CONFLICTO: estado original inválido para %s\n' "$destination" >&2; return 1
+    fi
+  done
+  printf 'PASS: todos los destinos promovidos fueron recuperados y verificados\n'
+}
+rollback_promotions || { printf 'RECUPERACIÓN INCOMPLETA: mantener despliegues congelados y escalar el conflicto; no reanudar.\n' >&2; exit 1; }
+# Revalidar los Compose restaurados con config --format json. No ejecutar up ni crear redes.
 ```
+
+La función nunca procesa destinos que no figuran en el log de promoción. Conserva Inventory histórico y no toca runtime.env, certificados, active-image, previous-image, imágenes, contenedores ni redes. No borrar directorios ni aplicar comandos destructivos globales.
 
 Registrar SHA remoto, hashes antes/después, respaldo y resultados. No ejecutar SSH remoto, CD, up, pull, probes contra Oracle ni cambios globales. Esta guía no acredita despliegue, readiness ni autorización de producción.
