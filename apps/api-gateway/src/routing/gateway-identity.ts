@@ -154,8 +154,6 @@ export class GatewayIdentity {
     route: ContractRoute,
     authorization: string | undefined,
   ): Promise<void> {
-    if (this.settings.securityMode === 'SIMULATED_AUTH')
-      throw new GatewayFailure(503, 'SERVICIO_NO_DISPONIBLE');
     if (
       authorization === undefined &&
       this.settings.securityMode === 'PUBLIC_READ_ONLY' &&
@@ -211,15 +209,6 @@ export class GatewayIdentity {
   }
 }
 
-const readOnlyDemoOperations = new Set([
-  'listarProductos',
-  'obtenerProducto',
-  'obtenerProductoPorSlug',
-  'listarCategorias',
-  'listarMarcas',
-  'obtenerPrecioBaseProducto',
-]);
-
 /** Selects a bypass only for routes already found in CONTRACT_ROUTES. */
 export function isDemoBypassRoute(
   route: ContractRoute,
@@ -230,10 +219,5 @@ export function isDemoBypassRoute(
     settings.securityMode === 'SIMULATED_AUTH'
   )
     return false;
-  if (settings.demoNoAuthEnabled) return true;
-  return (
-    settings.readOnlyDemoEnabled === true &&
-    route.method === 'GET' &&
-    readOnlyDemoOperations.has(route.operationId)
-  );
+  return false;
 }

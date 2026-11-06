@@ -47,6 +47,44 @@ describe('Gateway identity from G6/G7 contracts', () => {
       signed.identity.authorize(product, `Bearer ${signed.token()}`),
     ).resolves.toBeUndefined();
   });
+  it('switches the exact trust issuer by configuration and rejects phase-crossed JWTs', async () => {
+    const jwks = vi.fn(async () =>
+      new Response(JSON.stringify({ keys: [signed.key] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', jwks);
+    const simIssuer = 'https://simulated.test/issuer';
+    const g7Issuer = 'https://g7.test/issuer';
+    const simulated = new GatewayIdentity(readGatewaySettings({
+      G6_SECURITY_MODE: 'SIMULATED_AUTH',
+      SIMULATED_AUTH_ISSUER: simIssuer,
+      SIMULATED_AUTH_JWKS_URL: 'https://simulated.test/jwks',
+    }));
+    const simulatedToken = signed.token({ iss: simIssuer, scope: 'promociones:leer' });
+    await simulated.authorize(
+      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+      `Bearer ${simulatedToken}`,
+    );
+    const g7Token = signed.token({ iss: g7Issuer, scope: 'promociones:leer' });
+    await expect(simulated.authorize(
+      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+      `Bearer ${g7Token}`,
+    )).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+
+    const g7 = new GatewayIdentity(readGatewaySettings({
+      G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+      AUTH_ISSUER: g7Issuer,
+      AUTH_JWKS_URL: 'https://g7.test/jwks',
+    }));
+    await g7.authorize(
+      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+      `Bearer ${g7Token}`,
+    );
+    await expect(g7.authorize(
+      CONTRACT_ROUTES.find((r) => r.operationId === 'listarPromociones')!,
+      `Bearer ${simulatedToken}`,
+    )).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+    expect(jwks).toHaveBeenCalledTimes(2);
+  });
   it.each([
     { iss: 'https://other.test' },
     { exp: 1 },
@@ -167,7 +205,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
       identity.authorize(product, `Bearer ${signed.token()}`),
     ).rejects.toMatchObject({ status: 503 });
   });
-  it('bypasses JWT for every registered contract operation only in explicit broad demo', async () => {
+  it('never bypasses JWT for registered operations through the legacy demo flag', async () => {
     const demoSettings = {
       ...settings,
       issuer: undefined,
@@ -178,15 +216,11 @@ describe('Gateway identity from G6/G7 contracts', () => {
     const allowed = CONTRACT_ROUTES.filter((route) =>
       isDemoBypassRoute(route, demoSettings),
     );
-    expect(allowed).toHaveLength(CONTRACT_ROUTES.length);
-    for (const route of allowed) {
-      await expect(
-        demoIdentity.authorize(route, undefined),
-      ).resolves.toBeUndefined();
-      await expect(
-        demoIdentity.authorize(route, 'Bearer malformed-secret-token'),
-      ).resolves.toBeUndefined();
-    }
+    expect(allowed).toHaveLength(0);
+    await expect(demoIdentity.authorize(product, undefined)).rejects.toMatchObject({
+      status: 401,
+      code: 'TOKEN_INVALIDO',
+    });
   });
 
   it('keeps the PR #125 read-only demo as a strict subset', async () => {

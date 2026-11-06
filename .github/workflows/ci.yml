@@ -4,6 +4,7 @@ name: Integración continua (CI)
     branches:
     - master
     - castilla
+    - integracion/h4-fase1-completa
   pull_request:
     branches:
     - master

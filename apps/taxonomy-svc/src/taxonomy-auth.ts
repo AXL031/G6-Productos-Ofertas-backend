@@ -27,6 +27,8 @@ export interface TaxonomyPublicReadConfig {
 const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
   'listarCategorias',
   'listarMarcas',
+  'obtenerSeoPorSlug',
+  'resolverSlugAnterior',
 ]);
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
@@ -43,7 +45,7 @@ export function readTaxonomyPublicReadConfig(
   const mode = env.G6_SECURITY_MODE;
   if (
     mode !== undefined &&
-    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(mode)
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
   ) {
     throw new Error('Configuración de demo Taxonomy inválida');
   }
@@ -72,14 +74,7 @@ export function readTaxonomyDemoConfig(
   readTaxonomyPublicReadConfig(env);
   const flag = env.ALLOW_DEMO_UNAUTHENTICATED;
   if (flag === undefined || flag === 'false') return false;
-  if (
-    flag !== 'true' ||
-    !['test', 'development'].includes(env.NODE_ENV ?? '') ||
-    env.G6_SECURITY_MODE !== undefined
-  ) {
-    throw new Error('Configuración de demo Taxonomy inválida');
-  }
-  return true;
+  throw new Error('ALLOW_DEMO_UNAUTHENTICATED está deshabilitado; use G6_SECURITY_MODE.');
 }
 const SECURITY_AUDIENCE = 'api-productos';
 const UUID_PATTERN =
@@ -87,46 +82,53 @@ const UUID_PATTERN =
 
 export interface TaxonomySecurityConfig {
   issuer: string;
-  discoveryUrl: string;
+  discoveryUrl?: string;
   jwksUrl: string;
 }
 
 export function readTaxonomySecurityConfig(
   env: Record<string, string | undefined> = process.env,
 ): TaxonomySecurityConfig | undefined {
+  const simulated = env.G6_SECURITY_MODE === 'SIMULATED_AUTH';
   const values = [
-    env.SECURITY_ISSUER,
-    env.SECURITY_DISCOVERY_URL,
-    env.SECURITY_JWKS_URL,
+    simulated ? env.SIMULATED_AUTH_ISSUER : env.SECURITY_ISSUER,
+    simulated ? undefined : env.SECURITY_DISCOVERY_URL,
+    simulated ? env.SIMULATED_AUTH_JWKS_URL : env.SECURITY_JWKS_URL,
   ];
   if (values.every((value) => value === undefined || value.trim() === ''))
     return undefined;
-  if (values.some((value) => !value?.trim()))
+  if (
+    !values[0]?.trim() ||
+    !values[2]?.trim() ||
+    (!simulated && !values[1]?.trim())
+  )
     throw new Error(
-      'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
+      simulated
+        ? 'SIMULATED_AUTH_ISSUER y SIMULATED_AUTH_JWKS_URL deben configurarse juntos.'
+        : 'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
     );
 
   const issuer = values[0]!.trim();
-  const discoveryUrl = values[1]!.trim();
+  const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
     const issuerUrl = new URL(issuer);
-    const discovery = new URL(discoveryUrl);
+    const discovery = discoveryUrl ? new URL(discoveryUrl) : undefined;
     const jwks = new URL(jwksUrl);
     if (
       !['http:', 'https:'].includes(issuerUrl.protocol) ||
-      !['http:', 'https:'].includes(discovery.protocol) ||
+      (discovery && !['http:', 'https:'].includes(discovery.protocol)) ||
       !['http:', 'https:'].includes(jwks.protocol) ||
       issuerUrl.username ||
       issuerUrl.password ||
-      discovery.username ||
-      discovery.password ||
+      discovery?.username ||
+      discovery?.password ||
       jwks.username ||
       jwks.password ||
       issuerUrl.hash ||
-      discovery.hash ||
+      discovery?.hash ||
       jwks.hash ||
-      [issuerUrl, discovery, jwks].some(
+      [issuerUrl, ...(discovery ? [discovery] : []), jwks].some(
         (url) =>
           url.protocol === 'http:' &&
           !['localhost', '127.0.0.1', '::1', '[::1]'].includes(
@@ -140,7 +142,7 @@ export function readTaxonomySecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, discoveryUrl, jwksUrl });
+  return Object.freeze({ issuer, ...(discoveryUrl ? { discoveryUrl } : {}), jwksUrl });
 }
 
 export type TaxonomyPrincipal =
@@ -270,6 +272,7 @@ export class TaxonomyTokenVerifier {
     if (!this.config) throw new TaxonomySecurityUnavailable();
 
     try {
+      if (this.config.discoveryUrl) {
       const discoveryResponse = await fetch(this.config.discoveryUrl, {
         redirect: 'error',
         signal: AbortSignal.timeout(5000),
@@ -283,6 +286,7 @@ export class TaxonomyTokenVerifier {
         new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
       )
         throw new TaxonomySecurityUnavailable();
+      }
 
       const response = await fetch(this.config.jwksUrl, {
         redirect: 'error',
@@ -444,8 +448,6 @@ export class TaxonomyUserGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
-    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException();
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
@@ -507,7 +509,7 @@ export class TaxonomyCommercialGuard implements CanActivate {
 export class TaxonomyAuthGuard implements CanActivate {
   constructor(
     private readonly verifier: TaxonomyTokenVerifier,
-    @Inject(TAXONOMY_DEMO_ENABLED) private readonly demoEnabled: boolean,
+    @Inject(TAXONOMY_DEMO_ENABLED) _demoEnabled: boolean,
     @Optional()
     @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
     private readonly publicReadConfig?: TaxonomyPublicReadConfig,
@@ -516,18 +518,6 @@ export class TaxonomyAuthGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
-    const peer = request.socket?.remoteAddress?.replace(/^::ffff:/, '');
-    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException();
-    if (
-      this.demoEnabled &&
-      authorization === undefined &&
-      request.method === 'GET' &&
-      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
-      (peer === '127.0.0.1' || peer === '::1')
-    ) {
-      return true;
-    }
     const handlerName =
       context.getHandler?.()?.name ||
       (request.path === '/api/v1/categorias'
@@ -535,10 +525,18 @@ export class TaxonomyAuthGuard implements CanActivate {
         : request.path === '/api/v1/marcas'
           ? 'listarMarcas'
           : undefined);
+    const exactRead =
+      (handlerName === 'listarCategorias' &&
+        request.path === '/api/v1/categorias') ||
+      (handlerName === 'listarMarcas' && request.path === '/api/v1/marcas') ||
+      (handlerName === 'obtenerPublico' &&
+        /^\/api\/v1\/seo\/(?!resoluciones\/)[^/]+$/.test(request.path)) ||
+      (handlerName === 'resolverAnterior' &&
+        /^\/api\/v1\/seo\/resoluciones\/[^/]+$/.test(request.path));
     if (
       authorization === undefined &&
       request.method === 'GET' &&
-      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
+      exactRead &&
       isApprovedPublicTaxonomyOperation(handlerName, this.publicReadConfig)
     ) {
       return true;

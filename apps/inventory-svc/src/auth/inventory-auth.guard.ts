@@ -1,6 +1,6 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { createVerify } from 'node:crypto';
+import { createPublicKey, createVerify, verify, type JsonWebKey } from 'node:crypto';
 import {
   REQUIRED_SCOPE_KEY,
   ALLOWED_CLIENTS_KEY,
@@ -12,7 +12,6 @@ import {
 } from './auth.constants.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import { UserAuthGuard } from './user-auth.guard.js';
-import { authorizeCommercialDemo } from './commercial-demo.js';
 
 export interface DecodedTokenPayload {
   sub?: string;
@@ -30,6 +29,8 @@ export interface DecodedTokenPayload {
 @Injectable()
 export class InventoryAuthGuard implements CanActivate {
   private static trustedPublicKey: string | null = null;
+  private static simulatedKeys: JsonWebKey[] = [];
+  private static simulatedKeysExpireAt = 0;
 
   constructor(private readonly reflector: Reflector) {}
 
@@ -49,8 +50,21 @@ export class InventoryAuthGuard implements CanActivate {
     );
   }
 
-  canActivate(context: ExecutionContext): boolean {
-    if (authorizeCommercialDemo(context, this.reflector)) return true;
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+    if (!['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode))
+      throw ProblemDetailsException.tokenInvalido('G6_SECURITY_MODE inválido');
+    const request = context.switchToHttp().getRequest();
+    const publicOperations = (process.env.INVENTORY_PUBLIC_OPERATION_IDS ?? '')
+      .split(',').map((id: string) => id.trim()).filter(Boolean);
+    if (
+      mode === 'PUBLIC_READ_ONLY' &&
+      request.method === 'GET' &&
+      request.path === '/api/v1/inventario/disponibilidad/comercial' &&
+      context.getHandler().name === 'consultarDisponibilidadComercial' &&
+      publicOperations.includes('consultarDisponibilidadComercial') &&
+      request.headers.authorization === undefined
+    ) return true;
     const requiredScope = this.reflector.getAllAndOverride<string | undefined>(
       REQUIRED_SCOPE_KEY,
       [context.getHandler(), context.getClass()],
@@ -60,7 +74,6 @@ export class InventoryAuthGuard implements CanActivate {
       string[] | undefined
     >(ALLOWED_CLIENTS_KEY, [context.getHandler(), context.getClass()]);
 
-    const request = context.switchToHttp().getRequest();
     const correlationId =
       request.headers['x-correlation-id'] || request.headers['correlation-id'];
 
@@ -88,7 +101,13 @@ export class InventoryAuthGuard implements CanActivate {
     }
 
     // Verificación criptográfica con material de confianza de G7
-    const payload = this.verifyAndDecodeToken(rawToken, correlationId);
+    const issuer = mode === 'SIMULATED_AUTH'
+      ? process.env.SIMULATED_AUTH_ISSUER
+      : getConfiguredIssuer();
+    const publicKey = mode === 'SIMULATED_AUTH'
+      ? await this.simulatedPublicKey(rawToken, correlationId)
+      : InventoryAuthGuard.getTrustedPublicKey();
+    const payload = this.verifyAndDecodeToken(rawToken, correlationId, publicKey);
 
     const allowUserBearer = this.reflector.getAllAndOverride<boolean>(
       ALLOW_USER_BEARER_KEY,
@@ -97,7 +116,10 @@ export class InventoryAuthGuard implements CanActivate {
     if (allowUserBearer && payload.tipo !== EXPECTED_TOKEN_TYPE) {
       // El guard global permanece activo; la vía humana valida firma, issuer,
       // expiración, audience, identidad y rol antes de autorizar la lectura.
-      return new UserAuthGuard(this.reflector).canActivate(context);
+      return new UserAuthGuard(this.reflector).canActivate(context, {
+        publicKey: publicKey!,
+        issuer: issuer!,
+      });
     }
 
     // 1. Verificación de expiración (exp)
@@ -116,7 +138,7 @@ export class InventoryAuthGuard implements CanActivate {
     }
 
     // 2. Comparar el issuer exacto publicado por el discovery de G7.
-    const expectedIssuer = getConfiguredIssuer();
+    const expectedIssuer = issuer;
     if (!expectedIssuer) {
       throw ProblemDetailsException.tokenInvalido(
         'Issuer de G7 no configurado; se rechazan tokens hasta provisionar el discovery oficial',
@@ -193,6 +215,7 @@ export class InventoryAuthGuard implements CanActivate {
   private verifyAndDecodeToken(
     rawToken: string,
     correlationId?: string,
+    trustedKey?: string | null,
   ): DecodedTokenPayload {
     const parts = rawToken.split('.');
     if (parts.length !== 3) {
@@ -232,7 +255,7 @@ export class InventoryAuthGuard implements CanActivate {
     }
 
     // Obtener clave pública de confianza
-    const publicKey = InventoryAuthGuard.getTrustedPublicKey();
+    const publicKey = trustedKey ?? InventoryAuthGuard.getTrustedPublicKey();
     if (!publicKey) {
       throw ProblemDetailsException.tokenInvalido(
         'Material de confianza de G7 no disponible para verificación criptográfica',
@@ -275,6 +298,40 @@ export class InventoryAuthGuard implements CanActivate {
         'No se pudo decodificar el payload del token JWT',
         correlationId,
       );
+    }
+  }
+
+  private async simulatedPublicKey(rawToken: string, correlationId?: string): Promise<string> {
+    const issuerValue = process.env.SIMULATED_AUTH_ISSUER;
+    const jwksValue = process.env.SIMULATED_AUTH_JWKS_URL;
+    try {
+      const issuer = new URL(issuerValue ?? '');
+      const jwksUrl = new URL(jwksValue ?? '');
+      const loopback = ['localhost', '127.0.0.1', '[::1]'];
+      if (issuer.href === new URL(process.env.G7_JWT_ISSUER ?? 'https://invalid').href ||
+          (issuer.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && loopback.includes(issuer.hostname))) ||
+          (jwksUrl.protocol !== 'https:' && !(process.env.NODE_ENV === 'test' && loopback.includes(jwksUrl.hostname))) ||
+          issuer.username || issuer.password || issuer.hash || jwksUrl.username || jwksUrl.password || jwksUrl.hash)
+        throw new Error();
+      const parts = rawToken.split('.');
+      const header = JSON.parse(Buffer.from(parts[0] ?? '', 'base64url').toString('utf8')) as { alg?: string; kid?: string };
+      if (parts.length !== 3 || header.alg !== 'RS256' || !header.kid) throw new Error();
+      if (Date.now() >= InventoryAuthGuard.simulatedKeysExpireAt) {
+        const response = await fetch(jwksUrl, { redirect: 'error', signal: AbortSignal.timeout(2500) });
+        const raw = await response.text();
+        if (!response.ok || raw.length > 65536) throw new Error();
+        const data: unknown = JSON.parse(raw);
+        if (!data || typeof data !== 'object' || !Array.isArray((data as { keys?: unknown }).keys)) throw new Error();
+        InventoryAuthGuard.simulatedKeys = (data as { keys: JsonWebKey[] }).keys;
+        InventoryAuthGuard.simulatedKeysExpireAt = Date.now() + 60000;
+      }
+      const matches = InventoryAuthGuard.simulatedKeys.filter((key) => key.kid === header.kid && key.kty === 'RSA' && (!key.alg || key.alg === 'RS256') && (!key.use || key.use === 'sig') && !key.d);
+      if (matches.length !== 1) throw new Error();
+      const key = createPublicKey({ key: matches[0]!, format: 'jwk' });
+      if ((key.asymmetricKeyDetails?.modulusLength ?? 0) < 2048 || !verify('RSA-SHA256', Buffer.from(parts[0] + '.' + parts[1]), key, Buffer.from(parts[2]!, 'base64url'))) throw new Error();
+      return key.export({ type: 'spki', format: 'pem' }).toString();
+    } catch {
+      throw ProblemDetailsException.tokenInvalido('Token SIMULATED_AUTH inválido', correlationId);
     }
   }
 }

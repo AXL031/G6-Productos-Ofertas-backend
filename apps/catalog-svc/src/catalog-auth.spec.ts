@@ -104,6 +104,23 @@ describe('Catalog JWT verification', () => {
     expect(readCatalogSecurityConfig({})).toBeUndefined();
   });
 
+  it('uses an independent simulated issuer and JWKS and rejects G7-issued tokens in that mode', async () => {
+    const simulatedIssuer = 'http://localhost:8080/simulated-auth';
+    const simulated = new CatalogTokenVerifier(
+      readCatalogSecurityConfig({
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: simulatedIssuer,
+        SIMULATED_AUTH_JWKS_URL: origin + '/.well-known/jwks.json',
+      }),
+    );
+    await expect(simulated.verify(token())).rejects.toBeInstanceOf(
+      CatalogTokenRejected,
+    );
+    await expect(
+      simulated.verify(token({ iss: simulatedIssuer })),
+    ).resolves.toMatchObject({ kind: 'user', roles: ['GESTOR_COMERCIAL'] });
+  });
+
   it.each([null, [], 'not-an-object', 1])(
     'rejects a malformed JWT header %j as an invalid token',
     async (header) => {

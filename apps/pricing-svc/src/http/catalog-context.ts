@@ -22,19 +22,15 @@ export class CatalogContextHttp implements PricingCatalogContext {
       if (!this.config.catalogUrl || !uuid.test(correlationId))
         throw new Error();
       // Credencial propia: nunca se recibe ni reenvía el bearer del consumidor.
-      const authorization = this.config.demoNoAuthEnabled
-        ? null
-        : await this.token?.();
-      if (!this.config.demoNoAuthEnabled && !authorization) throw new Error();
+      const authorization = await this.token?.();
+      if (!authorization) throw new Error();
       const response = await fetch(
         `${this.config.catalogUrl}/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
         {
           headers: {
             Accept: 'application/json, application/problem+json',
             'X-Correlation-Id': correlationId,
-            ...(authorization
-              ? { Authorization: `Bearer ${authorization}` }
-              : {}),
+            Authorization: `Bearer ${authorization}`,
           },
           redirect: 'error',
           signal: AbortSignal.timeout(2000),

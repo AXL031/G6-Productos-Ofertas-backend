@@ -11,7 +11,6 @@ import { Reflector } from '@nestjs/core';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
-import { isAllowedDemoGatewayIp } from './combos-demo-origin.js';
 
 const AUDIENCE = 'api-productos';
 const POLICY = Symbol('COMBO_ACCESS_POLICY');
@@ -345,18 +344,6 @@ export class CombosAuthGuard implements CanActivate {
     );
     // A public phase only adds explicitly approved anonymous operations.
     // Protected operations keep the same authentication/authorization path.
-    if (process.env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true') {
-      if (
-        !isAllowedDemoGatewayIp(
-          request.socket.remoteAddress,
-          (process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS ?? '')
-            .split(',')
-            .map((address) => address.trim())
-            .filter(Boolean),
-        )
-      )
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    }
     const authorization = request.headers.authorization;
     const match =
       typeof authorization === 'string' &&

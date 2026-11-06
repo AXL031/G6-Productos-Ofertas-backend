@@ -124,13 +124,7 @@ describe('Credencial propia de Pricing para Catalog (G7 client_credentials)', ()
     await expect(tokens.get()).rejects.toMatchObject({ status: 503 });
     expect(requests).toHaveLength(2);
   });
-  it('no consulta G7 en demo ni sin credenciales configuradas', async () => {
-    expect(
-      await new CatalogServiceToken(
-        { ...config, demoNoAuthEnabled: true },
-        new PricingReadGuard(config),
-      ).get(),
-    ).toBeNull();
+  it('falla cerrado sin credenciales G7, sin bypass heredado', async () => {
     await expect(
       new CatalogServiceToken(
         { ...config, serviceToken: undefined },

@@ -28,6 +28,7 @@ const EXPECTED_AUDIENCE = 'api-productos';
 export function verifyUserBearerToken(
   rawToken: string,
   correlationId?: string,
+  trust?: { publicKey: string; issuer: string },
 ): UserTokenPayload {
   const parts = rawToken.split('.');
   if (parts.length !== 3) {
@@ -64,7 +65,7 @@ export function verifyUserBearerToken(
     );
   }
 
-  const publicKey = InventoryAuthGuard.getTrustedPublicKey();
+  const publicKey = trust?.publicKey ?? InventoryAuthGuard.getTrustedPublicKey();
   if (!publicKey) {
     throw ProblemDetailsException.tokenInvalido(
       'Material de confianza de G7 no disponible para verificación criptográfica',
@@ -105,7 +106,7 @@ export function verifyUserBearerToken(
     );
   }
 
-  const expectedIssuer = getConfiguredIssuer();
+  const expectedIssuer = trust?.issuer ?? getConfiguredIssuer();
   if (!expectedIssuer || payload.iss !== expectedIssuer) {
     throw ProblemDetailsException.tokenInvalido(
       'Issuer humano ausente, incorrecto o no configurado en G7',

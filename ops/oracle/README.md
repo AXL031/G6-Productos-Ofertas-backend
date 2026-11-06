@@ -9,7 +9,10 @@
 | Estado de la VM (corte 19-oct-2026) | [`ESTADO_ACTUAL.md`](ESTADO_ACTUAL.md) |
 | Preparar un servicio desde desarrollo | [`GUIA_DEVTEAM.md`](GUIA_DEVTEAM.md) |
 | Política única de demo H4 y autenticación reversible | [H4-MODO-DEMO-AUTH-REVERSIBLE.md](H4-MODO-DEMO-AUTH-REVERSIBLE.md) |
-| Seguridad progresiva (`PUBLIC_READ_ONLY`, `SIMULATED_AUTH`, `G7_AUTHENTICATED`) | La política H4 enlazada arriba; `G6_SECURITY_MODE` sigue siendo propuesta documental, no runtime |
+| Seguridad progresiva (`PUBLIC_READ_ONLY`, `SIMULATED_AUTH`, `G7_AUTHENTICATED`) | La política H4 enlazada arriba; consultar el estado por servicio de la rama y no interpretar soporte parcial como release |
+| Matriz de 66 lecturas candidatas y evidencias | [`OPERACIONES_PUBLICAS_H4.md`](OPERACIONES_PUBLICAS_H4.md) y [`H4-MATRIZ-OPERACIONES-FASE1.csv`](H4-MATRIZ-OPERACIONES-FASE1.csv) |
+| Topología HTTP nueve servicios y Caddy | [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md), [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md), [`Caddyfile`](Caddyfile) |
+| Construcción local de nueve imágenes desde un mismo SHA | [`build-h4-release.sh`](build-h4-release.sh) |
 | Requisitos comunes para build y runtime | [`CONTRATO_DESPLIEGUE.md`](CONTRATO_DESPLIEGUE.md) |
 | Brechas específicas por servicio | [`servicios/`](servicios/) |
 | Estado comparado por servicio y propuesta de gate CI | [`ESTADO_SERVICIOS.md`](ESTADO_SERVICIOS.md) |
@@ -275,3 +278,12 @@ Para cada servicio futuro, crea su directorio `/etc/g6-<servicio>` como `root:g6
 ## Pruebas locales
 
 Las pruebas `ops/oracle/tests/validate-cd-source.test.sh`, `select-cd-services.test.sh`, `deploy-g6-service.test.sh` y `publish-isolation.test.sh` usan respuestas GitHub simuladas o registros temporales. Comprueban CI push exitosa en `master`, rechazo de pull requests/forks/CI fallida, SHA obsoleto como no-op, dispatch manual con CI exitosa, los nueve servicios por dispatch manual y autorización automática individual con evidencia obligatoria. Las simulaciones del ejecutor cubren el gate Catalog (HTTP 200 y JSON ready), readiness 503, timeout, ausencia de imagen previa, rollback, despliegues simultáneos, rollback concurrente, wrapper manual de Inventory frente al comando genérico e aislamiento de servicios. Si Docker daemon e `inventory-svc:ci` están disponibles, `deploy-g6-service.test.sh` crea una red bridge temporal aislada y dos proyectos Compose con la clave común `service`, inspecciona aliases reales y ejecuta el preflight real hasta el gate de imagen antes de login/pull/up; el `trap` retira solo los proyectos y la red temporal creados por la prueba. Si no están disponibles, declara ese paso `NO EJECUTADO`. `deployment-api.test.sh` comprueba ciclo de vida y estados; `publish-isolation.test.sh` comprueba fail-fast, concurrencia y errores de publicación. El CI además construye y ejecuta `Dockerfile.service` para los servicios habilitados, valida Compose y sus puertos/env/healthchecks. Nada de esto despliega en Oracle.
+
+## Preparación local H4 de nueve servicios
+
+- Procedimiento futuro, reversible y sin despliegue: [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md).
+- Variables verificadas en parsers, límites de preparación y bloqueos externos: [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md).
+- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); simulación local: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
+- Pruebas locales de nueve servicios y redes: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
+
+El Caddyfile general es candidato local únicamente. No se instala ni activa mientras Gateway conserve un bypass demo o hasta cumplir los gates de autenticación y exposición del procedimiento H4.

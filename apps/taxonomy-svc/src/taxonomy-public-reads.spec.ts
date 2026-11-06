@@ -27,10 +27,10 @@ describe('Taxonomy public-read configuration boundary', () => {
       }).publicOperations,
     ).toHaveLength(2);
   });
-  it('rejects simulated auth and legacy bypasses with an explicit selector', () => {
-    expect(() =>
+  it('accepts simulated auth but rejects legacy bypasses with an explicit selector', () => {
+    expect(
       readTaxonomyPublicReadConfig({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-    ).toThrow();
+    ).toMatchObject({ securityMode: 'SIMULATED_AUTH' });
     for (const mode of ['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'])
       expect(() =>
         readTaxonomyDemoConfig({

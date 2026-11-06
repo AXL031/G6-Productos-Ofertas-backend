@@ -96,10 +96,12 @@ export function readGatewaySettings(
     const demoNoAuthEnabled = env.GATEWAY_DEMO_NO_AUTH_ENABLED ?? 'false';
     const readOnlyDemoEnabled = env.G6_READ_ONLY_DEMO_ENABLED ?? 'false';
     if (!['true', 'false'].includes(demoNoAuthEnabled)) throw new Error();
+    if (demoNoAuthEnabled === 'true') throw new Error();
     if (!['true', 'false'].includes(readOnlyDemoEnabled)) throw new Error();
+    if (readOnlyDemoEnabled === 'true') throw new Error();
     if (
       env.G6_SECURITY_MODE !== undefined &&
-      !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
+      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
     )
       throw new Error();
     const securityMode: GatewaySecurityMode =
@@ -114,12 +116,18 @@ export function readGatewaySettings(
     // exclusive. Ambiguous configuration must never widen the read-only cap.
     if (demoNoAuthEnabled === 'true' && readOnlyDemoEnabled === 'true')
       throw new Error();
-    if (!!env.AUTH_ISSUER !== !!env.AUTH_JWKS_URL) throw new Error();
-    for (const value of [env.AUTH_ISSUER, env.AUTH_JWKS_URL]) {
+    const simulated = securityMode === 'SIMULATED_AUTH';
+    const issuer = simulated ? env.SIMULATED_AUTH_ISSUER : env.AUTH_ISSUER;
+    const jwksUrl = simulated ? env.SIMULATED_AUTH_JWKS_URL : env.AUTH_JWKS_URL;
+    if (!!issuer !== !!jwksUrl) throw new Error();
+    if (simulated && (!issuer || !jwksUrl || issuer === env.AUTH_ISSUER))
+      throw new Error();
+    for (const value of [issuer, jwksUrl]) {
       if (!value) continue;
       const url = new URL(value);
       if (
-        url.protocol !== 'https:' ||
+        (url.protocol !== 'https:' &&
+          !(env.NODE_ENV === 'test' && url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) ||
         url.username ||
         url.password ||
         url.search ||
@@ -148,8 +156,8 @@ export function readGatewaySettings(
       readinessPaths: Object.freeze(readinessPaths),
       timeoutMs,
       maxBytes: 10 * 1024 * 1024,
-      issuer: env.AUTH_ISSUER,
-      jwksUrl: env.AUTH_JWKS_URL,
+      issuer,
+      jwksUrl,
       publicOperations: Object.freeze(publicOperations),
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
       readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',

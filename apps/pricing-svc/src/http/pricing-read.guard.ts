@@ -60,12 +60,23 @@ export class PricingReadGuard implements CanActivate {
       (typeof correlation !== 'string' || !uuid.test(correlation))
     )
       throw new PricingHttpError(400, 'VALIDACION');
-    if (this.config.demoNoAuthEnabled) return true;
+    const handler = context.getHandler();
+    const operationId = handler?.name === 'batch'
+      ? 'consultarPrecios'
+      : handler?.name === 'sku'
+        ? 'obtenerPrecioSku'
+        : undefined;
+    if (
+      this.config.securityMode === 'PUBLIC_READ_ONLY' &&
+      request.method === 'GET' &&
+      request.headers.authorization === undefined &&
+      operationId !== undefined &&
+      this.config.publicOperations.includes(operationId)
+    ) return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
       request.headers.authorization ?? '',
     );
     if (!bearer) throw new PricingHttpError(401, 'TOKEN_INVALIDO');
-    const handler = context.getHandler();
     await this.authorize(
       bearer[1],
       !!handler &&

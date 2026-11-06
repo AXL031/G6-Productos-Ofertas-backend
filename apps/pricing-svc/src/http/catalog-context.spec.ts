@@ -90,10 +90,9 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     expect(
       await new CatalogContextHttp({
         ...config(),
-        demoNoAuthEnabled: true,
-      }).resolve(sku),
+      }, async () => 'fixture-service-token').resolve(sku),
     ).toEqual(body);
-    expect(received[0].authorization).toBeUndefined();
+    expect(received[0].authorization).toBe('Bearer fixture-service-token');
   });
   it('solo traduce el 404 contractual a null', async () => {
     status = 404;
@@ -102,8 +101,7 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     expect(
       await new CatalogContextHttp({
         ...config(),
-        demoNoAuthEnabled: true,
-      }).resolve(sku),
+      }, async () => 'fixture-service-token').resolve(sku),
     ).toBeNull();
   });
   it.each([401, 403, 404, 503, 302])(
@@ -115,8 +113,7 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
       await expect(
         new CatalogContextHttp({
           ...config(),
-          demoNoAuthEnabled: true,
-        }).resolve(sku),
+        }, async () => 'fixture-service-token').resolve(sku),
       ).rejects.toMatchObject({ status: 503 });
       expect(received).toHaveLength(1);
     },
@@ -134,9 +131,7 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     if (invalid === 'missing-field') body = { sku, productId: 'product' };
     if (invalid === 'wrong-type') type = 'text/plain';
     await expect(
-      new CatalogContextHttp({ ...config(), demoNoAuthEnabled: true }).resolve(
-        sku,
-      ),
+      new CatalogContextHttp(config(), async () => 'fixture-service-token').resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
   });
   it('falla cerrado sin URL o token, sin llamadas HTTP', async () => {
@@ -151,12 +146,10 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   it('limita el tiempo de respuesta HTTP', async () => {
     delay = 2200;
     await expect(
-      new CatalogContextHttp({ ...config(), demoNoAuthEnabled: true }).resolve(
-        sku,
-      ),
+      new CatalogContextHttp(config(), async () => 'fixture-service-token').resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
   });
-  it('valida el origen configurado y permite solo HTTP privado demo o loopback test', () => {
+  it('valida el origen configurado y permite solo HTTP loopback de pruebas', () => {
     const env = {
       NODE_ENV: 'test',
       PORT: '3002',
@@ -165,14 +158,13 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     expect(
       validateEnvironment({ ...env, PRICING_CATALOG_URL: origin }).catalogUrl,
     ).toBe(origin);
-    expect(
+    expect(() =>
       validateEnvironment({
         ...env,
         NODE_ENV: 'development',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         PRICING_CATALOG_URL: 'http://catalog-svc:3001',
-      }).catalogUrl,
-    ).toBe('http://catalog-svc:3001');
+      }),
+    ).toThrow();
     for (const url of [
       'http://public.example',
       'https://user:pass@example.com',

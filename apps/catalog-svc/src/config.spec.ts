@@ -32,7 +32,7 @@ afterAll(() => {
 });
 
 describe('CatalogConfig PG contract', () => {
-  it('captures restricted demo explicitly and rejects public upstreams or mixed preview', () => {
+  it('rejects legacy no-auth mode and ignores old IP lists as authorization', () => {
     const env = {
       ...validEnv(),
       GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
@@ -40,7 +40,7 @@ describe('CatalogConfig PG contract', () => {
       CATALOG_TAXONOMY_URL: 'http://taxonomy-svc:3009',
       CATALOG_PRICING_URL: 'http://pricing-svc:3002',
     };
-    expect(new CatalogConfig(env).readDemo.restricted).toBe(true);
+    expect(() => new CatalogConfig(env)).toThrow('bypasses de lectura heredados');
     expect(
       new CatalogConfig({ ...env, GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
         .readDemo.restricted,
@@ -187,7 +187,7 @@ describe('CatalogConfig PG contract', () => {
     expect(Object.isFrozen(config.taxonomy)).toBe(true);
   });
 
-  it('keeps demo preview disabled by default and validates its explicit flag and private Pricing origin', () => {
+  it('keeps demo preview disabled and rejects its legacy activation flag', () => {
     expect(new CatalogConfig(validEnv()).marketplaceDemoPreview).toBe(false);
     expect(
       () =>
@@ -202,14 +202,7 @@ describe('CatalogConfig PG contract', () => {
           ...validEnv(),
           CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
         }),
-    ).toThrow('CATALOG_PRICING_URL');
-    const config = new CatalogConfig({
-      ...validEnv(),
-      CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'true',
-      CATALOG_PRICING_URL: 'http://pricing-svc:3002',
-    });
-    expect(config.marketplaceDemoPreview).toBe(true);
-    expect(config.pricingOrigin).toBe('http://pricing-svc:3002');
+    ).toThrow('bypasses de lectura heredados');
     expect(
       () =>
         new CatalogConfig({

@@ -15,7 +15,7 @@ export class PricingReadiness {
   ) {}
 
   check(): Promise<boolean> {
-    if (!this.config.demoNoAuthEnabled && !this.config.auth)
+    if (!this.config.auth)
       return Promise.resolve(false);
     if (
       this.config.amqpUrl &&

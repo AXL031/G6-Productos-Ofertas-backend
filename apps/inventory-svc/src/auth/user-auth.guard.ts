@@ -17,7 +17,10 @@ import {
 export class UserAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(
+    context: ExecutionContext,
+    trust?: { publicKey: string; issuer: string },
+  ): boolean {
     const requiredCapability = this.reflector.getAllAndOverride<
       string | undefined
     >(REQUIRED_CAPABILITY_KEY, [context.getHandler(), context.getClass()]);
@@ -51,6 +54,7 @@ export class UserAuthGuard implements CanActivate {
     const payload: UserTokenPayload = verifyUserBearerToken(
       rawToken,
       correlationId,
+      trust,
     );
 
     if (
