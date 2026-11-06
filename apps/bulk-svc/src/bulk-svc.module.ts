@@ -22,6 +22,7 @@ import {
   configuredBulkAmqpUrl,
 } from './messaging/bulk-rabbitmq.js';
 import { CatalogBulkResultConsumer } from './messaging/catalog-bulk-result-consumer.js';
+import { BULK_EXPORT_SOURCE } from './export/bulk-export-source.js';
 
 @Module({
   imports: [],
@@ -30,6 +31,7 @@ import { CatalogBulkResultConsumer } from './messaging/catalog-bulk-result-consu
     BulkSvcService,
     BulkImportService,
     BulkExportService,
+    { provide: BULK_EXPORT_SOURCE, useValue: null },
     BulkStorageService,
     BulkUserBearerGuard,
     BulkOutboxRelay,

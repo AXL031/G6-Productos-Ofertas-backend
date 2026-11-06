@@ -55,7 +55,6 @@ describe('Bulk HTTP import routes (isolated)', () => {
       },
     ];
     const imports = {
-      assertImportDependencies: vi.fn(),
       receiveImport: vi.fn().mockResolvedValue({ batch }),
       getSnapshot: vi.fn().mockResolvedValue({
         batch: {
@@ -66,7 +65,14 @@ describe('Bulk HTTP import routes (isolated)', () => {
         },
         rows,
       }),
-      resumeBatch: vi.fn().mockResolvedValue(batch),
+      resumeBatch: vi
+        .fn()
+        .mockRejectedValue(
+          new BulkDomainError(
+            'DEPENDENCY_PENDING',
+            'A new attempt is not approved.',
+          ),
+        ),
     };
     const storage = {
       put: vi.fn().mockResolvedValue('supabase://private/imports/test.csv'),
@@ -232,13 +238,9 @@ describe('Bulk HTTP import routes (isolated)', () => {
       const resumed = await request(app.getHttpServer()).post(
         `/api/v1/carga-masiva/productos/importaciones/${batch.batchId}/reanudar`,
       );
-      expect(resumed.status).toBe(202);
-      expect(resumed.body).toMatchObject({
-        batch_id: batch.batchId,
-        status: 'QUEUED',
-        template_version: 2,
-        correlation_id: batch.correlationId,
-      });
+      expect(resumed.status).toBe(503);
+      expect(resumed.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(imports.getSnapshot).toHaveBeenCalledWith(batch.batchId);
 
       const exportCreated = await request(app.getHttpServer())
         .post('/api/v1/carga-masiva/productos/exportaciones')

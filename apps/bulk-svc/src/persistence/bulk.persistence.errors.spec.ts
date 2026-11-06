@@ -1,5 +1,6 @@
 import {
   BulkPersistenceError,
+  isConfirmedTransactionRollback,
   persistenceError,
 } from './bulk.persistence.errors.js';
 
@@ -31,4 +32,26 @@ describe('bulk persistence error mapping', () => {
     expect(result.cause).toBe(cause);
     expect(result.message).not.toContain(cause.message);
   });
+
+  it.each(['23505', '23503', '23514', '23502', '40001', '40P01'])(
+    'recognizes SQLSTATE %s as a confirmed transaction rollback',
+    (sqlState) => {
+      expect(
+        isConfirmedTransactionRollback(
+          new Error('driver details', { cause: { code: sqlState } }),
+        ),
+      ).toBe(true);
+    },
+  );
+
+  it.each(['40003', '57014', '08007', 'ECONNRESET'])(
+    'keeps SQLSTATE or transport failure %s uncertain',
+    (code) => {
+      expect(
+        isConfirmedTransactionRollback(
+          new Error('driver details', { cause: { code } }),
+        ),
+      ).toBe(false);
+    },
+  );
 });

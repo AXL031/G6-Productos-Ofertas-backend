@@ -289,6 +289,10 @@ describe('Bulk recovery after a real PostgreSQL outage (disposable Docker only)'
       resolve('apps/bulk-svc/test/fixtures/0001_create_bulk_persistence.sql'),
       'utf8',
     );
+    const exportSnapshotMigration = readFileSync(
+      resolve('apps/bulk-svc/migrations/0002_export_source_snapshot.sql'),
+      'utf8',
+    );
     docker(
       [
         'exec',
@@ -307,6 +311,7 @@ CREATE ROLE bulk_fixture_app LOGIN PASSWORD '${applicationPassword}';
 CREATE SCHEMA bulk AUTHORIZATION po_bulk_owner;
 SET ROLE po_bulk_owner;
 ${migration}
+${exportSnapshotMigration}
 GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA bulk TO bulk_fixture_app;
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
@@ -318,7 +323,6 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
     rememberEnvironment('GATEWAY_DEMO_NO_AUTH_ENABLED', 'false');
     rememberEnvironment('G7_JWT_PUBLIC_KEY', testJwtPublicKey);
     rememberEnvironment('G7_JWT_ISSUER', testIssuer);
-    rememberEnvironment('BULK_CATALOG_COMMAND_V2_ENABLED', 'false');
     rememberEnvironment('BULK_STORAGE_BUCKET', storageTestBucket);
     rememberEnvironment('SUPABASE_SERVICE_ROLE_KEY', storageTestKey);
     rememberEnvironment('SUPABASE_URL', await startStorageTestServer());
@@ -623,21 +627,29 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
     expect(report.headers['content-type']).toContain('text/csv');
     expect(report.text).toContain('PRICE_REJECTED');
     expect(report.text).toContain('PRICING');
-    const resumed = await authorizedPost(
+    const refusedResume = await authorizedPost(
       server,
       `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}/reanudar`,
-    ).expect(202);
-    expect(resumed.body).toMatchObject({
-      batch_id: csvBatchId,
-      status: 'QUEUED',
-      template_version: 2,
-      correlation_id: correlationId,
-    });
+    ).expect(503);
+    expect(refusedResume.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+    expect(refusedResume.body.status).not.toBe('QUEUED');
+    await authorizedGet(
+      server,
+      `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}`,
+    )
+      .expect(200)
+      .then((response) =>
+        expect(response.body).toMatchObject({
+          status: 'COMPLETED',
+          failed_rows: 1,
+          needs_reconciliation: true,
+        }),
+      );
     const invalidTransition = await authorizedPost(
       server,
       `/api/v1/carga-masiva/productos/importaciones/${csvBatchId}/reanudar`,
-    ).expect(409);
-    expect(invalidTransition.body.code).toBe('IDEMPOTENCY_CONFLICT');
+    ).expect(503);
+    expect(invalidTransition.body.code).toBe('SERVICIO_NO_DISPONIBLE');
     const missingBatch = await authorizedGet(
       server,
       `/api/v1/carga-masiva/productos/importaciones/${randomUUID()}`,
@@ -649,14 +661,18 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
     expect(sensitiveData.test(capturedLogs.join('\n'))).toBe(false);
   }, 30_000);
 
-  it('keeps liveness up, readiness down, masks errors, then recovers durable writes', async () => {
+  it('keeps liveness up, distinguishes DB outage from missing AMQP, and recovers durable writes', async () => {
     const server = app!.getHttpServer();
     const initialHealth = await request(server).get('/health').expect(200);
     expect(initialHealth.body).toEqual({ status: 'ok', service: 'bulk-svc' });
-    await request(server)
+    const initialReadiness = await request(server)
       .get('/health/readiness')
-      .expect(200)
-      .expect({ status: 'ready', service: 'bulk-svc' });
+      .expect(503);
+    expect(initialReadiness.body).toEqual({
+      status: 'not_ready',
+      service: 'bulk-svc',
+      reason: 'AMQP_DISABLED',
+    });
 
     const initialCount = await pool!.query<{ count: string }>(
       'SELECT count(*)::text AS count FROM bulk.export_jobs',
@@ -692,6 +708,7 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
       expect(notReady.body).toEqual({
         status: 'not_ready',
         service: 'bulk-svc',
+        reason: 'DATABASE_UNAVAILABLE',
       });
 
       const failure = await failedWrite;
@@ -721,15 +738,18 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
     const recoveryDeadline = Date.now() + 45_000;
     let recovered = false;
     let lastReadinessStatus = 0;
+    let lastReadinessReason: string | undefined;
     while (!recovered && Date.now() < recoveryDeadline) {
       const response = await request(server).get('/health/readiness');
       lastReadinessStatus = response.status;
-      recovered = response.status === 200;
+      lastReadinessReason = response.body.reason;
+      recovered =
+        response.status === 503 && response.body.reason === 'AMQP_DISABLED';
       if (!recovered) await new Promise((resolve) => setTimeout(resolve, 250));
     }
     expect(
       recovered,
-      `Readiness did not recover; last HTTP status: ${lastReadinessStatus}.`,
+      `Readiness did not distinguish the recovered DB from missing AMQP; last HTTP status/reason: ${lastReadinessStatus}/${lastReadinessReason}.`,
     ).toBe(true);
     await request(server)
       .get('/health')
