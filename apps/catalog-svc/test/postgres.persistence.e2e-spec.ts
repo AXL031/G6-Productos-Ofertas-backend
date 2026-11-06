@@ -859,7 +859,9 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
       try {
         await broker.start();
         const observation = await broker.observeResults();
-        await http.start(persistenceSettings, { timeoutMs: 300000 });
+        await http.start(persistenceSettings, { timeoutMs: 300000 }, false, [
+          '00000000-0000-4000-8000-000000000050',
+        ]);
         const call = async (
           method: string,
           path: string,
@@ -964,6 +966,24 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               "';",
           );
         const originalBalances = balances(String(simple.sku_base));
+        // Historical admission uses the real HTTP boundary and the same real
+        // Inventory consumer. No Pricing receipt is fabricated for this product.
+        const historical = await transactions.run((tx) =>
+          repository.insertProduct(tx, productInput('A2-HIST-' + randomUUID())),
+        );
+        const historicalAdmission = await http.call(
+          'POST',
+          '/productos/' + historical.id + '/preparacion/recuperar-historica',
+          { solicitudId: randomUUID(), dependencias: ['INVENTARIO'] },
+          http.token(),
+          true,
+        );
+        expect(historicalAdmission.status).toBe(202);
+        const historicalRequest = (await requested(historical.id))[0];
+        expect(historicalRequest.event_name).toBe(
+          'inventory.sku.initialization.requested',
+        );
+        expect(await requested(historical.id)).toHaveLength(1);
         for (const id of [
           String(simple.product_id),
           String(parent.product_id),
@@ -1009,14 +1029,14 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         }
         // Inspect messages emitted by the real peers, never fabricated results.
         const inventoryResults = [];
-        while (inventoryResults.length < 2) {
+        while (inventoryResults.length < 3) {
           const wire = await broker.next(observation);
           const envelope = JSON.parse(
             wire.content.toString('utf8'),
           ) as CatalogEnvelope;
           if (
             envelope.name !== 'inventory.sku.initialization.completed' ||
-            ![simple.product_id, parent.product_id].includes(
+            ![simple.product_id, parent.product_id, historical.id].includes(
               envelope.data.product_id,
             )
           )
@@ -1040,7 +1060,28 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         }
         expect(
           inventoryResults.map((result) => result.data.sku).sort(),
-        ).toEqual([simple.sku_base, child.sku].sort());
+        ).toEqual([simple.sku_base, child.sku, historical.sku_base].sort());
+        await expect
+          .poll(
+            async () =>
+              (
+                await database.read((db) =>
+                  db
+                    .select()
+                    .from(activationChecks)
+                    .where(eq(activationChecks.product_id, historical.id)),
+                )
+              )[0]?.state,
+            { timeout: 30000 },
+          )
+          .toBe('COMPLETED');
+        expect(
+          inventoryResults.find(
+            (result) => result.data.product_id === historical.id,
+          )?.operation_id,
+        ).toBe(historicalAdmission.body.preparaciones[0].operation_id);
+        // Inventory alone cannot complete the product's missing Pricing preparation.
+        await call('POST', '/productos/' + historical.id + '/activar', {}, 422);
         await expect
           .poll(
             async () =>
@@ -1240,6 +1281,29 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             message.data.product_id === rejectedProduct.product_id,
         );
         expect(rejectedResult.wire.properties.userId).toBe('g6_inventario');
+        expect(rejectedResult.wire.properties.messageId).toBe(
+          rejectedResult.message.message_id,
+        );
+        expect(rejectedResult.wire.properties.correlationId).toBe(
+          rejectedResult.message.correlation_id,
+        );
+        expect(parseCatalogMessage(rejectedResult.message)).toEqual(
+          rejectedResult.message,
+        );
+        const rejectedRequest = (
+          await requested(String(rejectedProduct.product_id))
+        ).find(
+          (row) => row.event_name === 'inventory.sku.initialization.requested',
+        )!;
+        expect(rejectedResult.message.operation_id).toBe(
+          rejectedRequest.operation_id,
+        );
+        expect(rejectedResult.message.correlation_id).toBe(
+          rejectedRequest.correlation_id,
+        );
+        expect(rejectedResult.message.causation_id).toBe(
+          rejectedRequest.message_id,
+        );
         expect(rejectedResult.message.data.code).toBe(
           'UBICACION_NO_ENCONTRADA',
         );

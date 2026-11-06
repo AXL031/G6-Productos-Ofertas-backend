@@ -36,7 +36,7 @@ A2 completed/rejected auténticos, userId/messageId/correlation/operation/causat
 schema, rechazo broker de userId falso, cuarentena de identidad incorrecta,
 reentrega por Outbox Inventory real, replay de operación y saldos multiubicación.
 El caso #199 sin ubicación se ejecuta separadamente, sin atribuirlo a 8adcb6e.
-Los resultados Docker nuevos permanecen NO EJECUTADOS hasta la CI del candidato;
+La CI de cbfd53c ya ejecutó los casos Docker nuevos (detalle abajo);
 585 unitarias de Catalog y 2238 unitarias generales pasaron localmente.
 E2E Catalog: 169 PASS / 116 SKIP por infraestructura; la nueva suite HTTP
 sin base añade 3 PASS de autorización con JWT/JWKS firmado y modo demo cerrado.
@@ -48,6 +48,34 @@ esto no constituye evidencia bilateral ejecutada.
 No se declara COMPLETE:
 faltan E2E histórico Pricing+Inventory y activación contractual histórica de
 simple, padre y variantes con el contrato compartido.
+
+### Evidencia ejecutada de la continuación
+
+[Run 42160422132](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42160422132),
+HEAD cbfd53c04345601a60f3d2b65575329473d37c69. El workflow pull_request
+usa el merge sintético 33ad6db485c16797027e788a362068cb438af378 contra
+master 5da12790b56af998cb853c76148f73e2e9c0c207; no se hizo merge local.
+
+| Evidencia del job E2E 127704504147 | Resultado realmente ejecutado |
+| --- | --- |
+| A1 ausencia histórica previa | PASS: 503 read / 409 retry, sin fabricar preparación |
+| A1 candidato HTTP/ledger | PASS: JWT/capacidad, 202, locks, fingerprint, replay y concurrencia |
+| A1 selección/rollback/terminales | PASS: variantes elegidas, atomicidad y no reapertura REJECTED/COMPLETED |
+| A2 Taco 8adcb6e | PASS: completed/rejected auténticos, g6_inventario, causalidad, broker rechaza userId falso, cuarentena, duplicados/replay y saldos preservados |
+| A2 activación ordinaria | PASS: simple, variante y padre; Pricing del padre una vez |
+| A2 master 167090a con #199 | PASS de semántica sin ubicación; no balances ni stock.changed espurios; userId ausente causa cuarentena y PENDING en Catalog |
+| Persistencia Catalog | 97 PASS, 0 FAIL, 0 SKIP |
+| Bulk outage PostgreSQL | 2 PASS, realmente ejecutadas en CI; FAIL ENOENT local se conserva |
+| E2E general CI | 1054 PASS / 200 SKIP; 39 suites PASS / 14 SKIP |
+| Unitarias CI | 2312 PASS / 71 SKIP; conteos distintos de local por checkout PR con master |
+
+Los marcadores de logs acreditan ambos SHA Inventory por separado. Los escenarios
+de saldos y replay utilizan publicador real, no fixtures con userId añadido.
+La validación completa de imágenes/agregadores se registra en la PR al terminar.
+Una ampliación posterior comprueba explícitamente admisión HTTP histórica
+Inventory-only → resultado auténtico → check COMPLETED del producto histórico;
+su ejecución queda pendiente de la CI del nuevo HEAD. No completa Pricing ni
+acredita activación histórica del agregado.
 
 ## Antecedente de la primera iteración — no es estado vigente
 
