@@ -98,13 +98,21 @@ No leer ni imprimir runtime.env. Registrar dueño, grupo, modo, timestamp, tama�
 DESTINOS=(/usr/local/lib/g6-productos-ofertas/service-registry.sh /usr/local/lib/g6-productos-ofertas/services.psv /usr/local/lib/g6-productos-ofertas/deploy-g6-service /opt/g6-productos-ofertas/shared/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.http.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml /opt/g6-productos-ofertas/inventory/docker-compose.inventory.http.yml /usr/local/sbin/deploy-inventory-svc)
 sudo stat --format='%n|%U:%G|%a|%y|%s' "${DESTINOS[@]}" 2>&1 || true
 sudo sha256sum "${DESTINOS[@]}" 2>&1 || true
-BACKUP="/var/backups/g6-productos-ofertas/h4-$(date -u +%Y%m%dT%H%M%SZ)"
-sudo install --directory --owner root --group root --mode 0700 "$BACKUP"
-sudo install --owner root --group root --mode 0600 /dev/null "$BACKUP/destinos.tsv"
+BACKUP_PARENT=/var/backups/g6-productos-ofertas
+sudo test ! -L "$BACKUP_PARENT" || { printf 'FALLO: el padre del respaldo no puede ser symlink\n' >&2; exit 1; }
+sudo install --directory --owner root --group root --mode 0755 "$BACKUP_PARENT"
+sudo test ! -L "$BACKUP_PARENT" || { printf 'FALLO: el padre del respaldo no puede ser symlink\n' >&2; exit 1; }
+IFS='|' read -r backup_parent_owner backup_parent_mode < <(sudo stat --format='%U:%G|%a' "$BACKUP_PARENT")
+[[ "$backup_parent_owner" == root:root && "$backup_parent_mode" == 755 ]] || { printf 'FALLO: el padre del respaldo no está controlado por root\n' >&2; exit 1; }
+BACKUP="$(sudo mktemp -d "$BACKUP_PARENT/h4.XXXXXXXXXX")" || { printf 'FALLO: no se pudo crear un respaldo exclusivo\n' >&2; exit 1; }
+sudo chmod 0700 "$BACKUP"
+IFS='|' read -r backup_owner backup_mode < <(sudo stat --format='%U:%G|%a' "$BACKUP")
+[[ "$backup_owner" == root:root && "$backup_mode" == 700 ]] || { printf 'FALLO: el directorio de respaldo no es privado y root-owned\n' >&2; exit 1; }
+sudo bash -c 'set -o noclobber; : > "$1"' _ "$BACKUP/destinos.tsv" || { printf 'FALLO: destinos.tsv ya existe o no se puede crear en respaldo nuevo\n' >&2; exit 1; }
 for path in "${DESTINOS[@]}"; do
   name="$(printf '%s' "$path" | sed 's#^/##; s#/#__#g')"
   if sudo test -e "$path"; then
-    sudo test -f "$path" || { printf 'FALLO: destino no regular: %s\n' "$path" >&2; exit 1; }
+    sudo test -f "$path" && ! sudo test -L "$path" || { printf 'FALLO: destino no regular o symlink: %s\n' "$path" >&2; exit 1; }
     before_sha="$(sudo sha256sum -- "$path" | awk '{print $1}')"
     IFS='|' read -r before_owner before_mode before_time before_size < <(sudo stat --format='%U:%G|%a|%y|%s' "$path")
     printf '%s|existia|%s|%s|%s|%s|%s|%s\n' "$path" "$name" "$before_sha" "$before_owner" "$before_mode" "$before_time" "$before_size" | sudo tee -a "$BACKUP/destinos.tsv" >/dev/null
@@ -198,22 +206,81 @@ authorized_destination() {
     *) return 1 ;;
   esac
 }
+declare -gA DESTINO_STATE=() DESTINO_BACKUP=() DESTINO_SHA=() DESTINO_OWNER=() DESTINO_MODE=() DESTINO_TIME=() DESTINO_SIZE=()
+declare -ga PROMOTION_DESTINATIONS=()
+declare -gA PROMOTION_INSTALLED_SHA=() PROMOTION_OWNER=() PROMOTION_MODE=() PROMOTION_TIME=() PROMOTION_SIZE=()
+load_destination_manifest() {
+  local manifest_text row destination state backup_name sha owner mode timestamp size extra separators count=0 expected
+  local -A seen=()
+  local destination_file="$BACKUP/destinos.tsv"
+  sudo test -f "$destination_file" && ! sudo test -L "$destination_file" || { fail_source 'destinos.tsv falta o no es archivo regular'; return 1; }
+  manifest_text="$(sudo cat -- "$destination_file")" || { fail_source 'no se pudo leer completo destinos.tsv'; return 1; }
+  [[ -n "$manifest_text" ]] || { fail_source 'destinos.tsv está vacío o mal formado'; return 1; }
+  DESTINO_STATE=() DESTINO_BACKUP=() DESTINO_SHA=() DESTINO_OWNER=() DESTINO_MODE=() DESTINO_TIME=() DESTINO_SIZE=()
+  while IFS= read -r row || [[ -n "$row" ]]; do
+    separators="${row//[^|]/}"
+    [[ "${#separators}" == 7 ]] || { fail_source 'fila de destinos.tsv mal formada'; return 1; }
+    IFS='|' read -r destination state backup_name sha owner mode timestamp size extra <<< "$row"
+    authorized_destination "$destination" || { fail_source "destino desconocido en destinos.tsv: $destination"; return 1; }
+    [[ -z "${seen[$destination]+present}" ]] || { fail_source "destino duplicado en destinos.tsv: $destination"; return 1; }
+    seen[$destination]=1
+    [[ -z "$extra" ]] || { fail_source "columnas adicionales en destinos.tsv: $destination"; return 1; }
+    if [[ "$state" == existia ]]; then
+      [[ "$backup_name" =~ ^[A-Za-z0-9_.-]+$ && "$sha" =~ ^[0-9a-f]{64}$ && "$owner" =~ ^[^|]+:[^|]+$ && "$mode" =~ ^[0-7]{3,4}$ && "$timestamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[[:space:]][+-][0-9]{4}$ && "$size" =~ ^[0-9]+$ ]] || { fail_source "metadata inicial inválida en destinos.tsv: $destination"; return 1; }
+    elif [[ "$state" == ausente ]]; then
+      [[ -z "$backup_name$sha$owner$mode$timestamp$size" ]] || { fail_source "campos inesperados para destino ausente: $destination"; return 1; }
+    else
+      fail_source "estado inicial inválido en destinos.tsv: $destination"; return 1
+    fi
+    DESTINO_STATE[$destination]="$state"
+    DESTINO_BACKUP[$destination]="$backup_name"
+    DESTINO_SHA[$destination]="$sha"
+    DESTINO_OWNER[$destination]="$owner"
+    DESTINO_MODE[$destination]="$mode"
+    DESTINO_TIME[$destination]="$timestamp"
+    DESTINO_SIZE[$destination]="$size"
+    ((count += 1))
+  done <<< "$manifest_text"
+  [[ "$count" == "${#DESTINOS[@]}" ]] || { fail_source 'destinos.tsv no contiene exactamente la lista autorizada'; return 1; }
+  for expected in "${DESTINOS[@]}"; do
+    [[ -n "${seen[$expected]+present}" ]] || { fail_source "destinos.tsv no registra $expected"; return 1; }
+  done
+}
+check_candidate() {
+  local source="$1" candidate="$2" expected actual
+  expected="$(sha256sum "$source" | awk '{print $1}')"
+  actual="$(sudo sha256sum "$candidate" | awk '{print $1}')"
+  [[ "$expected" == "$actual" ]]
+}
 record_promotion() {
-  local destination="$1" installed_sha installed_stat
-  installed_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')"
-  installed_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")"
-  printf '%s|%s|%s\n' "$destination" "$installed_sha" "$installed_stat" | sudo tee -a "$BACKUP/promovidos.tsv" >/dev/null
+  local destination="$1" installed_sha="$2" installed_stat
+  installed_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")" || { fail_source "no se pudo registrar metadata instalada: $destination"; return 1; }
+  printf '%s|%s|%s\n' "$destination" "$installed_sha" "$installed_stat" | sudo tee -a "$BACKUP/promovidos.tsv" >/dev/null || { fail_source "no se pudo registrar promoción: $destination"; return 1; }
 }
 promote_candidate() {
-  local source="$1" candidate="$2" destination="$3"
-  authorized_destination "$destination" || { printf 'FALLO: destino no autorizado: %s\n' "$destination" >&2; return 1; }
-  check_candidate "$source" "$candidate" || { printf 'FALLO: checksum del candidato cambió: %s\n' "$candidate" >&2; return 1; }
-  sudo mv --no-target-directory -- "$candidate" "$destination"
-  record_promotion "$destination"
+  local source="$1" candidate="$2" destination="$3" state current_sha current_stat source_sha installed_sha
+  authorized_destination "$destination" || { fail_source "destino no autorizado: $destination"; return 1; }
+  load_destination_manifest || return 1
+  state="${DESTINO_STATE[$destination]:-}"
+  [[ -n "$state" ]] || { fail_source "destino no tiene exactamente una entrada inicial: $destination"; return 1; }
+  if [[ "$state" == existia ]]; then
+    sudo test -f "$destination" && ! sudo test -L "$destination" || { fail_source "destino existente cambió de tipo: $destination"; return 1; }
+    current_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')" || { fail_source "no se pudo comprobar destino: $destination"; return 1; }
+    current_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")" || { fail_source "no se pudo leer metadata del destino: $destination"; return 1; }
+    [[ "$current_sha" == "${DESTINO_SHA[$destination]}" && "$current_stat" == "${DESTINO_OWNER[$destination]}|${DESTINO_MODE[$destination]}|${DESTINO_TIME[$destination]}|${DESTINO_SIZE[$destination]}" ]] || { fail_source "destino existente cambió desde el respaldo: $destination"; return 1; }
+  else
+    sudo test ! -e "$destination" && sudo test ! -L "$destination" || { fail_source "destino originalmente ausente apareció antes de promoción: $destination"; return 1; }
+  fi
+  source_sha="$(sha256sum "$source" | awk '{print $1}')" || { fail_source "no se pudo calcular SHA-256 fuente: $source"; return 1; }
+  check_candidate "$source" "$candidate" || { fail_source "checksum del candidato cambió: $candidate"; return 1; }
+  sudo mv --no-target-directory -- "$candidate" "$destination" || { fail_source "no se pudo renombrar candidato: $destination"; return 1; }
+  installed_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')" || { fail_source "no se pudo verificar contenido instalado: $destination"; return 1; }
+  [[ "$installed_sha" == "$source_sha" ]] || { fail_source "el contenido instalado no coincide con el SHA-256 fuente aprobada: $destination; mantener despliegues congelados y conciliar antes de continuar"; return 1; }
+  record_promotion "$destination" "$installed_sha"
 }
 PROMOTION_SHA="$(verify_official_master)"
 [[ "$PROMOTION_SHA" == "$INSTALL_SHA" ]] || fail_source 'master oficial cambió desde el preflight; no se promueve ningún archivo'
-sudo install --owner root --group root --mode 0600 /dev/null "$BACKUP/promovidos.tsv"
+sudo bash -c 'set -o noclobber; : > "$1"' _ "$BACKUP/promovidos.tsv" || { printf 'FALLO: promovidos.tsv ya existe o no se puede crear en respaldo nuevo\n' >&2; exit 1; }
 # Orden fijo: Compose genérico, Gateway, overlay genérico, registro y ejecutor.
 promote_candidate ops/oracle/docker-compose.service.yml /opt/g6-productos-ofertas/shared/docker-compose.service.yml.new /opt/g6-productos-ofertas/shared/docker-compose.service.yml
 promote_candidate ops/oracle/docker-compose.gateway.yml /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml.new /opt/g6-productos-ofertas/api-gateway/docker-compose.gateway.yml
@@ -232,30 +299,59 @@ Ante cualquier fallo, mantener congelados despliegues y recuperar **solo** los d
 El ejemplo siguiente falla cerrado ante destinos fuera de la lista, metadatos faltantes, cambios posteriores o discrepancias. Para un archivo originalmente existente, compara primero el destino con el estado instalado y solo entonces copia el respaldo a un temporal hermano y lo renombra atómicamente. Para uno originalmente ausente, retira solo el archivo exacto, únicamente si checksum y metadata siguen idénticos al estado recién promovido. Un destino no promovido no se toca. Al finalizar compara checksum y metadata restaurados contra el inventario original. No reanudar despliegues si recuperación, verificaciones o validación Compose fallan.
 
 ```bash
+load_promotion_manifest() {
+  local promotion_file="$BACKUP/promovidos.tsv" promotion_text row destination sha owner mode timestamp size extra separators
+  local -A seen=()
+  sudo test -f "$promotion_file" && ! sudo test -L "$promotion_file" || { fail_source 'promovidos.tsv falta o no es archivo regular'; return 1; }
+  promotion_text="$(sudo cat -- "$promotion_file")" || { fail_source 'no se pudo leer completo promovidos.tsv'; return 1; }
+  PROMOTION_DESTINATIONS=() PROMOTION_INSTALLED_SHA=() PROMOTION_OWNER=() PROMOTION_MODE=() PROMOTION_TIME=() PROMOTION_SIZE=()
+  # Archivo regular leído con éxito y vacío significa que todavía no se promovió ningún destino.
+  [[ -n "$promotion_text" ]] || return 0
+  while IFS= read -r row || [[ -n "$row" ]]; do
+    separators="${row//[^|]/}"
+    [[ "${#separators}" == 5 ]] || { fail_source 'fila de promovidos.tsv mal formada'; return 1; }
+    IFS='|' read -r destination sha owner mode timestamp size extra <<< "$row"
+    authorized_destination "$destination" || { fail_source "destino desconocido en promovidos.tsv: $destination"; return 1; }
+    [[ -z "${seen[$destination]+present}" ]] || { fail_source "destino duplicado en promovidos.tsv: $destination"; return 1; }
+    seen[$destination]=1
+    [[ -n "${DESTINO_STATE[$destination]+present}" && -z "$extra" && "$sha" =~ ^[0-9a-f]{64}$ && "$owner" =~ ^[^|]+:[^|]+$ && "$mode" =~ ^[0-7]{3,4}$ && "$timestamp" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]][0-9]{2}:[0-9]{2}:[0-9]{2}(\.[0-9]+)?[[:space:]][+-][0-9]{4}$ && "$size" =~ ^[0-9]+$ ]] || { fail_source "registro de promoción inconsistente: $destination"; return 1; }
+    PROMOTION_DESTINATIONS+=("$destination")
+    PROMOTION_INSTALLED_SHA[$destination]="$sha"
+    PROMOTION_OWNER[$destination]="$owner"
+    PROMOTION_MODE[$destination]="$mode"
+    PROMOTION_TIME[$destination]="$timestamp"
+    PROMOTION_SIZE[$destination]="$size"
+  done <<< "$promotion_text"
+}
 rollback_promotions() {
-  local -a promotions=()
-  local row destination installed_sha installed_owner installed_mode installed_time installed_size
-  local original_state backup_name original_sha original_owner original_mode original_time original_size
-  local current_sha current_stat restore_path restore_sha restore_stat restored_sha restored_stat found i
-  mapfile -t promotions < <(sudo cat "$BACKUP/promovidos.tsv")
-  for ((i=${#promotions[@]}-1; i>=0; i--)); do
-    row="${promotions[i]}"
-    IFS='|' read -r destination installed_sha installed_owner installed_mode installed_time installed_size <<<"$row"
-    authorized_destination "$destination" || { printf 'CONFLICTO: destino no autorizado: %s\n' "$destination" >&2; return 1; }
-    found=0
-    while IFS='|' read -r manifest_dest original_state backup_name original_sha original_owner original_mode original_time original_size; do
-      if [[ "$manifest_dest" == "$destination" ]]; then found=1; break; fi
-    done < <(sudo cat "$BACKUP/destinos.tsv")
-    [[ "$found" == 1 ]] || { printf 'CONFLICTO: falta estado original de %s\n' "$destination" >&2; return 1; }
-    current_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')" || { printf 'CONFLICTO: falta destino promovido %s\n' "$destination" >&2; return 1; }
-    current_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")" || return 1
+  local i destination original_state backup_name original_sha original_owner original_mode original_time original_size
+  local installed_sha installed_owner installed_mode installed_time installed_size current_sha current_stat restore_path restore_sha restore_stat restored_sha restored_stat
+  load_destination_manifest || return 1
+  load_promotion_manifest || return 1
+  for ((i=${#PROMOTION_DESTINATIONS[@]}-1; i>=0; i--)); do
+    destination="${PROMOTION_DESTINATIONS[i]}"
+    original_state="${DESTINO_STATE[$destination]}"
+    backup_name="${DESTINO_BACKUP[$destination]}"
+    original_sha="${DESTINO_SHA[$destination]}"
+    original_owner="${DESTINO_OWNER[$destination]}"
+    original_mode="${DESTINO_MODE[$destination]}"
+    original_time="${DESTINO_TIME[$destination]}"
+    original_size="${DESTINO_SIZE[$destination]}"
+    installed_sha="${PROMOTION_INSTALLED_SHA[$destination]}"
+    installed_owner="${PROMOTION_OWNER[$destination]}"
+    installed_mode="${PROMOTION_MODE[$destination]}"
+    installed_time="${PROMOTION_TIME[$destination]}"
+    installed_size="${PROMOTION_SIZE[$destination]}"
+    sudo test -f "$destination" && ! sudo test -L "$destination" || { printf 'CONFLICTO: destino promovido falta o cambió de tipo: %s\n' "$destination" >&2; return 1; }
+    current_sha="$(sudo sha256sum -- "$destination" | awk '{print $1}')" || { printf 'CONFLICTO: no se pudo comprobar destino %s\n' "$destination" >&2; return 1; }
+    current_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$destination")" || { printf 'CONFLICTO: no se pudo leer metadata de %s\n' "$destination" >&2; return 1; }
     [[ "$current_sha" == "$installed_sha" && "$current_stat" == "$installed_owner|$installed_mode|$installed_time|$installed_size" ]] || {
       printf 'CONFLICTO: %s cambió después de la promoción; no se modifica\n' "$destination" >&2; return 1;
     }
     if [[ "$original_state" == existia ]]; then
-      [[ -n "$backup_name" && -n "$original_sha" ]] || { printf 'CONFLICTO: respaldo incompleto de %s\n' "$destination" >&2; return 1; }
       restore_path="${destination}.rollback.$$"
-      sudo test ! -e "$restore_path" || { printf 'CONFLICTO: temporal ya existe: %s\n' "$restore_path" >&2; return 1; }
+      sudo test ! -e "$restore_path" && sudo test ! -L "$restore_path" || { printf 'CONFLICTO: temporal ya existe: %s\n' "$restore_path" >&2; return 1; }
+      sudo test -f "$BACKUP/$backup_name" && ! sudo test -L "$BACKUP/$backup_name" || { printf 'CONFLICTO: respaldo falta o no es regular: %s\n' "$backup_name" >&2; return 1; }
       sudo cp --archive -- "$BACKUP/$backup_name" "$restore_path"
       restore_sha="$(sudo sha256sum -- "$restore_path" | awk '{print $1}')"
       restore_stat="$(sudo stat --format='%U:%G|%a|%y|%s' "$restore_path")"
@@ -270,7 +366,7 @@ rollback_promotions() {
       }
     elif [[ "$original_state" == ausente ]]; then
       sudo rm -- "$destination"
-      sudo test ! -e "$destination" || { printf 'FALLO: no se retiró el archivo creado %s\n' "$destination" >&2; return 1; }
+      sudo test ! -e "$destination" && sudo test ! -L "$destination" || { printf 'FALLO: no se retiró exactamente el archivo creado %s\n' "$destination" >&2; return 1; }
     else
       printf 'CONFLICTO: estado original inválido para %s\n' "$destination" >&2; return 1
     fi
