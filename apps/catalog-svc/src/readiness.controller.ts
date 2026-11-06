@@ -31,7 +31,7 @@ export class ReadinessController {
     if (this.amqp?.required && !this.amqp.ready) throw new Error();
 
     const publicReadConfigured =
-      this.config?.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
+      this.config?.readDemo?.securityMode === 'PUBLIC_READ_ONLY' &&
       (this.config.readDemo.publicOperations?.length ?? 0) > 0;
     if (this.config?.readDemo?.enabled || publicReadConfigured) {
       if (!this.repository) throw new Error();
