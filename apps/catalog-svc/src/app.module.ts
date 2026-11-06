@@ -72,8 +72,10 @@ import { HistoricalRecoveryController } from './historical-recovery.controller.j
 import {
   HistoricalRecoveryService,
   HISTORICAL_RECOVERY_CAPABILITIES,
+  HISTORICAL_PRICING_CONTRACT,
   readHistoricalRecoveryCapabilities,
 } from './historical-recovery.service.js';
+import { readHistoricalPricingContract } from './historical-pricing.contract.js';
 
 @Module({
   imports: [],
@@ -105,6 +107,10 @@ import {
     CatalogQueryService,
     CatalogMutationService,
     HistoricalRecoveryService,
+    {
+      provide: HISTORICAL_PRICING_CONTRACT,
+      useFactory: () => readHistoricalPricingContract(),
+    },
     {
       provide: HISTORICAL_RECOVERY_CAPABILITIES,
       useFactory: () => readHistoricalRecoveryCapabilities(),
@@ -164,6 +170,10 @@ export class AppModule {
     return {
       module: AppModule,
       providers: [
+        {
+          provide: HISTORICAL_PRICING_CONTRACT,
+          useValue: config.historicalPricingContract,
+        },
         { provide: CatalogConfig, useValue: config },
         { provide: CATALOG_TAXONOMY_CONFIG, useValue: config.taxonomy },
         { provide: CATALOG_SECURITY_CONFIG, useValue: config.security },

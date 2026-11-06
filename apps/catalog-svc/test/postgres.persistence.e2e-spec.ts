@@ -26,7 +26,8 @@ import { DisposableCatalogBroker } from './support/disposable-catalog-broker.js'
 import {
   pinnedInventorySource,
   INVENTORY_BILATERAL_SHA,
-  INVENTORY_NO_LOCATION_SHA,
+  pinnedPricingSource,
+  PRICING_HISTORICAL_SHA,
 } from './support/pinned-peer-source.js';
 import { LegacyDemoList } from './support/legacy-demo-list.js';
 import { CatalogGatewayHarness } from './support/catalog-gateway-harness.js';
@@ -448,7 +449,11 @@ describe.skipIf(!dockerAvailable)(
         const blocked = await http.call(
           'POST',
           path,
-          { solicitudId: blockedId, dependencias: ['PRICING', 'INVENTARIO'] },
+          {
+            solicitudId: blockedId,
+            dependencias: ['PRICING', 'INVENTARIO'],
+            moneda: 'EUR',
+          },
           http.token(),
           true,
         );
@@ -583,7 +588,9 @@ describe.skipIf(!dockerAvailable)(
         createRequest(true),
         actor,
       );
-      const children = [];
+      const children: Array<
+        Awaited<ReturnType<CatalogMutationService['createVariant']>>
+      > = [];
       for (const size of ['A', 'B'])
         children.push(
           await mutationService().createVariant(
@@ -753,7 +760,105 @@ describe.skipIf(!dockerAvailable)(
       });
     }, 90000);
 
-    it('BLOCK-A2: pinned Inventory authenticates results, preserves balances and replays; #199 semantics are verified separately', async () => {
+    it('BLOCK-A1-MIGRATION: 0004 is additive, owner-only and runtime receipts are SELECT/INSERT only', async () => {
+      const privileges = await database.read((db) =>
+        db.execute(sql`
+        SELECT has_table_privilege(current_user,'catalog.historical_preparation_requests','SELECT') AS can_select,
+          has_table_privilege(current_user,'catalog.historical_preparation_requests','INSERT') AS can_insert,
+          has_table_privilege(current_user,'catalog.historical_preparation_requests','UPDATE') AS can_update,
+          has_table_privilege(current_user,'catalog.historical_preparation_requests','DELETE') AS can_delete,
+          pg_get_userbyid(c.relowner) AS owner, c.relrowsecurity AS rls,
+          NOT EXISTS(SELECT 1 FROM aclexplode(c.relacl) acl WHERE acl.grantee=0) AS no_public_grants
+        FROM pg_class c WHERE c.oid='catalog.historical_preparation_requests'::regclass
+      `),
+      );
+      expect(privileges.rows[0]).toMatchObject({
+        can_select: true,
+        can_insert: true,
+        can_update: false,
+        can_delete: false,
+        owner: 'po_catalog_owner',
+        rls: true,
+        no_public_grants: true,
+      });
+      const migrationSubject = randomUUID();
+      const migrationProduct = await transactions.run((tx) =>
+        repository.insertProduct(tx, productInput('MIGRATION-' + randomUUID())),
+      );
+      const migrationRequest = randomUUID();
+      await new HistoricalRecoveryService(
+        transactions,
+        repository,
+        readHistoricalRecoveryCapabilities({
+          CATALOG_HISTORICAL_RECOVERY_ALLOWED_SUBJECTS: migrationSubject,
+        }),
+      ).recover(
+        migrationProduct.id,
+        { solicitudId: migrationRequest, dependencias: ['INVENTARIO'] },
+        { subject: migrationSubject, correlationId: randomUUID() },
+      );
+      const [receipt] = await database.read((db) =>
+        db
+          .select()
+          .from(historicalRequests)
+          .where(eq(historicalRequests.request_id, migrationRequest)),
+      );
+      expect(receipt).toBeDefined();
+      await expect(
+        transactions.run((tx) => tx.insert(historicalRequests).values(receipt)),
+      ).rejects.toMatchObject({ sqlState: '23505' });
+      for (const statement of [
+        'UPDATE catalog.historical_preparation_requests SET actor_subject=actor_subject',
+        'DELETE FROM catalog.historical_preparation_requests',
+        'ALTER TABLE catalog.historical_preparation_requests DISABLE ROW LEVEL SECURITY',
+        "INSERT INTO foreign_context.private_probe(value) VALUES ('unauthorized')",
+      ])
+        await expect(
+          transactions.run((tx) => tx.execute(sql.raw(statement))),
+        ).rejects.toMatchObject({ sqlState: '42501' });
+      await expect(
+        transactions.run((tx) =>
+          tx.execute(
+            sql.raw(
+              readFileSync(
+                resolve(
+                  'apps/catalog-svc/migrations/0004_historical_preparation_requests.sql',
+                ),
+                'utf8',
+              ),
+            ),
+          ),
+        ),
+      ).rejects.toMatchObject({ sqlState: '42501' });
+      expect(
+        (
+          await database.read((db) =>
+            db
+              .select()
+              .from(historicalRequests)
+              .where(eq(historicalRequests.request_id, receipt.request_id)),
+          )
+        )[0],
+      ).toEqual(receipt);
+      const otherSchema = command(
+        'docker',
+        [
+          'exec',
+          '-i',
+          container,
+          'psql',
+          '-U',
+          'postgres',
+          '-At',
+          '-v',
+          'ON_ERROR_STOP=1',
+        ],
+        'SELECT count(*) FROM foreign_context.private_probe;',
+      );
+      expect(otherSchema.trim()).toBe('1');
+    });
+
+    it('BLOCK-A2: consolidated Inventory authenticates completed/rejected, preserves balances, replays and initializes without location', async () => {
       const peerDirectory = join(directory, 'preparation-peers');
       mkdirSync(peerDirectory);
       writeFileSync(join(peerDirectory, 'package.json'), '{"type":"module"}');
@@ -766,6 +871,7 @@ describe.skipIf(!dockerAvailable)(
         peerDirectory,
         INVENTORY_BILATERAL_SHA,
       );
+      const pricingSource = pinnedPricingSource(peerDirectory);
       const sqlAdmin = (input: string) =>
         command(
           'docker',
@@ -809,8 +915,8 @@ CREATE SCHEMA extensions;
 CREATE EXTENSION btree_gist WITH SCHEMA extensions;
 GRANT USAGE ON SCHEMA extensions TO po_pricing_owner;
 SET ROLE po_pricing_owner;
-${readFileSync(resolve('apps/pricing-svc/test/fixtures/pricing.sql'), 'utf8')}
-${readFileSync(resolve('apps/pricing-svc/migrations/0002_schedule_effective_events.sql'), 'utf8')}
+${readFileSync(resolve(pricingSource, 'apps/pricing-svc/test/fixtures/pricing.sql'), 'utf8')}
+${readFileSync(resolve(pricingSource, 'apps/pricing-svc/migrations/0002_schedule_effective_events.sql'), 'utf8')}
 RESET ROLE;`);
       sqlAdmin(initial);
       sqlAdmin('BEGIN;\n' + incremental + '\nCOMMIT;');
@@ -932,8 +1038,8 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             .toBe(true);
           return child;
         };
-        await startPeer('pricing');
-        const inventoryPeer = await startPeer('inventory', inventorySource);
+        await startPeer('pricing', pricingSource);
+        await startPeer('inventory', inventorySource);
         const simple = await call('POST', '/productos', createRequest(), 201);
         const parent = await call(
           'POST',
@@ -1168,21 +1274,27 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         const request = (await requested(String(simple.product_id))).find(
           (row) => row.event_name.startsWith('inventory.'),
         )!;
-        const asCommand = (messageId: string) => ({
+        const asCommand = (messageId: string, source = request) => ({
           message_id: messageId,
-          schema_version: request.schema_version,
-          occurred_at: request.occurred_at.toISOString(),
-          correlation_id: request.correlation_id,
-          operation_id: request.operation_id,
-          causation_id: request.causation_id,
+          schema_version: source.schema_version,
+          occurred_at: source.occurred_at.toISOString(),
+          correlation_id: source.correlation_id,
+          operation_id: source.operation_id,
+          causation_id: source.causation_id,
           producer: 'catalog-svc',
           kind: 'command',
-          name: request.event_name,
-          data: request.payload,
+          name: source.event_name,
+          data: source.payload,
         });
+        const parked: Array<{
+          wire: Awaited<ReturnType<typeof broker.next>>;
+          message: CatalogEnvelope;
+        }> = [];
         const nextResult = async (
           matches: (message: CatalogEnvelope) => boolean,
         ) => {
+          const index = parked.findIndex((item) => matches(item.message));
+          if (index >= 0) return parked.splice(index, 1)[0];
           const deadline = Date.now() + 30000;
           while (Date.now() < deadline) {
             const wire = await broker.next(observation);
@@ -1190,6 +1302,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               wire.content.toString(),
             ) as CatalogEnvelope;
             if (matches(message)) return { wire, message };
+            parked.push({ wire, message });
           }
           throw new Error('Pinned peer result not observed');
         };
@@ -1255,14 +1368,38 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               .where(eq(inbox.message_id, forged.message_id)),
           ),
         ).toEqual([]);
-        // This exact Taco SHA still rejects no-location initialization when none are active.
-        sqlAdmin('UPDATE inventory.locations SET active=false;');
+        // Explicit operation-collision fixture, sent as Catalog through the real
+        // broker. Inventory's genuine publisher must reject the original pending
+        // request; no result payload or userId is fabricated.
+        await runtime.onModuleDestroy();
+        runtime = undefined;
         const rejectedProduct = await call(
           'POST',
           '/productos',
           createRequest(),
           201,
         );
+        const collisionRequest = (
+          await requested(String(rejectedProduct.product_id))
+        ).find(
+          (row) => row.event_name === 'inventory.sku.initialization.requested',
+        )!;
+        const collisionId = randomUUID();
+        await broker.commandEnvelope({
+          ...asCommand(collisionId),
+          operation_id: collisionRequest.operation_id,
+          correlation_id: collisionRequest.correlation_id,
+          data: {
+            ...collisionRequest.payload,
+            sku: 'COLLISION-' + randomUUID(),
+          },
+        });
+        await nextResult((message) => message.causation_id === collisionId);
+        runtime = new CatalogAmqpRuntime(
+          new CatalogMessageService(database),
+          broker.settings,
+        );
+        runtime.onModuleInit();
         await expect
           .poll(
             async () =>
@@ -1304,24 +1441,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         expect(rejectedResult.message.causation_id).toBe(
           rejectedRequest.message_id,
         );
-        expect(rejectedResult.message.data.code).toBe(
-          'UBICACION_NO_ENCONTRADA',
-        );
-        expect(rejectedResult.wire.properties.messageId).toBe(
-          rejectedResult.message.message_id,
-        );
-        expect(rejectedResult.wire.properties.correlationId).toBe(
-          rejectedResult.message.correlation_id,
-        );
-        const rejectionRequest = (
-          await requested(String(rejectedProduct.product_id))
-        ).find((row) => row.event_name.startsWith('inventory.'))!;
-        expect(rejectedResult.message.operation_id).toBe(
-          rejectionRequest.operation_id,
-        );
-        expect(rejectedResult.message.causation_id).toBe(
-          rejectionRequest.message_id,
-        );
+        expect(rejectedResult.message.data.code).toBe('IDEMPOTENCY_CONFLICT');
         expect(
           (
             await call(
@@ -1333,7 +1453,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           ).inventario,
         ).toMatchObject({
           status: 'REJECTED',
-          code: 'UBICACION_NO_ENCONTRADA',
+          code: 'IDEMPOTENCY_CONFLICT',
           manual_retry_allowed: false,
         });
         await call(
@@ -1351,21 +1471,8 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           409,
         );
 
-        // #199 is tested from its own immutable master SHA, never overlaid onto Taco.
-        inventoryPeer.kill('SIGTERM');
-        await expect
-          .poll(
-            () =>
-              inventoryPeer.exitCode !== null ||
-              inventoryPeer.signalCode !== null,
-            { timeout: 10000 },
-          )
-          .toBe(true);
-        const noLocationSource = pinnedInventorySource(
-          peerDirectory,
-          INVENTORY_NO_LOCATION_SHA,
-        );
-        await startPeer('inventory', noLocationSource);
+        // The same consolidated SHA includes #199; no source overlay or restart
+        // onto a different Inventory implementation is needed.
         await runtime.onModuleDestroy();
         runtime = undefined;
         sqlAdmin('UPDATE inventory.locations SET active=true;');
@@ -1394,11 +1501,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               message.data.product_id === item.product_id,
           );
           expect(result199.message.data.status).toBe('INITIALIZED');
-          expect(result199.wire.properties.userId).toBeUndefined();
-          const dlq = await broker.next('po.catalogo.q.dlq');
-          expect(JSON.parse(dlq.content.toString()).message_id).toBe(
-            result199.message.message_id,
-          );
+          expect(result199.wire.properties.userId).toBe('g6_inventario');
           expect(
             inspect(
               "SELECT count(*)::integer FROM inventory.outbox WHERE event_type='inventory.stock.changed' AND payload->'data'->>'sku'='" +
@@ -1409,19 +1512,593 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         }
         expect(balances(String(existing199.sku_base))).toEqual(before199);
         expect(balances(String(empty199.sku_base))).toEqual([]);
-        expect(
-          (
-            await call(
-              'GET',
-              '/productos/' + existing199.product_id + '/preparacion',
+        await expect
+          .poll(
+            async () =>
+              (
+                await call(
+                  'GET',
+                  '/productos/' + existing199.product_id + '/preparacion',
+                  undefined,
+                  200,
+                )
+              ).inventario.status,
+            { timeout: 30000 },
+          )
+          .toBe('COMPLETED');
+        // Integral candidate recovery: reuse this stack, pinned modules and the
+        // ordinary Catalog fixture builders; all legacy reconstruction is test-only.
+        const historicalHttp = new CatalogGatewayHarness();
+        await historicalHttp.start(
+          persistenceSettings,
+          { timeoutMs: 300000 },
+          false,
+          ['00000000-0000-4000-8000-000000000050'],
+          true,
+        );
+        const historyCall = async (
+          path: string,
+          body: unknown,
+          status: number,
+        ) => {
+          const response = await historicalHttp.call(
+            'POST',
+            path,
+            body,
+            historicalHttp.token(),
+            true,
+          );
+          expect(response.status, JSON.stringify(response.body)).toBe(status);
+          return response.body;
+        };
+        const recoverPath = (id: string) =>
+          '/productos/' + id + '/preparacion/recuperar-historica';
+        const checksFor = (id: string) =>
+          database.read((db) =>
+            db
+              .select()
+              .from(activationChecks)
+              .where(eq(activationChecks.product_id, id)),
+          );
+        const waitTerminal = async (id: string, expected: string[]) => {
+          await expect
+            .poll(
+              async () =>
+                (await checksFor(id)).map((check) => check.state).sort(),
+              { timeout: 30000 },
+            )
+            .toEqual(expected.sort());
+        };
+        const monetarySnapshot = () =>
+          inspect(`SELECT jsonb_build_object(
+          'prices',(SELECT coalesce(jsonb_agg(to_jsonb(p) ORDER BY id),'[]') FROM pricing.prices p),
+          'validities',(SELECT coalesce(jsonb_agg(to_jsonb(v) ORDER BY id),'[]') FROM pricing.price_validities v),
+          'schedules',(SELECT coalesce(jsonb_agg(to_jsonb(s) ORDER BY id),'[]') FROM pricing.scheduled_prices s));`);
+        let guarded = false;
+        let extraValidity: string | undefined;
+        let exclusion: string | undefined;
+        try {
+          // Drain the two ordinary creations before installing the monetary guard.
+          for (const item of [existing199, empty199])
+            await expect
+              .poll(
+                async () =>
+                  (await checksFor(String(item.product_id))).find(
+                    (check) => check.dependency === 'PRICING',
+                  )?.state,
+                { timeout: 30000 },
+              )
+              .toBe('COMPLETED');
+          await runtime.onModuleDestroy();
+          runtime = undefined;
+          const legacySimple = await mutationService().createProduct(
+            createRequest(),
+            actor,
+          );
+          const legacyParent = await mutationService().createProduct(
+            createRequest(true),
+            actor,
+          );
+          const legacyVariants: Array<
+            Awaited<ReturnType<CatalogMutationService['createVariant']>>
+          > = [];
+          for (const size of ['H1', 'H2'])
+            legacyVariants.push(
+              await mutationService().createVariant(
+                legacyParent.product_id,
+                {
+                  sku: 'HIST-INTEGRAL-' + randomUUID(),
+                  atributosIdentificadores: [
+                    { caracteristica_id: 'size', nombre: 'Size', valor: size },
+                  ],
+                  imagenUrl: 'https://example.test/historical-variant',
+                  perfilFisico: fullProfile,
+                },
+                actor,
+              ),
+            );
+          const currencyMismatch = await mutationService().createProduct(
+            createRequest(),
+            actor,
+          );
+          const missingPrice = await mutationService().createProduct(
+            createRequest(),
+            actor,
+          );
+          const ambiguousPrice = await mutationService().createProduct(
+            createRequest(),
+            actor,
+          );
+          const outageProduct = await mutationService().createProduct(
+            createRequest(),
+            actor,
+          );
+          const fixtures = [
+            legacySimple,
+            legacyParent,
+            currencyMismatch,
+            missingPrice,
+            ambiguousPrice,
+            outageProduct,
+          ];
+          for (const item of fixtures)
+            sqlAdmin(
+              "DELETE FROM catalog.activation_checks WHERE product_id='" +
+                item.product_id +
+                "'; DELETE FROM catalog.outbox WHERE payload->>'product_id'='" +
+                item.product_id +
+                "';",
+            );
+          const seedPrice = (productId: string) => {
+            const price = randomUUID(),
+              validity = randomUUID();
+            sqlAdmin(`INSERT INTO pricing.prices(id,product_id,sku,channel_id,price_version) VALUES ('${price}','${productId}',NULL,NULL,3);
+              INSERT INTO pricing.price_validities(id,price_id,precio_regular,currency,valid_from,price_version,motivo_cambio,usuario_id)
+              VALUES ('${validity}','${price}',125.50,'USD',now()-interval '1 day',3,'CARGA_HISTORICA','isolated-history');`);
+            return { price, validity };
+          };
+          const originalSimple = seedPrice(legacySimple.product_id);
+          const originalParent = seedPrice(legacyParent.product_id);
+          seedPrice(currencyMismatch.product_id);
+          const ambiguous = seedPrice(ambiguousPrice.product_id);
+          // Explicit corrupt-history fixture, isolated PostgreSQL only. Restore
+          // the exact exclusion after the test; this never alters a migration.
+          exclusion = inspect(
+            "SELECT to_json(pg_get_constraintdef(oid)) FROM pg_constraint WHERE conrelid='pricing.price_validities'::regclass AND conname='ck_price_validities_no_overlap';",
+          ) as string;
+          sqlAdmin(
+            'ALTER TABLE pricing.price_validities DROP CONSTRAINT ck_price_validities_no_overlap;',
+          );
+          extraValidity = randomUUID();
+          sqlAdmin(`INSERT INTO pricing.price_validities(id,price_id,precio_regular,currency,valid_from,price_version,motivo_cambio)
+            VALUES ('${extraValidity}','${ambiguous.price}',150,'USD',now()-interval '2 hours',4,'ISOLATED_AMBIGUITY');`);
+          const referenceSkus = [
+            legacySimple.sku_base,
+            ...legacyVariants.map((v) => v.sku),
+            currencyMismatch.sku_base,
+            missingPrice.sku_base,
+            ambiguousPrice.sku_base,
+            outageProduct.sku_base,
+          ];
+          for (const sku of referenceSkus)
+            sqlAdmin(
+              "INSERT INTO inventory.stock_balance(sku_id,location_id,on_hand,reserved,blocked,stock_version) SELECT '" +
+                sku +
+                "',id,17,4,2,9 FROM inventory.locations;",
+            );
+          const referenceBalances = () =>
+            referenceSkus.flatMap((sku) => balances(sku) as unknown[]);
+          const balancesBefore = referenceBalances();
+          expect(balancesBefore).toHaveLength(14);
+          const moneyBefore = monetarySnapshot();
+          sqlAdmin(
+            "CREATE FUNCTION pricing.reject_history_write() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated historical adoption forbids monetary DML'; END $$;",
+          );
+          for (const table of [
+            'prices',
+            'price_validities',
+            'scheduled_prices',
+          ])
+            sqlAdmin(
+              `CREATE TRIGGER forbid_history_write BEFORE INSERT OR UPDATE OR DELETE ON pricing.${table} FOR EACH ROW EXECUTE FUNCTION pricing.reject_history_write();`,
+            );
+          guarded = true;
+          const simpleIntent = {
+            solicitudId: randomUUID(),
+            dependencias: ['PRICING', 'INVENTARIO'],
+            moneda: 'USD',
+          };
+          const admitted = await Promise.all(
+            [1, 2].map(() =>
+              historyCall(
+                recoverPath(legacySimple.product_id),
+                simpleIntent,
+                202,
+              ),
+            ),
+          );
+          expect(admitted[0]).toEqual(admitted[1]);
+          expect(await requested(legacySimple.product_id)).toHaveLength(2);
+          // Receipt replay remains authorized with candidate admission disabled.
+          expect(
+            (
+              await http.call(
+                'POST',
+                recoverPath(legacySimple.product_id),
+                simpleIntent,
+                http.token(),
+                true,
+              )
+            ).body,
+          ).toEqual(admitted[0]);
+          expect(
+            (
+              await http.call(
+                'POST',
+                recoverPath(legacySimple.product_id),
+                { ...simpleIntent, moneda: 'EUR' },
+                http.token(),
+                true,
+              )
+            ).status,
+          ).toBe(409);
+          expect(
+            (
+              await http.call(
+                'POST',
+                recoverPath(legacySimple.product_id),
+                { ...simpleIntent, solicitudId: randomUUID() },
+                http.token(),
+                true,
+              )
+            ).status,
+          ).toBe(503);
+          await historyCall(
+            recoverPath(legacySimple.product_id),
+            { ...simpleIntent, solicitudId: randomUUID() },
+            409,
+          );
+          await historyCall(
+            '/productos/' + legacySimple.product_id + '/activar',
+            {},
+            422,
+          );
+          const parentIntent = {
+            solicitudId: randomUUID(),
+            dependencias: ['PRICING', 'INVENTARIO'],
+            moneda: 'USD',
+            variantIds: legacyVariants.map((v) => v.variant_id),
+          };
+          await historyCall(
+            recoverPath(legacyParent.product_id),
+            { ...parentIntent, variantIds: [randomUUID()] },
+            404,
+          );
+          expect(await requested(legacyParent.product_id)).toHaveLength(0);
+          const competing = await Promise.all(
+            [parentIntent, { ...parentIntent, solicitudId: randomUUID() }].map(
+              (body) =>
+                historicalHttp.call(
+                  'POST',
+                  recoverPath(legacyParent.product_id),
+                  body,
+                  historicalHttp.token(),
+                  true,
+                ),
+            ),
+          );
+          expect(competing.map((r) => r.status).sort()).toEqual([202, 409]);
+          const parentRequests = await requested(legacyParent.product_id);
+          expect(
+            parentRequests.filter((r) => r.event_name.startsWith('pricing.')),
+          ).toHaveLength(1);
+          expect(
+            parentRequests
+              .filter((r) => r.event_name.startsWith('inventory.'))
+              .map((r) => r.payload.sku)
+              .sort(),
+          ).toEqual(legacyVariants.map((v) => v.sku).sort());
+          expect(
+            parentRequests.some(
+              (r) =>
+                r.event_name.startsWith('inventory.') &&
+                r.payload.sku === legacyParent.sku_base,
+            ),
+          ).toBe(false);
+          for (const item of [currencyMismatch, missingPrice, ambiguousPrice])
+            await historyCall(
+              recoverPath(item.product_id),
+              {
+                solicitudId: randomUUID(),
+                dependencias: ['PRICING'],
+                moneda: item === currencyMismatch ? 'EUR' : 'USD',
+              },
+              202,
+            );
+          // An invalid origin with matching business IDs must not complete PENDING.
+          const simpleInventory = (
+            await requested(legacySimple.product_id)
+          ).find((r) => r.event_name.startsWith('inventory.'))!;
+          const badOrigin = {
+            ...first,
+            message_id: randomUUID(),
+            operation_id: simpleInventory.operation_id,
+            causation_id: simpleInventory.message_id,
+            correlation_id: simpleInventory.correlation_id,
+            data: {
+              ...first.data,
+              product_id: legacySimple.product_id,
+              sku: legacySimple.sku_base,
+            },
+          };
+          await broker.wrongIdentityResult(badOrigin);
+          expect(
+            (await checksFor(legacySimple.product_id)).every(
+              (c) => c.state === 'PENDING',
+            ),
+          ).toBe(true);
+          expect(
+            (await requested(legacySimple.product_id)).every(
+              (r) => r.published_at === null,
+            ),
+          ).toBe(true);
+          runtime = new CatalogAmqpRuntime(
+            new CatalogMessageService(database),
+            broker.settings,
+          );
+          runtime.onModuleInit();
+          const badOriginDlq = await broker.next('po.catalogo.q.dlq');
+          expect(JSON.parse(badOriginDlq.content.toString()).message_id).toBe(
+            badOrigin.message_id,
+          );
+          for (const item of [legacySimple, legacyParent]) {
+            const expected =
+              item === legacySimple ? originalSimple : originalParent;
+            await waitTerminal(
+              item.product_id,
+              item === legacySimple
+                ? ['COMPLETED', 'COMPLETED']
+                : ['COMPLETED', 'COMPLETED', 'COMPLETED'],
+            );
+            for (const requestedMessage of await requested(item.product_id)) {
+              const delivered = await nextResult(
+                (m) => m.causation_id === requestedMessage.message_id,
+              );
+              expect(delivered.wire.properties.userId).toBe(
+                requestedMessage.event_name.startsWith('pricing.')
+                  ? 'pricing-joint'
+                  : 'g6_inventario',
+              );
+              expect(delivered.wire.properties.messageId).toBe(
+                delivered.message.message_id,
+              );
+              expect(delivered.wire.properties.correlationId).toBe(
+                requestedMessage.correlation_id,
+              );
+              expect(delivered.message.operation_id).toBe(
+                requestedMessage.operation_id,
+              );
+              expect(delivered.message.data.status).toBe(
+                requestedMessage.event_name.startsWith('pricing.')
+                  ? 'READY'
+                  : 'INITIALIZED',
+              );
+              if (requestedMessage.event_name.startsWith('pricing.'))
+                expect(delivered.message.data).toMatchObject({
+                  price_version: 3,
+                  vigencia_id: expected.validity,
+                });
+            }
+          }
+          await historyCall(
+            '/productos/' + legacySimple.product_id + '/activar',
+            {},
+            200,
+          );
+          for (const variant of legacyVariants)
+            await historyCall(
+              '/productos/' +
+                legacyParent.product_id +
+                '/variantes/' +
+                variant.variant_id +
+                '/activar',
               undefined,
               200,
+            );
+          await historyCall(
+            '/productos/' + legacyParent.product_id + '/activar',
+            {},
+            200,
+          );
+          expect(
+            await historyCall(
+              recoverPath(legacySimple.product_id),
+              simpleIntent,
+              202,
+            ),
+          ).toEqual(admitted[0]);
+          await historyCall(
+            recoverPath(legacySimple.product_id),
+            { ...simpleIntent, solicitudId: randomUUID() },
+            409,
+          );
+          for (const item of [currencyMismatch, missingPrice, ambiguousPrice]) {
+            await waitTerminal(item.product_id, ['REJECTED']);
+            const [check] = await checksFor(item.product_id);
+            expect(check.result_payload).toMatchObject({
+              status: 'REJECTED',
+              code: 'HISTORICAL_PRICE_CONFLICT',
+              price_version: null,
+              vigencia_id: null,
+            });
+            await historyCall(
+              recoverPath(item.product_id),
+              {
+                solicitudId: randomUUID(),
+                dependencias: ['PRICING'],
+                moneda: 'USD',
+              },
+              409,
+            );
+            await historyCall(
+              '/productos/' + item.product_id + '/activar',
+              {},
+              422,
+            );
+          }
+          // Genuine late result from an operation replay: real Inventory publisher,
+          // foreign causation must be STALE and leave the original result intact.
+          const historyCheckBefore = (
+            await checksFor(legacySimple.product_id)
+          ).find((c) => c.dependency === 'INVENTORY')!;
+          const lateId = randomUUID();
+          await broker.commandEnvelope(asCommand(lateId, simpleInventory));
+          const lateResult = await nextResult((m) => m.causation_id === lateId);
+          expect(lateResult.wire.properties.userId).toBe('g6_inventario');
+          await expect
+            .poll(
+              async () =>
+                (
+                  await database.read((db) =>
+                    db
+                      .select()
+                      .from(inbox)
+                      .where(
+                        eq(inbox.message_id, lateResult.message.message_id),
+                      ),
+                  )
+                )[0]?.result,
+              { timeout: 15000 },
             )
-          ).inventario.status,
-        ).toBe('PENDING');
+            .toBe('STALE');
+          expect(
+            (await checksFor(legacySimple.product_id)).find(
+              (c) => c.dependency === 'INVENTORY',
+            ),
+          ).toEqual(historyCheckBefore);
+          // PostgreSQL failure after check/Outbox writes rolls back the receipt and
+          // the entire admission; same key succeeds later with no partial effect.
+          await runtime.onModuleDestroy();
+          runtime = undefined;
+          const outageIntent = {
+            solicitudId: randomUUID(),
+            dependencias: ['INVENTARIO'],
+          };
+          sqlAdmin(
+            "CREATE FUNCTION catalog.fail_integral_receipt() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'isolated receipt failure'; END $$; CREATE TRIGGER fail_integral_receipt BEFORE INSERT ON catalog.historical_preparation_requests FOR EACH ROW EXECUTE FUNCTION catalog.fail_integral_receipt();",
+          );
+          try {
+            await historyCall(
+              recoverPath(outageProduct.product_id),
+              outageIntent,
+              503,
+            );
+          } finally {
+            sqlAdmin(
+              'DROP TRIGGER fail_integral_receipt ON catalog.historical_preparation_requests; DROP FUNCTION catalog.fail_integral_receipt();',
+            );
+          }
+          expect(await checksFor(outageProduct.product_id)).toEqual([]);
+          expect(await requested(outageProduct.product_id)).toEqual([]);
+          for (const peer of peers) peer.kill('SIGTERM');
+          await expect
+            .poll(
+              () =>
+                peers.every(
+                  (p) => p.exitCode !== null || p.signalCode !== null,
+                ),
+              { timeout: 15000 },
+            )
+            .toBe(true);
+          broker.stop();
+          // Commit succeeds while the real broker is down; no fake completion.
+          await historyCall(
+            recoverPath(outageProduct.product_id),
+            outageIntent,
+            202,
+          );
+          runtime = new CatalogAmqpRuntime(
+            new CatalogMessageService(database),
+            broker.settings,
+          );
+          runtime.onModuleInit();
+          await pause(300);
+          expect((await checksFor(outageProduct.product_id))[0].state).toBe(
+            'PENDING',
+          );
+          expect(
+            (await requested(outageProduct.product_id))[0].published_at,
+          ).toBeNull();
+          await runtime.onModuleDestroy();
+          runtime = undefined;
+          await broker.resume();
+          await startPeer('pricing', pricingSource);
+          await startPeer('inventory', inventorySource);
+          runtime = new CatalogAmqpRuntime(
+            new CatalogMessageService(database),
+            broker.settings,
+          );
+          runtime.onModuleInit();
+          await waitTerminal(outageProduct.product_id, ['COMPLETED']);
+          expect(await requested(outageProduct.product_id)).toHaveLength(1);
+          expect(referenceBalances()).toEqual(balancesBefore);
+          expect(monetarySnapshot()).toEqual(moneyBefore);
+          const historicalOperations = (
+            await Promise.all(fixtures.map((f) => requested(f.product_id)))
+          )
+            .flat()
+            .map((r) => "'" + r.operation_id + "'")
+            .join(',');
+          expect(
+            inspect(
+              "SELECT count(*)::integer FROM pricing.outbox WHERE event_name='pricing.price.changed' AND operation_id IN (" +
+                historicalOperations +
+                ');',
+            ),
+          ).toBe(0);
+          expect(
+            inspect(
+              "SELECT count(*)::integer FROM inventory.outbox WHERE event_type='inventory.stock.changed' AND payload->'data'->>'sku' IN (" +
+                referenceSkus.map((sku) => "'" + sku + "'").join(',') +
+                ');',
+            ),
+          ).toBe(0);
+          expect(balances(legacyParent.sku_base)).toEqual([]);
+          console.log(
+            'BLOCK_A1_INTEGRAL_HISTORY_PASS=pricing@' +
+              PRICING_HISTORICAL_SHA +
+              ',inventory@' +
+              INVENTORY_BILATERAL_SHA,
+          );
+        } finally {
+          if (guarded) {
+            for (const table of [
+              'prices',
+              'price_validities',
+              'scheduled_prices',
+            ])
+              sqlAdmin(
+                `DROP TRIGGER forbid_history_write ON pricing.${table};`,
+              );
+            sqlAdmin('DROP FUNCTION pricing.reject_history_write();');
+          }
+          if (extraValidity)
+            sqlAdmin(
+              "DELETE FROM pricing.price_validities WHERE id='" +
+                extraValidity +
+                "';",
+            );
+          if (exclusion)
+            sqlAdmin(
+              'ALTER TABLE pricing.price_validities ADD CONSTRAINT ck_price_validities_no_overlap ' +
+                exclusion +
+                ';',
+            );
+          await historicalHttp.close();
+        }
         console.log('BLOCK_A2_PINNED_IDENTITY_PASS=' + INVENTORY_BILATERAL_SHA);
         console.log(
-          'BLOCK_A2_SEPARATE_NO_LOCATION_PASS=' + INVENTORY_NO_LOCATION_SHA,
+          'BLOCK_A2_CONSOLIDATED_NO_LOCATION_PASS=' + INVENTORY_BILATERAL_SHA,
         );
       } finally {
         await runtime?.onModuleDestroy();

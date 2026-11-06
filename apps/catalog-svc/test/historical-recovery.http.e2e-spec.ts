@@ -45,15 +45,37 @@ describe('Historical recovery candidate HTTP authorization (signed JWT/JWKS, no 
         .status,
     ).toBe(401);
   });
-  it('keeps historical Pricing closed before any persistence, without inventing its payload', async () => {
+  it('keeps new historical Pricing admissions closed when the candidate adapter is disabled', async () => {
     const response = await enabled.call(
       'POST',
       path,
-      { ...body, dependencias: ['PRICING', 'INVENTARIO'] },
+      { ...body, dependencias: ['PRICING', 'INVENTARIO'], moneda: 'USD' },
       enabled.token(),
       true,
     );
     expect(response.status).toBe(503);
     expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
   });
+  it.each([
+    { dependencias: ['PRICING'] },
+    { dependencias: ['PRICING'], moneda: 'usd' },
+    { dependencias: ['PRICING'], moneda: 'ZZZ' },
+    { dependencias: ['PRICING'], moneda: 'USD', precio_regular: 10 },
+    { dependencias: ['INVENTARIO'], moneda: 'USD' },
+  ])(
+    'validates the explicit candidate currency delta at the HTTP boundary %j',
+    async (selection) => {
+      expect(
+        (
+          await enabled.call(
+            'POST',
+            path,
+            { solicitudId: randomUUID(), ...selection },
+            enabled.token(),
+            true,
+          )
+        ).status,
+      ).toBe(400);
+    },
+  );
 });

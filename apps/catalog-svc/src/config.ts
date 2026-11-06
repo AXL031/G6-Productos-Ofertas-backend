@@ -4,7 +4,9 @@ import { readHttpConfig } from './http-config.js';
 import {
   readHistoricalRecoveryCapabilities,
   type HistoricalRecoveryCapabilities,
+  type HistoricalPricingContract,
 } from './historical-recovery.service.js';
+import { readHistoricalPricingContract } from './historical-pricing.contract.js';
 import {
   readCatalogReadDemo,
   type CatalogReadDemo,
@@ -40,6 +42,7 @@ export class CatalogConfig {
   readonly readDemo: CatalogReadDemo;
   readonly marketplaceDemoPreview: boolean;
   readonly historicalRecoveryCapabilities: HistoricalRecoveryCapabilities;
+  readonly historicalPricingContract: HistoricalPricingContract | null;
   readonly pricingOrigin?: string;
   readonly serviceCredentials?: CatalogServiceCredentials;
 
@@ -47,6 +50,7 @@ export class CatalogConfig {
     this.readDemo = readCatalogReadDemo(env);
     this.historicalRecoveryCapabilities =
       readHistoricalRecoveryCapabilities(env);
+    this.historicalPricingContract = readHistoricalPricingContract(env);
     const errors: string[] = [];
     const environment = env.NODE_ENV;
     if (!['development', 'test', 'production'].includes(environment ?? '')) {

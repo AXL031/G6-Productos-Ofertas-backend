@@ -3,16 +3,26 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export const INVENTORY_BILATERAL_SHA =
-  '8adcb6e2937580d289b9d20a1c7437473428aa8b';
-export const INVENTORY_NO_LOCATION_SHA =
-  '167090af6d4ae93adbde54b6741dd994d91bf70b';
+  '56aa4322725060b529bf316872f891582d7d1b2e';
+export const PRICING_HISTORICAL_SHA =
+  '7398e6fbc577ec3d595a6c04d4aa9f884fbf527d';
 
 /** Export immutable, unmodified peer source into the owned disposable directory.
  * A shallow CI checkout need not contain the peer commit. Fetch into a separate
  * bare object store; never change the user's branch, checkout, or peer files. */
 export function pinnedInventorySource(directory: string, sha: string): string {
+  return pinnedPreparationSource(directory, 'inventory', sha);
+}
+export function pinnedPricingSource(directory: string): string {
+  return pinnedPreparationSource(directory, 'pricing', PRICING_HISTORICAL_SHA);
+}
+function pinnedPreparationSource(
+  directory: string,
+  peer: 'inventory' | 'pricing',
+  sha: string,
+): string {
   if (!/^[a-f0-9]{40}$/.test(sha)) throw new Error('Invalid pinned peer SHA');
-  const source = join(directory, 'inventory-source-' + sha.slice(0, 12));
+  const source = join(directory, peer + '-source-' + sha.slice(0, 12));
   mkdirSync(source);
   const objectStore = join(source, 'objects.git');
   const run = (args: string[]) => {
@@ -27,7 +37,7 @@ export function pinnedInventorySource(directory: string, sha: string): string {
       },
     );
     if (result.status !== 0)
-      throw new Error('Pinned Inventory source unavailable');
+      throw new Error('Pinned preparation source unavailable');
     return result.stdout.trim();
   };
   run(['init', '--bare', objectStore]);
@@ -40,7 +50,7 @@ export function pinnedInventorySource(directory: string, sha: string): string {
     sha,
   ]);
   if (run(['--git-dir', objectStore, 'rev-parse', 'FETCH_HEAD']) !== sha)
-    throw new Error('Pinned Inventory SHA mismatch');
+    throw new Error('Pinned preparation SHA mismatch');
   const archive = spawnSync(
     'git',
     [
@@ -50,18 +60,19 @@ export function pinnedInventorySource(directory: string, sha: string): string {
       sha,
       'package.json',
       'tsconfig.json',
-      'apps/inventory-svc',
+      'apps/' + peer + '-svc',
     ],
     { windowsHide: true, timeout: 30000, maxBuffer: 32 * 1024 * 1024 },
   );
   if (archive.status !== 0)
-    throw new Error('Pinned Inventory archive unavailable');
+    throw new Error('Pinned preparation archive unavailable');
   const extracted = spawnSync('tar', ['-xf', '-', '-C', source], {
     input: archive.stdout,
     windowsHide: true,
     timeout: 30000,
   });
-  if (extracted.status !== 0) throw new Error('Pinned Inventory export failed');
-  console.log('BLOCK_A_INVENTORY_SOURCE_SHA=' + sha);
+  if (extracted.status !== 0)
+    throw new Error('Pinned preparation export failed');
+  console.log('BLOCK_A_' + peer.toUpperCase() + '_SOURCE_SHA=' + sha);
   return source;
 }

@@ -143,5 +143,25 @@
       "mergedPr": 199,
       "combinedSha": null
     }
+  },
+  "consolidated_2026_11_06": {
+    "authorization": "Encargo explícito del usuario: adaptador candidato Pricing, delta HTTP moneda pendiente Marco, integración consolidada descartable; sin Supabase/Docs/Gateway writes",
+    "pricing": {
+      "pr": 205,
+      "sha": "7398e6fbc577ec3d595a6c04d4aa9f884fbf527d",
+      "schemaBlob": "5ce459c7b898945073005935a68c421edf9e302e",
+      "discriminator": "data.modalidad=RECUPERACION_HISTORICA",
+      "contractStatus": "CONTRATO_CANDIDATO; publicación Docs pendiente"
+    },
+    "inventory": {
+      "pr": 176,
+      "sha": "56aa4322725060b529bf316872f891582d7d1b2e",
+      "contains": ["AMQP userId g6_inventario", "#199 sin ubicación"]
+    },
+    "masterConsulted": "61171913510daddc5baedc9532b236de1953fac5",
+    "newHttpDelta": "moneda explícita para PRICING, sin precio_regular; pendiente aprobación Marco",
+    "spec013Blob": "fdeca927bd03c548d816028e2e2b6f181620812d",
+    "sharedDatabaseAudit": "Proporcionada externamente por usuario; no reinvestigada ni modificada",
+    "ciEvidence": "Ver descripción PR #194: HEAD, base/merge sintético y jobs finales exactos"
   }
 }

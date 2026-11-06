@@ -1,5 +1,83 @@
 # Bloque A — preparación, integración y consultas
 
+## Continuación consolidada — encargo 06/11/2026
+
+Esta sección prevalece sobre los cortes anteriores. Rama poma, #194 DRAFT.
+No se reinvestiga ni escribe Supabase: se acepta la auditoría externa informada
+por el usuario (20 productos/51 variantes BORRADOR, 20 precios globales válidos,
+14 balances/7 SKU, cero checks/Inbox/Outbox/barcodes y ausencia de tabla 0004).
+No se regenera catálogo ni se corrigen referencias activas. En sku_identity,
+variant_id con product_id=NULL es el modelo vigente y no se trata como error.
+
+### Código propio
+
+- DTO candidato añade moneda explícita solo para selección PRICING: ISO de tres
+  letras mayúsculas conocida por ICU, sin default ni precio_regular. La moneda
+  integra fingerprint/recibo; otra moneda con misma clave produce conflicto.
+- Adaptador registrado usa pricing.product.initialization.requested v1,
+  data.modalidad=RECUPERACION_HISTORICA conforme a Vera #205; channel_id=null,
+  motivo_cambio=ALTA_PRODUCTO como metadata, sin importe. No cambia alta normal.
+- Default cerrado: adapter null salvo NODE_ENV=test y flag candidato true;
+  producción no puede habilitarlo. Capacidad humana sigue siendo independiente.
+- Corrección de idempotencia: autorización/validación → lock/recibo/fingerprint →
+  gate de admisión nueva. Recibos existentes sobreviven a deshabilitar Pricing;
+  no se permiten efectos nuevos ni se reabren preparaciones.
+- No cambia estados, perfiles, configuración readiness ni optimizaciones existentes.
+
+Delta contractual nuevo pendiente de Marco: aprobar moneda en HTTP, su condición
+y errores antes de publicación normativa. No se presenta como campo oficial.
+[Contrato candidato](CONTRATO-CANDIDATO-RECUPERACION-HISTORICA.md),
+[fragmento OpenAPI](contracts/recuperacion-historica.openapi.candidate.yaml) y
+[propuestas SPEC/FLOW/AsyncAPI y prerrequisitos](contracts/recuperacion-historica.docs-proposal.md).
+
+### Fuentes exactas de integración
+
+| Servicio | PR / SHA inmutable | Uso |
+| --- | --- | --- |
+| Catalog | #194, HEAD final y CI enlazados en la descripción de PR | HTTP, transacciones, Outbox, Inbox, activación reales |
+| Pricing | #205 / 7398e6fbc577ec3d595a6c04d4aa9f884fbf527d | Módulo real exportado y compilado sin cambios |
+| Inventory | #176 / 56aa4322725060b529bf316872f891582d7d1b2e | userId g6_inventario y #199 en el mismo SHA |
+
+El harness existente se amplía sin overlays ni merges de peers. PostgreSQL 17
+TLS verify-full y RabbitMQ 4.2.9 son descartables. Taxonomy y JWKS siguen siendo
+fixtures explícitas; no se atribuye E2E React/Gateway/G7 ni Supabase a esta prueba.
+El runtime Catalog no importa módulos ni entidades de otros bounded contexts.
+
+### Validación local y escenarios preparados
+
+599 unitarias Catalog PASS; 177 E2E Catalog PASS / 117 SKIP por infraestructura.
+General: 2252 unitarias PASS / 66 SKIP; E2E FAIL — Docker no disponible localmente
+(ENOENT Bulk en :265), 939 PASS / 329 SKIP. Se conserva la excepción limitada
+autorizada a AGENTS §5.11; CI debe acreditar realmente Bulk y Catalog PostgreSQL.
+Ambos SHA peer se exportaron y compilaron localmente: PASS, sin implicar E2E.
+Primer script de compilación falló por URL ESM Windows; corregida a file URL.
+La verificación estricta del archivo E2E detectó un array histórico sin tipo;
+corregido dentro de Catalog sin any. El formato detectado se corrigió.
+
+Ejecución Docker nueva: NO EJECUTADA localmente; CI del candidato pendiente al
+corte de edición. Casos: completed/rejected auténticos, identidad y causalidad,
+cuarentena, duplicados/replay, ausencia de ubicación, saldos multiubicación;
+histórico simple, padre y dos variantes, moneda incompatible, precio inexistente
+y vigencias ambiguas, selección ajena, concurrencia y checks existentes;
+rollback, broker caído y recuperación posterior al commit. Se verifica con
+triggers que Pricing no puede hacer DML monetario durante adopción, snapshot
+monetario idéntico, 14 balances iguales y ausencia de eventos espurios.
+El caso ambiguo elimina/restaura temporalmente una exclusión SOLO en el fixture
+descartable; no modifica SQL normativo ni migraciones de Pricing.
+
+0004 sigue siendo candidata, no aplicada en Supabase. Prueba añadida verifica
+owner, RLS, SELECT/INSERT, unicidad y denegación de UPDATE/DELETE/ALTER y schema
+ajeno. No se modifican migraciones históricas ni se ejecuta migración al iniciar.
+
+Master consultado: 61171913510daddc5baedc9532b236de1953fac5 (posterior a 5da1279
+del encargo); poma 45 commits detrás al consultar. No se sincroniza masivamente.
+La CI pull_request verifica el merge sintético; se registran HEAD/base/checkout
+exactos en PR para acreditar compatibilidad sin merge local ni force push.
+
+Estado al corte: IMPLEMENTAR_PARCIAL / DRAFT. Publicación Docs, aprobación del
+delta HTTP, Gateway, grants G7, ACL/red operativa, migración compartida y despliegue
+permanecen separados. No se cierran/editaron issues automáticamente.
+
 ## Estado vigente — continuación autorizada de #194
 
 Esta sección prevalece sobre los diagnósticos históricos conservados abajo.
