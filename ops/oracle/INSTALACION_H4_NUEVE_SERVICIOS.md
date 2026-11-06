@@ -100,10 +100,10 @@ sudo stat --format='%n|%U:%G|%a|%y|%s' "${DESTINOS[@]}" 2>&1 || true
 sudo sha256sum "${DESTINOS[@]}" 2>&1 || true
 BACKUP_PARENT=/var/backups/g6-productos-ofertas
 sudo test ! -L "$BACKUP_PARENT" || { printf 'FALLO: el padre del respaldo no puede ser symlink\n' >&2; exit 1; }
-sudo install --directory --owner root --group root --mode 0755 "$BACKUP_PARENT"
+sudo install --directory --owner root --group root --mode 0700 "$BACKUP_PARENT"
 sudo test ! -L "$BACKUP_PARENT" || { printf 'FALLO: el padre del respaldo no puede ser symlink\n' >&2; exit 1; }
 IFS='|' read -r backup_parent_owner backup_parent_mode < <(sudo stat --format='%U:%G|%a' "$BACKUP_PARENT")
-[[ "$backup_parent_owner" == root:root && "$backup_parent_mode" == 755 ]] || { printf 'FALLO: el padre del respaldo no está controlado por root\n' >&2; exit 1; }
+[[ "$backup_parent_owner" == root:root && "$backup_parent_mode" == 700 ]] || { printf 'FALLO: el padre del respaldo no está controlado por root\n' >&2; exit 1; }
 BACKUP="$(sudo mktemp -d "$BACKUP_PARENT/h4.XXXXXXXXXX")" || { printf 'FALLO: no se pudo crear un respaldo exclusivo\n' >&2; exit 1; }
 sudo chmod 0700 "$BACKUP"
 IFS='|' read -r backup_owner backup_mode < <(sudo stat --format='%U:%G|%a' "$BACKUP")
