@@ -7,10 +7,12 @@ export const BULK_ENVIRONMENT = Symbol('BULK_ENVIRONMENT');
 export const BULK_READINESS_POOL = Symbol('BULK_READINESS_POOL');
 
 export interface BulkEnvironment {
+  readonly securityMode:
+    'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  readonly publicOperations: readonly string[];
   readonly nodeEnv: 'development' | 'test' | 'production';
   readonly host: '127.0.0.1' | '0.0.0.0';
   readonly port: number;
-  readonly catalogCommandV2Enabled: boolean;
   readonly databaseUrl?: string;
   readonly databaseSsl: false | Readonly<ConnectionOptions>;
   readonly httpRequestTimeoutMs: 15000;
@@ -97,13 +99,59 @@ export function parseBulkEnvironment(
   }
 
   const port = strictPort(env.BULK_SVC_PORT ?? env.PORT ?? '3008');
-  const commandV2 = env.BULK_CATALOG_COMMAND_V2_ENABLED;
+  const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
   if (
-    commandV2 !== undefined &&
-    commandV2 !== 'true' &&
-    commandV2 !== 'false'
-  ) {
-    fail('BULK_CATALOG_COMMAND_V2_ENABLED debe ser true o false.');
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
+    fail('G6_SECURITY_MODE inválido.');
+  const publicOperations = (env.BULK_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => id !== 'descargarPlantillaProductos') ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    fail('BULK_PUBLIC_OPERATION_IDS inválido.');
+  if (securityMode === 'SIMULATED_AUTH') {
+    const issuer = env.SIMULATED_AUTH_ISSUER;
+    const jwksValue = env.SIMULATED_AUTH_JWKS_URL;
+    try {
+      const issuerUrl = new URL(issuer ?? '');
+      const jwksUrl = new URL(jwksValue ?? '');
+      const local = (url: URL) =>
+        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      if (
+        !issuer ||
+        !jwksValue ||
+        issuer === env.G7_JWT_ISSUER ||
+        (issuerUrl.protocol !== 'https:' &&
+          !(
+            nodeEnv === 'test' &&
+            issuerUrl.protocol === 'http:' &&
+            local(issuerUrl)
+          )) ||
+        (jwksUrl.protocol !== 'https:' &&
+          !(
+            nodeEnv === 'test' &&
+            jwksUrl.protocol === 'http:' &&
+            local(jwksUrl)
+          )) ||
+        issuerUrl.username ||
+        issuerUrl.password ||
+        issuerUrl.hash ||
+        jwksUrl.username ||
+        jwksUrl.password ||
+        jwksUrl.hash
+      )
+        throw new Error();
+    } catch {
+      fail(
+        'SIMULATED_AUTH requiere issuer y JWKS seguros e independientes de G7.',
+      );
+    }
   }
   const host =
     env.BULK_SVC_HOST ?? (nodeEnv === 'production' ? '0.0.0.0' : '127.0.0.1');
@@ -175,10 +223,11 @@ export function parseBulkEnvironment(
   }
 
   return Object.freeze({
+    securityMode: securityMode as BulkEnvironment['securityMode'],
+    publicOperations: Object.freeze(publicOperations),
     nodeEnv,
     host,
     port,
-    catalogCommandV2Enabled: commandV2 === 'true',
     ...(databaseUrl === undefined ? {} : { databaseUrl }),
     databaseSsl,
     httpRequestTimeoutMs: 15000,

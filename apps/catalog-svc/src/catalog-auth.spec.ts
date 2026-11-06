@@ -79,7 +79,7 @@ describe('Catalog JWT verification', () => {
     const payload = Buffer.from(
       JSON.stringify({
         iss: issuer,
-        aud: 'api-productos',
+        aud: undefined,
         sub: randomUUID(),
         tipo: 'acceso',
         roles: ['GESTOR_COMERCIAL'],
@@ -104,6 +104,23 @@ describe('Catalog JWT verification', () => {
     expect(readCatalogSecurityConfig({})).toBeUndefined();
   });
 
+  it('uses an independent simulated issuer and JWKS and rejects G7-issued tokens in that mode', async () => {
+    const simulatedIssuer = 'http://localhost:8080/simulated-auth';
+    const simulated = new CatalogTokenVerifier(
+      readCatalogSecurityConfig({
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: simulatedIssuer,
+        SIMULATED_AUTH_JWKS_URL: origin + '/.well-known/jwks.json',
+      }),
+    );
+    await expect(simulated.verify(token())).rejects.toBeInstanceOf(
+      CatalogTokenRejected,
+    );
+    await expect(
+      simulated.verify(token({ iss: simulatedIssuer })),
+    ).resolves.toMatchObject({ kind: 'user', roles: ['GESTOR_COMERCIAL'] });
+  });
+
   it.each([null, [], 'not-an-object', 1])(
     'rejects a malformed JWT header %j as an invalid token',
     async (header) => {
@@ -120,21 +137,31 @@ describe('Catalog JWT verification', () => {
       roles: ['GESTOR_COMERCIAL'],
     });
   });
-  it.each([
-    ['wrong audience', { aud: 'another-api' }],
-    ['missing audience', { aud: undefined }],
-  ])('rejects user tokens with %s', async (_name, claims) => {
-    await expect(verifier.verify(token(claims))).rejects.toBeInstanceOf(
-      CatalogTokenRejected,
-    );
+  it('accepts a human token without an audience claim', async () => {
+    await expect(
+      verifier.verify(token({ aud: undefined })),
+    ).resolves.toMatchObject({
+      kind: 'user',
+      roles: ['GESTOR_COMERCIAL'],
+    });
   });
-  it('accepts an audience array only when it contains api-productos', async () => {
+  it('preserves service audiences for route authorization', async () => {
     await expect(
-      verifier.verify(token({ aud: ['other-api', 'api-productos'] })),
-    ).resolves.toMatchObject({ kind: 'user' });
+      verifier.verify(
+        token({
+          tipo: 'servicio',
+          sub: 'modulo-despacho',
+          aud: ['other-api', 'api-productos'],
+          scope: 'catalogo:leer',
+          roles: undefined,
+        }),
+      ),
+    ).resolves.toMatchObject({ kind: 'service' });
     await expect(
-      verifier.verify(token({ aud: ['other-api'] })),
-    ).rejects.toBeInstanceOf(CatalogTokenRejected);
+      verifier.verify(
+        token({ tipo: 'servicio', aud: ['other-api'], scope: 'catalogo:leer' }),
+      ),
+    ).resolves.toMatchObject({ kind: 'service', audiences: ['other-api'] });
   });
   it.each(['~', '=', '+', '/'])(
     'rejects non-base64url characters in a JWT signature (%s)',
@@ -275,8 +302,18 @@ describe('Catalog JWT verification', () => {
     await expect(
       guard.canActivate(context('Bearer ' + wrongClient)),
     ).rejects.toBeInstanceOf(ForbiddenException);
+    const wrongAudience = token({
+      tipo: 'servicio',
+      sub: 'modulo-despacho',
+      aud: 'api-seguridad',
+      scope: 'productos:fisicos:leer',
+      roles: undefined,
+    });
+    await expect(
+      guard.canActivate(context('Bearer ' + wrongAudience)),
+    ).rejects.toBeInstanceOf(UnauthorizedException);
   });
-  it('requires GESTOR_COMERCIAL for user routes after verifying the audience', async () => {
+  it('requires GESTOR_COMERCIAL for user routes without an audience claim', async () => {
     const handler = () => undefined;
     RequireCatalogIdentity({
       identity: 'user',

@@ -57,15 +57,24 @@ describe('BulkSvcController (e2e)', () => {
     const response = await request(app.getHttpServer())
       .get('/health/readiness')
       .expect(503);
-    expect(response.body).toEqual({ status: 'not_ready', service: 'bulk-svc' });
+    expect(response.body).toEqual({
+      status: 'not_ready',
+      service: 'bulk-svc',
+      reason: 'DATABASE_NOT_CONFIGURED',
+    });
   });
 
-  it('returns ready only when the PostgreSQL probe succeeds', async () => {
+  it('keeps readiness closed when AMQP is unconfigured after a successful PostgreSQL probe', async () => {
+    vi.stubEnv('BULK_AMQP_ENABLED', 'false');
     const { pool } = await start(async () => undefined);
     const response = await request(app.getHttpServer())
       .get('/health/readiness')
-      .expect(200);
-    expect(response.body).toEqual({ status: 'ready', service: 'bulk-svc' });
+      .expect(503);
+    expect(response.body).toMatchObject({
+      status: 'not_ready',
+      service: 'bulk-svc',
+      reason: 'AMQP_DISABLED',
+    });
     expect(pool?.query).toHaveBeenCalledWith(
       'SELECT 1 FROM bulk.batch_jobs LIMIT 0',
     );
@@ -85,6 +94,7 @@ describe('BulkSvcController (e2e)', () => {
     expect(JSON.stringify(response.body)).not.toMatch(
       /private-password|private-host|postgres:\/\//,
     );
+    expect(response.body.reason).toBe('DATABASE_UNAVAILABLE');
     await request(app.getHttpServer())
       .get('/carga-masiva/productos')
       .expect(404);
@@ -94,5 +104,6 @@ describe('BulkSvcController (e2e)', () => {
     await app?.close();
     if (currentPool) expect(currentPool.end).toHaveBeenCalledOnce();
     currentPool = null;
+    vi.unstubAllEnvs();
   });
 });

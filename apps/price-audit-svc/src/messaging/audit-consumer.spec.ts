@@ -33,6 +33,10 @@ describe('Límite del consumidor de auditoría', () => {
     });
   });
   it.each([
+    { occurred_at: '2026-02-30T00:00:00Z' },
+    { occurred_at: '2026-02-29T23:00:00-05:00' },
+    { occurred_at: '2026-04-31T12:00:00Z' },
+    { occurred_at: '2026-11-05T24:00:00Z' },
     { schema_version: 2 },
     { kind: 'command' },
     { producer: 'foreign' },

@@ -100,16 +100,16 @@ describe('PricingReadiness', () => {
   });
 
   it.each(['test', 'production'])(
-    'en demo sin G7 comprueba PostgreSQL y conserva el fallo cerrado (%s)',
+    'en SIMULATED_AUTH comprueba PostgreSQL y conserva el fallo cerrado (%s)',
     async (nodeEnv) => {
       const config = validateEnvironment({
         NODE_ENV: nodeEnv,
         PRICING_SVC_PORT: '3002',
         DATABASE_URL:
           'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-        PRICING_DEMO_PRODUCTION_CONFIRMED:
-          nodeEnv === 'production' ? 'true' : undefined,
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: 'https://simulated.test',
+        SIMULATED_AUTH_JWKS_URL: 'https://simulated.test/jwks',
       });
       const database = new PricingDatabase(config);
       const readiness = new PricingReadiness(database, config);

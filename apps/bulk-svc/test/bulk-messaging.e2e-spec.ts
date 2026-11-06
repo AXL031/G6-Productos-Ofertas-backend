@@ -8,7 +8,6 @@ import { BULK_TEMPLATE_HEADERS } from '../src/domain/bulk-template-v2.js';
 import { CatalogBulkResultConsumer } from '../src/messaging/catalog-bulk-result-consumer.js';
 import { bulkSchema } from '../src/persistence/bulk.schema.js';
 import { BulkPersistenceRepository } from '../src/persistence/bulk.repository.js';
-import { parseBulkEnvironment } from '../src/config/bulk-environment.js';
 import { IsolatedBulkRabbitmq } from './isolated-bulk-rabbitmq.js';
 
 const databaseUrl = process.env.BULK_TEST_DATABASE_URL;
@@ -87,10 +86,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       '',
       '0',
     ];
-    const service = new BulkImportService(
-      repository,
-      parseBulkEnvironment({ NODE_ENV: 'test' }),
-    );
+    const service = new BulkImportService(repository);
     const importInput = {
       bytes: Buffer.from(
         `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.join(',')}\r\n`,
@@ -124,10 +120,17 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     expect(sent.routingKey).toBe(command?.eventName);
     expect(sent.userId).toBe(new URL(broker.url).username);
     expect(
-      (await repository.findPendingOutbox(10)).some(
+      (await repository.findPendingOutbox(10)).find(
         (item) => item.messageId === command?.messageId,
       ),
-    ).toBe(false);
+    ).toMatchObject({
+      publishedAt: null,
+    });
+    expect(
+      (await repository.findPendingOutbox(10)).find(
+        (item) => item.messageId === command?.messageId,
+      )?.lastError,
+    ).toMatch(/^AWAITING_CATALOG_RESULT:/);
   }, 30000);
 
   it('persists and republishes the exact v2 variant-update command on replay', async () => {
@@ -162,13 +165,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       batchId,
       contentRef: `test://${id()}`,
     };
-    const service = new BulkImportService(
-      repository,
-      parseBulkEnvironment({
-        NODE_ENV: 'test',
-        BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
-      }),
-    );
+    const service = new BulkImportService(repository);
     await service.receiveImport(input);
     const admission = await repository.findImportAdmissionIntent(batchId);
     const original = (
@@ -207,6 +204,270 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     expect(delivered.correlationId).toBe(correlationId);
     expect(delivered.routingKey).toBe('catalog.bulk.upsert.requested');
   }, 30000);
+  it('keeps Catalog commands pending when only the alternate exchange routes them, then recovers after the Catalog binding is enabled', async () => {
+    const alternateBroker = new IsolatedBulkRabbitmq();
+    await alternateBroker.start({ alternateCommandExchange: true });
+    try {
+      const messageId = id();
+      const correlationId = id();
+      await repository.enqueueOutbox({
+        messageId,
+        eventName: 'catalog.bulk.upsert.requested',
+        kind: 'command',
+        correlationId,
+        operationId: id(),
+        occurredAt: new Date(),
+        payload: {
+          message_id: messageId,
+          name: 'catalog.bulk.upsert.requested',
+        },
+      });
+      await alternateBroker.unbindCatalogCommand(
+        'catalog.bulk.upsert.requested',
+      );
+      const relay = new BulkOutboxRelay(repository, alternateBroker.url);
+      await relay.flush();
+      expect(await alternateBroker.nextUnroutedCommand()).toMatchObject({
+        message_id: messageId,
+      });
+      const unroutedState = await pool.query(
+        'SELECT published_at, last_error FROM bulk.outbox WHERE message_id = $1',
+        [messageId],
+      );
+      expect(unroutedState.rows[0]?.published_at).toBeNull();
+      expect(unroutedState.rows[0]?.last_error).toMatch(
+        /^AWAITING_CATALOG_RESULT:/,
+      );
+
+      await repository.deferOutboxUntilCatalogResult(messageId, 8);
+      const parked = await pool.query(
+        'SELECT message_id, operation_id, payload, attempts, last_error FROM bulk.outbox WHERE message_id = $1',
+        [messageId],
+      );
+      expect(parked.rows[0]).toMatchObject({
+        message_id: messageId,
+        attempts: 8,
+        last_error: 'CATALOG_ROUTE_REVIEW_REQUIRED',
+      });
+      const originalIdentity = {
+        message_id: parked.rows[0].message_id,
+        operation_id: parked.rows[0].operation_id,
+        payload: parked.rows[0].payload,
+      };
+
+      await alternateBroker.bindCatalogCommand('catalog.bulk.upsert.requested');
+      const recoveryInput = {
+        messageId,
+        operatorIdentity: 'auditor-rabbitmq-fixture',
+        approvalReference: 'fixture-approval:bulk-recovery-01',
+        reason: 'auditoría de integración RabbitMQ desechable',
+        bindingEvidence:
+          'cola po.catalogo.q; binding po.comandos.x -> po.catalogo.q con catalog.bulk.upsert.requested verificado en fixture',
+        consumerEvidence: 'cola Catalog activa y entrega consumida por prueba',
+      };
+      const recoveries = await Promise.all([
+        repository.reactivateParkedCatalogOutbox(recoveryInput),
+        repository.reactivateParkedCatalogOutbox(recoveryInput),
+      ]);
+      expect(recoveries.sort()).toEqual(['NOT_PARKED', 'REACTIVATED']);
+      expect(
+        await repository.reactivateParkedCatalogOutbox(recoveryInput),
+      ).toBe('NOT_PARKED');
+      const audit = await pool.query(
+        `SELECT handler, event_name, result, payload FROM bulk.inbox
+         WHERE message_id = $1 AND handler LIKE 'bulk.catalog.outbox-recovery:%'`,
+        [messageId],
+      );
+      expect(audit.rows).toHaveLength(1);
+      expect(audit.rows[0]).toMatchObject({
+        event_name: 'bulk.catalog.outbox.recovery-authorized',
+        result: 'REACTIVATED',
+        payload: {
+          message_id: messageId,
+          database_principal: expect.any(String),
+          operator_identity: recoveryInput.operatorIdentity,
+          approval_reference: recoveryInput.approvalReference,
+          reason: recoveryInput.reason,
+          binding_evidence: recoveryInput.bindingEvidence,
+          consumer_evidence: recoveryInput.consumerEvidence,
+        },
+      });
+      await relay.flush();
+      expect(await alternateBroker.nextCommand()).toMatchObject({
+        message_id: messageId,
+      });
+      const republished = await pool.query(
+        'SELECT message_id, operation_id, payload FROM bulk.outbox WHERE message_id = $1',
+        [messageId],
+      );
+      expect(republished.rows[0]).toEqual(originalIdentity);
+      const stillAwaitingCatalogResult = await pool.query(
+        'SELECT published_at FROM bulk.outbox WHERE message_id = $1',
+        [messageId],
+      );
+      expect(stillAwaitingCatalogResult.rows[0]?.published_at).toBeNull();
+    } finally {
+      await alternateBroker.stop();
+    }
+  }, 90000);
+
+  it('does not reactivate a parked Catalog command when its correlated result is already durable', async () => {
+    const messageId = id();
+    const correlationId = id();
+    await repository.enqueueOutbox({
+      messageId,
+      eventName: 'catalog.bulk.upsert.requested',
+      kind: 'command',
+      correlationId,
+      operationId: id(),
+      occurredAt: new Date(),
+      payload: { message_id: messageId },
+    });
+    await repository.deferOutboxUntilCatalogResult(messageId, 8);
+    await pool.query(
+      `INSERT INTO bulk.inbox (message_id, handler, event_name, correlation_id, payload, result)
+       VALUES ($1, 'bulk.contract-result-replay', 'catalog.bulk.upsert.completed', $2,
+         jsonb_build_object('causation_id', $1::text), 'PENDING_REPLAY')`,
+      [id(), correlationId],
+    );
+    const resultMessageId = await pool.query(
+      `SELECT message_id FROM bulk.inbox
+       WHERE correlation_id = $1 AND handler = 'bulk.contract-result-replay'`,
+      [correlationId],
+    );
+    await pool.query(
+      `UPDATE bulk.inbox SET payload = jsonb_build_object('causation_id', $1::text) WHERE message_id = $2`,
+      [messageId, resultMessageId.rows[0]?.message_id],
+    );
+
+    await expect(
+      repository.reactivateParkedCatalogOutbox({
+        messageId,
+        operatorIdentity: 'auditor-rabbitmq-fixture',
+        approvalReference: 'fixture-approval:bulk-recovery-02',
+        reason: 'resultado durable verificado',
+        bindingEvidence: 'no aplica; comando ya recibió resultado',
+        consumerEvidence: 'no aplica; resultado en replay durable',
+      }),
+    ).resolves.toBe('RESULT_ALREADY_RECORDED');
+    expect(await repository.findPendingOutbox(10, true)).not.toContainEqual(
+      expect.objectContaining({ messageId }),
+    );
+    const parked = await pool.query(
+      'SELECT last_error FROM bulk.outbox WHERE message_id = $1',
+      [messageId],
+    );
+    expect(parked.rows[0]?.last_error).toBe('CATALOG_ROUTE_REVIEW_REQUIRED');
+  });
+
+  it('replays a later Catalog result despite more than 100 durable external results without an owner', async () => {
+    for (let index = 0; index < 105; index += 1) {
+      const messageId = id();
+      await repository.persistPendingContractResult({
+        messageId,
+        eventName: 'inventory.bulk.stock.adjust.completed',
+        correlationId: id(),
+        payload: {
+          message_id: messageId,
+          eventName: 'inventory.bulk.stock.adjust.completed',
+        },
+      });
+    }
+    const service = new BulkImportService(repository);
+    const batchId = id();
+    const correlationId = id();
+    const values = [
+      'ALTA',
+      '',
+      '',
+      'SKU-FAIR-REPLAY',
+      '',
+      'Producto',
+      'Descripcion',
+      'cat',
+      'brand',
+      'type',
+      'false',
+      '12.5',
+      '[]',
+      '',
+      '',
+      '0',
+    ];
+    const admitted = await service.receiveImport({
+      bytes: Buffer.from(
+        `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.join(',')}\r\n`,
+      ),
+      format: 'CSV',
+      templateVersion: 2,
+      correlationId,
+      batchId,
+      contentRef: `test://${id()}`,
+    });
+    const row = admitted.parsed.rows[0]!;
+    const command = (await repository.findPendingOutbox(10)).find(
+      (item) => item.correlationId === correlationId,
+    )!;
+    const resultMessageId = id();
+    const envelope = {
+      message_id: resultMessageId,
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: correlationId,
+      causation_id: command.messageId,
+      operation_id: (command.payload as { operation_id: string }).operation_id,
+      producer: 'catalog-svc',
+      kind: 'result',
+      name: 'catalog.bulk.upsert.completed',
+      data: {
+        batch_id: batchId,
+        batch_operation_id: (
+          command.payload as { data: { batch_operation_id: string } }
+        ).data.batch_operation_id,
+        results: [
+          {
+            row_number: row.rowNumber,
+            row_operation_id: row.rowOperationId,
+            product_id: id(),
+            sku_base: row.skuBase,
+            status: 'COMPLETED',
+            code: null,
+          },
+        ],
+      },
+    };
+    await repository.persistPendingContractResult({
+      messageId: resultMessageId,
+      eventName: envelope.name,
+      correlationId,
+      payload: envelope,
+    });
+    expect(
+      await repository.listPendingContractResults(100, [
+        'catalog.bulk.upsert.completed',
+        'catalog.bulk.upsert.rejected',
+      ]),
+    ).toHaveLength(1);
+    await waitFor(async () => {
+      await consumer.replayPendingContractResults();
+      return (
+        (await repository.countPendingContractResults([
+          'catalog.bulk.upsert.completed',
+        ])) === 0
+      );
+    });
+    expect(await repository.listRowSteps(batchId, row.rowId)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ domain: 'CATALOGO', status: 'COMPLETED' }),
+      ]),
+    );
+    expect(
+      await repository.countPendingContractResults([
+        'inventory.bulk.stock.adjust.completed',
+      ]),
+    ).toBe(105);
+  }, 90000);
+
   it('RabbitMQ rechaza un userId distinto al usuario AMQP autenticado', async () => {
     await expect(
       broker.publishCommandWithUserId('bulk93-usuario-distinto'),
@@ -216,10 +477,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   }, 30000);
 
   it('isolates row operation identities across independent batches with identical CSV and preserves each replay', async () => {
-    const service = new BulkImportService(
-      repository,
-      parseBulkEnvironment({ NODE_ENV: 'test' }),
-    );
+    const service = new BulkImportService(repository);
     const batchIds = [id(), id()] as const;
     const correlationIds = [id(), id()] as const;
     const values = [
@@ -374,10 +632,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   it('persists, replays and consolidates multiple 1 MiB chunks with distinct chunk identities', async () => {
     const batchId = id();
     const correlationId = id();
-    const service = new BulkImportService(
-      repository,
-      parseBulkEnvironment({ NODE_ENV: 'test' }),
-    );
+    const service = new BulkImportService(repository);
     const rows = [
       { rowId: id(), rowOperationId: id(), rowNumber: 2, skuBase: 'FAMILY-A' },
       { rowId: id(), rowOperationId: id(), rowNumber: 3, skuBase: 'FAMILY-A' },
@@ -744,8 +999,9 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       const {
         rows: [receipt],
       } = await pool.query(
-        'SELECT count(*)::int AS count FROM bulk.inbox WHERE message_id = $1 AND handler = $2',
-        [conflicted.message_id, 'bulk.catalog.invalid-result'],
+        `SELECT count(*)::int AS count FROM bulk.inbox
+         WHERE message_id = $1 AND handler = $2 AND result = 'PENDING_REPLAY'`,
+        [conflicted.message_id, 'bulk.contract-result-replay'],
       );
       return receipt?.count === 1;
     });
@@ -854,7 +1110,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     expect(batch?.failedRows).toBe(1);
   }, 30000);
 
-  it('keeps publisher-confirmed but unrouted commands pending and pauses the relay', async () => {
+  it('recovers an unrouted Outbox command after its binding is added without publishing it early', async () => {
     const messageId = id();
     await repository.enqueueOutbox({
       messageId,
@@ -871,6 +1127,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     });
     const relay = new BulkOutboxRelay(repository, broker.url);
     await relay.flush();
+    expect(relay.getOperationalState()).toBe('TOPOLOGY_BLOCKED');
     const pending = await repository.findPendingOutbox(10);
     expect(
       pending.some(
@@ -880,6 +1137,130 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
           item.lastError === 'PUBLICATION_UNROUTED',
       ),
     ).toBe(true);
+    await broker.bindCatalogCommand('catalog.bulk.upsert.unrouted-test');
+    await waitFor(async () => {
+      await relay.flush();
+      return relay.getOperationalState() === 'READY';
+    });
+    expect(relay.getOperationalState()).toBe('READY');
+    expect((await broker.nextCommandDelivery()).messageId).toBe(messageId);
+    const { rows } = await pool.query(
+      'SELECT published_at, attempts, last_error FROM bulk.outbox WHERE message_id = $1',
+      [messageId],
+    );
+    expect(rows[0]).toMatchObject({
+      published_at: expect.any(Date),
+      attempts: 2,
+      last_error: null,
+    });
+  }, 30000);
+
+  it('requeues a technical consumer failure, persists before ACK, and deduplicates the redelivery', async () => {
+    const batchId = id();
+    const batchOperationId = id();
+    const correlationId = id();
+    const rowId = id();
+    const rowOperationId = id();
+    const commandId = id();
+    const commandOperationId = id();
+    const command = {
+      message_id: commandId,
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: correlationId,
+      causation_id: null,
+      operation_id: commandOperationId,
+      producer: 'bulk-svc',
+      kind: 'command',
+      name: 'catalog.bulk.upsert.requested',
+      data: {
+        batch_id: batchId,
+        batch_operation_id: batchOperationId,
+        template_version: 2,
+        mode: 'ALTA',
+        rows: [
+          {
+            row_number: 2,
+            row_operation_id: rowOperationId,
+            producto_id: null,
+            sku_base: 'SKU-RECOVER',
+            product: { nombre: 'Producto recuperable' },
+            variant_id: null,
+            variant: null,
+          },
+        ],
+      },
+    };
+    await repository.createImportBatch({
+      batchId,
+      correlationId,
+      templateVersion: 2,
+      inputFile: { format: 'CSV', contentRef: `test://${id()}` },
+      rows: [{ rowId, requiredDomains: ['CATALOGO'] }],
+      admissionIntent: {
+        batchOperationId,
+        rows: [{ rowId, rowOperationId, rowNumber: 2, skuBase: 'SKU-RECOVER' }],
+        catalogCommands: [command],
+      },
+    });
+    const original = repository.recordCatalogBulkResult.bind(repository);
+    let attempts = 0;
+    const resultSpy = vi
+      .spyOn(repository, 'recordCatalogBulkResult')
+      .mockImplementation(async (...args) => {
+        attempts += 1;
+        if (attempts <= 3) throw new Error('transient PostgreSQL outage');
+        return original(...args);
+      });
+    const result = {
+      message_id: id(),
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: correlationId,
+      causation_id: commandId,
+      operation_id: commandOperationId,
+      producer: 'catalog-svc',
+      kind: 'result',
+      name: 'catalog.bulk.upsert.completed',
+      data: {
+        batch_id: batchId,
+        batch_operation_id: batchOperationId,
+        results: [
+          {
+            row_number: 2,
+            row_operation_id: rowOperationId,
+            product_id: 'product-recovered',
+            sku_base: 'SKU-RECOVER',
+            status: 'COMPLETED',
+            code: null,
+          },
+        ],
+      },
+    };
+    await broker.publishResult(result);
+    await waitFor(
+      async () =>
+        (await repository.findBatchByBatchId(batchId))?.status === 'COMPLETED',
+    );
+    expect(attempts).toBe(4);
+    expect(consumer.getOperationalState()).toBe('READY');
+    expect((await repository.listBatchRows(batchId))[0]?.status).toBe(
+      'COMPLETED',
+    );
+    resultSpy.mockRestore();
+    const receiptCount = async () => {
+      const { rows } = await pool.query(
+        'SELECT count(*)::int AS count FROM bulk.inbox WHERE message_id = $1 AND handler = $2',
+        [result.message_id, 'bulk.catalog.bulk-upsert.result'],
+      );
+      return rows[0]?.count;
+    };
+    expect(await receiptCount()).toBe(1);
+    await broker.publishResult(result);
+    await waitFor(async () => (await receiptCount()) === 1);
+    expect((await repository.listBatchRows(batchId))[0]?.status).toBe(
+      'COMPLETED',
+    );
   }, 30000);
 
   it('preserves the Outbox command when AMQP has no username', async () => {
@@ -980,8 +1361,8 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     await broker.resume();
     await waitFor(async () => {
       await relay.flush();
-      return !(await repository.findPendingOutbox(10)).some(
-        (item) => item.messageId === messageId,
+      return (await repository.findPendingOutbox(10)).some(
+        (item) => item.messageId === messageId && item.attempts > 0,
       );
     });
     const delivered = await broker.nextCommand();
@@ -991,10 +1372,99 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     });
     expect(
       (await repository.findPendingOutbox(10)).some(
-        (item) => item.messageId === messageId,
+        (item) => item.messageId === messageId && item.publishedAt === null,
       ),
-    ).toBe(false);
+    ).toBe(true);
   }, 90000);
+
+  it('durably replays every non-Catalog contract route bound to po.masivos.q', async () => {
+    const routes = [
+      ['inventory.bulk.stock.adjust.completed', 'inventory-svc', 'result'],
+      ['inventory.bulk.stock.adjust.rejected', 'inventory-svc', 'result'],
+      ['pricing.bulk.price.apply.completed', 'pricing-svc', 'result'],
+      ['pricing.bulk.price.apply.rejected', 'pricing-svc', 'result'],
+      ['inventory.stock.adjusted', 'inventory-svc', 'event'],
+    ] as const;
+    const messages = routes.map(([name, producer, kind]) => ({
+      message_id: id(),
+      schema_version: 1,
+      occurred_at: new Date().toISOString(),
+      correlation_id: id(),
+      causation_id: id(),
+      operation_id: id(),
+      producer,
+      kind,
+      name,
+      data: { fixture: 'contract-shaped' },
+    }));
+
+    for (const message of messages) await broker.publishResult(message);
+    await waitFor(async () => {
+      const result = await pool.query<{ count: string }>(
+        `SELECT count(*)::text AS count FROM bulk.inbox
+         WHERE handler = 'bulk.contract-result-replay'
+           AND result = 'PENDING_REPLAY'`,
+      );
+      return Number(result.rows[0]?.count) === messages.length;
+    });
+    await waitFor(async () => (await broker.queueDepth()) === 0);
+    const persisted = (
+      await pool.query<{
+        event_name: string;
+        payload: unknown;
+      }>(
+        `SELECT event_name, payload FROM bulk.inbox
+         WHERE handler = 'bulk.contract-result-replay'
+         ORDER BY event_name`,
+      )
+    ).rows;
+    expect(persisted).toHaveLength(messages.length);
+    for (const message of messages)
+      expect(persisted).toContainEqual(
+        expect.objectContaining({ event_name: message.name, payload: message }),
+      );
+
+    const dispatch = vi.fn(
+      async (input: {
+        eventName: string;
+        messageId: string;
+        correlationId: string;
+        payload: Record<string, unknown>;
+      }) => {
+        await repository.processInboxOnce(
+          {
+            messageId: `${input.messageId}:replayed`,
+            handler: 'bulk.contract-result-dispatch-test',
+            eventName: input.eventName,
+            correlationId: input.correlationId,
+            payload: input.payload,
+          },
+          async () => 'DISPATCHED',
+        );
+      },
+    );
+    (
+      consumer as unknown as {
+        contractResultDispatcher: { dispatch: typeof dispatch };
+      }
+    ).contractResultDispatcher = { dispatch };
+    await consumer.replayPendingContractResults();
+
+    expect(dispatch).toHaveBeenCalledTimes(messages.length);
+    const outcomes = await pool.query<{ result: string; count: string }>(
+      `SELECT result, count(*)::text AS count FROM bulk.inbox
+       WHERE handler = 'bulk.contract-result-replay'
+       GROUP BY result ORDER BY result`,
+    );
+    expect(outcomes.rows).toEqual([
+      { result: 'REPLAYED', count: String(messages.length) },
+    ]);
+    expect(await broker.queueDepth()).toBe(0);
+
+    await broker.publishResult(messages[0]!);
+    await waitFor(async () => (await broker.queueDepth()) === 0);
+    expect(dispatch).toHaveBeenCalledTimes(messages.length);
+  }, 30000);
 });
 
 async function waitFor(

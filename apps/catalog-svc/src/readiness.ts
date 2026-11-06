@@ -31,7 +31,11 @@ export function withReadinessDeadline(
 
 export interface CliReadinessConfig {
   readonly marketplaceDemoPreview: boolean;
-  readonly readDemo: { readonly enabled: boolean };
+  readonly readDemo: {
+    readonly enabled: boolean;
+    readonly securityMode?: string;
+    readonly publicOperations?: readonly string[];
+  };
 }
 
 export async function runReadinessCliProbe(
@@ -48,7 +52,12 @@ export async function runReadinessCliProbe(
     check((stage) => {
       if (stage === 'database') database = 'ready';
       if (stage === 'catalog-read') {
-        if (config.readDemo.enabled) eligibilityStatus = 'not_evaluated_demo';
+        if (
+          config.readDemo.enabled ||
+          (config.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
+            (config.readDemo.publicOperations?.length ?? 0) > 0)
+        )
+          eligibilityStatus = 'not_evaluated_demo';
         else eligibilityStatus = 'not_required_demo';
       }
       if (stage === 'pricing') pricingStatus = 'ready';

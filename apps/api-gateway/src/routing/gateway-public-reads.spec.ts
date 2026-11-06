@@ -5,17 +5,26 @@ import { isDemoBypassRoute } from './gateway-identity.js';
 import { createSignedIdentity } from '../../test/support/signed-identity.js';
 
 describe('Phase 1 exact operation policy and JWT coexistence', () => {
-  it('permits only the five reviewed candidates, with exact service, method and route', () => {
+  it('permits only the fourteen authorized candidates, with exact service, method and route', () => {
     expect(
       CONTRACT_ROUTES.filter(isEligiblePublicRead)
         .map((r) => r.operationId)
         .sort(),
     ).toEqual([
+      'consultarDisponibilidadCombo',
+      'consultarDisponibilidadComercial',
+      'consultarPrecios',
+      'descargarPlantillaProductos',
       'listarCategorias',
       'listarMarcas',
       'listarProductos',
+      'listarPromociones',
+      'obtenerCombo',
+      'obtenerPrecioSku',
       'obtenerProducto',
       'obtenerProductoPorSlug',
+      'obtenerSeoPorSlug',
+      'resolverSlugAnterior',
     ]);
     const route = CONTRACT_ROUTES[0];
     for (const changed of [
@@ -27,7 +36,6 @@ describe('Phase 1 exact operation policy and JWT coexistence', () => {
     for (const operation of [
       'obtenerPreparacionProducto',
       'listarCategoriasAdmin',
-      'obtenerPrecioBaseProducto',
       'crearProducto',
     ])
       expect(() =>

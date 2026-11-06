@@ -13,9 +13,10 @@ import {
   HttpStatus,
   BadRequestException,
   Body,
+  Req,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { createHash } from 'node:crypto';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
@@ -44,11 +45,18 @@ export class BulkSvcController {
     return this.service.getHealth();
   }
 
-  @Get('health/readiness') async getReadiness(@Res() response: Response) {
-    const ready = await this.readiness.check();
+  @Get('health/readiness') async getReadiness(
+    @Req() _request: Request,
+    @Res() response: Response,
+  ) {
+    const result = await this.readiness.probe();
     return response
-      .status(ready ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE)
-      .json({ status: ready ? 'ready' : 'not_ready', service: 'bulk-svc' });
+      .status(result.ready ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE)
+      .json({
+        status: result.ready ? 'ready' : 'not_ready',
+        service: 'bulk-svc',
+        reason: result.reason,
+      });
   }
 
   @UseGuards(BulkUserBearerGuard)
@@ -132,7 +140,6 @@ export class BulkSvcController {
         .update(`${correlationId}:${contentHash}`)
         .digest('hex'),
     );
-    await this.imports.assertImportDependencies(parsed, batchId);
     const contentRef = await this.storage.put(
       file.buffer,
       file.mimetype,
@@ -145,6 +152,7 @@ export class BulkSvcController {
       correlationId,
       contentRef,
       batchId,
+      parsed,
     });
     return response.status(202).json({
       batch_id: result.batch.batchId,

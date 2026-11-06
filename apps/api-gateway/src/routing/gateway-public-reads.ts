@@ -14,6 +14,31 @@ const publicReadRoutes = [
   ],
   ['taxonomy-svc', 'listarCategorias', '/api/v1/categorias'],
   ['taxonomy-svc', 'listarMarcas', '/api/v1/marcas'],
+  ['taxonomy-svc', 'obtenerSeoPorSlug', '/api/v1/seo/{slug}'],
+  [
+    'taxonomy-svc',
+    'resolverSlugAnterior',
+    '/api/v1/seo/resoluciones/{slugAnterior}',
+  ],
+  ['pricing-svc', 'consultarPrecios', '/api/v1/precios'],
+  ['pricing-svc', 'obtenerPrecioSku', '/api/v1/precios/skus/{sku}'],
+  ['promotions-svc', 'listarPromociones', '/api/v1/promociones'],
+  ['combos-svc', 'obtenerCombo', '/api/v1/combos/{comboId}'],
+  [
+    'combos-svc',
+    'consultarDisponibilidadCombo',
+    '/api/v1/combos/{comboId}/disponibilidad',
+  ],
+  [
+    'inventory-svc',
+    'consultarDisponibilidadComercial',
+    '/api/v1/inventario/disponibilidad/comercial',
+  ],
+  [
+    'bulk-svc',
+    'descargarPlantillaProductos',
+    '/api/v1/carga-masiva/productos/plantilla',
+  ],
 ] as const;
 
 export function isEligiblePublicRead(route: ContractRoute): boolean {

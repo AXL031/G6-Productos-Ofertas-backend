@@ -19,7 +19,7 @@ describe('Public-read authorization never selects Catalog demo data', () => {
       ],
     });
   });
-  it('rejects legacy/public mixing, noncommercial operations and unapproved simulated auth', () => {
+  it('rejects legacy/public mixing and noncommercial operations while accepting the simulated-auth selector', () => {
     for (const flag of [
       'G6_READ_ONLY_DEMO_ENABLED',
       'GATEWAY_DEMO_NO_AUTH_ENABLED',
@@ -42,9 +42,9 @@ describe('Public-read authorization never selects Catalog demo data', () => {
           CATALOG_PUBLIC_OPERATION_IDS: operation,
         }),
       ).toThrow();
-    expect(() =>
+    expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-    ).toThrow();
+    ).toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
     expect(
       readCatalogReadDemo({
         G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',

@@ -10,10 +10,27 @@ const env: NodeJS.ProcessEnv = {
 describe('Configuración fail-closed de Price Audit', () => {
   it('fija retención administrativa sin activar un archivador', () => {
     expect(validateEnvironment(env)).toMatchObject({
+      securityMode: 'G7_AUTHENTICATED',
       port: 3003,
       databaseSsl: false,
       hotRetentionMonths: 24,
       archiveRetentionYears: 5,
+    });
+  });
+  it('selects an independent simulated issuer and JWKS', () => {
+    expect(
+      validateEnvironment({
+        ...env,
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: 'http://127.0.0.1:8080/sim',
+        SIMULATED_AUTH_JWKS_URL: 'http://127.0.0.1:8080/jwks',
+      }),
+    ).toMatchObject({
+      securityMode: 'SIMULATED_AUTH',
+      auth: {
+        issuer: 'http://127.0.0.1:8080/sim',
+        jwksUrl: 'http://127.0.0.1:8080/jwks',
+      },
     });
   });
   it.each([

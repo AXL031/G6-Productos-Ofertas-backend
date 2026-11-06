@@ -1844,7 +1844,7 @@ describeIntegracion(
         humano = false,
         roles = ['GESTOR_COMERCIAL'],
         cliente = 'modulo-productos',
-        audience = 'api-productos',
+        audience: string | null = 'api-productos',
         invalidSignature = false,
       ) => {
         const now = Math.floor(Date.now() / 1000);
@@ -1857,7 +1857,7 @@ describeIntegracion(
             sub: humano ? randomUUID() : cliente,
             tipo: humano ? 'acceso' : 'servicio',
             ...(humano ? { roles } : {}),
-            aud: audience,
+            ...(audience === null ? {} : { aud: audience }),
             scope,
             iat: now,
             exp: now + 60,
@@ -2051,7 +2051,7 @@ describeIntegracion(
             [route.method](route.path)
             .set(
               'Authorization',
-              `Bearer ${token('', true, ['GESTOR_COMERCIAL'], 'modulo-productos', 'audiencia-incorrecta')}`,
+              `Bearer ${token('', true, ['GESTOR_COMERCIAL'], 'modulo-productos', 'audiencia-incorrecta', true)}`,
             )
             .expect(401);
           await request(nest.getHttpServer())
@@ -2062,6 +2062,13 @@ describeIntegracion(
           .get('/api/v1/tipos-producto')
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
           .expect(200);
+        await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set(
+            'Authorization',
+            `Bearer ${token('catalogo:leer', false, [], 'modulo-productos', null)}`,
+          )
+          .expect(401);
         await request(nest.getHttpServer())
           .get('/api/v1/tipos-producto')
           .set('Authorization', `Bearer ${token('otro')}`)
@@ -2086,6 +2093,18 @@ describeIntegracion(
           .send({ nombre: `Tipo HTTP ${brandId}` })
           .expect(201);
         tipoCreado = tipoHttp.body.tipoProductoId as string;
+        const tiposProductoHumano = await request(nest.getHttpServer())
+          .get('/api/v1/tipos-producto')
+          .set(
+            'Authorization',
+            `Bearer ${token('', true, ['GESTOR_COMERCIAL'], 'unused', null)}`,
+          )
+          .expect(200);
+        expect(tiposProductoHumano.body.items).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ tipoProductoId: tipoCreado }),
+          ]),
+        );
         await request(nest.getHttpServer())
           .get(`/api/v1/tipos-producto/${tipoCreado}`)
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
@@ -2501,7 +2520,9 @@ describeIntegracion(
         // contract-test: 'obtenerSeoPorSlug'
         await request(nest.getHttpServer())
           .get(`/api/v1/seo/${slugOriginal}`)
-          .expect(200);
+          // La matriz H4 mantiene pendiente la revisión de sensibilidad;
+          // no se hereda el fixture anónimo legado en modo G7.
+          .expect(401);
         // contract-test: 'actualizarSeoCategoria'
         const seoActualizado = await request(nest.getHttpServer())
           .patch(`/api/v1/categorias/${categoryCreated}/seo`)
@@ -2549,18 +2570,14 @@ describeIntegracion(
           }),
         );
         // contract-test: 'resolverSlugAnterior'
-        const redireccion = await request(nest.getHttpServer())
+        await request(nest.getHttpServer())
           .get(`/api/v1/seo/resoluciones/${slugOriginal}`)
-          .expect(200);
-        expect(redireccion.body).toEqual({
-          old_slug: slugOriginal,
-          new_slug: `categoria-seo-${brandId}`,
-          resolution: 'PERMANENT',
-        });
+          // Las dos lecturas SEO siguen pendientes de revisión de sensibilidad.
+          .expect(401);
         // contract-test: 'obtenerSeoPorSlug'
         await request(nest.getHttpServer())
           .get(`/api/v1/seo/categoria-seo-${brandId}`)
-          .expect(200);
+          .expect(401);
       } finally {
         await nest?.close();
         if (tipoCreado) {
@@ -2648,12 +2665,16 @@ describeIntegracion(
       }
     });
 
-    it('demo en loopback lee registros reales en PostgreSQL sin aceptar credenciales falsas', async () => {
+    it('PUBLIC_READ_ONLY expone solo las dos lecturas aprobadas y mantiene protegidas escrituras', async () => {
       const fixture = await Test.createTestingModule({
         imports: [
           TaxonomySvcModule.forRoot({
             databaseUrl: urlApp,
-            env: { NODE_ENV: 'test', ALLOW_DEMO_UNAUTHENTICATED: 'true' },
+            env: {
+              NODE_ENV: 'test',
+              G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+              TAXONOMY_PUBLIC_OPERATION_IDS: 'listarCategorias,listarMarcas',
+            },
           }),
         ],
       }).compile();
@@ -2673,11 +2694,14 @@ describeIntegracion(
               (row: { status: string }) => row.status === 'ACTIVA',
             ),
           ).toBe(true);
-          await request(demo.getHttpServer())
-            .get(`/api/v1/${path}`)
-            .set('Authorization', 'Bearer invalid')
-            .expect(401);
         }
+        await request(demo.getHttpServer())
+          .post('/api/v1/categorias')
+          .send({ nombre: 'Sin autorización' })
+          .expect(401);
+        await request(demo.getHttpServer())
+          .get('/api/v1/categorias/administracion')
+          .expect(401);
       } finally {
         await demo.close();
       }

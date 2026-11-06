@@ -1,3 +1,4 @@
+import { validAuditTimestamp } from '../domain/audit-timestamp.js';
 import {
   Inject,
   Injectable,
@@ -52,11 +53,7 @@ export function decodeEnvelope(message: ConsumeMessage) {
     !uuid.test(body.message_id) ||
     typeof body.correlation_id !== 'string' ||
     !uuid.test(body.correlation_id) ||
-    typeof body.occurred_at !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
-      body.occurred_at,
-    ) ||
-    !Number.isFinite(Date.parse(body.occurred_at)) ||
+    !validAuditTimestamp(body.occurred_at) ||
     !record(body.data) ||
     (body.operation_id !== undefined &&
       body.operation_id !== null &&

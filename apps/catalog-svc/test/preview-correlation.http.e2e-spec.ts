@@ -11,7 +11,10 @@ import { TaxonomyClient } from '../src/taxonomy.client.js';
 import { CatalogConfig } from '../src/config.js';
 import { DEMO_PRICING, PricingClient } from '../src/pricing.client.js';
 import { CatalogTokenVerifier } from '../src/catalog-auth.js';
-import { CATALOG_MARKETPLACE_PREVIEW } from '../src/catalog-read-demo.js';
+import {
+  CATALOG_MARKETPLACE_PREVIEW,
+  CATALOG_READ_DEMO,
+} from '../src/catalog-read-demo.js';
 
 // Real HTTP between Catalog and a local Pricing fixture. No PostgreSQL,
 // Gateway, G7 grant, Pricing implementation or Oracle integration is claimed.
@@ -77,8 +80,25 @@ describe('Preview correlation to Pricing over real local HTTP (#49)', () => {
       providers: [
         CommercialService,
         { provide: CatalogConfig, useValue: config },
+        {
+          provide: CATALOG_READ_DEMO,
+          useValue: {
+            enabled: false,
+            securityMode: 'G7_AUTHENTICATED',
+            publicOperations: [],
+          },
+        },
         { provide: CATALOG_MARKETPLACE_PREVIEW, useValue: true },
-        { provide: CatalogTokenVerifier, useValue: {} },
+        {
+          provide: CatalogTokenVerifier,
+          useValue: {
+            verify: async () => ({
+              kind: 'user',
+              subject: '11111111-1111-4111-8111-111111111111',
+              roles: ['GESTOR_COMERCIAL'],
+            }),
+          },
+        },
         { provide: DEMO_PRICING, useValue: new PricingClient(config) },
         {
           provide: PostgresCatalogRepository,
@@ -121,6 +141,7 @@ describe('Preview correlation to Pricing over real local HTTP (#49)', () => {
     const id = randomUUID();
     const result = await request(app.getHttpServer())
       .get('/api/v1/productos?canal=MARKETPLACE&tamanio=1')
+      .set('Authorization', 'Bearer signed-fixture')
       .set('X-Correlation-Id', id)
       .expect(200);
     expect(result.body.total).toBe(2);
@@ -140,6 +161,7 @@ describe('Preview correlation to Pricing over real local HTTP (#49)', () => {
       const id = randomUUID();
       await request(app.getHttpServer())
         .get('/api/v1/productos/por-slug/product-1?canal=MARKETPLACE')
+        .set('Authorization', 'Bearer signed-fixture')
         .set('X-Correlation-Id', id)
         .expect(code);
       expect(received).toEqual([
@@ -157,6 +179,7 @@ describe('Preview correlation to Pricing over real local HTTP (#49)', () => {
       ids.map((id) =>
         request(app.getHttpServer())
           .get('/api/v1/productos?canal=MARKETPLACE')
+          .set('Authorization', 'Bearer signed-fixture')
           .set('X-Correlation-Id', id)
           .expect(200),
       ),

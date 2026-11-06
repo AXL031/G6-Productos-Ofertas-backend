@@ -66,7 +66,7 @@ describe('Gateway route boundaries and configuration', () => {
         .publicOperations,
     ).toEqual(['obtenerSeoPorSlug']);
   });
-  it('keeps no-auth demo mode disabled unless explicitly enabled', () => {
+  it('keeps anonymous legacy mode disabled and rejects attempts to enable it', () => {
     expect(readGatewaySettings({}).demoNoAuthEnabled).toBe(false);
     expect(
       readGatewaySettings({ NODE_ENV: 'production' }).demoNoAuthEnabled,
@@ -74,10 +74,9 @@ describe('Gateway route boundaries and configuration', () => {
     expect(
       readGatewaySettings({ AUTH_ISSUER: undefined }).demoNoAuthEnabled,
     ).toBe(false);
-    expect(
-      readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' })
-        .demoNoAuthEnabled,
-    ).toBe(true);
+    expect(() =>
+      readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' }),
+    ).toThrow('Invalid Gateway configuration');
     expect(
       readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'false' })
         .demoNoAuthEnabled,
@@ -93,10 +92,9 @@ describe('Gateway route boundaries and configuration', () => {
         G6_READ_ONLY_DEMO_ENABLED: 'true',
       }),
     ).toThrow('Invalid Gateway configuration');
-    expect(
-      readGatewaySettings({ G6_READ_ONLY_DEMO_ENABLED: 'true' })
-        .readOnlyDemoEnabled,
-    ).toBe(true);
+    expect(() =>
+      readGatewaySettings({ G6_READ_ONLY_DEMO_ENABLED: 'true' }),
+    ).toThrow('Invalid Gateway configuration');
   });
   it.each([
     ['127.0.0.1', true],
@@ -112,14 +110,7 @@ describe('Gateway route boundaries and configuration', () => {
   ])('requires a private TCP peer for demo (%s)', (address, allowed) => {
     expect(isRestrictedDemoPeer(address)).toBe(allowed);
   });
-  it('requires explicit demo activation and permits absent G7 trust only in demo', () => {
-    expect(
-      readGatewaySettings({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' }),
-    ).toMatchObject({
-      demoNoAuthEnabled: true,
-      issuer: undefined,
-      jwksUrl: undefined,
-    });
+  it('rejects broad demo activation regardless of G7 trust configuration', () => {
     expect(() =>
       readGatewaySettings({
         GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',

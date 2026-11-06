@@ -33,14 +33,27 @@ describe('configuración de Seguridad de Taxonomy', () => {
       readTaxonomySecurityConfig({ SECURITY_ISSUER: 'https://issuer.example' }),
     ).toThrow();
   });
-  it('activa demo solo explícitamente en test o desarrollo', () => {
-    expect(readTaxonomyDemoConfig({ NODE_ENV: 'test' })).toBe(false);
+
+  it('separa issuer y JWKS simulados de la configuración G7', () => {
     expect(
+      readTaxonomySecurityConfig({
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: 'http://localhost:8080/simulated-auth',
+        SIMULATED_AUTH_JWKS_URL: 'http://127.0.0.1:8081/jwks',
+      }),
+    ).toEqual({
+      issuer: 'http://localhost:8080/simulated-auth',
+      jwksUrl: 'http://127.0.0.1:8081/jwks',
+    });
+  });
+  it('mantiene desactivado el bypass demo heredado', () => {
+    expect(readTaxonomyDemoConfig({ NODE_ENV: 'test' })).toBe(false);
+    expect(() =>
       readTaxonomyDemoConfig({
         NODE_ENV: 'test',
         ALLOW_DEMO_UNAUTHENTICATED: 'true',
       }),
-    ).toBe(true);
+    ).toThrow();
     expect(() =>
       readTaxonomyDemoConfig({
         NODE_ENV: 'production',
@@ -100,6 +113,7 @@ describe('configuración de Seguridad de Taxonomy', () => {
             headers: {},
             method: 'GET',
             path: '/api/v1/categorias',
+            route: { path: '/categorias' },
             socket: { remoteAddress },
           }),
         }),
@@ -121,6 +135,7 @@ describe('configuración de Seguridad de Taxonomy', () => {
           headers: {},
           method: 'GET',
           path: '/api/v1/categorias',
+          route: { path: '/categorias' },
           socket: { remoteAddress: '172.18.0.4' },
         }),
       }),
@@ -152,6 +167,7 @@ describe('configuración de Seguridad de Taxonomy', () => {
           headers: {},
           method: 'GET',
           path: '/api/v1/marcas',
+          route: { path: '/marcas' },
           socket: { remoteAddress: '172.18.0.4' },
         }),
       }),
@@ -660,7 +676,12 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     const path = '/api/v1/categorias/11111111-1111-4111-8111-111111111111';
     const human =
       'Bearer ' +
-      token({ tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] });
+      token({
+        tipo: 'acceso',
+        sub: randomUUID(),
+        roles: ['GESTOR_COMERCIAL'],
+        aud: undefined,
+      });
     await request(demoApp.getHttpServer())
       .patch(path)
       .send({ nombre: 'X' })
@@ -858,25 +879,13 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       tipo: 'acceso',
       sub: randomUUID(),
       roles: ['GESTOR_COMERCIAL'],
+      aud: undefined,
     });
     await request(demoApp.getHttpServer()).post(path).expect(401);
     await request(app.getHttpServer())
       .post(path)
       .set('Authorization', 'Bearer ' + token())
       .expect(403);
-    await request(app.getHttpServer())
-      .post(path)
-      .set(
-        'Authorization',
-        'Bearer ' +
-          token({
-            tipo: 'acceso',
-            sub: randomUUID(),
-            roles: ['GESTOR_COMERCIAL'],
-            aud: 'wrong',
-          }),
-      )
-      .expect(401);
     await request(app.getHttpServer())
       .post(path)
       .set(
@@ -908,6 +917,44 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       )
       .expect(403);
   });
+  it.each([
+    [
+      'firma inválida',
+      { tipo: 'acceso', sub: randomUUID(), roles: ['GESTOR_COMERCIAL'] },
+      true,
+    ],
+    [
+      'issuer inválido',
+      {
+        tipo: 'acceso',
+        sub: randomUUID(),
+        roles: ['GESTOR_COMERCIAL'],
+        iss: 'https://wrong.example',
+      },
+      false,
+    ],
+    [
+      'JWT humano expirado',
+      {
+        tipo: 'acceso',
+        sub: randomUUID(),
+        roles: ['GESTOR_COMERCIAL'],
+        exp: 1,
+      },
+      false,
+    ],
+  ] as const)(
+    'Taxonomy rechaza JWT humano con %s',
+    async (_scenario, claims, invalidSignature) => {
+      await request(app.getHttpServer())
+        .post('/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar')
+        .set(
+          'Authorization',
+          'Bearer ' + token({ ...claims, aud: undefined }, invalidSignature),
+        )
+        .expect(401);
+    },
+  );
   it('reactivarMarca retorna Problem Details si la marca no existe o la baja sigue en curso', async () => {
     const path =
       '/api/v1/marcas/11111111-1111-4111-8111-111111111111/reactivar';
@@ -931,10 +978,10 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     expect(pending.body.code).toBe('SERVICIO_NO_DISPONIBLE');
   });
   it.each(['categorias', 'marcas'])(
-    'demo local restringida valida solicitudes a %s',
+    'legacy local demo no omite JWT al consultar %s',
     async (path) => {
       const url = '/api/v1/' + path;
-      await request(demoApp.getHttpServer()).get(url).expect(200);
+      await request(demoApp.getHttpServer()).get(url).expect(401);
       await request(demoApp.getHttpServer())
         .get(url)
         .set('Authorization', 'Bearer ' + token())
@@ -949,6 +996,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
         .expect(403);
       await request(demoApp.getHttpServer())
         .get(url + '?pagina=1')
+        .set('Authorization', 'Bearer ' + token())
         .expect(400);
       await request(demoApp.getHttpServer()).post(url).expect(401);
       await request(demoApp.getHttpServer())
@@ -990,6 +1038,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       401,
       'TOKEN_INVALIDO',
     ],
+    ['audiencia ausente', { aud: undefined }, false, 401, 'TOKEN_INVALIDO'],
     ['audiencia incorrecta', { aud: 'other' }, false, 401, 'TOKEN_INVALIDO'],
     [
       'scope insuficiente',

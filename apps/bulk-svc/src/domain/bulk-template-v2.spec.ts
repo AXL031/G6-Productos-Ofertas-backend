@@ -131,6 +131,35 @@ describe('Bulk template v2 parser', () => {
     expect(parsed.rows[0]?.variant).not.toHaveProperty('sku');
   });
 
+  it('rejects positive stock on ACTUALIZACION before creating domain effects', () => {
+    const values = [
+      'ACTUALIZACION',
+      '11111111-1111-4111-8111-111111111111',
+      '{"producto":0,"variante":null}',
+      'BASE',
+      '',
+      'Producto',
+      'Descripción',
+      'cat-1',
+      'marca-1',
+      'tipo-1',
+      'false',
+      '',
+      '[]',
+      '',
+      '',
+      '2',
+    ];
+    const csv = Buffer.from(
+      `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
+      'utf8',
+    );
+
+    expect(() => parseBulkTemplate(csv, 'CSV')).toThrow(
+      'stock_inicial positivo no se admite en ACTUALIZACION.',
+    );
+  });
+
   it('rejects invalid headers, content and unsupported versions without returning partial rows', () => {
     const invalidHeader = csvRow()
       .toString('utf8')

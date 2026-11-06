@@ -1,6 +1,8 @@
 import { isIP } from 'node:net';
 
 export interface InventoryConfig {
+  securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  publicOperations: readonly string[];
   databaseUrl?: string;
   pgHost?: string;
   pgPort?: number;
@@ -82,6 +84,50 @@ function integerSetting(
 }
 
 export function loadInventoryConfig(): InventoryConfig {
+  const securityMode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
+    throw new Error('[inventory-svc] G6_SECURITY_MODE inválido');
+  const publicOperations = (process.env.INVENTORY_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => id !== 'consultarDisponibilidadComercial') ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    throw new Error('[inventory-svc] INVENTORY_PUBLIC_OPERATION_IDS inválido');
+  if (securityMode === 'SIMULATED_AUTH') {
+    try {
+      const issuer = new URL(process.env.SIMULATED_AUTH_ISSUER ?? '');
+      const jwks = new URL(process.env.SIMULATED_AUTH_JWKS_URL ?? '');
+      const local = (url: URL) =>
+        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname);
+      const testHttp = process.env.NODE_ENV === 'test';
+      if (
+        issuer.href ===
+          new URL(process.env.G7_JWT_ISSUER ?? 'https://invalid').href ||
+        (issuer.protocol !== 'https:' &&
+          !(testHttp && issuer.protocol === 'http:' && local(issuer))) ||
+        (jwks.protocol !== 'https:' &&
+          !(testHttp && jwks.protocol === 'http:' && local(jwks))) ||
+        issuer.username ||
+        issuer.password ||
+        issuer.hash ||
+        jwks.username ||
+        jwks.password ||
+        jwks.hash
+      )
+        throw new Error();
+    } catch {
+      throw new Error(
+        '[inventory-svc] SIMULATED_AUTH requiere issuer y JWKS seguros e independientes de G7',
+      );
+    }
+  }
   const portName =
     process.env.INVENTORY_SVC_PORT === undefined
       ? 'PORT'
@@ -120,6 +166,8 @@ export function loadInventoryConfig(): InventoryConfig {
   }
 
   return {
+    securityMode: securityMode as InventoryConfig['securityMode'],
+    publicOperations: Object.freeze(publicOperations),
     databaseUrl: process.env.DATABASE_URL,
     pgHost: process.env.PGHOST,
     pgPort,

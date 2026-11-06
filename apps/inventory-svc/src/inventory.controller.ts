@@ -44,6 +44,7 @@ import { INVENTORY_SCOPES, KNOWN_CLIENTS } from './auth/auth.constants.js';
 import {
   AllowCommercialDemo,
   isCommercialDemoRequest,
+  isInventoryPublicRead,
   type CommercialRequest,
 } from './auth/commercial-demo.js';
 
@@ -79,6 +80,7 @@ function assertCanalDelCliente(
   correlationId?: string,
   commercialDemo = false,
   allowProductsMarketplace = false,
+  publicRead = false,
 ): void {
   const expectedClient =
     typeof canal === 'string' && Object.hasOwn(CANAL_CLIENT_MAP, canal)
@@ -90,6 +92,7 @@ function assertCanalDelCliente(
       correlationId,
     );
   }
+  if (publicRead) return;
   if (clientId === KNOWN_CLIENTS.PRODUCTOS) {
     if (
       !allowProductsMarketplace ||
@@ -311,6 +314,7 @@ export class InventoryController {
       correlationId,
       isCommercialDemoRequest(req),
       true,
+      isInventoryPublicRead(req),
     );
 
     return this.disponibilidadService.consultarDisponibilidadComercial(

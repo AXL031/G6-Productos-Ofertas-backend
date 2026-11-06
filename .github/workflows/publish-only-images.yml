@@ -1,0 +1,153 @@
+name: Publicar imágenes GHCR sin despliegue
+
+on:
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Servicio que se construirá y publicará
+        required: true
+        type: choice
+        options:
+          - api-gateway
+          - catalog-svc
+          - taxonomy-svc
+      sha:
+        description: SHA de 40 caracteres, punta vigente de master con CI exitosa
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  publish:
+    name: Publicar ${{ inputs.service }} por SHA
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && github.actor == 'mrcastilla8' && github.triggering_actor == 'mrcastilla8'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    concurrency:
+      group: deploy-g6-services-oracle-${{ github.repository }}-${{ inputs.service }}
+      cancel-in-progress: false
+    steps:
+      - name: Checkout del SHA que disparó el workflow
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Validar servicio, SHA vigente y CI exacta
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVICE: ${{ inputs.service }}
+          REQUESTED_SHA: ${{ inputs.sha }}
+        run: bash ops/oracle/validate-publish-only-source.sh "$SERVICE" "$REQUESTED_SHA" "$GITHUB_OUTPUT"
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login limitado a GHCR para comprobar tags existentes
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Comprobar tag SHA sin sobrescribir una imagen existente
+        id: existing
+        env:
+          SERVICE: ${{ steps.source.outputs.service }}
+          IMAGE_SHA: ${{ steps.source.outputs.sha }}
+        run: bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$GITHUB_OUTPUT"
+
+      - name: Construir imagen OCI local por SHA
+        id: build
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.service
+          build-args: SERVICE_NAME=${{ steps.source.outputs.service }}
+          load: true
+          tags: ${{ steps.existing.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.source.outputs.sha }}
+            org.opencontainers.image.title=${{ steps.source.outputs.service }}
+
+      - name: Revalidar punta de master y CI exacta antes de publicar
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SERVICE: ${{ steps.source.outputs.service }}
+          IMAGE_SHA: ${{ steps.source.outputs.sha }}
+        run: bash ops/oracle/validate-publish-only-source.sh "$SERVICE" "$IMAGE_SHA" /dev/null
+
+      - name: Revalidar que el tag SHA sigue ausente antes de publicar
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          SERVICE: ${{ steps.source.outputs.service }}
+          IMAGE_SHA: ${{ steps.source.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          tag_check_output="$(mktemp)"
+          trap 'rm -f "$tag_check_output"' EXIT
+          bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$tag_check_output"
+          tag_exists="$(sed -n 's/^exists=//p' "$tag_check_output")"
+          [[ "$tag_exists" == false ]] || {
+            echo 'El tag SHA apareció durante la construcción; no se sobrescribirá.' >&2
+            exit 1
+          }
+
+      - name: Publicar imagen OCI en GHCR
+        id: publication
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          IMAGE: ${{ steps.existing.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          push_log="$(mktemp)"
+          trap 'rm -f "$push_log"' EXIT
+          docker push "$IMAGE" 2>&1 | tee "$push_log"
+          digest="$(sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' "$push_log" | tail -n 1)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || {
+            echo 'Docker no informó un digest de manifiesto verificable.' >&2
+            exit 1
+          }
+          printf 'digest=%s\n' "$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Verificar digest y labels publicados
+        id: verified
+        env:
+          SERVICE: ${{ steps.source.outputs.service }}
+          IMAGE_SHA: ${{ steps.source.outputs.sha }}
+          PUBLISHED_DIGEST: ${{ steps.publication.outputs.digest }}
+          WAS_EXISTING: ${{ steps.existing.outputs.exists }}
+        run: |
+          set -Eeuo pipefail
+          verification_output="$(mktemp)"
+          trap 'rm -f "$verification_output"' EXIT
+          bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$verification_output"
+          verified_exists="$(sed -n 's/^exists=//p' "$verification_output")"
+          image="$(sed -n 's/^image=//p' "$verification_output")"
+          digest="$(sed -n 's/^digest=//p' "$verification_output")"
+          [[ "$verified_exists" == true && "$image" == ghcr.io/* && "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          labels="$(docker image inspect "$image" --format '{{json .Config.Labels}}')"
+          jq -e --arg service "$SERVICE" '."org.opencontainers.image.title" == $service' <<< "$labels" >/dev/null || {
+            echo 'El nombre del servicio no coincide con la etiqueta OCI verificada.' >&2
+            exit 1
+          }
+          if [[ -n "$PUBLISHED_DIGEST" && "$PUBLISHED_DIGEST" != "$digest" ]]; then
+            echo 'El digest informado por Buildx difiere del digest verificado desde GHCR.' >&2
+            exit 1
+          fi
+          if [[ "$WAS_EXISTING" == true ]]; then
+            state='reutilizada, sin escritura'
+          else
+            state='publicada'
+          fi
+          printf 'Estado: %s\nServicio: `%s`\nImagen verificada: `%s@%s`\nSHA de origen: `%s`\n' \
+            "$state" "$SERVICE" "$image" "$digest" "$IMAGE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'image=%s\ndigest=%s\n' "$image" "$digest" >> "$GITHUB_OUTPUT"

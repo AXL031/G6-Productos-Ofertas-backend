@@ -11,6 +11,64 @@ import {
   ProblemDetailsBody,
 } from './inventory.errors.js';
 
+const UNAVAILABLE_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ETIMEDOUT',
+  'EHOSTUNREACH',
+  'EPIPE',
+  'ENETUNREACH',
+  '08000',
+  '08001',
+  '08003',
+  '08004',
+  '08006',
+  '08007',
+  '08P01',
+  '57P01',
+  '57P02',
+  '57P03',
+  '53300',
+  '53400',
+]);
+
+const UNAVAILABLE_MESSAGES = [
+  'connection terminated unexpectedly',
+  'client was closed and is not queryable',
+  'timeout exceeded when trying to connect',
+  'terminating connection due to administrator command',
+];
+
+/**
+ * Determina si una excepción corresponde a indisponibilidad o caída de base de datos/red.
+ * Recorre recursivamente la propiedad `cause` para detectar errores de conexión envueltos
+ * por DrizzleORM (DrizzleQueryError) u otros adaptadores.
+ */
+export function isDatabaseUnavailable(exception: unknown): boolean {
+  let current: unknown = exception;
+  let depth = 0;
+  while (current && depth < 6) {
+    if (typeof current === 'object' && current !== null) {
+      const code = (current as { code?: unknown }).code;
+      if (typeof code === 'string' && UNAVAILABLE_CODES.has(code)) {
+        return true;
+      }
+      const message = (current as { message?: unknown }).message;
+      if (
+        typeof message === 'string' &&
+        UNAVAILABLE_MESSAGES.some((msg) => message.toLowerCase().includes(msg))
+      ) {
+        return true;
+      }
+      current = (current as { cause?: unknown }).cause;
+      depth++;
+    } else {
+      break;
+    }
+  }
+  return false;
+}
+
 @Catch()
 export class ProblemDetailsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost) {
@@ -72,24 +130,9 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     }
 
     // Errores técnicos nunca se reflejan al consumidor, incluso si no contienen
-    // palabras SQL. Los códigos conocidos de indisponibilidad conservan el 503 contractual.
-    const unavailable =
-      exception instanceof Error &&
-      'code' in exception &&
-      typeof exception.code === 'string' &&
-      [
-        'ECONNREFUSED',
-        'ECONNRESET',
-        'ETIMEDOUT',
-        '08000',
-        '08001',
-        '08003',
-        '08006',
-        '57P01',
-        '57P02',
-        '57P03',
-        '53300',
-      ].includes(exception.code);
+    // palabras SQL. Los códigos conocidos de indisponibilidad conservan el 503 contractual,
+    // reconociendo fallos anidados en `cause` generados por DrizzleQueryError u otros wrappers.
+    const unavailable = isDatabaseUnavailable(exception);
 
     const body: ProblemDetailsBody = {
       type: unavailable

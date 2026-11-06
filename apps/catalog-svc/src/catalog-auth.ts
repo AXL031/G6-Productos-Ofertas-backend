@@ -9,8 +9,6 @@ import {
   Optional,
   type ExecutionContext,
 } from '@nestjs/common';
-import { SanitizedLogger } from './sanitized-logger.js';
-import { isCorrelationId } from './correlation.js';
 import { Reflector } from '@nestjs/core';
 import {
   CATALOG_READ_DEMO,
@@ -29,46 +27,53 @@ const UUID_PATTERN =
 
 export interface CatalogSecurityConfig {
   issuer: string;
-  discoveryUrl: string;
+  discoveryUrl?: string;
   jwksUrl: string;
 }
 
 export function readCatalogSecurityConfig(
   env: Record<string, string | undefined> = process.env,
 ): CatalogSecurityConfig | undefined {
+  const simulated = env.G6_SECURITY_MODE === 'SIMULATED_AUTH';
   const values = [
-    env.SECURITY_ISSUER,
-    env.SECURITY_DISCOVERY_URL,
-    env.SECURITY_JWKS_URL,
+    simulated ? env.SIMULATED_AUTH_ISSUER : env.SECURITY_ISSUER,
+    simulated ? undefined : env.SECURITY_DISCOVERY_URL,
+    simulated ? env.SIMULATED_AUTH_JWKS_URL : env.SECURITY_JWKS_URL,
   ];
   if (values.every((value) => value === undefined || value.trim() === ''))
     return undefined;
-  if (values.some((value) => !value?.trim()))
+  if (
+    !values[0]?.trim() ||
+    !values[2]?.trim() ||
+    (!simulated && !values[1]?.trim())
+  )
     throw new Error(
-      'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
+      simulated
+        ? 'SIMULATED_AUTH_ISSUER y SIMULATED_AUTH_JWKS_URL deben configurarse juntos.'
+        : 'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
     );
 
   const issuer = values[0]!.trim();
-  const discoveryUrl = values[1]!.trim();
+  const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
     const issuerUrl = new URL(issuer);
-    const discovery = new URL(discoveryUrl);
+    const discovery = discoveryUrl ? new URL(discoveryUrl) : undefined;
     const jwks = new URL(jwksUrl);
     if (
       !['http:', 'https:'].includes(issuerUrl.protocol) ||
-      !['http:', 'https:'].includes(discovery.protocol) ||
+      (discovery && !['http:', 'https:'].includes(discovery.protocol)) ||
       !['http:', 'https:'].includes(jwks.protocol) ||
       issuerUrl.username ||
       issuerUrl.password ||
-      discovery.username ||
-      discovery.password ||
+      discovery?.username ||
+      discovery?.password ||
       jwks.username ||
       jwks.password ||
       issuerUrl.hash ||
-      discovery.hash ||
+      discovery?.hash ||
       jwks.hash ||
-      [issuerUrl, discovery, jwks].some(
+      [issuerUrl, ...(discovery ? [discovery] : []), jwks].some(
         (url) =>
           url.protocol === 'http:' &&
           !['localhost', '127.0.0.1', '::1', '[::1]'].includes(
@@ -82,7 +87,11 @@ export function readCatalogSecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, discoveryUrl, jwksUrl });
+  return Object.freeze({
+    issuer,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+    jwksUrl,
+  });
 }
 
 export type CatalogPrincipal =
@@ -227,19 +236,21 @@ export class CatalogTokenVerifier {
     if (!this.config) throw new CatalogSecurityUnavailable();
 
     try {
-      const discoveryResponse = await fetch(this.config.discoveryUrl, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-        headers: { accept: 'application/json' },
-      });
-      const discovery: unknown = await jsonResponse(discoveryResponse);
-      if (
-        !record(discovery) ||
-        discovery.issuer !== this.config.issuer ||
-        typeof discovery.jwks_uri !== 'string' ||
-        new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
-      )
-        throw new CatalogSecurityUnavailable();
+      if (this.config.discoveryUrl) {
+        const discoveryResponse = await fetch(this.config.discoveryUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: { accept: 'application/json' },
+        });
+        const discovery: unknown = await jsonResponse(discoveryResponse);
+        if (
+          !record(discovery) ||
+          discovery.issuer !== this.config.issuer ||
+          typeof discovery.jwks_uri !== 'string' ||
+          new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
+        )
+          throw new CatalogSecurityUnavailable();
+      }
 
       const response = await fetch(this.config.jwksUrl, {
         redirect: 'error',
@@ -353,12 +364,7 @@ export class CatalogTokenVerifier {
 
     if (claims.tipo === 'acceso') {
       const roles = strings(claims.roles);
-      const tokenAudiences = audiences(claims.aud);
-      if (
-        !UUID_PATTERN.test(claims.sub) ||
-        !roles ||
-        !tokenAudiences?.includes(SECURITY_AUDIENCE)
-      )
+      if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new CatalogTokenRejected();
       return { kind: 'user', subject: claims.sub, roles };
     }
@@ -410,8 +416,6 @@ export class CatalogAuthGuard implements CanActivate {
         catalogDemoPreview?: boolean;
       }
     >();
-    if (this.readDemo.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException({ code: 'SERVICIO_NO_DISPONIBLE' });
     const handlerOp =
       CATALOG_PUBLIC_OPERATION_BY_HANDLER[context.getHandler().name];
     const publicController =
@@ -429,43 +433,6 @@ export class CatalogAuthGuard implements CanActivate {
       this.readDemo.publicOperations?.includes(handlerOp)
     ) {
       // Public authorization never enables the legacy draft/administrative path.
-      return true;
-    }
-    if (this.readDemo.restricted && policy.restrictedDemo) {
-      const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
-      if (!peer || !this.readDemo.gatewayIps?.includes(peer))
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-      const correlation = request.headers['x-correlation-id'];
-      new SanitizedLogger('runtime').log({
-        code: 'CATALOG_RESTRICTED_DEMO_ACCESS',
-        actor: 'restricted-demo:catalog-svc',
-        operation: context.getHandler().name,
-        correlationId:
-          typeof correlation === 'string' && isCorrelationId(correlation)
-            ? correlation
-            : undefined,
-      });
-      // Explicit non-human access context; never a G7 principal or incoming identity.
-      delete request.headers.authorization;
-      Object.assign(request, { catalogRestrictedDemo: true });
-      return true;
-    }
-    if (this.readDemo.enabled) {
-      if (request.method === 'GET' && policy.demoRead) {
-        request.catalogDemoRead = true;
-        // An anonymous read is not a fabricated human/service identity.
-        return true;
-      }
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    }
-    if (
-      this.marketplacePreview &&
-      request.method === 'GET' &&
-      policy.marketplacePreviewRead &&
-      request.query.canal === 'MARKETPLACE'
-    ) {
-      request.catalogDemoPreview = true;
       return true;
     }
     const authorization = request.headers.authorization;

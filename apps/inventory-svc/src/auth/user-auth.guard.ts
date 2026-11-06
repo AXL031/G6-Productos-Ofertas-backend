@@ -9,7 +9,7 @@ import {
 
 /**
  * Guard de operador humano (`userBearer`). Valida la firma criptográfica
- * (RS256) con el material de confianza de G7, `exp` y `aud`, y —cuando el
+ * (RS256) con el material de confianza configurado, `exp` y `tipo=acceso`, y —cuando el
  * endpoint declara `x-required-local-capability`— comprueba la capacidad en los
  * claims del token. No exige `tipo=servicio`.
  */
@@ -17,7 +17,10 @@ import {
 export class UserAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(
+    context: ExecutionContext,
+    trust?: { publicKey: string; issuer: string },
+  ): boolean {
     const requiredCapability = this.reflector.getAllAndOverride<
       string | undefined
     >(REQUIRED_CAPABILITY_KEY, [context.getHandler(), context.getClass()]);
@@ -51,6 +54,7 @@ export class UserAuthGuard implements CanActivate {
     const payload: UserTokenPayload = verifyUserBearerToken(
       rawToken,
       correlationId,
+      trust,
     );
 
     if (

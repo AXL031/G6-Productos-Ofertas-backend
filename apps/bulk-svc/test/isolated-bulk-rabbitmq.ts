@@ -23,7 +23,9 @@ export class IsolatedBulkRabbitmq {
   private adminChannel: Channel | null = null;
   url = '';
 
-  async start(): Promise<void> {
+  async start(
+    options: { alternateCommandExchange?: boolean } = {},
+  ): Promise<void> {
     await exec(
       'docker',
       [
@@ -63,10 +65,26 @@ export class IsolatedBulkRabbitmq {
       throw new Error('RabbitMQ aislado no quedó disponible.');
     this.adminConnection.on('error', () => undefined);
     this.adminChannel = await this.adminConnection.createChannel();
+    if (options.alternateCommandExchange) {
+      await this.adminChannel.assertExchange('po.sin-ruta.x', 'fanout', {
+        durable: true,
+      });
+      await this.adminChannel.assertQueue('po.sin-ruta.q', {
+        durable: true,
+        arguments: { 'x-queue-type': 'quorum' },
+      });
+      await this.adminChannel.bindQueue('po.sin-ruta.q', 'po.sin-ruta.x', '');
+    }
     await this.adminChannel.assertExchange('po.comandos.x', 'topic', {
       durable: true,
+      ...(options.alternateCommandExchange
+        ? { alternateExchange: 'po.sin-ruta.x' }
+        : {}),
     });
     await this.adminChannel.assertExchange('po.resultados.x', 'topic', {
+      durable: true,
+    });
+    await this.adminChannel.assertExchange('po.eventos.x', 'topic', {
       durable: true,
     });
     await this.adminChannel.assertQueue('po.catalogo.q', { durable: true });
@@ -85,6 +103,22 @@ export class IsolatedBulkRabbitmq {
       'po.masivos.q',
       'po.resultados.x',
       'catalog.bulk.upsert.rejected',
+    );
+    for (const routingKey of [
+      'inventory.bulk.stock.adjust.completed',
+      'inventory.bulk.stock.adjust.rejected',
+      'pricing.bulk.price.apply.completed',
+      'pricing.bulk.price.apply.rejected',
+    ])
+      await this.adminChannel.bindQueue(
+        'po.masivos.q',
+        'po.resultados.x',
+        routingKey,
+      );
+    await this.adminChannel.bindQueue(
+      'po.masivos.q',
+      'po.eventos.x',
+      'inventory.stock.adjusted',
     );
   }
 
@@ -155,9 +189,12 @@ export class IsolatedBulkRabbitmq {
         name: string;
         message_id: string;
         correlation_id: string;
+        kind?: string;
       };
+      const exchange =
+        envelope.kind === 'event' ? 'po.eventos.x' : 'po.resultados.x';
       channel.publish(
-        'po.resultados.x',
+        exchange,
         envelope.name,
         Buffer.from(JSON.stringify(body)),
         {
@@ -173,6 +210,44 @@ export class IsolatedBulkRabbitmq {
     } finally {
       await channel.close();
     }
+  }
+
+  async queueDepth(): Promise<number> {
+    return (await this.adminChannel!.checkQueue('po.masivos.q')).messageCount;
+  }
+
+  async bindCatalogCommand(routingKey: string): Promise<void> {
+    await this.adminChannel!.bindQueue(
+      'po.catalogo.q',
+      'po.comandos.x',
+      routingKey,
+    );
+  }
+
+  async unbindCatalogCommand(routingKey: string): Promise<void> {
+    await this.adminChannel!.unbindQueue(
+      'po.catalogo.q',
+      'po.comandos.x',
+      routingKey,
+    );
+  }
+
+  async nextUnroutedCommand(): Promise<Record<string, unknown>> {
+    const deadline = Date.now() + 10000;
+    while (Date.now() < deadline) {
+      const message = await this.adminChannel!.get('po.sin-ruta.q', {
+        noAck: false,
+      });
+      if (message) {
+        this.adminChannel!.ack(message);
+        return JSON.parse(message.content.toString('utf8')) as Record<
+          string,
+          unknown
+        >;
+      }
+      await pause(25);
+    }
+    throw new Error('No llegó el comando a po.sin-ruta.q.');
   }
 
   async suspend(): Promise<void> {

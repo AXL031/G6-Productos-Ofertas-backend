@@ -13,6 +13,10 @@ describe('Filtros contractuales de auditoría', () => {
     ).toMatchObject({ page: 2, size: 10, filters: { sku: 'SKU' } });
   });
   it.each([
+    { desde: '2026-02-30T00:00:00Z' },
+    { desde: '2026-02-29T23:00:00-05:00' },
+    { desde: '2026-04-31T12:00:00Z' },
+    { desde: '2026-11-05T24:00:00Z' },
     { pagina: '0' },
     { tamanio: '201' },
     { pagina: ['1', '2'] },

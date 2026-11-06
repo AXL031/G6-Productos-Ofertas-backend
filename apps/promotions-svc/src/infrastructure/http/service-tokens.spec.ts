@@ -192,7 +192,7 @@ describe('Promotions own G7 client_credentials (explicit contract fixture)', () 
     );
   });
 
-  it('fails closed without credentials and makes no token request in restricted demo', async () => {
+  it('fails closed without credentials and makes no token request', async () => {
     const fetcher = vi.fn();
     vi.stubGlobal('fetch', fetcher);
     expect(
@@ -202,12 +202,6 @@ describe('Promotions own G7 client_credentials (explicit contract fixture)', () 
           PROMOTIONS_SERVICE_CLIENT_SECRET: undefined,
         }),
       )(request, signal()),
-    ).toBeNull();
-    expect(
-      await source(config({ GATEWAY_DEMO_NO_AUTH_ENABLED: 'true' }))(
-        request,
-        signal(),
-      ),
     ).toBeNull();
     expect(fetcher).not.toHaveBeenCalled();
   });

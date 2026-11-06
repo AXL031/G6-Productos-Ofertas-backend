@@ -1,4 +1,3 @@
-import { isIP } from 'node:net';
 /** Legacy read-only presentation and explicit restricted H4 access selection.
  * Neither policy grants commercial eligibility or fabricates a G7 principal.
  */
@@ -43,10 +42,12 @@ export function readCatalogReadDemo(
   const securityModeRaw = env.G6_SECURITY_MODE;
   if (
     securityModeRaw !== undefined &&
-    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(securityModeRaw)
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityModeRaw,
+    )
   ) {
     throw new Error(
-      'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY o G7_AUTHENTICATED; SIMULATED_AUTH no está homologado.',
+      'G6_SECURITY_MODE debe ser PUBLIC_READ_ONLY, SIMULATED_AUTH o G7_AUTHENTICATED.',
     );
   }
   const securityMode =
@@ -62,60 +63,18 @@ export function readCatalogReadDemo(
       'CATALOG_PUBLIC_OPERATION_IDS contiene una operación no elegible para lectura pública.',
     );
   }
-  const flag = env.G6_READ_ONLY_DEMO_ENABLED ?? 'false';
-  if (!['true', 'false'].includes(flag))
-    throw new Error('G6_READ_ONLY_DEMO_ENABLED debe ser true/false.');
-  const mode = env.GATEWAY_DEMO_NO_AUTH_ENABLED ?? 'false';
-  if (!['true', 'false'].includes(mode))
-    throw new Error('GATEWAY_DEMO_NO_AUTH_ENABLED debe ser true/false.');
   if (
-    securityModeRaw !== undefined &&
-    (mode === 'true' ||
-      flag === 'true' ||
-      env.CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED === 'true')
-  ) {
-    throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
-  }
+    env.GATEWAY_DEMO_NO_AUTH_ENABLED === 'true' ||
+    env.G6_READ_ONLY_DEMO_ENABLED === 'true' ||
+    env.CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED === 'true'
+  )
+    throw new Error('Los bypasses de lectura heredados están deshabilitados.');
   if (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length > 0) {
     throw new Error('Configuracion G6_SECURITY_MODE contradictoria.');
   }
-  if (securityModeRaw === 'PUBLIC_READ_ONLY') {
-    // Phase 1 never activates an automatic list of public operations.
-    return Object.freeze({
-      enabled: false,
-      securityMode,
-      publicOperations: Object.freeze(publicOperations),
-    });
-  }
-  if (mode === 'false')
-    return Object.freeze({
-      enabled: flag === 'true',
-      securityMode,
-    });
-  if (flag === 'true')
-    throw new Error('No combinar demo de lectura y demo restringida.');
-  const gatewayIps = (env.CATALOG_DEMO_GATEWAY_IPS ?? '')
-    .split(',')
-    .map((ip) => ip.trim());
-  if (
-    gatewayIps.some(
-      (ip) =>
-        isIP(ip) !== 4 ||
-        !(
-          ip.startsWith('10.') ||
-          ip.startsWith('127.') ||
-          ip.startsWith('192.168.') ||
-          /^172\.(1[6-9]|2[0-9]|3[01])\./.test(ip)
-        ),
-    )
-  )
-    throw new Error(
-      'CATALOG_DEMO_GATEWAY_IPS requiere IP privadas explicitas del Gateway.',
-    );
   return Object.freeze({
     enabled: false,
-    restricted: true,
-    gatewayIps: Object.freeze(gatewayIps),
     securityMode,
+    publicOperations: Object.freeze(publicOperations),
   });
 }

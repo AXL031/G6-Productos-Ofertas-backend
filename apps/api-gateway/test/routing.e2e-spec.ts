@@ -308,6 +308,16 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       const response =
         await methods[route.method as keyof typeof methods](path);
       expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        status: 401,
+        code: 'TOKEN_INVALIDO',
+      });
+      expect(Object.keys(response.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
       expect(calls).toHaveLength(0);
     },
   );
@@ -550,6 +560,12 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       ).set('Authorization', `Bearer ${token}`);
       expect(denied.status).toBe(403);
       expect(denied.body.code).toBe('SCOPE_INSUFICIENTE');
+      expect(Object.keys(denied.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
       expect(calls).toHaveLength(0);
     },
   );

@@ -14,11 +14,11 @@ describe('Local demo HTTP with unchanged business boundaries', () => {
   afterAll(() => fixture.cleanup());
   afterEach(async () => app?.close());
 
-  async function start(enabled: boolean) {
+  async function start() {
     const config = new PromotionsConfigService(
       validatePromotionsConfiguration({
         ...fixture.environment,
-        GATEWAY_DEMO_NO_AUTH_ENABLED: String(enabled),
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
       }),
     );
     const module = await Test.createTestingModule({
@@ -33,34 +33,18 @@ describe('Local demo HTTP with unchanged business boundaries', () => {
   }
 
   it('keeps JWT required by default', async () => {
-    const server = await start(false);
+    const server = await start();
     await request(server).get('/api/v1/cupones').expect(401);
     await request(server).post('/api/v1/cupones').send({}).expect(401);
   });
 
-  it('runs request validation without JWT and preserves unknown-route rejection', async () => {
-    const server = await start(true);
-    const result = await request(server)
-      .post('/api/v1/cupones')
-      .set('Authorization', 'Bearer not-a-trusted-identity')
-      .send({})
-      .expect(400);
-    expect(result.body.code).toBe('VALIDACION');
-    expect(result.headers['x-correlation-id']).toBeTruthy();
-    await request(server).get('/api/v1/cupones?pagina=0').expect(400);
-    await request(server).delete('/api/v1/cupones').expect(404);
-  });
-
-  it('keeps a missing commercial source explicit instead of returning invented prices', async () => {
-    const server = await start(true);
-    const result = await request(server)
-      .post('/api/v1/promociones/evaluar')
-      .send({
-        channel_id: 'MARKETPLACE',
-        lines: [{ sku: 'SKU-TEST', quantity: 1 }],
-      })
-      .expect(503);
-    expect(result.body.code).toBe('SERVICIO_NO_DISPONIBLE');
-    expect(result.body).not.toHaveProperty('result_amount');
+  it('rejects the legacy token-free flag during startup', () => {
+    expect(() =>
+      validatePromotionsConfiguration({
+        ...fixture.environment,
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+      }),
+    ).toThrow('GATEWAY_DEMO_NO_AUTH_ENABLED');
   });
 });

@@ -2,26 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 import { BulkImportService } from './bulk-import.service.js';
 import { BulkDomainError } from './domain/bulk.errors.js';
 import { BULK_TEMPLATE_HEADERS } from './domain/bulk-template-v2.js';
-import { parseBulkEnvironment } from './config/bulk-environment.js';
-
-const environment = (enabled = false) =>
-  parseBulkEnvironment({
-    NODE_ENV: 'test',
-    BULK_CATALOG_COMMAND_V2_ENABLED: enabled ? 'true' : 'false',
-  });
 
 describe('BulkImportService', () => {
   it('retains ALTA regular price when deriving required workflow domains', async () => {
     const createImportBatch = vi
       .fn()
       .mockResolvedValue({ batch: { status: 'QUEUED' } });
-    const service = new BulkImportService(
-      {
-        createImportBatch,
-        findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
-      } as never,
-      environment(),
-    );
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     const values = [
       'ALTA',
       '',
@@ -64,15 +54,14 @@ describe('BulkImportService', () => {
     ).toBe(12.5);
   });
 
-  it('fails closed before persistence for variant ACTUALIZACION while Catalog lookup is unavailable', async () => {
-    const createImportBatch = vi.fn();
-    const service = new BulkImportService(
-      {
-        createImportBatch,
-        findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
-      } as never,
-      environment(),
-    );
+  it('emits the approved v2 selector for variant ACTUALIZACION without a runtime flag', async () => {
+    const createImportBatch = vi
+      .fn()
+      .mockResolvedValue({ batch: { status: 'QUEUED' } });
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     const values = [
       'ACTUALIZACION',
       '11111111-1111-4111-8111-111111111111',
@@ -92,18 +81,24 @@ describe('BulkImportService', () => {
       '0',
     ];
     values[2] = '{"producto":0,"variante":0}';
-    await expect(
-      service.receiveImport({
-        bytes: Buffer.from(
-          `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
-        ),
-        format: 'CSV',
-        templateVersion: 2,
-        correlationId: '11111111-1111-4111-8111-111111111111',
-        contentRef: 'private://stored',
-      }),
-    ).rejects.toMatchObject({ code: 'DEPENDENCY_PENDING' });
-    expect(createImportBatch).not.toHaveBeenCalled();
+    await service.receiveImport({
+      bytes: Buffer.from(
+        `${BULK_TEMPLATE_HEADERS.join(',')}\r\n${values.map((value) => `"${value.replace(/"/g, '""')}"`).join(',')}\r\n`,
+      ),
+      format: 'CSV',
+      templateVersion: 2,
+      correlationId: '11111111-1111-4111-8111-111111111111',
+      contentRef: 'private://stored',
+    });
+    expect(
+      createImportBatch.mock.calls[0]?.[0].catalogCommands[0],
+    ).toMatchObject({
+      schemaVersion: 2,
+      payload: {
+        schema_version: 2,
+        data: { rows: [{ sku_variante: 'VAR-LOOKUP' }] },
+      },
+    });
   });
 
   it('emits v2 for an enabled variant update from the real CSV parser', async () => {
@@ -149,7 +144,7 @@ describe('BulkImportService', () => {
       batchId: '33333333-3333-4333-8333-333333333333',
       contentRef: 'private://stored',
     } as const;
-    const service = new BulkImportService(repository, environment(true));
+    const service = new BulkImportService(repository);
     await service.receiveImport(input);
     const admission = createImportBatch.mock.calls[0]?.[0];
     expect(admission.admissionIntent.catalogCommands[0]).toMatchObject({
@@ -171,14 +166,14 @@ describe('BulkImportService', () => {
       admission.admissionIntent.catalogCommands[0].data.rows[0].variant,
     ).not.toHaveProperty('sku');
     const v2Payload = admission.admissionIntent.catalogCommands[0];
-    const disabledService = new BulkImportService(repository, environment());
-    await disabledService.receiveImport(input);
+    const repeatService = new BulkImportService(repository);
+    await repeatService.receiveImport(input);
     const replay =
       createImportBatch.mock.calls[1]?.[0].admissionIntent.catalogCommands[0];
     expect(replay).toEqual(v2Payload);
   });
 
-  it('replays a persisted v1 command byte-for-byte even when v2 is enabled', async () => {
+  it('replays a persisted v1 command byte-for-byte for historical compatibility', async () => {
     const historical = {
       message_id: 'persisted-v1-message',
       schema_version: 1,
@@ -210,15 +205,12 @@ describe('BulkImportService', () => {
     const createImportBatch = vi
       .fn()
       .mockResolvedValue({ batch: { status: 'QUEUED' } });
-    const service = new BulkImportService(
-      {
-        createImportBatch,
-        findImportAdmissionIntent: vi.fn().mockResolvedValue({
-          catalogCommands: [historical],
-        }),
-      } as never,
-      environment(true),
-    );
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue({
+        catalogCommands: [historical],
+      }),
+    } as never);
     await service.createImport({
       batchId: '33333333-3333-4333-8333-333333333333',
       correlationId: '11111111-1111-4111-8111-111111111111',
@@ -245,13 +237,10 @@ describe('BulkImportService', () => {
     const createImportBatch = vi
       .fn()
       .mockResolvedValue({ batch: { status: 'QUEUED' } });
-    const service = new BulkImportService(
-      {
-        createImportBatch,
-        findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
-      } as never,
-      environment(),
-    );
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     await expect(
       service.createImport({
         batchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -284,13 +273,10 @@ describe('BulkImportService', () => {
 
   it('rejects invalid requests before persistence is called', async () => {
     const createImportBatch = vi.fn();
-    const service = new BulkImportService(
-      {
-        createImportBatch,
-        findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
-      } as never,
-      environment(),
-    );
+    const service = new BulkImportService({
+      createImportBatch,
+      findImportAdmissionIntent: vi.fn().mockResolvedValue(null),
+    } as never);
     await expect(
       service.createImport({
         batchId: 'batch',
@@ -308,10 +294,7 @@ describe('BulkImportService', () => {
     const recordDomainResult = vi
       .fn()
       .mockResolvedValue({ processed: true, result: 'DOMAIN_COMPLETED' });
-    const service = new BulkImportService(
-      { recordDomainResult } as never,
-      environment(),
-    );
+    const service = new BulkImportService({ recordDomainResult } as never);
     await expect(
       service.applyDomainResult({
         batchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
@@ -330,10 +313,7 @@ describe('BulkImportService', () => {
 
   it('rejects malformed operation identities before persistence', async () => {
     const recordDomainResult = vi.fn();
-    const service = new BulkImportService(
-      { recordDomainResult } as never,
-      environment(),
-    );
+    const service = new BulkImportService({ recordDomainResult } as never);
     await expect(
       service.applyDomainResult({
         batchId: 'batch',
