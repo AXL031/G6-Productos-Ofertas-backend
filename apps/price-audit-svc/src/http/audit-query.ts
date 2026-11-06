@@ -1,3 +1,4 @@
+import { validAuditTimestamp } from '../domain/audit-timestamp.js';
 import { AuditHttpError } from './audit-http.error.js';
 import { uuid } from '../domain/audit.js';
 
@@ -41,17 +42,7 @@ export function parseFilters(
     filters[key] = value;
   }
   for (const value of [filters.desde, filters.hasta]) {
-    if (
-      value !== undefined &&
-      (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
-        value,
-      ) ||
-        !Number.isFinite(Date.parse(value)) ||
-        new Date(value.slice(0, 10) + 'T00:00:00Z')
-          .toISOString()
-          .slice(0, 10) !== value.slice(0, 10))
-    )
-      invalid();
+    if (value !== undefined && !validAuditTimestamp(value)) invalid();
   }
   if (
     filters.desde &&
