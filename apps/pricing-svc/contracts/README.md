@@ -1,0 +1,62 @@
+# Contrato acordado de recuperación histórica A1
+
+Confirmado expresamente por el usuario el 2026-11-05 para la adaptación de Vera:
+
+- Mismo comando `pricing.product.initialization.requested`, envelope v1 y topología.
+- Discriminador `data.modalidad` opcional: `ALTA_PRODUCTO` por defecto, o
+  `RECUPERACION_HISTORICA` explícito; jamás inferido por motivo/datos existentes.
+- `precio_regular` number positivo obligatorio en alta, opcional solo en recuperación;
+  si se proporciona, se compara exactamente, sin redondeo ni tolerancia.
+  null/string no sustituyen su omisión. `moneda` siempre obligatoria.
+- `motivo_cambio=ALTA_PRODUCTO` permanece como metadata del comando compatible;
+  no discrimina modalidad ni cambia el motivo de la vigencia adoptada.
+- DTO completed/rejected existente: READY con versión/id reales de la vigencia
+  adoptada, o REJECTED/HISTORICAL_PRICE_CONFLICT. Intención distinta por
+  operation_id produce OPERATION_ID_CONFLICT. Precio omitido vs afirmado son
+  intenciones distintas; ALTA implícita y explícita son la misma intención.
+
+Fuente consultada: G6 Docs master `a7778ec1a22811c1213a94ef096ab905911342cc`,
+SPEC-013 y AsyncAPI 0.6.0-rc.4. El cambio compartido se entrega **preparado**,
+no publicado ni fusionado en Docs. No se declara aceptación por silencio de Catalog.
+
+## Artefactos
+
+- `recuperacion-historica-docs.patch`: modificaciones concordantes de
+  `contratos/eventos/asyncapi.yaml` y
+  `requisitos/specs/SPEC-013-gestion-precios-individuales-masivos.md`.
+- `historical-initialization.schema.json`: snapshot exacto del schema de request
+  actualizado, validado con JSON Schema Draft 2020-12.
+- `../test/fixtures/historical-initialization.json`: data contractual usada por
+  el productor fixture de la suite. product_id/sku_base y envelope se generan
+  en la prueba para aislar cada escenario; resultados proceden del handler real.
+
+Aplicar primero sobre el SHA Docs citado, en la rama autorizada de su owner;
+si el contrato evolucionó, revisar antes de aplicar. El patch utiliza cero líneas
+contextuales para no introducir whitespace dentro del artefacto. Desde Docs:
+
+```powershell
+git apply --unidiff-zero --check <ruta-absoluta-al-patch>
+git apply --unidiff-zero <ruta-absoluta-al-patch>
+```
+
+El clon local de revisión contiene ambos archivos actualizados y se verificó
+la aplicación inversa del patch. Publicación/CI/PR de Docs y adopción del
+productor Catalog siguen separadas de la PR DRAFT de Pricing. No se cambia
+la versión del envelope ni se inventa un segundo comando/campos monetarios.
+
+## Persistencia y replay
+
+Sin migración ni DDL: Inbox.processed_at conserva el corte obtenido con
+clock_timestamp() después de locks, preservado con microsegundos UTC; payload conserva intención original.
+El resultado Outbox conserva vigencia_id, price_version y decisión con el
+mismo instante en completed_at. El replay usa esos valores, cambia solo la
+identidad/correlación/causalidad del nuevo envío y no consulta reloj de negocio
+ni vigencias. Una nueva operación sí evalúa un corte nuevo.
+
+El intervalo se compara en SQL para no truncar límites históricos a Date.
+Selección bajo lock de operación y definición exacta global; la misma fila
+se bloquea en las mutaciones normales. Se exige una sola vigencia no cancelada
+con valid_from <= corte y corte < valid_until (o fin abierto). La versión
+retornada es la del snapshot adoptado, incluso si existe otro snapshot futuro
+con versión más nueva. No cambia definición, ofertas, fechas, motivos ni historial.
+No se generan hechos monetarios ni inicialización artificial.
