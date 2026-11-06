@@ -43,7 +43,7 @@ TLS verify-full y RabbitMQ 4.2.9 son descartables. Taxonomy y JWKS siguen siendo
 fixtures explícitas; no se atribuye E2E React/Gateway/G7 ni Supabase a esta prueba.
 El runtime Catalog no importa módulos ni entidades de otros bounded contexts.
 
-### Validación local y escenarios preparados
+### Validación local y ejecución integral del candidato
 
 599 unitarias Catalog PASS; 177 E2E Catalog PASS / 117 SKIP por infraestructura.
 General: 2252 unitarias PASS / 66 SKIP; E2E FAIL — Docker no disponible localmente
@@ -54,20 +54,58 @@ Primer script de compilación falló por URL ESM Windows; corregida a file URL.
 La verificación estricta del archivo E2E detectó un array histórico sin tipo;
 corregido dentro de Catalog sin any. El formato detectado se corrigió.
 
-Ejecución Docker nueva: NO EJECUTADA localmente; CI del candidato pendiente al
-corte de edición. Casos: completed/rejected auténticos, identidad y causalidad,
-cuarentena, duplicados/replay, ausencia de ubicación, saldos multiubicación;
-histórico simple, padre y dos variantes, moneda incompatible, precio inexistente
-y vigencias ambiguas, selección ajena, concurrencia y checks existentes;
-rollback, broker caído y recuperación posterior al commit. Se verifica con
-triggers que Pricing no puede hacer DML monetario durante adopción, snapshot
-monetario idéntico, 14 balances iguales y ausencia de eventos espurios.
+Docker permanece NO EJECUTADO localmente. La CI de compatibilidad del candidato
+funcional 4d5b0ef218ea0e041d7a75a13ff30adff504b669 sí ejecutó y aprobó:
+
+| Área / criterio | Evidencia real en CI |
+| --- | --- |
+| A1 simple histórico | HTTP → Pricing e Inventory auténticos → ambos COMPLETED → activación 200 |
+| A1 padre y variantes | Pricing del padre una vez, Inventory de dos variantes seleccionadas; activar variantes y después padre; cero inicialización del sku_base no físico |
+| A1 intención/idempotencia | Replay idéntico con adapter deshabilitado devuelve recibo durable; otra moneda/intención 409; concurrencia con único ganador; selección ajena sin efectos |
+| A1 negativos monetarios | Moneda incompatible, precio ausente y vigencias ambiguas REJECTED con IDs/versiones nulos; no se activa ni se reabre |
+| A2 Inventory definitivo | completed/rejected auténticos de 56aa432; userId g6_inventario verificado por RabbitMQ y Catalog; IDs/correlación/causalidad/esquema preservados |
+| A2 seguridad/durabilidad | Cuarentena de origen/SKU ajenos, broker rechaza userId falso, duplicados/replay/reentrega sin efectos nuevos, resultado tardío STALE con check original intacto |
+| A2 sin ubicación | Mismo SHA con #199: no ubicación arbitraria ni balances artificiales; saldos multiubicación conservados |
+| Fallos y recuperación | Fallo PostgreSQL después de writes revierte check/Outbox/recibo; broker caído tras commit deja PENDING y reinicio de procesos reales completa la operación |
+| Ausencia de mutación monetaria | Triggers rechazan INSERT/UPDATE/DELETE en prices/price_validities/scheduled_prices durante adopción y snapshot global permanece idéntico; cero price.changed histórico |
+| Referencia de stock | 14 balances de fixture / 7 SKU / 2 ubicaciones idénticos; cero stock.changed espurios y cero saldo para sku_base del padre |
+| A3 | Regresiones de consultas, barcode, elegibilidad, seguridad, persistencia y perf existentes PASS; no nueva optimización |
+
+[E2E del candidato funcional](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42227609213/job/127924983199):
+98 PostgreSQL Catalog PASS, 0 FAIL, 0 SKIP; Bulk 2 PASS; general 1060 PASS / 200 SKIP.
+[Unitarias](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42227609213/job/127924983192):
+2326 PASS / 71 SKIP. Checkout PR 267265a08aab4e4f2594b9bec8dfd2e96ee1f622
+contra master 61171913510daddc5baedc9532b236de1953fac5. El SHA final documental
+y sus ejecuciones de compatibilidad / HEAD puro se enlazan en #194 y el informe
+de entrega; no se atribuye una ejecución a un SHA distinto.
+Run 42227609213 del candidato funcional: SUCCESS, 18/18 jobs, incluidas imágenes,
+smokes, infraestructura y agregadores. El HEAD puro se verifica además mediante
+workflow_dispatch final, separado del merge sintético de compatibilidad.
+
+Los balances son fixtures representativos, no exportación ni ejecución sobre
+los 14 balances compartidos. Taxonomy/JWKS siguen siendo fixtures identificadas.
 El caso ambiguo elimina/restaura temporalmente una exclusión SOLO en el fixture
 descartable; no modifica SQL normativo ni migraciones de Pricing.
 
-0004 sigue siendo candidata, no aplicada en Supabase. Prueba añadida verifica
-owner, RLS, SELECT/INSERT, unicidad y denegación de UPDATE/DELETE/ALTER y schema
-ajeno. No se modifican migraciones históricas ni se ejecuta migración al iniciar.
+0004 sigue siendo candidata, no aplicada en Supabase. PASS de owner del schema,
+RLS, SELECT/INSERT, unicidad y denegación de UPDATE/DELETE/ALTER y schema ajeno.
+Revoca ACL runtime antes de conceder los dos permisos, sin depender de defaults.
+Compatible con 0001–0003; no se modifican migraciones aplicadas ni bootstrap.
+
+### Historial de correcciones del harness — no fallos ocultos
+
+- 3d3c74a / run 42225060321: FAIL de seedPrice por commits separados incompatibles
+  con timeline diferido. Corregido a definición+vigencia en la misma transacción;
+  fixture ambigua conserva versión/snapshots coherentes antes de medir adopción.
+- abcc4c7 / run 42225646340: FAIL por orden supuesto en DLQ; el resultado real
+  de colisión con SKU ajeno ya estaba correctamente en cuarentena. Se verifica
+  y consume ese ID explícito; tres fallos posteriores en cascada desaparecieron.
+- 359b7d1 / run 42226736913: FAIL del observador por recoger el negativo
+  catalog-joint al buscar por causa una respuesta real g6_inventario. Se consume
+  y verifica primero el negativo por su ID, sin relajar validación ni identidad.
+- 4d5b0ef: 98/98 PostgreSQL Catalog PASS, incluido el integral histórico. Los
+  mensajes positivos proceden de publicadores reales; fixtures negativas se
+  contabilizan y se comprueba su cuarentena. Ninguna suite fue deshabilitada.
 
 Master consultado: 61171913510daddc5baedc9532b236de1953fac5 (posterior a 5da1279
 del encargo); poma 45 commits detrás al consultar. No se sincroniza masivamente.
@@ -77,6 +115,28 @@ exactos en PR para acreditar compatibilidad sin merge local ni force push.
 Estado al corte: IMPLEMENTAR_PARCIAL / DRAFT. Publicación Docs, aprobación del
 delta HTTP, Gateway, grants G7, ACL/red operativa, migración compartida y despliegue
 permanecen separados. No se cierran/editaron issues automáticamente.
+
+### Criterios de issues y solicitud de cierre técnico
+
+| Issue | Acreditado / estado | ¿Solicitar cierre técnico? |
+| --- | --- | --- |
+| #12 | Dataset existente según auditoría externa aceptada; no regenerado ni activado compartidamente | Revisión del owner del dataset, sin atribuir nueva validación Supabase |
+| #23 | Consultas/barcode implementados y regresiones PASS; cero registros barcode compartidos no es fallo de código ni exige carga | Revisión de cierre interno con evidencia existente; no homologación externa |
+| #43 | Config/probes/readiness existentes pasan unitarias, provider y CI; no reimplementados | Sí para criterios internos de configuración; no READY_FOR_DEPLOY |
+| #44 | 0001–0004 en PostgreSQL TLS, restricciones/rollback/owner/permisos PASS | Sí para persistencia interna; aplicación compartida requiere autorización aparte |
+| #45 | Evidencia funcional histórica simple/padre/variantes e invariantes PASS con peers reales | Presentar aceptación técnica candidata; publicación contractual pendiente |
+| #46 | Consultas y perfiles existentes PASS; G2 externo/grants separados | Revisión de cierre interno, conservando pendientes externos |
+| #47 | Operación histórica candidata completa y probada, incluido delta moneda | Pendiente aprobar/publicar HTTP y errores; no cierre global todavía |
+| #48 | Pricing/Inventory auténticos por SHA, AMQP/Outbox/Inbox/causalidad/seguridad PASS | Subalcance interno acreditado; contratos/ACL/homologación pendientes, no cierre global automático |
+| #49 | Cuatro SELECT de listados ya probados; N+1 restantes no reproducidos en este encargo | No refactor ni cierre adicional; mantener evidencia y pendientes originales |
+| #50 | Frontend/Gateway externos a Catalog, ruta candidata no publicada allí | No, coordina su owner; no se implementa en esta PR |
+| #51 | E2E histórico de tres servicios reales aislados PASS; no equivale a React/Gateway/G7 reales | Subalcance G6 acreditado; cierre completo externo pendiente |
+
+E2E históricos propios del encargo ejecutados: simple, padre/dos variantes,
+rechazos, idempotencia/concurrencia, fallos y preservación. Pendientes: contrato
+normativo/moneda, Gateway/frontend, grant G7/homologación, migración compartida y
+operación/despliegue autorizados. No se presenta esa ausencia como defecto de
+Catalog ni se declara Bloque A COMPLETE o despliegue por la evidencia aislada.
 
 ## Estado vigente — continuación autorizada de #194
 

@@ -162,6 +162,27 @@
     "newHttpDelta": "moneda explícita para PRICING, sin precio_regular; pendiente aprobación Marco",
     "spec013Blob": "fdeca927bd03c548d816028e2e2b6f181620812d",
     "sharedDatabaseAudit": "Proporcionada externamente por usuario; no reinvestigada ni modificada",
-    "ciEvidence": "Ver descripción PR #194: HEAD, base/merge sintético y jobs finales exactos"
+    "ciEvidence": "Ver descripción PR #194: HEAD, base/merge sintético y jobs finales exactos",
+    "functionalEvidence": {
+      "catalogHead": "4d5b0ef218ea0e041d7a75a13ff30adff504b669",
+      "ciRun": 42227609213,
+      "status": "SUCCESS",
+      "jobsSuccess": 18,
+      "checkoutPrMerge": "267265a08aab4e4f2594b9bec8dfd2e96ee1f622",
+      "base": "61171913510daddc5baedc9532b236de1953fac5",
+      "e2eJob": 127924983199,
+      "unitJob": 127924983192,
+      "unitPass": 2326,
+      "unitSkip": 71,
+      "e2ePass": 1060,
+      "e2eSkip": 200,
+      "catalogPostgresPass": 98,
+      "catalogPostgresSkip": 0,
+      "bulkOutagePass": 2,
+      "historicalSimpleParentVariants": "PASS with real pinned peers",
+      "monetaryDmlDuringAdoption": "NONE; rejection triggers and snapshot equality",
+      "stockReference": "14 representative disposable balances preserved, not shared Supabase data",
+      "finalHeadEvidence": "PR #194 records final docs HEAD, compatibility CI and exact HEAD workflow_dispatch independently"
+    }
   }
 }
