@@ -5,6 +5,66 @@ import { tmpdir } from 'node:os';
 import { isAbsolute, join, relative, resolve } from 'node:path';
 import { setTimeout as pause } from 'node:timers/promises';
 
+export function argumentosReadinessPhase1(containerName: string): string[] {
+  return [
+    'exec',
+    containerName,
+    'pg_isready',
+    '-h',
+    '127.0.0.1',
+    '-p',
+    '5432',
+    '-U',
+    'postgres',
+  ];
+}
+
+export type FaseInicioPostgres =
+  | 'initdb_failed'
+  | 'recovery_after_interruption'
+  | 'server_shutdown_marker'
+  | 'init_complete_final_server_pending'
+  | 'postgres_ready_marker'
+  | 'no_known_startup_marker';
+
+export function clasificarLogsInicioPostgres(logs: string): FaseInicioPostgres {
+  const markers: Array<{ index: number; phase: FaseInicioPostgres }> = [];
+  const patterns: Array<{ pattern: RegExp; phase: FaseInicioPostgres }> = [
+    {
+      pattern:
+        /(?:initdb:.*(?:error|failed)|database is uninitialized and superuser password is not specified)/i,
+      phase: 'initdb_failed',
+    },
+    {
+      pattern: /database system was interrupted/i,
+      phase: 'recovery_after_interruption',
+    },
+    {
+      pattern: /database system is shut down/i,
+      phase: 'server_shutdown_marker',
+    },
+    {
+      pattern: /PostgreSQL init process complete; ready for start up\./i,
+      phase: 'init_complete_final_server_pending',
+    },
+    {
+      pattern: /database system is ready to accept connections/i,
+      phase: 'postgres_ready_marker',
+    },
+  ];
+
+  for (const { pattern, phase } of patterns) {
+    const globalPattern = new RegExp(pattern.source, `${pattern.flags}g`);
+    const matches = [...logs.matchAll(globalPattern)];
+    const match = matches.at(-1);
+    if (match?.index !== undefined) markers.push({ index: match.index, phase });
+  }
+  return (
+    markers.sort((left, right) => right.index - left.index)[0]?.phase ??
+    'no_known_startup_marker'
+  );
+}
+
 /** Always creates its own database. No supplied URL or shared environment is read. */
 export class Phase1Postgres {
   readonly name = 'g6-phase1-' + randomUUID();
@@ -102,16 +162,23 @@ export class Phase1Postgres {
     ]);
     this.created = true;
     const deadline = Date.now() + 30000;
+    let lastProbe: { status: number | null; errored: boolean } = {
+      status: null,
+      errored: false,
+    };
     for (;;) {
-      const ready =
-        spawnSync(
-          'docker',
-          ['exec', this.name, 'pg_isready', '-U', 'postgres'],
-          { windowsHide: true, timeout: 3000, stdio: 'ignore' },
-        ).status === 0;
-      if (ready) break;
+      const probe = spawnSync('docker', argumentosReadinessPhase1(this.name), {
+        windowsHide: true,
+        timeout: 3000,
+        stdio: 'ignore',
+      });
+      lastProbe = {
+        status: probe.status,
+        errored: Boolean(probe.error),
+      };
+      if (probe.status === 0) break;
       if (Date.now() >= deadline)
-        throw new Error('Isolated PostgreSQL startup timed out');
+        throw new Error(this.diagnosticoReadiness(lastProbe));
       await pause(200);
     }
     const mapping = this.command('docker', ['port', this.name, '5432/tcp']);
@@ -133,6 +200,62 @@ export class Phase1Postgres {
       RESET ROLE;`);
     // Frozen official taxonomy migration: Docs a7778ec1, Git blob
     // 3db51993e6c06ecfcbc2e93f6757f848a78987f4. Only the disposable DB is migrated.
+  }
+
+  private diagnosticoReadiness(probe: {
+    status: number | null;
+    errored: boolean;
+  }): string {
+    const stateResult = spawnSync(
+      'docker',
+      [
+        'inspect',
+        '--format',
+        '{{.State.Status}}|{{.State.ExitCode}}|{{.State.OOMKilled}}',
+        this.name,
+      ],
+      { encoding: 'utf8', windowsHide: true, timeout: 5000 },
+    );
+    const [rawStatus, rawExitCode, rawOomKilled] =
+      stateResult.status === 0
+        ? String(stateResult.stdout).trim().split('|')
+        : [];
+    const containerStatus =
+      rawStatus &&
+      /^(created|running|paused|restarting|removing|exited|dead)$/.test(
+        rawStatus,
+      )
+        ? rawStatus
+        : 'unknown';
+    const exitCode =
+      rawExitCode && /^-?\d+$/.test(rawExitCode)
+        ? Number(rawExitCode)
+        : 'unknown';
+    const oomKilled =
+      rawOomKilled === 'true'
+        ? true
+        : rawOomKilled === 'false'
+          ? false
+          : 'unknown';
+    const logsResult = spawnSync(
+      'docker',
+      ['logs', '--tail', '40', this.name],
+      {
+        encoding: 'utf8',
+        windowsHide: true,
+        timeout: 5000,
+      },
+    );
+    const logPhase =
+      logsResult.status === 0
+        ? clasificarLogsInicioPostgres(
+            `${String(logsResult.stdout)}\n${String(logsResult.stderr)}`,
+          )
+        : 'unavailable';
+    const probeStatus = Number.isInteger(probe.status)
+      ? probe.status
+      : 'unknown';
+    return `Isolated PostgreSQL TCP readiness timed out after 30000 ms: ${JSON.stringify({ containerStatus, exitCode, oomKilled, logPhase, probeStatus, probeError: probe.errored })}`;
   }
 
   env(service: 'catalog' | 'taxonomy'): NodeJS.ProcessEnv {

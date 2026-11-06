@@ -257,6 +257,7 @@ export class TaxonomyMastersController {
 
   @Get('tipos-producto')
   @AllowTaxonomyServiceRead()
+  @RequireTaxonomyCommercialUser()
   async listarTiposProducto(
     @Query('pagina') paginaTexto?: string,
     @Query('tamanio') tamanioTexto?: string,
@@ -279,6 +280,7 @@ export class TaxonomyMastersController {
 
   @Get('tipos-producto/:tipoProductoId')
   @AllowTaxonomyServiceRead()
+  @RequireTaxonomyCommercialUser()
   async obtenerTipoProducto(
     @Param('tipoProductoId') id: string,
     @Headers('x-correlation-id') correlationId?: string,
@@ -311,6 +313,7 @@ export class TaxonomyMastersController {
 
   @Get('caracteristicas/:caracteristicaId/valores')
   @AllowTaxonomyServiceRead()
+  @RequireTaxonomyCommercialUser()
   async listarValoresCaracteristica(
     @Param('caracteristicaId') id: string,
     @Query('estado') estado?: string,
@@ -394,6 +397,7 @@ export class TaxonomyMastersController {
 
   @Get('tipos-producto/:tipoProductoId/caracteristicas')
   @AllowTaxonomyServiceRead()
+  @RequireTaxonomyCommercialUser()
   async obtenerEsquemaTipoProducto(
     @Param('tipoProductoId') id: string,
     @Headers('x-correlation-id') correlationId?: string,
