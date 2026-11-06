@@ -1,9 +1,12 @@
 import { CONTRACT_ROUTES } from './contract-routes.js';
+import { isEligiblePublicRead } from './gateway-public-reads.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
 export const GATEWAY_SETTINGS = Symbol('GATEWAY_SETTINGS');
+export type GatewaySecurityMode =
+  'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
 export interface GatewaySettings {
   readonly upstreams: Readonly<Record<string, string>>;
   readonly timeoutMs: number;
@@ -15,6 +18,7 @@ export interface GatewaySettings {
   readonly demoNoAuthEnabled: boolean;
   /** Compatibility with PR #125; this flag grants only its approved GET subset. */
   readonly readOnlyDemoEnabled?: boolean;
+  readonly securityMode?: GatewaySecurityMode;
 }
 
 export function readGatewayPort(env: Readonly<NodeJS.ProcessEnv>): number {
@@ -93,6 +97,19 @@ export function readGatewaySettings(
     const readOnlyDemoEnabled = env.G6_READ_ONLY_DEMO_ENABLED ?? 'false';
     if (!['true', 'false'].includes(demoNoAuthEnabled)) throw new Error();
     if (!['true', 'false'].includes(readOnlyDemoEnabled)) throw new Error();
+    if (
+      env.G6_SECURITY_MODE !== undefined &&
+      !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(env.G6_SECURITY_MODE)
+    )
+      throw new Error();
+    const securityMode: GatewaySecurityMode =
+      (env.G6_SECURITY_MODE as GatewaySecurityMode | undefined) ??
+      'G7_AUTHENTICATED';
+    if (
+      env.G6_SECURITY_MODE !== undefined &&
+      (demoNoAuthEnabled === 'true' || readOnlyDemoEnabled === 'true')
+    )
+      throw new Error();
     // The broad H4 mode and the legacy Catalog read-only mode are mutually
     // exclusive. Ambiguous configuration must never widen the read-only cap.
     if (demoNoAuthEnabled === 'true' && readOnlyDemoEnabled === 'true')
@@ -112,13 +129,17 @@ export function readGatewaySettings(
     }
     const publicOperations = (env.GATEWAY_PUBLIC_OPERATION_IDS ?? '')
       .split(',')
+      .map((id) => id.trim())
       .filter(Boolean);
     if (
-      publicOperations.some(
-        (id) =>
-          !CONTRACT_ROUTES.some(
-            (r) => r.operationId === id && r.security.length === 0,
-          ),
+      publicOperations.some((id) =>
+        securityMode === 'PUBLIC_READ_ONLY'
+          ? !CONTRACT_ROUTES.some(
+              (r) => r.operationId === id && isEligiblePublicRead(r),
+            )
+          : !CONTRACT_ROUTES.some(
+              (r) => r.operationId === id && r.security.length === 0,
+            ),
       )
     )
       throw new Error();
@@ -132,6 +153,7 @@ export function readGatewaySettings(
       publicOperations: Object.freeze(publicOperations),
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
       readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',
+      securityMode,
     });
   } catch {
     throw new Error(

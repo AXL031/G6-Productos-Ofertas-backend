@@ -316,7 +316,13 @@ describe('autorización HTTP de escritura de maestros', () => {
       audiences: ['api-productos'],
       roles: [],
     });
-    await get().set('Authorization', 'Bearer humano').expect(200);
+    await get().set('Authorization', 'Bearer cliente').expect(403);
+    verificar.mockResolvedValueOnce({
+      kind: 'user',
+      audiences: [],
+      roles: ['GESTOR_COMERCIAL'],
+    });
+    await get().set('Authorization', 'Bearer gestor').expect(200);
   });
   it('permite al gestor consultar detalles y deniega el detalle de característica a otros usuarios', async () => {
     const id = '11111111-1111-4111-8111-111111111111';

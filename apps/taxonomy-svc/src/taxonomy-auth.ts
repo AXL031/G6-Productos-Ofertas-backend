@@ -2,6 +2,7 @@ import {
   CanActivate,
   Inject,
   Injectable,
+  Optional,
   UnauthorizedException,
   ForbiddenException,
   ServiceUnavailableException,
@@ -14,6 +15,19 @@ import type { Request } from 'express';
 
 export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
 export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
+export const TAXONOMY_PUBLIC_READ_CONFIG = Symbol(
+  'TAXONOMY_PUBLIC_READ_CONFIG',
+);
+export type TaxonomySecurityMode =
+  'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+export interface TaxonomyPublicReadConfig {
+  readonly securityMode: TaxonomySecurityMode;
+  readonly publicOperations: readonly string[];
+}
+const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
+  'listarCategorias',
+  'listarMarcas',
+]);
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
 const TAXONOMY_SERVICE_CLIENTS = 'taxonomy:service-clients';
@@ -23,14 +37,45 @@ export const AllowTaxonomyServiceClients = (...clients: string[]) =>
   SetMetadata(TAXONOMY_SERVICE_CLIENTS, Object.freeze([...clients]));
 export const RequireTaxonomyCommercialUser = () =>
   SetMetadata(TAXONOMY_COMMERCIAL_USER_READ, true);
+export function readTaxonomyPublicReadConfig(
+  env: Readonly<NodeJS.ProcessEnv> = process.env,
+): TaxonomyPublicReadConfig {
+  const mode = env.G6_SECURITY_MODE;
+  if (
+    mode !== undefined &&
+    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(mode)
+  ) {
+    throw new Error('Configuración de demo Taxonomy inválida');
+  }
+  const securityMode: TaxonomySecurityMode =
+    (mode as TaxonomySecurityMode | undefined) ?? 'G7_AUTHENTICATED';
+  const publicOperations = (env.TAXONOMY_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => !TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS.has(id))
+  ) {
+    throw new Error('Configuración de demo Taxonomy inválida');
+  }
+  if (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length > 0) {
+    throw new Error('Configuración de demo Taxonomy inválida');
+  }
+  return Object.freeze({
+    securityMode,
+    publicOperations: Object.freeze(publicOperations),
+  });
+}
 export function readTaxonomyDemoConfig(
   env: Readonly<NodeJS.ProcessEnv>,
 ): boolean {
+  readTaxonomyPublicReadConfig(env);
   const flag = env.ALLOW_DEMO_UNAUTHENTICATED;
   if (flag === undefined || flag === 'false') return false;
   if (
     flag !== 'true' ||
-    !['test', 'development'].includes(env.NODE_ENV ?? '')
+    !['test', 'development'].includes(env.NODE_ENV ?? '') ||
+    env.G6_SECURITY_MODE !== undefined
   ) {
     throw new Error('Configuración de demo Taxonomy inválida');
   }
@@ -351,14 +396,13 @@ export class TaxonomyTokenVerifier {
 
     if (claims.tipo === 'acceso') {
       const roles = claims.roles === undefined ? [] : strings(claims.roles);
-      const tokenAudiences = audiences(claims.aud);
-      if (!UUID_PATTERN.test(claims.sub) || !roles || !tokenAudiences)
+      if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new TaxonomyTokenRejected();
       return {
         kind: 'user',
         subject: claims.sub,
         roles,
-        audiences: tokenAudiences,
+        audiences: [],
       };
     }
     if (claims.tipo === 'servicio') {
@@ -377,13 +421,31 @@ export class TaxonomyTokenVerifier {
   }
 }
 
+function isApprovedPublicTaxonomyOperation(
+  handlerName: string | undefined,
+  config: TaxonomyPublicReadConfig | undefined,
+): boolean {
+  if (!handlerName || config?.securityMode !== 'PUBLIC_READ_ONLY') return false;
+  return (
+    TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS.has(handlerName) &&
+    config.publicOperations.includes(handlerName)
+  );
+}
+
 @Injectable()
 export class TaxonomyUserGuard implements CanActivate {
-  constructor(private readonly verifier: TaxonomyTokenVerifier) {}
+  constructor(
+    private readonly verifier: TaxonomyTokenVerifier,
+    @Optional()
+    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
+    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
+    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
+      throw new ServiceUnavailableException();
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
@@ -396,9 +458,9 @@ export class TaxonomyUserGuard implements CanActivate {
         throw new UnauthorizedException();
       throw new ServiceUnavailableException();
     }
-    if (!principal.audiences.includes(SECURITY_AUDIENCE))
-      throw new UnauthorizedException();
     if (principal.kind === 'service') {
+      if (!principal.audiences.includes(SECURITY_AUDIENCE))
+        throw new UnauthorizedException();
       if (
         request.method !== 'GET' ||
         Reflect.getMetadata(TAXONOMY_SERVICE_READ, context.getHandler()) !==
@@ -446,18 +508,38 @@ export class TaxonomyAuthGuard implements CanActivate {
   constructor(
     private readonly verifier: TaxonomyTokenVerifier,
     @Inject(TAXONOMY_DEMO_ENABLED) private readonly demoEnabled: boolean,
+    @Optional()
+    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
+    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
     const authorization = request.headers.authorization;
-    const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
+    const peer = request.socket?.remoteAddress?.replace(/^::ffff:/, '');
+    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
+      throw new ServiceUnavailableException();
     if (
       this.demoEnabled &&
       authorization === undefined &&
       request.method === 'GET' &&
       ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
       (peer === '127.0.0.1' || peer === '::1')
+    ) {
+      return true;
+    }
+    const handlerName =
+      context.getHandler?.()?.name ||
+      (request.path === '/api/v1/categorias'
+        ? 'listarCategorias'
+        : request.path === '/api/v1/marcas'
+          ? 'listarMarcas'
+          : undefined);
+    if (
+      authorization === undefined &&
+      request.method === 'GET' &&
+      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
+      isApprovedPublicTaxonomyOperation(handlerName, this.publicReadConfig)
     ) {
       return true;
     }

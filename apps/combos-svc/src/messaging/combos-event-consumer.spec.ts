@@ -85,4 +85,24 @@ describe('validateCombosEvent', () => {
     };
     expect(validateCombosEvent(value, message(value)).data.available).toBe(6);
   });
+
+  it('rejects ISO-looking timestamps with impossible calendar or clock values', () => {
+    for (const occurredAt of [
+      '2026-02-30T12:00:00.000Z',
+      '2026-13-01T12:00:00Z',
+      '2026-11-02T25:00:00Z',
+      '2026-11-02T12:00:60Z',
+      '2026-11-02T12:00:00+15:00',
+    ]) {
+      const value = { ...base, occurred_at: occurredAt };
+      expect(() => validateCombosEvent(value, message(value))).toThrow();
+    }
+  });
+
+  it('accepts explicitly namespaced envelope extensions', () => {
+    const value = { ...base, 'x-source-region': 'local-test' };
+    expect(validateCombosEvent(value, message(value)).name).toBe(
+      'catalog.sku.deactivated',
+    );
+  });
 });
