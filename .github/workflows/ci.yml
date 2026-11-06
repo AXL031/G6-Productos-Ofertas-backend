@@ -379,6 +379,8 @@ jobs:
       run: bash ops/oracle/tests/deployment-api.test.sh
     - name: Probar aislamiento ante fallos de publicación
       run: bash ops/oracle/tests/publish-isolation.test.sh
+    - name: Probar publicación manual por actores autorizados y SHA validado
+      run: bash ops/oracle/tests/publish-only-workflow.test.sh
     - name: Probar resguardo de imágenes SHA inmutables
       run: bash ops/oracle/tests/ensure-ghcr-sha-image.test.sh
     - name: Comprobar sintaxis de scripts Bash de operación

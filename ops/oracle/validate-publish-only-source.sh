@@ -15,7 +15,7 @@ event_sha="${GITHUB_SHA:-}"
 readonly authorized_repository='Taller-SW-Web/G6-Productos-Ofertas-backend'
 
 case "$service" in
-  api-gateway|catalog-svc|taxonomy-svc) ;;
+  api-gateway|bulk-svc|catalog-svc|combos-svc|inventory-svc|price-audit-svc|pricing-svc|promotions-svc|taxonomy-svc) ;;
   *) fail 'servicio fuera de la allowlist de publicación' ;;
 esac
 [[ "$requested_sha" =~ ^[0-9a-f]{40}$ ]] || fail 'SHA inválido'
@@ -23,6 +23,16 @@ esac
   fail 'el SHA solicitado no coincide con el SHA del evento workflow_dispatch'
 [[ "${repository,,}" == "${authorized_repository,,}" ]] ||
   fail 'GITHUB_REPOSITORY no autorizado'
+[[ "${GITHUB_EVENT_NAME:-}" == workflow_dispatch && "${GITHUB_REF:-}" == refs/heads/master ]] ||
+  fail 'la publicación requiere workflow_dispatch desde master'
+case "${GITHUB_ACTOR:-}" in
+  mrcastilla8|AXL031) ;;
+  *) fail 'actor de publicación no autorizado' ;;
+esac
+case "${GITHUB_TRIGGERING_ACTOR:-}" in
+  mrcastilla8|AXL031) ;;
+  *) fail 'actor de reejecución no autorizado' ;;
+esac
 [[ -n "${GH_TOKEN:-}" ]] || fail 'GITHUB_TOKEN de solo lectura no disponible'
 [[ -n "$output_file" ]] || fail 'archivo de outputs requerido'
 
