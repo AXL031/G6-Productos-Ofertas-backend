@@ -53,6 +53,15 @@ Drizzle usa exclusivamente la misma instancia `pg.Pool` que `BulkReadinessServic
 
 El schema `bulk` se prepara con el bootstrap y el migrador oficiales de Docs. La aplicación no ejecuta DDL ni modifica `schema_migrations`; los triggers y el resto del DDL permanecen bajo autoridad de la migración oficial. En pruebas, configure únicamente una URL loopback con `sslmode=disable` explícito y una base desechable.
 
+### Prerrequisitos aditivos para exportaciones
+
+Antes de desplegar workers de exportación, aplicar en orden las migraciones Bulk aditivas mediante el proceso revisado de migración del servicio:
+
+1. `migrations/0002_export_source_snapshot.sql` agrega `file_manifests.metadata`, requerida para persistir `requested_at`, los instantes observados y las versiones de las fuentes.
+2. `migrations/0003_export_claim_lease.sql` agrega `export_jobs.claim_token` y `lease_until`, requeridas para reclamar, renovar y cercar intentos concurrentes.
+
+Ambas son prerrequisitos de persistencia del flujo exportador. No alterar migraciones históricas, ejecutar DDL desde la aplicación ni aplicar estos cambios directamente en Supabase compartido. Confirmar su aplicación en el esquema destino antes de habilitar los workers.
+
 ## Validación local aislada
 
 Use una instancia PostgreSQL desechable, cree/prepare el schema `bulk` y `bulk.batch_jobs` conforme al modelo físico aprobado, y configure una URL de prueba. Para TLS local use un certificado de prueba y una CA PEM aislada; la conexión sin TLS requiere host loopback, `NODE_ENV=development` o `test`, y `sslmode=disable` explícito. No ejecute pruebas de integración de #88 contra Supabase compartido.
