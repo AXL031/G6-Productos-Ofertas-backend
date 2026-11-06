@@ -25,6 +25,13 @@ Marco y a que siga siendo master vigente con CI push/master exitosa.
 
 ## 1. Publicación controlada: owner Marco
 
+**Estado posterior:** ya finalizaron las tres publicaciones oficiales para
+`167090af...`. Los digests y sus runs están en
+[artefactos oficiales](ARTEFACTOS_OFICIALES_167090a.md). La copia privada del
+manifiesto está completa; la lectura con la configuración actual del operador
+devolvió unauthorized. Resolver acceso antes de desplegar. Los comandos de esta
+sección quedan como procedimiento de referencia, no como tarea por repetir.
+
 Usar exclusivamente el workflow oficial
 [`publish-only-images.yml`](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/blob/5114c2566175bc99a093c3db1068bf9512bb5d48/.github/workflows/publish-only-images.yml).
 El guard restringe `actor` y `triggering_actor` a `mrcastilla8`; no se crea otro
@@ -125,6 +132,9 @@ vacías hasta aprobación normativa individual. No inferir grants u homologació
 G7 del éxito de lecturas públicas.
 
 ## 5. Ensayo obligatorio tras las autorizaciones individuales
+
+Preparación ampliada: [checklist](CHECKLIST_DESPLIEGUE_AZURE.md) y
+[plan HTTPS con positivos/negativos](PLAN_PRUEBAS_HTTPS_MARKETPLACE.md).
 
 Probar por HTTPS real de Azure sin JWT cada operación aprobada:
 
