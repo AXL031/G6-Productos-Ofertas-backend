@@ -32,10 +32,11 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
   const service = () => createCryptographicJwt({ clientId: 'modulo-ventas' });
   const human = (options: Parameters<typeof createCryptographicJwt>[0] = {}) =>
     createCryptographicJwt({
-      tipo: 'usuario',
-      sub: 'gestor-prueba',
+      tipo: 'acceso',
+      sub: '00000000-0000-4000-8000-000000000001',
       roles: ['GESTOR_COMERCIAL'],
       scope: '',
+      includeAudience: false,
       ...options,
     });
   const state = () =>
@@ -157,7 +158,7 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
     expect(state()).toEqual(before);
   });
 
-  it('las capacidades locales siguen siendo necesarias además del rol', async () => {
+  it('mantiene traslados cerrados en G7 hasta definir los grants locales, incluso con un claim adicional', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/inventario/traslados')
       .set('Authorization', `Bearer ${human()}`)
@@ -168,7 +169,7 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
         'Authorization',
         `Bearer ${human({ capabilities: ['INVENTARIO_TRASLADOS_LEER'] })}`,
       )
-      .expect(200);
+      .expect(403);
   });
 
   it('exige ubicación explícita si los saldos corresponden a ubicaciones diferentes', async () => {
@@ -204,8 +205,10 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
           'Authorization',
           `Bearer ${human({ capabilities: ['INVENTARIO_TRASLADOS_LEER'] })}`,
         )
-        .expect(400);
-      expect(res.body.code).toBe('VALIDACION');
+        .expect(path.includes('/traslados') ? 403 : 400);
+      expect(res.body.code).toBe(
+        path.includes('/traslados') ? 'SCOPE_INSUFICIENTE' : 'VALIDACION',
+      );
       expect(query).not.toHaveBeenCalled();
     },
   );

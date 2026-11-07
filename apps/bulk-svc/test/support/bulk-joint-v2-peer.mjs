@@ -12,7 +12,6 @@ const { Pool } = require('pg');
 const { drizzle } = require('drizzle-orm/node-postgres');
 const load = (file) => import(pathToFileURL(join(config.build, file)).href);
 const { BulkImportService } = await load('bulk-import.service.js');
-const { parseBulkEnvironment } = await load('config/bulk-environment.js');
 const { BulkPersistenceRepository } = await load(
   'persistence/bulk.repository.js',
 );
@@ -33,13 +32,7 @@ const pool = new Pool({
 const repo = new BulkPersistenceRepository(
   drizzle(pool, { schema: bulkSchema }),
 );
-const importer = new BulkImportService(
-  repo,
-  parseBulkEnvironment({
-    NODE_ENV: 'test',
-    BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
-  }),
-);
+const importer = new BulkImportService(repo);
 const consumer = new CatalogBulkResultConsumer(repo, config.broker);
 const relay = new BulkOutboxRelay(repo, config.broker);
 
@@ -245,7 +238,6 @@ try {
       DATABASE_URL: databaseUrl.toString(),
       BULK_AMQP_ENABLED: 'true',
       BULK_AMQP_URL: config.broker,
-      BULK_CATALOG_COMMAND_V2_ENABLED: 'true',
       BULK_SVC_HOST: '127.0.0.1',
       BULK_DEMO_GATEWAY_IPS: '127.0.0.1',
       BULK_STORAGE_BUCKET: storageBucket,
@@ -302,8 +294,19 @@ try {
       .post('/api/v1/carga-masiva/productos/importaciones')
       .set('x-correlation-id', testCase.correlation)
       .field('template_version', '2')
-      .attach('archivo', csvBytes, 'catalog-update.csv')
-      .expect(202);
+      .attach('archivo', csvBytes, 'catalog-update.csv');
+    if (accepted.status !== 202)
+      throw Object.assign(
+        new Error(
+          `HTTP admission returned ${accepted.status}: ${accepted.body?.code ?? 'NO_CODE'}`,
+        ),
+        {
+          code: String(accepted.body?.code ?? 'HTTP_ERROR').replace(
+            /[^A-Z0-9_]/g,
+            '_',
+          ),
+        },
+      );
     const batchId = accepted.body.batch_id;
     if (accepted.body.correlation_id !== testCase.correlation)
       throw new Error('HTTP admission did not preserve correlation_id');
@@ -336,17 +339,57 @@ try {
     }
     const initialHttpSnapshot = snapshot.body;
     if (
-      initialHttpSnapshot.status !== 'PROCESSING' ||
+      initialHttpSnapshot.status !== 'COMPLETED' ||
+      initialHttpSnapshot.completed_rows !== 1 ||
       initialHttpSnapshot.rows[0]?.applied_domains.join(',') !== 'CATALOGO' ||
+      initialHttpSnapshot.rows[0]?.status !== 'COMPLETED' ||
       resultInboxCount !== 1
-    )
+    ) {
+      const [commandRows, receipts] = await Promise.all([
+        pool.query(
+          "SELECT message_id, payload, published_at FROM bulk.outbox WHERE event_name = 'catalog.bulk.upsert.requested' AND correlation_id = $1",
+          [testCase.correlation],
+        ),
+        pool.query(
+          'SELECT handler, event_name, result, payload FROM bulk.inbox WHERE correlation_id = $1 ORDER BY created_at',
+          [testCase.correlation],
+        ),
+      ]);
       throw new Error(
-        'HTTP result was not durably consolidated by Catalog only',
+        `HTTP result not consolidated: batch=${initialHttpSnapshot.status}/${initialHttpSnapshot.rows[0]?.applied_domains?.join(',') ?? 'NO_ROW'}; resultReceipts=${resultInboxCount}; commands=${JSON.stringify(commandRows.rows)}; inbox=${JSON.stringify(receipts.rows)}`,
       );
+    }
     const firstHttpOutbox = await pool.query(
       "SELECT message_id, payload, published_at FROM bulk.outbox WHERE event_name = 'catalog.bulk.upsert.requested' AND correlation_id = $1",
       [testCase.correlation],
     );
+    const httpCommand = firstHttpOutbox.rows[0]?.payload;
+    const httpCommandRow = httpCommand?.data?.rows?.[0];
+    const httpResultReceipt = await pool.query(
+      "SELECT payload FROM bulk.inbox WHERE handler = 'bulk.catalog.bulk-upsert.result' AND event_name = 'catalog.bulk.upsert.completed' AND correlation_id = $1",
+      [testCase.correlation],
+    );
+    const httpResultEnvelope = httpResultReceipt.rows[0]?.payload;
+    if (
+      firstHttpOutbox.rowCount !== 1 ||
+      !firstHttpOutbox.rows[0].published_at ||
+      httpCommand?.schema_version !== 2 ||
+      httpCommand?.message_id !== firstHttpOutbox.rows[0].message_id ||
+      httpCommand?.operation_id !== httpCommand?.data?.batch_operation_id ||
+      httpCommand?.correlation_id !== testCase.correlation ||
+      httpCommand?.causation_id !== null ||
+      httpCommand?.data?.batch_id !== batchId ||
+      httpCommandRow?.sku_variante !== testCase.skuVariant ||
+      typeof httpCommandRow?.row_operation_id !== 'string' ||
+      httpResultEnvelope?.causation_id !== httpCommand?.message_id ||
+      httpResultEnvelope?.operation_id !== httpCommand?.operation_id ||
+      httpResultEnvelope?.correlation_id !== testCase.correlation ||
+      httpResultEnvelope?.data?.batch_operation_id !==
+        httpCommand?.data?.batch_operation_id
+    )
+      throw new Error(
+        'HTTP Catalog v2 command/result causal identity mismatch',
+      );
     const contentRef = (await httpRepository.findBatchByBatchId(batchId))
       ? (
           await pool.query(
@@ -401,6 +444,10 @@ try {
       admission: accepted.body,
       snapshot: finalHttpSnapshot.body,
       outboxMessageId: replayOutbox.rows[0].message_id,
+      operationId: httpCommand.operation_id,
+      batchOperationId: httpCommand.data.batch_operation_id,
+      rowOperationId: httpCommandRow.row_operation_id,
+      resultCausationId: httpResultEnvelope.causation_id,
       catalogResultReceipts: replayReceipts.rows[0].count,
       storedContentRef: contentRef,
     };
@@ -414,7 +461,13 @@ try {
     typeof error?.code === 'string' && /^[A-Z0-9_]+$/.test(error.code)
       ? error.code
       : 'UNAVAILABLE';
-  console.error(`Disposable Bulk v2 peer failed at ${phase} (${code}).`);
+  const detail =
+    error instanceof Error
+      ? error.message.replace(/[^\x20-\x7E]/g, '').slice(0, 180)
+      : '';
+  console.error(
+    `Disposable Bulk v2 peer failed at ${phase} (${code}): ${detail}`,
+  );
   process.exitCode = 1;
 } finally {
   await httpApp?.close();

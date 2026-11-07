@@ -207,6 +207,8 @@ CREATE TABLE bulk.export_jobs (
     created_at     timestamptz     NOT NULL DEFAULT now(),
     completed_at   timestamptz     NULL,
     updated_at     timestamptz     NOT NULL DEFAULT now(),
+    claim_token    uuid            NULL,
+    lease_until    timestamptz     NULL,
 
     CONSTRAINT pk_export_jobs PRIMARY KEY (id),
     CONSTRAINT uq_export_jobs_export_id UNIQUE (export_id),

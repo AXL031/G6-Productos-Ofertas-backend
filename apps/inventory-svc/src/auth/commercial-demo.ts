@@ -16,6 +16,7 @@ const METHODS = {
 export interface CommercialRequest extends Request {
   clientId?: string;
   [DEMO_REQUEST]?: true;
+  inventoryPublicRead?: true;
 }
 
 /** Excepción temporal de #25/#100; no modifica scopes ni identidad productivos. */
@@ -23,6 +24,8 @@ export const AllowCommercialDemo = (operation: keyof typeof METHODS) =>
   SetMetadata(DEMO_OPERATION, operation);
 export const isCommercialDemoRequest = (request: CommercialRequest): boolean =>
   request[DEMO_REQUEST] === true;
+export const isInventoryPublicRead = (request: CommercialRequest): boolean =>
+  request.inventoryPublicRead === true;
 
 export function authorizeCommercialDemo(
   context: ExecutionContext,

@@ -26,9 +26,11 @@ function options(
   return {
     origin: config.settings.upstreams.catalog!,
     origins: config.settings.upstreams,
-    mode: config.settings.localDemoEnabled
-      ? 'RESTRICTED_DEMO'
-      : 'AUTHENTICATED',
+    mode:
+      config.settings.securityMode === 'PUBLIC_READ_ONLY' &&
+      config.settings.publicOperations.length > 0
+        ? 'PUBLIC_READ_ONLY'
+        : 'AUTHENTICATED',
     getServiceAccessToken: tokens,
   };
 }

@@ -34,12 +34,16 @@ chmod +x "$MOCK_BIN/gh"
 export PATH="$MOCK_BIN:$PATH"
 export GITHUB_REPOSITORY="$REPOSITORY"
 export GITHUB_SHA="$SHA"
+export GITHUB_EVENT_NAME=workflow_dispatch
+export GITHUB_REF=refs/heads/master
+export GITHUB_ACTOR=mrcastilla8
+export GITHUB_TRIGGERING_ACTOR=mrcastilla8
 export GH_TOKEN='fixture-read-token'
 export MOCK_MASTER_SHA="$SHA"
 export MOCK_EXPECT_SHA="$SHA"
 export MOCK_CI_SUCCESS=true
 
-for service in api-gateway catalog-svc taxonomy-svc; do
+for service in api-gateway bulk-svc catalog-svc combos-svc inventory-svc price-audit-svc pricing-svc promotions-svc taxonomy-svc; do
   : > "$OUTPUT"
   bash "$VALIDATOR" "$service" "$SHA" "$OUTPUT"
   grep -Fqx "sha=$SHA" "$OUTPUT" || fail "$service valid SHA output"
@@ -63,7 +67,31 @@ expect_reject() {
   pass "$name rejected before outputs"
 }
 
-expect_reject 'unsupported service' pricing-svc "$SHA"
+expect_reject 'unsupported service' unknown-svc "$SHA"
+expect_reject 'service shell injection' 'pricing-svc;echo unsafe' "$SHA"
+for actor in mrcastilla8 AXL031; do
+  for triggering_actor in mrcastilla8 AXL031; do
+    export GITHUB_ACTOR="$actor" GITHUB_TRIGGERING_ACTOR="$triggering_actor"
+    : > "$OUTPUT"
+    bash "$VALIDATOR" pricing-svc "$SHA" "$OUTPUT"
+    grep -Fqx 'service=pricing-svc' "$OUTPUT" || fail 'authorized publisher pair rejected'
+  done
+done
+export GITHUB_ACTOR=unauthorized
+expect_reject 'unauthorized dispatch actor' pricing-svc "$SHA"
+export GITHUB_ACTOR=AXL031 GITHUB_TRIGGERING_ACTOR=unauthorized
+expect_reject 'unauthorized rerun actor' pricing-svc "$SHA"
+unset GITHUB_TRIGGERING_ACTOR
+expect_reject 'missing rerun actor' pricing-svc "$SHA"
+export GITHUB_TRIGGERING_ACTOR=AXL031
+export GITHUB_REF=refs/heads/cueva
+expect_reject 'non-master dispatch' pricing-svc "$SHA"
+export GITHUB_REF=refs/heads/master GITHUB_EVENT_NAME=push
+expect_reject 'non-dispatch event' pricing-svc "$SHA"
+export GITHUB_EVENT_NAME=workflow_dispatch
+export GITHUB_REPOSITORY='AXL031/G6-Productos-Ofertas-backend'
+expect_reject 'fork cannot publish official releases' pricing-svc "$SHA"
+export GITHUB_REPOSITORY="$REPOSITORY"
 expect_reject 'malformed SHA' api-gateway abc
 export GITHUB_REPOSITORY='Taller-SW-Web/otro-repositorio'
 expect_reject 'unauthorized repository' api-gateway "$SHA"
@@ -89,13 +117,14 @@ grep -Fq 'type: choice' "$WORKFLOW" || fail 'service is not a choice input'
 grep -Fq 'type: string' "$WORKFLOW" || fail 'SHA input is not a string'
 grep -Fq "github.actor == 'mrcastilla8'" "$WORKFLOW" || fail 'publication dispatch is not restricted to the original owner'
 grep -Fq "github.triggering_actor == 'mrcastilla8'" "$WORKFLOW" || fail 'publication rerun is not restricted to the triggering owner'
+grep -Fq "(github.actor == 'mrcastilla8' || github.actor == 'AXL031')" "$WORKFLOW" || fail 'dispatch does not use the exact two-actor allowlist'
+grep -Fq "(github.triggering_actor == 'mrcastilla8' || github.triggering_actor == 'AXL031')" "$WORKFLOW" || fail 'rerun does not use the exact two-actor allowlist'
+grep -Fq "github.repository == '$REPOSITORY'" "$WORKFLOW" || fail 'workflow is not restricted to the official repository'
 grep -Fq "github.ref == 'refs/heads/master'" "$WORKFLOW" || fail 'dispatch is not restricted to master'
-for service in api-gateway catalog-svc taxonomy-svc; do
+for service in api-gateway bulk-svc catalog-svc combos-svc inventory-svc price-audit-svc pricing-svc promotions-svc taxonomy-svc; do
   grep -Fq -- "- $service" "$WORKFLOW" || fail "missing service $service"
 done
-for forbidden in bulk-svc combos-svc pricing-svc promotions-svc inventory-svc price-audit-svc; do
-  if grep -Fq -- "- $forbidden" "$WORKFLOW"; then fail "service outside scope: $forbidden"; fi
-done
+[[ "$(grep -Ec '^          - [a-z-]+$' "$WORKFLOW")" == 9 ]] || fail 'publisher must have exactly nine service choices'
 grep -Fq 'deploy-g6-services-oracle-${{ github.repository }}-${{ inputs.service }}' "$WORKFLOW" || fail 'publisher and CD do not share concurrency group'
 grep -Fq 'packages: write' "$WORKFLOW" || fail 'GHCR package permission missing'
 grep -Fq 'actions: read' "$WORKFLOW" || fail 'CI verification permission missing'

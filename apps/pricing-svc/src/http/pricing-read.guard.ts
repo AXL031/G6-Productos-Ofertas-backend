@@ -11,6 +11,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingHttpError } from './pricing-http.error.js';
 import { SafeLogger } from '../logging/safe-logger.js';
@@ -33,6 +34,7 @@ function decode(value: string): unknown {
 export class PricingReadGuard implements CanActivate {
   private cache: JsonWebKey[] = [];
   private expires = 0;
+  private validUntil = 0;
   private loading?: Promise<JsonWebKey[]>;
 
   constructor(@Inject(PRICING_CONFIG) private readonly config: PricingConfig) {}
@@ -60,12 +62,32 @@ export class PricingReadGuard implements CanActivate {
       (typeof correlation !== 'string' || !uuid.test(correlation))
     )
       throw new PricingHttpError(400, 'VALIDACION');
-    if (this.config.demoNoAuthEnabled) return true;
+    const handler = context.getHandler();
+    const operationId: string | undefined = (
+      {
+        batch: 'consultarPrecios',
+        sku: 'obtenerPrecioSku',
+        product: 'obtenerPrecioBaseProducto',
+        productSchedules: 'listarProgramacionesPrecioProducto',
+        skuSchedules: 'listarProgramacionesPrecioSku',
+        imported: 'obtenerImportacionPrecios',
+        importReport: 'descargarReporteImportacionPrecios',
+      } as Readonly<Record<string, string>>
+    )[handler?.name];
+    if (
+      operationId &&
+      isPhase1PublicRead(
+        request,
+        this.config.securityMode,
+        this.config.publicOperations,
+        operationId,
+      )
+    )
+      return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
       request.headers.authorization ?? '',
     );
     if (!bearer) throw new PricingHttpError(401, 'TOKEN_INVALIDO');
-    const handler = context.getHandler();
     await this.authorize(
       bearer[1],
       !!handler &&
@@ -99,7 +121,7 @@ export class PricingReadGuard implements CanActivate {
         (header.typ !== undefined && header.typ !== 'JWT')
       )
         throw new Error();
-      const keys = (await this.keys()).filter(
+      const keys = (await this.keys(header.kid)).filter(
         (key) =>
           key.kid === header.kid &&
           key.kty === 'RSA' &&
@@ -107,7 +129,9 @@ export class PricingReadGuard implements CanActivate {
           (!key.use || key.use === 'sig') &&
           (!key.key_ops ||
             (Array.isArray(key.key_ops) && key.key_ops.includes('verify'))) &&
-          !key.d,
+          !['d', 'p', 'q', 'dp', 'dq', 'qi'].some(
+            (property) => property in key,
+          ),
       );
       if (keys.length !== 1) throw new Error();
       const key = createPublicKey({ key: keys[0], format: 'jwk' });
@@ -146,7 +170,11 @@ export class PricingReadGuard implements CanActivate {
         throw new Error();
       if (service) {
         const audiences = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
-        if (!audiences.includes('api-productos'))
+        const expectedAudience =
+          serviceScope === 'tokens:introspeccion'
+            ? 'api-seguridad'
+            : 'api-productos';
+        if (!audiences.includes(expectedAudience))
           throw new PricingHttpError(401, 'TOKEN_INVALIDO');
         if (
           typeof claims.scope !== 'string' ||
@@ -170,8 +198,12 @@ export class PricingReadGuard implements CanActivate {
     }
   }
 
-  private async keys(): Promise<JsonWebKey[]> {
-    if (Date.now() < this.expires) return this.cache;
+  private async keys(kid?: string): Promise<JsonWebKey[]> {
+    if (
+      Date.now() < this.expires &&
+      (!kid || this.cache.some((key) => key.kid === kid))
+    )
+      return this.cache;
     if (this.loading) return this.loading;
     this.loading = (async () => {
       try {
@@ -205,7 +237,15 @@ export class PricingReadGuard implements CanActivate {
         )
           throw new Error();
         this.cache = body.keys;
-        this.expires = Date.now() + 60000;
+        const directives = response.headers.get('cache-control') ?? '';
+        const seconds = /(?:no-store|no-cache)/i.test(directives)
+          ? 0
+          : Math.min(
+              3600,
+              Number(directives.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1] ?? 3600),
+            );
+        this.validUntil = Date.now() + seconds * 1000;
+        this.expires = Date.now() + Math.min(60, seconds) * 1000;
         return this.cache;
       } catch {
         throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
@@ -213,6 +253,15 @@ export class PricingReadGuard implements CanActivate {
     })();
     try {
       return await this.loading;
+    } catch (error) {
+      // Retain only a previously trusted kid within the bounded trust window.
+      if (
+        kid &&
+        Date.now() < this.validUntil &&
+        this.cache.some((key) => key.kid === kid)
+      )
+        return this.cache;
+      throw error;
     } finally {
       this.loading = undefined;
     }

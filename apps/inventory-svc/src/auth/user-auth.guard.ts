@@ -1,5 +1,7 @@
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
+import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { REQUIRED_CAPABILITY_KEY } from './auth.constants.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
@@ -9,7 +11,7 @@ import {
 
 /**
  * Guard de operador humano (`userBearer`). Valida la firma criptográfica
- * (RS256) con el material de confianza de G7, `exp` y `aud`, y —cuando el
+ * (RS256) con el material de confianza configurado, `exp` y `tipo=acceso`, y —cuando el
  * endpoint declara `x-required-local-capability`— comprueba la capacidad en los
  * claims del token. No exige `tipo=servicio`.
  */
@@ -17,7 +19,65 @@ import {
 export class UserAuthGuard implements CanActivate {
   constructor(private readonly reflector: Reflector) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  canActivate(
+    context: ExecutionContext,
+    trust?: { publicKey: string; issuer: string },
+  ): boolean | Promise<boolean> {
+    const phase1Request = context.switchToHttp().getRequest();
+    const publicOperations = (process.env.INVENTORY_PUBLIC_OPERATION_IDS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean);
+    if (
+      isPhase1PublicRead(
+        phase1Request,
+        process.env.G6_SECURITY_MODE,
+        publicOperations,
+      )
+    )
+      return true;
+    const simulated = process.env.G6_SECURITY_MODE === 'SIMULATED_AUTH';
+    if (!trust && (simulated || process.env.G7_JWT_JWKS_URL !== undefined)) {
+      const authorization = phase1Request.headers.authorization;
+      const bearer =
+        typeof authorization === 'string' &&
+        /^Bearer ([^ ]+)$/.exec(authorization);
+      const issuer = simulated
+        ? process.env.SIMULATED_AUTH_ISSUER
+        : process.env.G7_JWT_ISSUER;
+      if (
+        !bearer ||
+        !issuer ||
+        (simulated && issuer === process.env.G7_JWT_ISSUER)
+      )
+        throw ProblemDetailsException.tokenInvalido();
+      return trustedJwksPublicKey(
+        bearer[1],
+        simulated
+          ? process.env.SIMULATED_AUTH_JWKS_URL
+          : process.env.G7_JWT_JWKS_URL,
+        process.env.NODE_ENV,
+      )
+        .then((publicKey) => this.authorize(context, { publicKey, issuer }))
+        .catch((error: unknown) => {
+          if (error instanceof ProblemDetailsException) throw error;
+          if (error instanceof JwksUnavailable)
+            throw new ProblemDetailsException({
+              type: '/errores/servicio-no-disponible',
+              title: 'Servicio no disponible',
+              status: 503,
+              code: 'SERVICIO_NO_DISPONIBLE',
+            });
+          throw ProblemDetailsException.tokenInvalido();
+        });
+    }
+    return this.authorize(context, trust);
+  }
+
+  private authorize(
+    context: ExecutionContext,
+    trust?: { publicKey: string; issuer: string },
+  ): boolean {
     const requiredCapability = this.reflector.getAllAndOverride<
       string | undefined
     >(REQUIRED_CAPABILITY_KEY, [context.getHandler(), context.getClass()]);
@@ -51,6 +111,7 @@ export class UserAuthGuard implements CanActivate {
     const payload: UserTokenPayload = verifyUserBearerToken(
       rawToken,
       correlationId,
+      trust,
     );
 
     if (
@@ -64,6 +125,15 @@ export class UserAuthGuard implements CanActivate {
     }
 
     if (requiredCapability) {
+      // The owner has not defined the local grants source for real G7 users yet.
+      if (
+        (process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED') ===
+        'G7_AUTHENTICATED'
+      )
+        throw ProblemDetailsException.scopeInsuficiente(
+          'Operación pendiente de concesión de capacidades locales',
+          correlationId,
+        );
       const granted = this.collectCapabilities(payload);
       if (!granted.has(requiredCapability)) {
         throw ProblemDetailsException.scopeInsuficiente(

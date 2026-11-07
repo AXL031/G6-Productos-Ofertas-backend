@@ -61,6 +61,38 @@ export function persistenceError(error: unknown): BulkPersistenceError {
   return new BulkPersistenceError(code, error);
 }
 
+/** True only when PostgreSQL returned a server-side rejection that aborts the transaction. */
+export function isConfirmedTransactionRollback(error: unknown): boolean {
+  if (error instanceof BulkPersistenceError) {
+    if (
+      error.code === 'UNIQUE_CONFLICT' ||
+      error.code === 'FOREIGN_KEY_VIOLATION' ||
+      error.code === 'CHECK_VIOLATION' ||
+      error.code === 'NOT_NULL_VIOLATION'
+    )
+      return true;
+    if (error.code !== 'PERSISTENCE_FAILURE') return false;
+  }
+  const pending: unknown[] = [error];
+  const visited = new Set<unknown>();
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (!current || typeof current !== 'object' || visited.has(current))
+      continue;
+    visited.add(current);
+    const code = 'code' in current ? Reflect.get(current, 'code') : undefined;
+    if (
+      typeof code === 'string' &&
+      ['23505', '23503', '23514', '23502', '40001', '40P01'].includes(code)
+    )
+      return true;
+    if (typeof code === 'string' && /^[0-9A-Z]{5}$/.test(code)) return false;
+    for (const key of ['cause', 'originalError', 'parent'])
+      if (key in current) pending.push(Reflect.get(current, key));
+  }
+  return false;
+}
+
 function findPgError(error: unknown): { code?: string } | undefined {
   const pending: unknown[] = [error];
   const visited = new Set<unknown>();

@@ -78,6 +78,9 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       throw new Error('No test provider address');
     const origin = `http://127.0.0.1:${address.port}`;
     settings = {
+      // Only the two contract-public SEO reads are selected in this transport
+      // fixture. All other operations still exercise their signed JWT policy.
+      securityMode: 'PUBLIC_READ_ONLY',
       upstreams: Object.fromEntries(
         CONTRACT_ROUTES.map((r) => [r.service, origin]),
       ),
@@ -308,6 +311,16 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       const response =
         await methods[route.method as keyof typeof methods](path);
       expect(response.status).toBe(401);
+      expect(response.body).toMatchObject({
+        status: 401,
+        code: 'TOKEN_INVALIDO',
+      });
+      expect(Object.keys(response.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
       expect(calls).toHaveLength(0);
     },
   );
@@ -550,6 +563,12 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       ).set('Authorization', `Bearer ${token}`);
       expect(denied.status).toBe(403);
       expect(denied.body.code).toBe('SCOPE_INSUFICIENTE');
+      expect(Object.keys(denied.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
       expect(calls).toHaveLength(0);
     },
   );

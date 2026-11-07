@@ -1,3 +1,4 @@
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
@@ -22,10 +23,13 @@ export class CatalogContextHttp implements PricingCatalogContext {
       if (!this.config.catalogUrl || !uuid.test(correlationId))
         throw new Error();
       // Credencial propia: nunca se recibe ni reenvía el bearer del consumidor.
-      const authorization = this.config.demoNoAuthEnabled
-        ? null
-        : await this.token?.();
-      if (!this.config.demoNoAuthEnabled && !authorization) throw new Error();
+      const publicRead =
+        this.config.securityMode === 'PUBLIC_READ_ONLY' &&
+        this.config.publicOperations?.some((id) =>
+          PHASE1_PUBLIC_OPERATION_IDS.has(id),
+        );
+      const authorization = publicRead ? undefined : await this.token?.();
+      if (!publicRead && !authorization) throw new Error();
       const response = await fetch(
         `${this.config.catalogUrl}/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
         {

@@ -14,9 +14,30 @@ export class SignedUser {
     alg: 'RS256',
   };
 
-  async start(): Promise<void> {
-    this.server = createServer((_request, response) => {
+  async start(withServiceToken = false): Promise<void> {
+    this.server = createServer(async (request, response) => {
       response.setHeader('Content-Type', 'application/json');
+      response.setHeader('Cache-Control', 'public, max-age=60');
+      if (withServiceToken && request.url === '/api/v1/auth/token') {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const params = new URLSearchParams(Buffer.concat(chunks).toString());
+        const scope = params.get('scope') ?? '';
+        response.end(
+          JSON.stringify({
+            tokenType: 'Bearer',
+            accessToken: this.token({
+              sub: 'modulo-productos',
+              tipo: 'servicio',
+              aud: 'api-productos',
+              scope,
+            }),
+            expiresIn: 60,
+            scopes: [scope],
+          }),
+        );
+        return;
+      }
       response.end(JSON.stringify({ keys: [this.jwk] }));
     });
     await new Promise<void>((resolve) =>

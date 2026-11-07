@@ -9,8 +9,6 @@ import {
   Optional,
   type ExecutionContext,
 } from '@nestjs/common';
-import { SanitizedLogger } from './sanitized-logger.js';
-import { isCorrelationId } from './correlation.js';
 import { Reflector } from '@nestjs/core';
 import {
   CATALOG_READ_DEMO,
@@ -20,6 +18,7 @@ import {
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
+import { isPhase1PublicRead } from './phase1-public-reads.js';
 
 export const CATALOG_SECURITY_CONFIG = Symbol('CATALOG_SECURITY_CONFIG');
 const CATALOG_AUTH_POLICY = Symbol('CATALOG_AUTH_POLICY');
@@ -29,46 +28,55 @@ const UUID_PATTERN =
 
 export interface CatalogSecurityConfig {
   issuer: string;
-  discoveryUrl: string;
+  discoveryUrl?: string;
   jwksUrl: string;
 }
 
 export function readCatalogSecurityConfig(
   env: Record<string, string | undefined> = process.env,
 ): CatalogSecurityConfig | undefined {
+  const simulated = env.G6_SECURITY_MODE === 'SIMULATED_AUTH';
   const values = [
-    env.SECURITY_ISSUER,
-    env.SECURITY_DISCOVERY_URL,
-    env.SECURITY_JWKS_URL,
+    simulated ? env.SIMULATED_AUTH_ISSUER : env.SECURITY_ISSUER,
+    simulated ? undefined : env.SECURITY_DISCOVERY_URL,
+    simulated ? env.SIMULATED_AUTH_JWKS_URL : env.SECURITY_JWKS_URL,
   ];
   if (values.every((value) => value === undefined || value.trim() === ''))
     return undefined;
-  if (values.some((value) => !value?.trim()))
+  if (
+    !values[0]?.trim() ||
+    !values[2]?.trim() ||
+    (!simulated && !values[1]?.trim())
+  )
     throw new Error(
-      'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
+      simulated
+        ? 'SIMULATED_AUTH_ISSUER y SIMULATED_AUTH_JWKS_URL deben configurarse juntos.'
+        : 'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
     );
 
   const issuer = values[0]!.trim();
-  const discoveryUrl = values[1]!.trim();
+  if (simulated && issuer === env.SECURITY_ISSUER?.trim())
+    throw new Error('SIMULATED_AUTH requiere un emisor independiente de G7.');
+  const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
     const issuerUrl = new URL(issuer);
-    const discovery = new URL(discoveryUrl);
+    const discovery = discoveryUrl ? new URL(discoveryUrl) : undefined;
     const jwks = new URL(jwksUrl);
     if (
       !['http:', 'https:'].includes(issuerUrl.protocol) ||
-      !['http:', 'https:'].includes(discovery.protocol) ||
+      (discovery && !['http:', 'https:'].includes(discovery.protocol)) ||
       !['http:', 'https:'].includes(jwks.protocol) ||
       issuerUrl.username ||
       issuerUrl.password ||
-      discovery.username ||
-      discovery.password ||
+      discovery?.username ||
+      discovery?.password ||
       jwks.username ||
       jwks.password ||
       issuerUrl.hash ||
-      discovery.hash ||
+      discovery?.hash ||
       jwks.hash ||
-      [issuerUrl, discovery, jwks].some(
+      [issuerUrl, ...(discovery ? [discovery] : []), jwks].some(
         (url) =>
           url.protocol === 'http:' &&
           !['localhost', '127.0.0.1', '::1', '[::1]'].includes(
@@ -82,7 +90,11 @@ export function readCatalogSecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, discoveryUrl, jwksUrl });
+  return Object.freeze({
+    issuer,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+    jwksUrl,
+  });
 }
 
 export type CatalogPrincipal =
@@ -120,6 +132,8 @@ export class CatalogSecurityUnavailable extends Error {}
 interface JwtHeader {
   alg?: unknown;
   kid?: unknown;
+  crit?: unknown;
+  typ?: unknown;
 }
 
 interface JwtClaims {
@@ -138,6 +152,7 @@ interface JwtClaims {
 interface CachedKeys {
   keys: ReadonlyMap<string, KeyObject>;
   expiresAt: number;
+  validUntil: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -163,11 +178,15 @@ function audiences(value: unknown): string[] | undefined {
 }
 
 function cacheDuration(response: Response): number {
+  if (
+    /(?:no-store|no-cache)/i.test(response.headers.get('cache-control') ?? '')
+  )
+    return 0;
   const directive = response.headers
     .get('cache-control')
     ?.match(/(?:^|,)\s*max-age=(\d+)/i);
   const seconds = directive ? Number(directive[1]) : 60;
-  return Math.max(0, Math.min(seconds, 300)) * 1000;
+  return Math.max(0, Math.min(seconds, 3600)) * 1000;
 }
 
 async function jsonResponse(response: Response): Promise<unknown> {
@@ -210,9 +229,10 @@ export class CatalogTokenVerifier {
     private readonly config?: CatalogSecurityConfig,
   ) {}
 
-  private async loadKeys(): Promise<CachedKeys> {
+  private async loadKeys(kid?: string, force = false): Promise<CachedKeys> {
     if (!this.config) throw new CatalogSecurityUnavailable();
-    if (this.cache && this.cache.expiresAt > Date.now()) return this.cache;
+    if (!force && this.cache && this.cache.expiresAt > Date.now())
+      return this.cache;
     // Share discovery/JWKS work during expiry, outages and rotation.
     // A failed fetch is never cached as a healthy key set.
     if (!this.loading) {
@@ -220,26 +240,39 @@ export class CatalogTokenVerifier {
         this.loading = undefined;
       });
     }
-    return this.loading;
+    try {
+      return await this.loading;
+    } catch (error) {
+      if (
+        kid &&
+        this.cache &&
+        this.cache.validUntil > Date.now() &&
+        this.cache.keys.has(kid)
+      )
+        return this.cache;
+      throw error;
+    }
   }
 
   private async fetchKeys(): Promise<CachedKeys> {
     if (!this.config) throw new CatalogSecurityUnavailable();
 
     try {
-      const discoveryResponse = await fetch(this.config.discoveryUrl, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-        headers: { accept: 'application/json' },
-      });
-      const discovery: unknown = await jsonResponse(discoveryResponse);
-      if (
-        !record(discovery) ||
-        discovery.issuer !== this.config.issuer ||
-        typeof discovery.jwks_uri !== 'string' ||
-        new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
-      )
-        throw new CatalogSecurityUnavailable();
+      if (this.config.discoveryUrl) {
+        const discoveryResponse = await fetch(this.config.discoveryUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: { accept: 'application/json' },
+        });
+        const discovery: unknown = await jsonResponse(discoveryResponse);
+        if (
+          !record(discovery) ||
+          discovery.issuer !== this.config.issuer ||
+          typeof discovery.jwks_uri !== 'string' ||
+          new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
+        )
+          throw new CatalogSecurityUnavailable();
+      }
 
       const response = await fetch(this.config.jwksUrl, {
         redirect: 'error',
@@ -248,7 +281,7 @@ export class CatalogTokenVerifier {
       });
       const duration = cacheDuration(response);
       const set: unknown = await jsonResponse(response);
-      if (!record(set) || !Array.isArray(set.keys))
+      if (!record(set) || !Array.isArray(set.keys) || set.keys.length > 100)
         throw new CatalogSecurityUnavailable();
 
       const keys = new Map<string, KeyObject>();
@@ -260,10 +293,20 @@ export class CatalogTokenVerifier {
           (value.alg !== undefined && value.alg !== 'RS256') ||
           typeof value.kid !== 'string' ||
           typeof value.n !== 'string' ||
-          typeof value.e !== 'string'
+          typeof value.e !== 'string' ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi'].some(
+            (property) => property in value,
+          )
         )
           continue;
+        if (keys.has(value.kid)) throw new CatalogSecurityUnavailable();
         try {
+          const publicKey = createPublicKey({
+            key: value as JsonWebKey,
+            format: 'jwk',
+          });
+          if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
+            continue;
           keys.set(
             value.kid,
             createPublicKey({ key: value as JsonWebKey, format: 'jwk' }),
@@ -273,7 +316,11 @@ export class CatalogTokenVerifier {
         }
       }
       if (keys.size === 0) throw new CatalogSecurityUnavailable();
-      this.cache = { keys, expiresAt: Date.now() + duration };
+      this.cache = {
+        keys,
+        expiresAt: Date.now() + Math.min(duration, 60000),
+        validUntil: Date.now() + duration,
+      };
       return this.cache;
     } catch (error) {
       if (error instanceof CatalogSecurityUnavailable) throw error;
@@ -284,6 +331,7 @@ export class CatalogTokenVerifier {
   async verify(token: string): Promise<CatalogPrincipal> {
     const segments = token.split('.');
     if (
+      token.length > 16384 ||
       segments.length !== 3 ||
       segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))
     )
@@ -299,16 +347,19 @@ export class CatalogTokenVerifier {
     if (
       !record(header) ||
       header.alg !== 'RS256' ||
+      header.crit !== undefined ||
+      (header.typ !== undefined && header.typ !== 'JWT') ||
       typeof header.kid !== 'string' ||
+      !header.kid ||
+      header.kid.length > 256 ||
       !record(claims)
     )
       throw new CatalogTokenRejected();
 
-    const keySet = await this.loadKeys();
+    const keySet = await this.loadKeys(header.kid);
     const key = keySet.keys.get(header.kid);
     if (!key) {
-      this.cache = undefined;
-      const refreshed = await this.loadKeys();
+      const refreshed = await this.loadKeys(header.kid, true);
       const rotated = refreshed.keys.get(header.kid);
       if (!rotated) throw new CatalogTokenRejected();
       return this.verifySignatureAndClaims(segments, rotated, claims);
@@ -337,28 +388,25 @@ export class CatalogTokenVerifier {
       claims.iss !== this.config.issuer ||
       typeof claims.sub !== 'string' ||
       typeof claims.iat !== 'number' ||
-      !Number.isFinite(claims.iat) ||
+      !Number.isSafeInteger(claims.iat) ||
       claims.iat > now ||
       typeof claims.exp !== 'number' ||
-      !Number.isFinite(claims.exp) ||
+      !Number.isSafeInteger(claims.exp) ||
       claims.exp <= now ||
       typeof claims.jti !== 'string' ||
       claims.jti.length === 0 ||
       (claims.nbf !== undefined &&
         (typeof claims.nbf !== 'number' ||
-          !Number.isFinite(claims.nbf) ||
+          !Number.isSafeInteger(claims.nbf) ||
           claims.nbf > now))
     )
       throw new CatalogTokenRejected();
 
     if (claims.tipo === 'acceso') {
-      const roles = strings(claims.roles);
-      const tokenAudiences = audiences(claims.aud);
-      if (
-        !UUID_PATTERN.test(claims.sub) ||
-        !roles ||
-        !tokenAudiences?.includes(SECURITY_AUDIENCE)
-      )
+      const roles = Array.isArray(claims.roles)
+        ? strings(claims.roles)
+        : undefined;
+      if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new CatalogTokenRejected();
       return { kind: 'user', subject: claims.sub, roles };
     }
@@ -382,6 +430,12 @@ const CATALOG_PUBLIC_OPERATION_BY_HANDLER: Readonly<Record<string, string>> = {
   list: 'listarProductos',
   detail: 'obtenerProductoPorSlug',
   product: 'obtenerProducto',
+  context: 'obtenerContextoSku',
+  physicalData: 'consultarDatosFisicos',
+  preparation: 'obtenerPreparacionProducto',
+  variants: 'listarVariantesProducto',
+  variant: 'obtenerVariante',
+  resolveBarcode: 'resolverCodigoBarras',
 };
 
 @Injectable()
@@ -410,64 +464,25 @@ export class CatalogAuthGuard implements CanActivate {
         catalogDemoPreview?: boolean;
       }
     >();
-    if (this.readDemo.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException({ code: 'SERVICIO_NO_DISPONIBLE' });
     const handlerOp =
       CATALOG_PUBLIC_OPERATION_BY_HANDLER[context.getHandler().name];
-    const publicController =
-      context.getClass().name ===
-      (handlerOp === 'obtenerProducto'
-        ? 'CatalogQueryController'
-        : 'CommercialController');
+    const expectedController =
+      handlerOp === 'listarProductos' || handlerOp === 'obtenerProductoPorSlug'
+        ? 'CommercialController'
+        : handlerOp === 'obtenerContextoSku'
+          ? 'CatalogSkuContextController'
+          : 'CatalogQueryController';
     if (
-      this.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
-      request.headers.authorization === undefined &&
-      request.method === 'GET' &&
-      policy.demoRead &&
-      publicController &&
       handlerOp &&
-      this.readDemo.publicOperations?.includes(handlerOp)
-    ) {
-      // Public authorization never enables the legacy draft/administrative path.
+      context.getClass().name === expectedController &&
+      isPhase1PublicRead(
+        request,
+        this.readDemo.securityMode,
+        this.readDemo.publicOperations,
+        handlerOp,
+      )
+    )
       return true;
-    }
-    if (this.readDemo.restricted && policy.restrictedDemo) {
-      const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
-      if (!peer || !this.readDemo.gatewayIps?.includes(peer))
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-      const correlation = request.headers['x-correlation-id'];
-      new SanitizedLogger('runtime').log({
-        code: 'CATALOG_RESTRICTED_DEMO_ACCESS',
-        actor: 'restricted-demo:catalog-svc',
-        operation: context.getHandler().name,
-        correlationId:
-          typeof correlation === 'string' && isCorrelationId(correlation)
-            ? correlation
-            : undefined,
-      });
-      // Explicit non-human access context; never a G7 principal or incoming identity.
-      delete request.headers.authorization;
-      Object.assign(request, { catalogRestrictedDemo: true });
-      return true;
-    }
-    if (this.readDemo.enabled) {
-      if (request.method === 'GET' && policy.demoRead) {
-        request.catalogDemoRead = true;
-        // An anonymous read is not a fabricated human/service identity.
-        return true;
-      }
-      if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method))
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    }
-    if (
-      this.marketplacePreview &&
-      request.method === 'GET' &&
-      policy.marketplacePreviewRead &&
-      request.query.canal === 'MARKETPLACE'
-    ) {
-      request.catalogDemoPreview = true;
-      return true;
-    }
     const authorization = request.headers.authorization;
     const match =
       typeof authorization === 'string' &&

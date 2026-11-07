@@ -12,6 +12,10 @@ import {
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
+import {
+  PHASE1_PUBLIC_OPERATION_IDS,
+  isPhase1PublicRead,
+} from './phase1-public-reads.js';
 
 export const TAXONOMY_SECURITY_CONFIG = Symbol('TAXONOMY_SECURITY_CONFIG');
 export const TAXONOMY_DEMO_ENABLED = Symbol('TAXONOMY_DEMO_ENABLED');
@@ -24,10 +28,7 @@ export interface TaxonomyPublicReadConfig {
   readonly securityMode: TaxonomySecurityMode;
   readonly publicOperations: readonly string[];
 }
-const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = new Set([
-  'listarCategorias',
-  'listarMarcas',
-]);
+const TAXONOMY_ELIGIBLE_PUBLIC_OPERATIONS = PHASE1_PUBLIC_OPERATION_IDS;
 const TAXONOMY_SERVICE_READ = 'taxonomy:service-read';
 const TAXONOMY_COMMERCIAL_USER_READ = 'taxonomy:commercial-user-read';
 const TAXONOMY_SERVICE_CLIENTS = 'taxonomy:service-clients';
@@ -43,7 +44,7 @@ export function readTaxonomyPublicReadConfig(
   const mode = env.G6_SECURITY_MODE;
   if (
     mode !== undefined &&
-    !['PUBLIC_READ_ONLY', 'G7_AUTHENTICATED'].includes(mode)
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
   ) {
     throw new Error('Configuración de demo Taxonomy inválida');
   }
@@ -72,14 +73,9 @@ export function readTaxonomyDemoConfig(
   readTaxonomyPublicReadConfig(env);
   const flag = env.ALLOW_DEMO_UNAUTHENTICATED;
   if (flag === undefined || flag === 'false') return false;
-  if (
-    flag !== 'true' ||
-    !['test', 'development'].includes(env.NODE_ENV ?? '') ||
-    env.G6_SECURITY_MODE !== undefined
-  ) {
-    throw new Error('Configuración de demo Taxonomy inválida');
-  }
-  return true;
+  throw new Error(
+    'ALLOW_DEMO_UNAUTHENTICATED está deshabilitado; use G6_SECURITY_MODE.',
+  );
 }
 const SECURITY_AUDIENCE = 'api-productos';
 const UUID_PATTERN =
@@ -87,46 +83,55 @@ const UUID_PATTERN =
 
 export interface TaxonomySecurityConfig {
   issuer: string;
-  discoveryUrl: string;
+  discoveryUrl?: string;
   jwksUrl: string;
 }
 
 export function readTaxonomySecurityConfig(
   env: Record<string, string | undefined> = process.env,
 ): TaxonomySecurityConfig | undefined {
+  const simulated = env.G6_SECURITY_MODE === 'SIMULATED_AUTH';
   const values = [
-    env.SECURITY_ISSUER,
-    env.SECURITY_DISCOVERY_URL,
-    env.SECURITY_JWKS_URL,
+    simulated ? env.SIMULATED_AUTH_ISSUER : env.SECURITY_ISSUER,
+    simulated ? undefined : env.SECURITY_DISCOVERY_URL,
+    simulated ? env.SIMULATED_AUTH_JWKS_URL : env.SECURITY_JWKS_URL,
   ];
   if (values.every((value) => value === undefined || value.trim() === ''))
     return undefined;
-  if (values.some((value) => !value?.trim()))
+  if (
+    !values[0]?.trim() ||
+    !values[2]?.trim() ||
+    (!simulated && !values[1]?.trim())
+  )
     throw new Error(
-      'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
+      simulated
+        ? 'SIMULATED_AUTH_ISSUER y SIMULATED_AUTH_JWKS_URL deben configurarse juntos.'
+        : 'SECURITY_ISSUER, SECURITY_DISCOVERY_URL y SECURITY_JWKS_URL deben configurarse juntos.',
     );
 
   const issuer = values[0]!.trim();
-  const discoveryUrl = values[1]!.trim();
+  if (simulated && issuer === env.SECURITY_ISSUER?.trim())
+    throw new Error('SIMULATED_AUTH requiere un emisor independiente de G7.');
+  const discoveryUrl = values[1]?.trim();
   const jwksUrl = values[2]!.trim();
   try {
     const issuerUrl = new URL(issuer);
-    const discovery = new URL(discoveryUrl);
+    const discovery = discoveryUrl ? new URL(discoveryUrl) : undefined;
     const jwks = new URL(jwksUrl);
     if (
       !['http:', 'https:'].includes(issuerUrl.protocol) ||
-      !['http:', 'https:'].includes(discovery.protocol) ||
+      (discovery && !['http:', 'https:'].includes(discovery.protocol)) ||
       !['http:', 'https:'].includes(jwks.protocol) ||
       issuerUrl.username ||
       issuerUrl.password ||
-      discovery.username ||
-      discovery.password ||
+      discovery?.username ||
+      discovery?.password ||
       jwks.username ||
       jwks.password ||
       issuerUrl.hash ||
-      discovery.hash ||
+      discovery?.hash ||
       jwks.hash ||
-      [issuerUrl, discovery, jwks].some(
+      [issuerUrl, ...(discovery ? [discovery] : []), jwks].some(
         (url) =>
           url.protocol === 'http:' &&
           !['localhost', '127.0.0.1', '::1', '[::1]'].includes(
@@ -140,7 +145,11 @@ export function readTaxonomySecurityConfig(
       'La configuración de Seguridad debe usar URLs HTTP(S) válidas.',
     );
   }
-  return Object.freeze({ issuer, discoveryUrl, jwksUrl });
+  return Object.freeze({
+    issuer,
+    ...(discoveryUrl ? { discoveryUrl } : {}),
+    jwksUrl,
+  });
 }
 
 export type TaxonomyPrincipal =
@@ -163,6 +172,8 @@ export class TaxonomySecurityUnavailable extends Error {}
 interface JwtHeader {
   alg?: unknown;
   kid?: unknown;
+  crit?: unknown;
+  typ?: unknown;
 }
 
 interface JwtClaims {
@@ -181,6 +192,7 @@ interface JwtClaims {
 interface CachedKeys {
   keys: ReadonlyMap<string, KeyObject>;
   expiresAt: number;
+  validUntil: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -206,11 +218,15 @@ function audiences(value: unknown): string[] | undefined {
 }
 
 function cacheDuration(response: Response): number {
+  if (
+    /(?:no-store|no-cache)/i.test(response.headers.get('cache-control') ?? '')
+  )
+    return 0;
   const directive = response.headers
     .get('cache-control')
     ?.match(/(?:^|,)\s*max-age=(\d+)/i);
   const seconds = directive ? Number(directive[1]) : 60;
-  return Math.max(0, Math.min(seconds, 300)) * 1000;
+  return Math.max(0, Math.min(seconds, 3600)) * 1000;
 }
 
 async function jsonResponse(response: Response): Promise<unknown> {
@@ -253,9 +269,10 @@ export class TaxonomyTokenVerifier {
     private readonly config?: TaxonomySecurityConfig,
   ) {}
 
-  private async loadKeys(): Promise<CachedKeys> {
+  private async loadKeys(kid?: string, force = false): Promise<CachedKeys> {
     if (!this.config) throw new TaxonomySecurityUnavailable();
-    if (this.cache && this.cache.expiresAt > Date.now()) return this.cache;
+    if (!force && this.cache && this.cache.expiresAt > Date.now())
+      return this.cache;
     // Share discovery/JWKS work during expiry, outages and rotation.
     // A failed fetch is never cached as a healthy key set.
     if (!this.loading) {
@@ -263,26 +280,39 @@ export class TaxonomyTokenVerifier {
         this.loading = undefined;
       });
     }
-    return this.loading;
+    try {
+      return await this.loading;
+    } catch (error) {
+      if (
+        kid &&
+        this.cache &&
+        this.cache.validUntil > Date.now() &&
+        this.cache.keys.has(kid)
+      )
+        return this.cache;
+      throw error;
+    }
   }
 
   private async fetchKeys(): Promise<CachedKeys> {
     if (!this.config) throw new TaxonomySecurityUnavailable();
 
     try {
-      const discoveryResponse = await fetch(this.config.discoveryUrl, {
-        redirect: 'error',
-        signal: AbortSignal.timeout(5000),
-        headers: { accept: 'application/json' },
-      });
-      const discovery: unknown = await jsonResponse(discoveryResponse);
-      if (
-        !record(discovery) ||
-        discovery.issuer !== this.config.issuer ||
-        typeof discovery.jwks_uri !== 'string' ||
-        new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
-      )
-        throw new TaxonomySecurityUnavailable();
+      if (this.config.discoveryUrl) {
+        const discoveryResponse = await fetch(this.config.discoveryUrl, {
+          redirect: 'error',
+          signal: AbortSignal.timeout(5000),
+          headers: { accept: 'application/json' },
+        });
+        const discovery: unknown = await jsonResponse(discoveryResponse);
+        if (
+          !record(discovery) ||
+          discovery.issuer !== this.config.issuer ||
+          typeof discovery.jwks_uri !== 'string' ||
+          new URL(discovery.jwks_uri).href !== new URL(this.config.jwksUrl).href
+        )
+          throw new TaxonomySecurityUnavailable();
+      }
 
       const response = await fetch(this.config.jwksUrl, {
         redirect: 'error',
@@ -291,7 +321,7 @@ export class TaxonomyTokenVerifier {
       });
       const duration = cacheDuration(response);
       const set: unknown = await jsonResponse(response);
-      if (!record(set) || !Array.isArray(set.keys))
+      if (!record(set) || !Array.isArray(set.keys) || set.keys.length > 100)
         throw new TaxonomySecurityUnavailable();
 
       const keys = new Map<string, KeyObject>();
@@ -303,10 +333,20 @@ export class TaxonomyTokenVerifier {
           (value.alg !== undefined && value.alg !== 'RS256') ||
           typeof value.kid !== 'string' ||
           typeof value.n !== 'string' ||
-          typeof value.e !== 'string'
+          typeof value.e !== 'string' ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi'].some(
+            (property) => property in value,
+          )
         )
           continue;
+        if (keys.has(value.kid)) throw new TaxonomySecurityUnavailable();
         try {
+          const publicKey = createPublicKey({
+            key: value as JsonWebKey,
+            format: 'jwk',
+          });
+          if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
+            continue;
           keys.set(
             value.kid,
             createPublicKey({ key: value as JsonWebKey, format: 'jwk' }),
@@ -316,7 +356,11 @@ export class TaxonomyTokenVerifier {
         }
       }
       if (keys.size === 0) throw new TaxonomySecurityUnavailable();
-      this.cache = { keys, expiresAt: Date.now() + duration };
+      this.cache = {
+        keys,
+        expiresAt: Date.now() + Math.min(duration, 60000),
+        validUntil: Date.now() + duration,
+      };
       return this.cache;
     } catch (error) {
       if (error instanceof TaxonomySecurityUnavailable) throw error;
@@ -327,6 +371,7 @@ export class TaxonomyTokenVerifier {
   async verify(token: string): Promise<TaxonomyPrincipal> {
     const segments = token.split('.');
     if (
+      token.length > 16384 ||
       segments.length !== 3 ||
       segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))
     )
@@ -342,16 +387,19 @@ export class TaxonomyTokenVerifier {
     if (
       !record(header) ||
       header.alg !== 'RS256' ||
+      header.crit !== undefined ||
+      (header.typ !== undefined && header.typ !== 'JWT') ||
       typeof header.kid !== 'string' ||
+      !header.kid ||
+      header.kid.length > 256 ||
       !record(claims)
     )
       throw new TaxonomyTokenRejected();
 
-    const keySet = await this.loadKeys();
+    const keySet = await this.loadKeys(header.kid);
     const key = keySet.keys.get(header.kid);
     if (!key) {
-      this.cache = undefined;
-      const refreshed = await this.loadKeys();
+      const refreshed = await this.loadKeys(header.kid, true);
       const rotated = refreshed.keys.get(header.kid);
       if (!rotated) throw new TaxonomyTokenRejected();
       return this.verifySignatureAndClaims(segments, rotated, claims);
@@ -380,22 +428,24 @@ export class TaxonomyTokenVerifier {
       claims.iss !== this.config.issuer ||
       typeof claims.sub !== 'string' ||
       typeof claims.iat !== 'number' ||
-      !Number.isFinite(claims.iat) ||
+      !Number.isSafeInteger(claims.iat) ||
       claims.iat > now ||
       typeof claims.exp !== 'number' ||
-      !Number.isFinite(claims.exp) ||
+      !Number.isSafeInteger(claims.exp) ||
       claims.exp <= now ||
       typeof claims.jti !== 'string' ||
       claims.jti.length === 0 ||
       (claims.nbf !== undefined &&
         (typeof claims.nbf !== 'number' ||
-          !Number.isFinite(claims.nbf) ||
+          !Number.isSafeInteger(claims.nbf) ||
           claims.nbf > now))
     )
       throw new TaxonomyTokenRejected();
 
     if (claims.tipo === 'acceso') {
-      const roles = claims.roles === undefined ? [] : strings(claims.roles);
+      const roles = Array.isArray(claims.roles)
+        ? strings(claims.roles)
+        : undefined;
       if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new TaxonomyTokenRejected();
       return {
@@ -443,9 +493,15 @@ export class TaxonomyUserGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
+    if (
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
+      return true;
     const authorization = request.headers.authorization;
-    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException();
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
@@ -487,7 +543,21 @@ export class TaxonomyUserGuard implements CanActivate {
 
 @Injectable()
 export class TaxonomyCommercialGuard implements CanActivate {
+  constructor(
+    @Optional()
+    @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
+    private readonly publicReadConfig?: TaxonomyPublicReadConfig,
+  ) {}
   canActivate(context: ExecutionContext): boolean {
+    const request = context.switchToHttp().getRequest<Request>();
+    if (
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
+      return true;
     const principal = context
       .switchToHttp()
       .getRequest<
@@ -507,7 +577,7 @@ export class TaxonomyCommercialGuard implements CanActivate {
 export class TaxonomyAuthGuard implements CanActivate {
   constructor(
     private readonly verifier: TaxonomyTokenVerifier,
-    @Inject(TAXONOMY_DEMO_ENABLED) private readonly demoEnabled: boolean,
+    @Inject(TAXONOMY_DEMO_ENABLED) _demoEnabled: boolean,
     @Optional()
     @Inject(TAXONOMY_PUBLIC_READ_CONFIG)
     private readonly publicReadConfig?: TaxonomyPublicReadConfig,
@@ -515,19 +585,15 @@ export class TaxonomyAuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const authorization = request.headers.authorization;
-    const peer = request.socket?.remoteAddress?.replace(/^::ffff:/, '');
-    if (this.publicReadConfig?.securityMode === 'SIMULATED_AUTH')
-      throw new ServiceUnavailableException();
     if (
-      this.demoEnabled &&
-      authorization === undefined &&
-      request.method === 'GET' &&
-      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
-      (peer === '127.0.0.1' || peer === '::1')
-    ) {
+      isPhase1PublicRead(
+        request,
+        this.publicReadConfig?.securityMode,
+        this.publicReadConfig?.publicOperations,
+      )
+    )
       return true;
-    }
+    const authorization = request.headers.authorization;
     const handlerName =
       context.getHandler?.()?.name ||
       (request.path === '/api/v1/categorias'
@@ -535,10 +601,18 @@ export class TaxonomyAuthGuard implements CanActivate {
         : request.path === '/api/v1/marcas'
           ? 'listarMarcas'
           : undefined);
+    const exactRead =
+      (handlerName === 'listarCategorias' &&
+        request.path === '/api/v1/categorias') ||
+      (handlerName === 'listarMarcas' && request.path === '/api/v1/marcas') ||
+      (handlerName === 'obtenerPublico' &&
+        /^\/api\/v1\/seo\/(?!resoluciones\/)[^/]+$/.test(request.path)) ||
+      (handlerName === 'resolverAnterior' &&
+        /^\/api\/v1\/seo\/resoluciones\/[^/]+$/.test(request.path));
     if (
       authorization === undefined &&
       request.method === 'GET' &&
-      ['/api/v1/categorias', '/api/v1/marcas'].includes(request.path) &&
+      exactRead &&
       isApprovedPublicTaxonomyOperation(handlerName, this.publicReadConfig)
     ) {
       return true;

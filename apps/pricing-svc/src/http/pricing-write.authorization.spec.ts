@@ -54,18 +54,18 @@ describe('autorización de escrituras Pricing con introspección G7', () => {
       }
       if (request.url === '/api/v1/auth/token') {
         const values = new URLSearchParams(body);
-        const scopes = values.get('scope')?.split(' ') ?? [];
+        expect(values.get('grant_type')).toBe('client_credentials');
         response.end(
           JSON.stringify({
             accessToken: identity.token({
               tipo: 'servicio',
               sub: 'modulo-productos',
-              aud: 'api-productos',
+              aud: ['api-seguridad', 'api-productos'],
               scope: serviceScopes.join(' '),
             }),
             tokenType: 'Bearer',
             expiresIn: 180,
-            scopes: serviceScopes.filter((scope) => scopes.includes(scope)),
+            scopes: serviceScopes,
           }),
         );
         return;
@@ -141,6 +141,24 @@ describe('autorización de escrituras Pricing con introspección G7', () => {
     expect(introspection.body).not.toContain('fixture-secret-only');
   });
 
+  it('accepts the full set of real G7 grants and distinguishes technical credential failure', async () => {
+    serviceScopes = ['tokens:introspeccion', 'catalogo:leer', 'precios:leer'];
+    await expect(
+      authorize().authorize(
+        'actualizarPrecioSku',
+        'Bearer ' + identity.token(),
+      ),
+    ).resolves.toBe('74ed2f19-7e70-4915-a6f6-bbc691b82587');
+    for (const status of [401, 403, 503]) {
+      introspectionStatus = status;
+      await expect(
+        authorize().authorize(
+          'actualizarPrecioSku',
+          'Bearer ' + identity.token(),
+        ),
+      ).rejects.toMatchObject({ status: 503 });
+    }
+  });
   it('rechaza un rol incorrecto antes de llamar a G7', async () => {
     const token = identity.token({ roles: ['VENDEDOR'] });
     await expect(

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import type amqp from 'amqplib';
 import {
   OutboxPublisherService,
   IMessageBrokerPublisher,
@@ -310,5 +311,98 @@ describe('OutboxPublisherService — Publicación Confiable y Confirmación de B
       (o) => o.id === 'outbox-fail-after-confirm',
     )!;
     expect(row.status).toBe('PENDING');
+  });
+
+  it('6. userId del customPublisher se propaga a las opciones AMQP de publicación (integración con Catalog)', async () => {
+    const opId = randomUUID();
+    const correlId = randomUUID();
+    for (const [name, kind] of [
+      ['inventory.sku.initialization.completed', 'result'],
+      ['inventory.sku.initialization.rejected', 'result'],
+    ] as const) {
+      const id = randomUUID();
+      mockDb.outbox.push({
+        id,
+        event_id: id,
+        event_type: name,
+        aggregate_type: 'stock',
+        aggregate_id: 'SKU-TEST-001',
+        payload: {
+          message_id: id,
+          schema_version: 2,
+          kind,
+          name,
+          operation_id: opId,
+          correlation_id: correlId,
+          producer: 'inventory-svc',
+          data: {
+            sku: 'SKU-TEST-001',
+            product_id: randomUUID(),
+            variant_id: null,
+            status: name.endsWith('completed') ? 'INITIALIZED' : 'REJECTED',
+            code: name.endsWith('completed') ? null : 'UBICACION_NO_ENCONTRADA',
+            completed_at: new Date().toISOString(),
+          },
+        },
+        status: 'PENDING',
+        created_at: new Date().toISOString(),
+      });
+    }
+
+    const capturedOptions: amqp.Options.Publish[] = [];
+    const publisherWithUser: IMessageBrokerPublisher = {
+      userId: 'g6_inventario',
+      publish: async (_exchange, _routingKey, _content, options) => {
+        capturedOptions.push(options ?? {});
+        return true;
+      },
+    };
+    publisherService.setCustomPublisher(publisherWithUser);
+
+    const result = await publisherService.dispatchPending();
+    expect(result.dispatched).toBe(2);
+    expect(result.failed).toBe(0);
+
+    // Catalog valida delivery.properties.userId === producerUsers['inventory-svc']
+    for (const opts of capturedOptions) {
+      expect(opts.userId).toBe('g6_inventario');
+      expect(opts.messageId).toBeDefined();
+      expect(opts.correlationId).toBe(correlId);
+      expect(opts.contentType).toBe('application/json');
+      expect(opts.persistent).toBe(true);
+      expect(opts.mandatory).toBe(true);
+    }
+  });
+
+  it('7. publisher sin userId no incluye la propiedad AMQP (compatibilidad hacia atrás)', async () => {
+    const eventId = randomUUID();
+    mockDb.outbox.push({
+      id: 'outbox-no-user',
+      event_id: eventId,
+      event_type: 'inventory.stock.changed',
+      aggregate_type: 'stock',
+      aggregate_id: 'SKU-X',
+      payload: {
+        message_id: eventId,
+        kind: 'event',
+        correlation_id: randomUUID(),
+      },
+      status: 'PENDING',
+      created_at: new Date().toISOString(),
+    });
+
+    const capturedOptions: amqp.Options.Publish[] = [];
+    const publisherWithoutUser: IMessageBrokerPublisher = {
+      // sin userId
+      publish: async (_exchange, _routingKey, _content, options) => {
+        capturedOptions.push(options ?? {});
+        return true;
+      },
+    };
+    publisherService.setCustomPublisher(publisherWithoutUser);
+
+    const result = await publisherService.dispatchPending();
+    expect(result.dispatched).toBe(1);
+    expect(capturedOptions[0].userId).toBeUndefined();
   });
 });

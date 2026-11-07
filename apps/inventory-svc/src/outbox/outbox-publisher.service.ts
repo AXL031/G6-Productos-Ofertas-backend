@@ -17,6 +17,12 @@ export interface IMessageBrokerPublisher {
     content: Buffer,
     options?: amqp.Options.Publish,
   ): Promise<boolean>;
+  /**
+   * El usuario AMQP autenticado en la conexión. Catalog lo valida contra
+   * su mapa `producerUsers` para verificar la identidad del productor.
+   * Debe extraerse del RABBITMQ_URL de la conexión real, no del payload.
+   */
+  userId?: string;
 }
 
 const MAX_DISPATCH_BATCH_SIZE = 10;
@@ -74,12 +80,28 @@ export class OutboxPublisherService {
     let amqpConn: amqp.ChannelModel | null = null;
     let confirmChannel: amqp.ConfirmChannel | null = null;
     const returnedMessageIds = new Set<string>();
+    /**
+     * Usuario AMQP autenticado en la conexión real, extraído del RABBITMQ_URL.
+     * Catalog valida delivery.properties.userId === producerUsers['inventory-svc'].
+     * Solo se extrae de la URL de conexión; nunca del payload del mensaje.
+     */
+    let amqpUserId: string | undefined;
 
     try {
       if (!this.customPublisher && config.rabbitMqUrl) {
         amqpConn = await amqp.connect(config.rabbitMqUrl, {
           timeout: BROKER_CONNECT_TIMEOUT_MS,
         });
+        // Extraer userId del RABBITMQ_URL: es el username con que inventory-svc
+        // se autenticó ante RabbitMQ. Catalog valida esta propiedad AMQP para
+        // verificar la identidad del productor legítimo.
+        try {
+          const parsed = new URL(config.rabbitMqUrl);
+          const rawUser = parsed.username;
+          amqpUserId = rawUser ? decodeURIComponent(rawUser) : undefined;
+        } catch {
+          amqpUserId = undefined;
+        }
         amqpConn.on('error', (error: Error) =>
           this.logger.error({
             event: 'inventory.outbox.connection_error',
@@ -167,6 +189,10 @@ export class OutboxPublisherService {
                   contentType: 'application/json',
                   mandatory: true,
                   persistent: true,
+                  // userId del customPublisher (usado en tests con broker real)
+                  ...(this.customPublisher.userId !== undefined && {
+                    userId: this.customPublisher.userId,
+                  }),
                 }),
                 PUBLISH_CONFIRM_TIMEOUT_MS,
               );
@@ -203,6 +229,10 @@ export class OutboxPublisherService {
                       contentType: 'application/json',
                       mandatory: true,
                       persistent: true,
+                      // userId extraído del RABBITMQ_URL al conectar.
+                      // Catalog valida que coincida con el usuario autenticado
+                      // del productor ante RabbitMQ (producerUsers['inventory-svc']).
+                      ...(amqpUserId !== undefined && { userId: amqpUserId }),
                     },
                     (err) => {
                       if (settled) return;

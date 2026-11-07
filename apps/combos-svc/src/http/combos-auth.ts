@@ -11,20 +11,10 @@ import { Reflector } from '@nestjs/core';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
 import type { JsonWebKey, KeyObject } from 'node:crypto';
 import type { Request } from 'express';
-import { isAllowedDemoGatewayIp } from './combos-demo-origin.js';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 
 const AUDIENCE = 'api-productos';
 const POLICY = Symbol('COMBO_ACCESS_POLICY');
-const PUBLIC_READ_APPROVALS = new Set<string>();
-const PUBLIC_READ_ROUTES: Readonly<
-  Record<string, { method: string; path: string }>
-> = {
-  obtenerCombo: { method: 'GET', path: '/combos/:comboId' },
-  consultarDisponibilidadCombo: {
-    method: 'GET',
-    path: '/combos/:comboId/disponibilidad',
-  },
-};
 const USER_ID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -58,6 +48,7 @@ interface Principal {
 interface KeySet {
   keys: ReadonlyMap<string, KeyObject>;
   expiresAt: number;
+  validUntil: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -150,15 +141,26 @@ export class ComboTokenVerifier {
     this.config = { issuer, discoveryUrl, jwksUrl };
   }
 
-  private loadKeys(): Promise<KeySet> {
+  private async loadKeys(kid?: string, force = false): Promise<KeySet> {
     if (!this.config) return Promise.reject(new ComboIdentityUnavailable());
-    if (this.cache && this.cache.expiresAt > Date.now())
+    if (!force && this.cache && this.cache.expiresAt > Date.now())
       return Promise.resolve(this.cache);
     if (!this.loading)
       this.loading = this.fetchKeys().finally(() => {
         this.loading = undefined;
       });
-    return this.loading;
+    try {
+      return await this.loading;
+    } catch (error) {
+      if (
+        kid &&
+        this.cache &&
+        this.cache.validUntil > Date.now() &&
+        this.cache.keys.has(kid)
+      )
+        return this.cache;
+      throw error;
+    }
   }
 
   private async fetchKeys(): Promise<KeySet> {
@@ -186,9 +188,13 @@ export class ComboTokenVerifier {
       const cacheAge = response.headers
         .get('cache-control')
         ?.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1];
-      const seconds = Math.max(0, Math.min(Number(cacheAge ?? 60), 300));
+      const seconds = /(?:no-store|no-cache)/i.test(
+        response.headers.get('cache-control') ?? '',
+      )
+        ? 0
+        : Math.max(0, Math.min(Number(cacheAge ?? 60), 3600));
       const jwks = await readJson(response);
-      if (!record(jwks) || !Array.isArray(jwks.keys))
+      if (!record(jwks) || !Array.isArray(jwks.keys) || jwks.keys.length > 100)
         throw new ComboIdentityUnavailable();
       const keys = new Map<string, KeyObject>();
       for (const item of jwks.keys) {
@@ -199,10 +205,18 @@ export class ComboTokenVerifier {
           (item.alg !== undefined && item.alg !== 'RS256') ||
           typeof item.kid !== 'string' ||
           typeof item.n !== 'string' ||
-          typeof item.e !== 'string'
+          typeof item.e !== 'string' ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi'].some((property) => property in item)
         )
           continue;
+        if (keys.has(item.kid)) throw new ComboIdentityUnavailable();
         try {
+          const publicKey = createPublicKey({
+            key: item as JsonWebKey,
+            format: 'jwk',
+          });
+          if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
+            continue;
           keys.set(
             item.kid,
             createPublicKey({ key: item as JsonWebKey, format: 'jwk' }),
@@ -212,7 +226,11 @@ export class ComboTokenVerifier {
         }
       }
       if (keys.size === 0) throw new ComboIdentityUnavailable();
-      this.cache = { keys, expiresAt: Date.now() + seconds * 1000 };
+      this.cache = {
+        keys,
+        expiresAt: Date.now() + Math.min(seconds, 60) * 1000,
+        validUntil: Date.now() + seconds * 1000,
+      };
       return this.cache;
     } catch (error) {
       if (error instanceof ComboIdentityUnavailable) throw error;
@@ -223,6 +241,7 @@ export class ComboTokenVerifier {
   async verify(token: string): Promise<Principal> {
     const segments = token.split('.');
     if (
+      token.length > 16384 ||
       segments.length !== 3 ||
       segments.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))
     )
@@ -238,15 +257,18 @@ export class ComboTokenVerifier {
     if (
       !record(header) ||
       header.alg !== 'RS256' ||
+      header.crit !== undefined ||
+      (header.typ !== undefined && header.typ !== 'JWT') ||
       typeof header.kid !== 'string' ||
+      !header.kid ||
+      header.kid.length > 256 ||
       !record(claims)
     )
       throw new ComboTokenRejected();
-    const keySet = await this.loadKeys();
+    const keySet = await this.loadKeys(header.kid);
     let key = keySet.keys.get(header.kid);
     if (!key) {
-      this.cache = undefined;
-      key = (await this.loadKeys()).keys.get(header.kid);
+      key = (await this.loadKeys(header.kid, true)).keys.get(header.kid);
     }
     if (
       !key ||
@@ -279,20 +301,22 @@ export class ComboTokenVerifier {
           claims.nbf > now))
     )
       throw new ComboTokenRejected();
-    const audiences = audienceList(claims.aud);
-    if (!audiences?.includes(AUDIENCE)) throw new ComboTokenRejected();
     if (claims.tipo === 'acceso') {
-      const roles = stringList(claims.roles);
+      const roles = Array.isArray(claims.roles)
+        ? stringList(claims.roles)
+        : undefined;
       if (!USER_ID.test(claims.sub) || !roles) throw new ComboTokenRejected();
       return {
         kind: 'user',
         subject: claims.sub,
         roles,
         scopes: [],
-        audiences,
+        audiences: [],
       };
     }
     if (claims.tipo === 'servicio') {
+      const audiences = audienceList(claims.aud);
+      if (!audiences?.includes(AUDIENCE)) throw new ComboTokenRejected();
       const scopes = stringList(claims.scope);
       if (!scopes) throw new ComboTokenRejected();
       return {
@@ -330,13 +354,6 @@ export class CombosAuthGuard implements CanActivate {
     if (!policy) return true;
     const request = context.switchToHttp().getRequest<Request>();
     const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
-    const exactRead =
-      (policy.operationId === 'obtenerCombo' &&
-        request.method === 'GET' &&
-        request.route.path === '/combos/:comboId') ||
-      (policy.operationId === 'consultarDisponibilidadCombo' &&
-        request.method === 'GET' &&
-        request.route.path === '/combos/:comboId/disponibilidad');
     const configuredPublicReads = new Set(
       (process.env.COMBOS_PUBLIC_READ_OPERATIONS ?? '')
         .split(',')
@@ -345,36 +362,20 @@ export class CombosAuthGuard implements CanActivate {
     );
     // A public phase only adds explicitly approved anonymous operations.
     // Protected operations keep the same authentication/authorization path.
-    if (process.env.COMBOS_RESTRICTED_DEMO_ENABLED === 'true') {
-      if (
-        !isAllowedDemoGatewayIp(
-          request.socket.remoteAddress,
-          (process.env.COMBOS_RESTRICTED_DEMO_GATEWAY_IPS ?? '')
-            .split(',')
-            .map((address) => address.trim())
-            .filter(Boolean),
-        )
-      )
-        throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
-    }
     const authorization = request.headers.authorization;
+    if (
+      isPhase1PublicRead(
+        request,
+        mode,
+        [...configuredPublicReads],
+        policy.operationId,
+      )
+    )
+      return true;
     const match =
       typeof authorization === 'string' &&
       /^Bearer ([A-Za-z0-9._~-]+)$/.exec(authorization);
-    if (!match) {
-      const route = PUBLIC_READ_ROUTES[policy.operationId];
-      if (
-        mode === 'PUBLIC_READ_ONLY' &&
-        exactRead &&
-        route &&
-        PUBLIC_READ_APPROVALS.has(policy.operationId) &&
-        configuredPublicReads.has(policy.operationId) &&
-        request.method === route.method &&
-        request.route.path === route.path
-      )
-        return true;
-      throw new UnauthorizedException({ code: 'TOKEN_INVALIDO' });
-    }
+    if (!match) throw new UnauthorizedException({ code: 'TOKEN_INVALIDO' });
     let principal: Principal;
     try {
       principal = await (

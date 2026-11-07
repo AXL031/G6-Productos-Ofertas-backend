@@ -1,10 +1,8 @@
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { readFileSync } from 'node:fs';
-import { createServer, type Server } from 'node:https';
+import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
-import { getCACertificates, setDefaultCACertificates } from 'node:tls';
 import request from 'supertest';
 import { ApiGatewayModule } from '../src/api-gateway.module.js';
 import {
@@ -37,7 +35,6 @@ const paths = [
 describe('Phase 1 real three-service integration on disposable PostgreSQL', () => {
   const postgres = new Phase1Postgres();
   const keys = generateKeyPairSync('rsa', { modulusLength: 2048 });
-  const originalCa = getCACertificates('default');
   let issuerServer: Server;
   let issuer = '';
   let taxonomy: INestApplication | undefined;
@@ -126,6 +123,8 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
       ...security,
       CATALOG_SVC_PORT: '3001',
       CATALOG_TAXONOMY_URL: await taxonomy.getUrl(),
+      CATALOG_SERVICE_TOKEN_URL: new URL('/api/v1/auth/token', issuer).href,
+      CATALOG_SERVICE_CLIENT_SECRET: 'local-technical-fixture',
       G6_SECURITY_MODE: mode,
       CATALOG_PUBLIC_OPERATION_IDS:
         mode === 'PUBLIC_READ_ONLY' && enabled
@@ -139,6 +138,7 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
     await catalog.get(CatalogDatabase).verifyIdentity();
     await catalog.listen(0, '127.0.0.1');
     const settings = readGatewaySettings({
+      NODE_ENV: 'test',
       G6_SECURITY_MODE: mode,
       AUTH_ISSUER: issuer,
       AUTH_JWKS_URL: issuer + '/jwks',
@@ -178,51 +178,56 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
         ('${id(21)}','${id(14)}','HIDDEN-VARIANT','{"size":"L"}','INACTIVA');
       RESET session_replication_role;`);
     persistedBefore = snapshot();
-    setDefaultCACertificates([
-      ...originalCa,
-      readFileSync(postgres.certificate, 'utf8'),
-    ]);
-    issuerServer = createServer(
-      {
-        key: readFileSync(postgres.key),
-        cert: readFileSync(postgres.certificate),
-      },
-      (req, res) => {
-        res.setHeader('content-type', 'application/json');
-        if (req.url === '/issuer/jwks')
-          res.end(
-            JSON.stringify({
-              keys: [
-                {
-                  ...keys.publicKey.export({ format: 'jwk' }),
-                  kid: 'phase1-fixture',
-                  use: 'sig',
-                  alg: 'RS256',
-                },
-              ],
-            }),
-          );
-        else if (req.url === '/issuer/discovery')
-          res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
-        else {
-          res.statusCode = 404;
-          res.end('{}');
-        }
-      },
-    );
+    issuerServer = createServer(async (req, res) => {
+      res.setHeader('content-type', 'application/json');
+      if (req.url === '/issuer/jwks')
+        res.end(
+          JSON.stringify({
+            keys: [
+              {
+                ...keys.publicKey.export({ format: 'jwk' }),
+                kid: 'phase1-fixture',
+                use: 'sig',
+                alg: 'RS256',
+              },
+            ],
+          }),
+        );
+      else if (req.url === '/api/v1/auth/token' && req.method === 'POST') {
+        let form = '';
+        for await (const chunk of req) form += String(chunk);
+        const fields = new URLSearchParams(form);
+        expect(fields.get('grant_type')).toBe('client_credentials');
+        expect(fields.get('client_id')).toBe('modulo-productos');
+        expect(fields.get('client_secret')).toBe('local-technical-fixture');
+        expect(fields.get('scope')).toBe('catalogo:leer');
+        res.end(
+          JSON.stringify({
+            accessToken: token({ sub: 'modulo-productos' }),
+            tokenType: 'Bearer',
+            expiresIn: 600,
+            scopes: ['catalogo:leer'],
+          }),
+        );
+      } else if (req.url === '/issuer/discovery')
+        res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
+      else {
+        res.statusCode = 404;
+        res.end('{}');
+      }
+    });
     issuerServer.listen(0, '127.0.0.1');
     await once(issuerServer, 'listening');
     const address = issuerServer.address();
     if (!address || typeof address === 'string')
       throw new Error('No local issuer port');
-    issuer = `https://localhost:${address.port}/issuer`;
+    issuer = `http://127.0.0.1:${address.port}/issuer`;
   }, 90000);
 
   afterAll(async () => {
     await closeServices();
     if (issuerServer)
       await new Promise<void>((resolve) => issuerServer.close(() => resolve()));
-    setDefaultCACertificates(originalCa);
     await postgres.close();
   }, 30000);
 
@@ -230,6 +235,25 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
     await restart('PUBLIC_READ_ONLY', false);
     for (const path of paths)
       await request(gateway!.getHttpServer()).get(path).expect(401);
+    for (const path of [
+      '/api/v1/seo/visible',
+      '/api/v1/seo/resoluciones/anterior',
+    ]) {
+      const response = await request(gateway!.getHttpServer())
+        .get(path)
+        .expect(403);
+      expect(response.body).toMatchObject({
+        status: 403,
+        code: 'SCOPE_INSUFICIENTE',
+      });
+      expect(Object.keys(response.body).sort()).toEqual([
+        'code',
+        'correlationId',
+        'status',
+        'title',
+      ]);
+    }
+    expect(snapshot()).toEqual(persistedBefore);
   });
 
   it('serves the five exact public reads and real Catalog ID/slug -> Taxonomy enrichment', async () => {
@@ -238,6 +262,9 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
       const response = await request(gateway!.getHttpServer())
         .get(path)
         .expect(200);
+      expect(JSON.stringify(response.body)).not.toMatch(
+        /on_hand|reserved|blocked|available|location_id|stock_version|cost_price|supplier|internal_margin|costo_interno/i,
+      );
       if (path.includes('/productos/'))
         expect(response.body.marca.name).toBe('Visible brand');
     }

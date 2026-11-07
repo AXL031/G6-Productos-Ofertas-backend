@@ -1,6 +1,6 @@
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
-import { createSign, generateKeyPairSync } from 'node:crypto';
+import { createSign, generateKeyPairSync, randomUUID } from 'node:crypto';
 import { BulkSvcController } from './bulk-svc.controller.js';
 import { BulkSvcService } from './bulk-svc.service.js';
 import { BulkReadinessService } from './health/bulk-readiness.service.js';
@@ -55,7 +55,6 @@ describe('Bulk HTTP import routes (isolated)', () => {
       },
     ];
     const imports = {
-      assertImportDependencies: vi.fn(),
       receiveImport: vi.fn().mockResolvedValue({ batch }),
       getSnapshot: vi.fn().mockResolvedValue({
         batch: {
@@ -66,7 +65,14 @@ describe('Bulk HTTP import routes (isolated)', () => {
         },
         rows,
       }),
-      resumeBatch: vi.fn().mockResolvedValue(batch),
+      resumeBatch: vi
+        .fn()
+        .mockRejectedValue(
+          new BulkDomainError(
+            'DEPENDENCY_PENDING',
+            'A new attempt is not approved.',
+          ),
+        ),
     };
     const storage = {
       put: vi.fn().mockResolvedValue('supabase://private/imports/test.csv'),
@@ -232,13 +238,9 @@ describe('Bulk HTTP import routes (isolated)', () => {
       const resumed = await request(app.getHttpServer()).post(
         `/api/v1/carga-masiva/productos/importaciones/${batch.batchId}/reanudar`,
       );
-      expect(resumed.status).toBe(202);
-      expect(resumed.body).toMatchObject({
-        batch_id: batch.batchId,
-        status: 'QUEUED',
-        template_version: 2,
-        correlation_id: batch.correlationId,
-      });
+      expect(resumed.status).toBe(503);
+      expect(resumed.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(imports.getSnapshot).toHaveBeenCalledWith(batch.batchId);
 
       const exportCreated = await request(app.getHttpServer())
         .post('/api/v1/carga-masiva/productos/exportaciones')
@@ -320,9 +322,11 @@ describe('Bulk export HTTP authentication (isolated signed-key boundary)', () =>
       const header = encode({ alg: 'RS256', typ: 'JWT' });
       const claims = encode({
         iss: 'bulk-http-test-issuer',
-        sub: 'isolated-http-test-subject',
-        aud: 'api-productos',
+        sub: '00000000-0000-4000-8000-000000000001',
+        tipo: 'acceso',
+        iat: Math.floor(Date.now() / 1000),
         exp: Math.floor(Date.now() / 1000) + 600,
+        jti: randomUUID(),
         roles,
       });
       const signer = createSign('RSA-SHA256');
