@@ -1,3 +1,4 @@
+import { H4SkuListener } from './h4-sku-listener.js';
 import { ReadinessController as CommercialReadinessController } from './readiness.controller.js';
 import { DynamicModule, Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -89,6 +90,7 @@ import { readHistoricalPricingContract } from './historical-pricing.contract.js'
     ReadinessController,
   ],
   providers: [
+    H4SkuListener,
     AppService,
     Database,
     CatalogTransactionManager,
