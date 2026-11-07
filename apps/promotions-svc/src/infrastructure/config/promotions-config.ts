@@ -212,9 +212,7 @@ export function validatePromotionsConfiguration(
       invalid.add(variable);
     }
   }
-  const httpOnly =
-    securityMode === 'PUBLIC_READ_ONLY' &&
-    !couponRuntimeEnabled;
+  const httpOnly = securityMode === 'PUBLIC_READ_ONLY' && !couponRuntimeEnabled;
   const required = Object.fromEntries(
     requiredVariables.map((name) => {
       const value = environment[name] ?? '';
