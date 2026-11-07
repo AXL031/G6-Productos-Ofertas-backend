@@ -2005,10 +2005,24 @@ describeIntegracion(
             `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
           )
           .expect(403);
-        await request(nest.getHttpServer())
-          .get('/api/v1/categorias')
-          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
-          .expect(403);
+        // DEC-G6-INT-01/04: own G6 identity can read these reference collections.
+        for (const collection of ['/api/v1/categorias', '/api/v1/marcas']) {
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .expect(200);
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set(
+              'Authorization',
+              `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
+            )
+            .expect(403);
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set('Authorization', `Bearer ${token('otro:leer')}`)
+            .expect(403);
+        }
         await request(nest.getHttpServer())
           .post('/api/v1/categorias')
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
@@ -2190,10 +2204,11 @@ describeIntegracion(
               `Bearer ${token('catalogo:leer', false, [], 'modulo-marketplace')}`,
             )
             .expect(200);
-          await request(nest.getHttpServer())
+          const ownResult = await request(nest.getHttpServer())
             .get(`/api/v1/${path}`)
             .set('Authorization', `Bearer ${token('catalogo:leer')}`)
-            .expect(403);
+            .expect(200);
+          expect(ownResult.body).toEqual(result.body);
           expect(result.body[key].length).toBeGreaterThan(0);
           expect(
             result.body[key].every(
