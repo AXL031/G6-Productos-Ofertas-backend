@@ -56,13 +56,20 @@ describe('PromotionsSvcController (e2e)', () => {
     await app.init();
   });
 
-  it('keeps readiness internal and does not publish new HTTP routes', async () => {
+  it('reports dependency readiness through the Gateway contract', async () => {
     expect(await app.get(PromotionsReadinessService).check()).toMatchObject({
       status: 'not_ready',
       dependencies: { database: 'disabled', broker: 'disabled' },
     });
     await request(app.getHttpServer()).get('/health/live').expect(404);
-    await request(app.getHttpServer()).get('/health/ready').expect(404);
+    await request(app.getHttpServer())
+      .get('/health/ready')
+      .expect(503)
+      .expect({
+        status: 'not_ready',
+        service: 'promotions-svc',
+        dependencies: { database: 'disabled', broker: 'disabled' },
+      });
   });
 
   it('/health (GET)', () => {
@@ -223,7 +230,14 @@ describe('Promotions module startup configuration', () => {
       ).rejects.toThrow('COMMERCIAL_CONTEXT_UNAVAILABLE');
       await request(app.getHttpServer()).get('/health').expect(200);
       await request(app.getHttpServer()).get('/health/live').expect(404);
-      await request(app.getHttpServer()).get('/health/ready').expect(404);
+      await request(app.getHttpServer())
+        .get('/health/ready')
+        .expect(200)
+        .expect({
+          status: 'ready',
+          service: 'promotions-svc',
+          dependencies: { database: 'up', broker: 'disabled' },
+        });
     } finally {
       await app.close();
     }

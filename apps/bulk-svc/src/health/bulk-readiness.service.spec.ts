@@ -57,6 +57,28 @@ describe('BulkReadinessService', () => {
     );
   });
 
+  it('reports read readiness from PostgreSQL and private storage independently of AMQP', async () => {
+    const { service, pool } = serviceWith(async () => undefined, {
+      amqpUrl: null,
+    });
+    const storage = { ready: vi.fn().mockResolvedValue(true) };
+    await expect(service.probeReads(storage)).resolves.toEqual({
+      ready: true,
+      reason: 'READY',
+    });
+    expect(pool.query).toHaveBeenCalledWith(
+      'SELECT 1 FROM bulk.batch_jobs LIMIT 0',
+    );
+    expect(storage.ready).toHaveBeenCalledOnce();
+  });
+
+  it('fails read readiness when the private bucket cannot be verified', async () => {
+    const { service } = serviceWith(async () => undefined);
+    await expect(
+      service.probeReads({ ready: async () => false }),
+    ).resolves.toEqual({ ready: false, reason: 'STORAGE_UNAVAILABLE' });
+  });
+
   it.each([
     'connection refused',
     'query rejected',

@@ -59,6 +59,19 @@ export class BulkSvcController {
       });
   }
 
+  @Get('health/readiness/reads') async getReadReadiness(
+    @Res() response: Response,
+  ) {
+    const result = await this.readiness.probeReads(this.storage);
+    return response
+      .status(result.ready ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE)
+      .json({
+        status: result.ready ? 'ready' : 'not_ready',
+        service: 'bulk-svc',
+        reason: result.reason,
+      });
+  }
+
   @UseGuards(BulkUserBearerGuard)
   @Get('api/v1/carga-masiva/productos/plantilla')
   descargarPlantillaProductos(

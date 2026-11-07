@@ -24,6 +24,10 @@ describe('BulkSvcController', () => {
               ready: false,
               reason: 'AMQP_NOT_CONFIGURED',
             }),
+            probeReads: vi.fn().mockResolvedValue({
+              ready: true,
+              reason: 'READY',
+            }),
           },
         },
       ],
@@ -55,6 +59,20 @@ describe('BulkSvcController', () => {
       status: 'not_ready',
       service: 'bulk-svc',
       reason: 'AMQP_NOT_CONFIGURED',
+    });
+  });
+
+  it('reports read readiness separately from AMQP processing readiness', async () => {
+    const response = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn().mockReturnValue(undefined),
+    };
+    await controller.getReadReadiness(response as never);
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith({
+      status: 'ready',
+      service: 'bulk-svc',
+      reason: 'READY',
     });
   });
 });
