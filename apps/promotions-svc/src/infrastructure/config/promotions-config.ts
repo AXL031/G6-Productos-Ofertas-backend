@@ -214,7 +214,6 @@ export function validatePromotionsConfiguration(
   }
   const httpOnly =
     securityMode === 'PUBLIC_READ_ONLY' &&
-    !dependencyProbesEnabled &&
     !couponRuntimeEnabled;
   const required = Object.fromEntries(
     requiredVariables.map((name) => {
