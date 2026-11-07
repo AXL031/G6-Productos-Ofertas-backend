@@ -26,6 +26,19 @@ describe('BulkStorageService HTTP safety', () => {
     }
   });
 
+  it('reports storage readiness only for a verified private bucket', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ public: false })),
+    );
+    await expect(new BulkStorageService().ready()).resolves.toBe(true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Response.json({ public: true })),
+    );
+    await expect(new BulkStorageService().ready()).resolves.toBe(false);
+  });
+
   it('uses private non-upsert upload and verifies stored bytes before returning the reference', async () => {
     const bytes = Buffer.from('CSV,niño,東京\r\n');
     const calls: Array<{ url: string; init?: RequestInit }> = [];
