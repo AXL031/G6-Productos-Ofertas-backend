@@ -1,5 +1,22 @@
 # Pricing — adopción histórica A1 de Catalog #194
 
+## Integración local con Catalog — 2026-11-07
+
+La prueba integral A1/A2 de Catalog pasó localmente usando Catalog
+`72c3d238abfa3004e00fabb8839fa91cc9a7a3d1`, Pricing
+`31780a0c76a6f8652a1963f6925bf68c1b6706e8` e Inventory
+`56aa4322725060b529bf316872f891582d7d1b2e`, con PostgreSQL y RabbitMQ
+descartables y procesos reales. Se exportó Catalog temporalmente y se cambió
+solo el pin de Pricing para la prueba; su código productivo no se modificó.
+El caso integral pasó (1 PASS, 96 casos no seleccionados). Incluye recuperación,
+activación, rechazos, reintentos, reinicio y snapshots monetarios. No acredita
+homologación de Poma, despliegue ni integración compartida de producción.
+
+El ejecutor `test/integracion-catalog.ps1` reproduce el montaje y exige el
+marcador A1. La suite DATA-002 pasó 25 casos en Windows, con límite original
+de 5000 ms. Contrato Docs y registro de la migración 0003 siguen pendientes
+de Marco.
+
 Rama `vera`, base `2cc8c8df8f0d00d8f858978f93e82f787b64777a`.
 Refs Backend #57 y Catalog PR #194. Corte de trabajo: 2026-11-05.
 Implementación: `8c67362d74f7de510d421fa25a80a9799082a2d5`; reporte/contrato
