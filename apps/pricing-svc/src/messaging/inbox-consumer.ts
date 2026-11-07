@@ -232,7 +232,7 @@ export class PricingInboxConsumer
         else {
           if (
             error instanceof PricingPersistenceError &&
-            error.sqlState === '57014'
+            (error.sqlState === '57014' || error.clientTimeout)
           ) {
             this.available = false;
             await owner.close().catch(() => undefined);

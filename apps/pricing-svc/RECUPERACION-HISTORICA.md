@@ -9,7 +9,8 @@ replay por operación. La prueba con PostgreSQL y RabbitMQ reprodujo inicialment
 actual pasa, incluyendo replays concurrentes y conflicto de intención.
 
 Un lock retenido 7,2 segundos reprodujo una pausa permanente tras el timeout de
-PostgreSQL. Para `PricingPersistenceError.sqlState=57014`, después de tres
+PostgreSQL. Para `PricingPersistenceError.sqlState=57014` o el timeout de lectura
+del cliente PostgreSQL, después de tres
 intentos el canal se cierra para devolver las entregas sin ACK y se reconecta;
 la prueba real pasa sin modificar los límites existentes. Errores no reconocidos
 continúan pausando. La modificación del índice 0003 supone que esta migración
