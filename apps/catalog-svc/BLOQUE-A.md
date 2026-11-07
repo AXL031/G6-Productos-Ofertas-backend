@@ -1,5 +1,32 @@
 # Bloque A — preparación, integración y consultas
 
+## Continuación autorizada — diagnóstico DATA-002 e integración con master
+
+Marco aprobó moneda HTTP: obligatoria solo con PRICING, prohibida en selección
+INVENTARIO-only, ISO conocida y parte del fingerprint. Catalog no calcula ni
+envía precio_regular. Esa decisión ya no está pendiente de aprobación; la
+publicación en Docs puede ser posterior. Las referencias anteriores a aprobación
+pendiente se conservan como historial y quedan superadas por este corte.
+La operación sigue cerrada por defecto y el adaptador solo se habilita en test.
+0004 está autorizada para aplicación manual por el responsable en Supabase;
+su aplicación efectiva no se infiere de esa autorización. Este trabajo no ejecuta
+migraciones ni modifica registros compartidos.
+
+Diagnóstico temporal publicado para medir DATA-002 con límite original 5000 ms:
+etapas fixtures/preflight/negativos/carga-replay/postcheck/conflicto, procesos y
+tiempo de ejecución; probes Docker/psql y limpieza fuera del cuerpo del test.
+Después de la suite se repite el caso original en un proceso Vitest aislado,
+con base y broker descartables propios. La selección de un caso no se presenta
+como ejecución de los demás tests. No se altera timeout global ni aserciones.
+Docker está ausente localmente: los resultados Linux se acreditarán en Actions.
+La ejecución anterior 42237088051 midió 1490 ms en Linux; no reprodujo el timeout
+de Vera y no permite atribuir su causa sin las nuevas mediciones.
+
+Pricing publicado provisional 807189f7ca49d4af3b4ad367043260bc3050fb3d;
+pendientes de publicación las correcciones adicionales anunciadas por Vera.
+El productor candidato actual se conserva. La prueba preliminar y el SHA final
+se registrarán por separado; no se declara compatibilidad con código sin commit.
+
 ## Auditoría del fragmento HTTP — 06/11/2026
 
 Continuación sobre b6ba5fc5027074080b3d3dee94a17a1c7db6b5dc, exclusivamente

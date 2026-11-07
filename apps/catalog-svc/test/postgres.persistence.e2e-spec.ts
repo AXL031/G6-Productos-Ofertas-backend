@@ -307,6 +307,30 @@ describe.skipIf(!dockerAvailable)(
     }, 180000);
 
     afterAll(async () => {
+      const probes: Record<string, number[]> = {
+        dockerExec: [],
+        psqlSelect: [],
+      };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        let start = performance.now();
+        command('docker', ['exec', container, 'true']);
+        probes.dockerExec.push(+(performance.now() - start).toFixed(1));
+        start = performance.now();
+        command('docker', [
+          'exec',
+          container,
+          'psql',
+          '-X',
+          '-At',
+          '-U',
+          'postgres',
+          '-c',
+          'SELECT 1',
+        ]);
+        probes.psqlSelect.push(+(performance.now() - start).toFixed(1));
+      }
+      console.log('DATA002_DIAGNOSTIC_PROBES=' + JSON.stringify(probes));
+      const cleanupStart = performance.now();
       await jointRuntime?.onModuleDestroy();
       await jointBroker.close();
       if (!closed) await database?.onModuleDestroy();
@@ -325,7 +349,43 @@ describe.skipIf(!dockerAvailable)(
           throw new Error('Invalid isolated test cleanup path');
         rmSync(directory, { recursive: true, force: true });
       }
+      console.log(
+        'DATA002_DIAGNOSTIC_CLEANUP_MS=' +
+          (performance.now() - cleanupStart).toFixed(1),
+      );
     }, 30000);
+
+    // Temporary diagnostic: same original 5000 ms case in a fresh isolated suite.
+    afterAll(async () => {
+      if (process.env.CATALOG_DATA002_DIAGNOSTIC_CHILD === '1') return;
+      const child = spawn(
+        process.execPath,
+        [
+          resolve('node_modules/vitest/vitest.mjs'),
+          'run',
+          '--config',
+          'vitest.config.e2e.ts',
+          'apps/catalog-svc/test/postgres.persistence.e2e-spec.ts',
+          '--testNamePattern=validates the DATA-002 batch in disposable PostgreSQL',
+          '--reporter=verbose',
+        ],
+        {
+          env: { ...process.env, CATALOG_DATA002_DIAGNOSTIC_CHILD: '1' },
+          windowsHide: true,
+        },
+      );
+      child.stdout.on('data', (data: Buffer) =>
+        console.log('DATA002_ISOLATED: ' + data.toString()),
+      );
+      child.stderr.on('data', (data: Buffer) =>
+        console.log('DATA002_ISOLATED_STDERR: ' + data.toString()),
+      );
+      const code = await new Promise<number | null>((resolveExit, reject) => {
+        child.once('error', reject);
+        child.once('close', resolveExit);
+      });
+      expect(code).toBe(0);
+    }, 180000);
 
     function productInput(sku: string) {
       return {
@@ -2897,6 +2957,41 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
     });
 
     it('validates the DATA-002 batch in disposable PostgreSQL', () => {
+      const started = performance.now();
+      let phase = 'fixtures';
+      let phaseStart = started;
+      let processes = 0;
+      let processMs = 0;
+      const measured = <T>(action: () => T): T => {
+        const start = performance.now();
+        processes++;
+        try {
+          return action();
+        } finally {
+          processMs += performance.now() - start;
+        }
+      };
+      const dataCommand = (...args: Parameters<typeof command>) =>
+        measured(() => command(...args));
+      const mark = (next: string) => {
+        console.log(
+          'DATA002_DIAGNOSTIC=' +
+            JSON.stringify({
+              mode:
+                process.env.CATALOG_DATA002_DIAGNOSTIC_CHILD === '1'
+                  ? 'isolated'
+                  : 'suite',
+              phase,
+              wallMs: +(performance.now() - phaseStart).toFixed(1),
+              processes,
+              processMs: +processMs.toFixed(1),
+            }),
+        );
+        phase = next;
+        phaseStart = performance.now();
+        processes = 0;
+        processMs = 0;
+      };
       const catalogDirectory = resolve('scripts/seed/mcp/catalog');
       const manifest = JSON.parse(
         readFileSync(
@@ -2964,7 +3059,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         GRANT USAGE ON SCHEMA taxonomy TO po_catalog_owner;
         GRANT SELECT ON ALL TABLES IN SCHEMA taxonomy TO po_catalog_owner;
       `;
-      command(
+      dataCommand(
         'docker',
         [
           'exec',
@@ -2984,28 +3079,31 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         'utf8',
       );
       const runSql = (input: string) =>
-        spawnSync(
-          'docker',
-          [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-q',
-            '-U',
-            'postgres',
-            '-v',
-            'ON_ERROR_STOP=1',
-          ],
-          {
-            encoding: 'utf8',
-            input,
-            timeout: 120000,
-            windowsHide: true,
-          },
+        measured(() =>
+          spawnSync(
+            'docker',
+            [
+              'exec',
+              '-i',
+              container,
+              'psql',
+              '-X',
+              '-q',
+              '-U',
+              'postgres',
+              '-v',
+              'ON_ERROR_STOP=1',
+            ],
+            {
+              encoding: 'utf8',
+              input,
+              timeout: 120000,
+              windowsHide: true,
+            },
+          ),
         );
-      const preflight = command(
+      mark('preflight');
+      const preflight = dataCommand(
         'docker',
         [
           'exec',
@@ -3029,7 +3127,8 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         join(catalogDirectory, '003_carga_catalogo.sql'),
         'utf8',
       );
-      const existingProductCount = command('docker', [
+      mark('negative');
+      const existingProductCount = dataCommand('docker', [
         'exec',
         '-i',
         container,
@@ -3045,7 +3144,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         mutation: string,
         restoration: string,
       ) => {
-        command(
+        dataCommand(
           'docker',
           [
             'exec',
@@ -3068,7 +3167,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           expect(result.stderr).toContain('DATA002_PREFLIGHT_BLOCKED');
         }
         expect(
-          command('docker', [
+          dataCommand('docker', [
             'exec',
             '-i',
             container,
@@ -3081,7 +3180,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             'SELECT count(*) FROM catalog.products',
           ]),
         ).toBe(existingProductCount);
-        command(
+        dataCommand(
           'docker',
           [
             'exec',
@@ -3115,7 +3214,7 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         "UPDATE taxonomy.product_type_characteristics SET estado = 'ACTIVO' WHERE tipo_producto_id = 'b023a151-d69f-ff9a-483a-678eefe6842e' AND caracteristica_id = 'acee6db1-ba1c-f020-caf8-f439b09556ff';",
       );
       const executeBatch = () =>
-        command(
+        dataCommand(
           'docker',
           [
             'exec',
@@ -3131,10 +3230,12 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           ],
           `SET ROLE po_catalog_owner;\n${batch}`,
         );
+      mark('load-and-replay');
       executeBatch();
       executeBatch();
+      mark('postcheck');
 
-      const postcheck = command(
+      const postcheck = dataCommand(
         'docker',
         [
           'exec',
@@ -3164,31 +3265,39 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
       expect(postcheckRows).toContain('variantes|45|45|PASS');
       expect(postcheckRows).toContain('payloads_jsonb_validos|0|0|PASS');
 
-      const conflict = spawnSync(
-        'docker',
-        [
-          'exec',
-          '-i',
-          container,
-          'psql',
-          '-X',
-          '-q',
-          '-U',
-          'postgres',
-          '-v',
-          'ON_ERROR_STOP=1',
-        ],
-        {
-          encoding: 'utf8',
-          input: `UPDATE catalog.products SET descripcion = 'different payload' WHERE id = '96c6972f-2bd2-5528-8028-5293fe719db9';\nSET ROLE po_catalog_owner;\n${batch}`,
-          timeout: 120000,
-          windowsHide: true,
-        },
+      mark('conflict');
+      const conflict = measured(() =>
+        spawnSync(
+          'docker',
+          [
+            'exec',
+            '-i',
+            container,
+            'psql',
+            '-X',
+            '-q',
+            '-U',
+            'postgres',
+            '-v',
+            'ON_ERROR_STOP=1',
+          ],
+          {
+            encoding: 'utf8',
+            input: `UPDATE catalog.products SET descripcion = 'different payload' WHERE id = '96c6972f-2bd2-5528-8028-5293fe719db9';\nSET ROLE po_catalog_owner;\n${batch}`,
+            timeout: 120000,
+            windowsHide: true,
+          },
+        ),
       );
       expect(conflict.error).toBeUndefined();
       expect(conflict.status).not.toBe(0);
       expect(conflict.stderr).toContain(
         'DATA-002 contenido diferente en catalog.products',
+      );
+      mark('done');
+      console.log(
+        'DATA002_DIAGNOSTIC_TOTAL_MS=' +
+          (performance.now() - started).toFixed(1),
       );
     });
 
