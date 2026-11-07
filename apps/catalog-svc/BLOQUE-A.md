@@ -2,6 +2,49 @@
 
 ## Continuación autorizada — diagnóstico DATA-002 e integración con master
 
+### DATA-002 — medición original y reducción de procesos
+
+[Diagnóstico Linux 42339227598](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42339227598/job/128302972988),
+fuente fdb8f146bf1574809bdc63db5fadfe6a59a25b64, límite original 5000 ms:
+
+| Etapa | Suite ms / procesos | Aislado ms / procesos |
+| --- | --- | --- |
+| Fixtures | 84.2 / 1 | 87.5 / 1 |
+| Preflight | 92.1 / 1 | 93.1 / 1 |
+| Negativos y restauraciones | 1146.7 / 16 | 1140.6 / 16 |
+| Carga y replay | 351.4 / 2 | 370.6 / 2 |
+| Postcheck | 82.9 / 1 | 82.3 / 1 |
+| Conflicto de contenido | 111.1 / 1 | 117.1 / 1 |
+| Total | 1869.1 / 22 | 1892.1 / 22 |
+
+Ambos PASS; no se reprodujo el timeout de Vera en Linux. Prueba aislada: 1 PASS,
+97 no seleccionadas por nombre, no contadas como cobertura. General: 1053 PASS /
+217 SKIP. Limpieza fuera del cuerpo: 385.5 ms suite / 321.2 ms aislado. Probes
+docker exec true: 55.4–64.1 ms; psql SELECT 1: 59.7–70.5 ms. Los procesos ocupan
+1863.3 ms de 1869.1 ms en suite: sobrecarga repetida confirmada, sin evidencia
+de bloqueo SQL ni diferencia importante por contención entre ambos modos.
+La causa exacta del timeout en el entorno de Vera no se afirma reproducida.
+
+Corrección: un solo transporte docker exec con 22 sesiones psql independientes;
+conserva scripts originales, rollback al cerrar cada conexión fallida, códigos de
+salida, tres negativos/preflight/carga, conteos sin efectos, restauraciones,
+doble carga idempotente, 12 postchecks y conflicto de contenido. Registra tiempos
+SQL reales y de sesiones. Mantiene límite localizado 5000 ms, sin cambiar el
+global ni adoptar los 120 s sin medición que traía master para este caso.
+La instrumentación temporal repetirá también el caso corregido aisladamente;
+su resultado se registrará antes de retirarla. No hay PASS aún de esa corrección.
+
+Integración master → poma realizada por merge no destructivo 95a766a4380f9136858cde3691635ee2dc88c8a6,
+contra d21c24fcec5fe587545a43b76fa921e91eb25e0a. Conflictos resueltos por bloques
+solo en historical-recovery.service/spec y PostgreSQL E2E; autenticación,
+PUBLIC_READ_ONLY y readiness coinciden exactamente con master. Todo archivo
+externo a Catalog del índice integrado coincidía con master, sin cambio propio.
+ProblemFilter conserva además la corrección 413 ya acreditada en #194.
+Local integrado: 653 unitarias Catalog PASS, 2519 generales PASS / 72 SKIP;
+tipos/lint/formato/build PASS. E2E general local FAIL por Docker ausente en Bulk
+y nueva prueba PUBLIC_READ_ONLY Gateway; 888 PASS / 327 SKIP. Sin modificación
+de esos servicios para evitar los fallos. El encargo autoriza acreditarlos en CI.
+
 Marco aprobó moneda HTTP: obligatoria solo con PRICING, prohibida en selección
 INVENTARIO-only, ISO conocida y parte del fingerprint. Catalog no calcula ni
 envía precio_regular. Esa decisión ya no está pendiente de aprobación; la

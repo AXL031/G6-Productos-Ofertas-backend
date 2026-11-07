@@ -33,6 +33,7 @@ import {
   pinnedPricingSource,
   PRICING_HISTORICAL_SHA,
 } from './support/pinned-peer-source.js';
+import { runData002Psql, type Data002Step } from './support/data002-psql.js';
 import { LegacyDemoList } from './support/legacy-demo-list.js';
 import { CatalogGatewayHarness } from './support/catalog-gateway-harness.js';
 import { CommercialService } from '../src/commercial.service.js';
@@ -2957,41 +2958,6 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
     });
 
     it('validates the DATA-002 batch in disposable PostgreSQL', () => {
-      const started = performance.now();
-      let phase = 'fixtures';
-      let phaseStart = started;
-      let processes = 0;
-      let processMs = 0;
-      const measured = <T>(action: () => T): T => {
-        const start = performance.now();
-        processes++;
-        try {
-          return action();
-        } finally {
-          processMs += performance.now() - start;
-        }
-      };
-      const dataCommand = (...args: Parameters<typeof command>) =>
-        measured(() => command(...args));
-      const mark = (next: string) => {
-        console.log(
-          'DATA002_DIAGNOSTIC=' +
-            JSON.stringify({
-              mode:
-                process.env.CATALOG_DATA002_DIAGNOSTIC_CHILD === '1'
-                  ? 'isolated'
-                  : 'suite',
-              phase,
-              wallMs: +(performance.now() - phaseStart).toFixed(1),
-              processes,
-              processMs: +processMs.toFixed(1),
-            }),
-        );
-        phase = next;
-        phaseStart = performance.now();
-        processes = 0;
-        processMs = 0;
-      };
       const catalogDirectory = resolve('scripts/seed/mcp/catalog');
       const manifest = JSON.parse(
         readFileSync(
@@ -3059,247 +3025,99 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         GRANT USAGE ON SCHEMA taxonomy TO po_catalog_owner;
         GRANT SELECT ON ALL TABLES IN SCHEMA taxonomy TO po_catalog_owner;
       `;
-      dataCommand(
-        'docker',
-        [
-          'exec',
-          '-i',
-          container,
-          'psql',
-          '-U',
-          'postgres',
-          '-v',
-          'ON_ERROR_STOP=1',
-        ],
-        taxonomyFixture,
-      );
-
       const preflightSql = readFileSync(
         join(catalogDirectory, '001_preflight_readonly.sql'),
         'utf8',
       );
-      const runSql = (input: string) =>
-        measured(() =>
-          spawnSync(
-            'docker',
-            [
-              'exec',
-              '-i',
-              container,
-              'psql',
-              '-X',
-              '-q',
-              '-U',
-              'postgres',
-              '-v',
-              'ON_ERROR_STOP=1',
-            ],
-            {
-              encoding: 'utf8',
-              input,
-              timeout: 120000,
-              windowsHide: true,
-            },
-          ),
-        );
-      mark('preflight');
-      const preflight = dataCommand(
-        'docker',
-        [
-          'exec',
-          '-i',
-          container,
-          'psql',
-          '-X',
-          '-At',
-          '-U',
-          'postgres',
-          '-v',
-          'ON_ERROR_STOP=1',
-        ],
-        preflightSql,
-      );
-      expect(preflight).not.toMatch(
-        /FALTA_INACTIVA_O_CARACTERISTICA_INCORRECTA|RELACION_FALTA_O_INACTIVA|DATA002_PREFLIGHT_BLOCKED/,
-      );
-
       const batch = readFileSync(
         join(catalogDirectory, '003_carga_catalogo.sql'),
         'utf8',
       );
-      mark('negative');
-      const existingProductCount = dataCommand('docker', [
-        'exec',
-        '-i',
-        container,
-        'psql',
-        '-X',
-        '-At',
-        '-U',
-        'postgres',
-        '-c',
-        'SELECT count(*) FROM catalog.products',
-      ]);
-      const expectPreflightToBlock = (
-        mutation: string,
-        restoration: string,
-      ) => {
-        dataCommand(
-          'docker',
-          [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-q',
-            '-U',
-            'postgres',
-            '-v',
-            'ON_ERROR_STOP=1',
-          ],
-          mutation,
-        );
-        for (const sqlText of [preflightSql, batch]) {
-          const result = runSql(sqlText);
-          expect(result.error).toBeUndefined();
-          expect(result.status).not.toBe(0);
-          expect(result.stderr).toContain('DATA002_PREFLIGHT_BLOCKED');
-        }
-        expect(
-          dataCommand('docker', [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-At',
-            '-U',
-            'postgres',
-            '-c',
-            'SELECT count(*) FROM catalog.products',
-          ]),
-        ).toBe(existingProductCount);
-        dataCommand(
-          'docker',
-          [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-q',
-            '-U',
-            'postgres',
-            '-v',
-            'ON_ERROR_STOP=1',
-          ],
-          restoration,
-        );
-      };
+      const countSql = 'SELECT count(*) FROM catalog.products';
+      const steps: Data002Step[] = [
+        { name: 'fixtures', input: taxonomyFixture },
+        { name: 'preflight', input: preflightSql },
+        { name: 'initial-count', input: countSql },
+      ];
       const brandEntry = Object.entries(manifest.taxonomy.brands).find(
         ([, id]) => id === 'd05cc621-2d16-faa3-f620-19fb3173737c',
       );
       expect(brandEntry).toBeDefined();
-      expectPreflightToBlock(
-        "DELETE FROM taxonomy.brands WHERE id = 'd05cc621-2d16-faa3-f620-19fb3173737c';",
-        `INSERT INTO taxonomy.brands (id, nombre, estado) VALUES (${sqlLiteral(brandEntry![1])}, ${sqlLiteral(brandEntry![0])}, 'ACTIVO');`,
-      );
-      expectPreflightToBlock(
-        "UPDATE taxonomy.product_types SET estado = 'INACTIVO' WHERE id = 'b023a151-d69f-ff9a-483a-678eefe6842e';",
-        "UPDATE taxonomy.product_types SET estado = 'ACTIVO' WHERE id = 'b023a151-d69f-ff9a-483a-678eefe6842e';",
-      );
-      expectPreflightToBlock(
-        "UPDATE taxonomy.product_type_characteristics SET estado = 'INACTIVO' WHERE tipo_producto_id = 'b023a151-d69f-ff9a-483a-678eefe6842e' AND caracteristica_id = 'acee6db1-ba1c-f020-caf8-f439b09556ff';",
-        "UPDATE taxonomy.product_type_characteristics SET estado = 'ACTIVO' WHERE tipo_producto_id = 'b023a151-d69f-ff9a-483a-678eefe6842e' AND caracteristica_id = 'acee6db1-ba1c-f020-caf8-f439b09556ff';",
-      );
-      const executeBatch = () =>
-        dataCommand(
-          'docker',
-          [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-q',
-            '-U',
-            'postgres',
-            '-v',
-            'ON_ERROR_STOP=1',
-          ],
-          `SET ROLE po_catalog_owner;\n${batch}`,
-        );
-      mark('load-and-replay');
-      executeBatch();
-      executeBatch();
-      mark('postcheck');
-
-      const postcheck = dataCommand(
-        'docker',
+      const negativeCases = [
         [
-          'exec',
-          '-i',
-          container,
-          'psql',
-          '-X',
-          '-At',
-          '-F',
-          '|',
-          '-U',
-          'postgres',
-          '-v',
-          'ON_ERROR_STOP=1',
+          "DELETE FROM taxonomy.brands WHERE id = 'd05cc621-2d16-faa3-f620-19fb3173737c';",
+          `INSERT INTO taxonomy.brands (id, nombre, estado) VALUES (${sqlLiteral(brandEntry![1])}, ${sqlLiteral(brandEntry![0])}, 'ACTIVO');`,
         ],
-        readFileSync(
-          join(catalogDirectory, '004_postcheck_readonly.sql'),
-          'utf8',
-        ),
+        [
+          "UPDATE taxonomy.product_types SET estado = 'INACTIVO' WHERE id = 'b023a151-d69f-ff9a-483a-678eefe6842e';",
+          "UPDATE taxonomy.product_types SET estado = 'ACTIVO' WHERE id = 'b023a151-d69f-ff9a-483a-678eefe6842e';",
+        ],
+        [
+          "UPDATE taxonomy.product_type_characteristics SET estado = 'INACTIVO' WHERE tipo_producto_id = 'b023a151-d69f-ff9a-483a-678eefe6842e' AND caracteristica_id = 'acee6db1-ba1c-f020-caf8-f439b09556ff';",
+          "UPDATE taxonomy.product_type_characteristics SET estado = 'ACTIVO' WHERE tipo_producto_id = 'b023a151-d69f-ff9a-483a-678eefe6842e' AND caracteristica_id = 'acee6db1-ba1c-f020-caf8-f439b09556ff';",
+        ],
+      ];
+      for (const [index, [mutation, restoration]] of negativeCases.entries()) {
+        steps.push(
+          { name: 'mutation-' + index, input: mutation },
+          { name: 'blocked-preflight-' + index, input: preflightSql },
+          { name: 'blocked-batch-' + index, input: batch },
+          { name: 'count-' + index, input: countSql },
+          { name: 'restore-' + index, input: restoration },
+        );
+      }
+      steps.push(
+        { name: 'load', input: `SET ROLE po_catalog_owner;\n${batch}` },
+        { name: 'replay', input: `SET ROLE po_catalog_owner;\n${batch}` },
+        {
+          name: 'postcheck',
+          input: readFileSync(
+            join(catalogDirectory, '004_postcheck_readonly.sql'),
+            'utf8',
+          ),
+        },
+        {
+          name: 'conflict',
+          input: `UPDATE catalog.products SET descripcion = 'different payload' WHERE id = '96c6972f-2bd2-5528-8028-5293fe719db9';\nSET ROLE po_catalog_owner;\n${batch}`,
+        },
       );
-      const postcheckRows = postcheck
-        .split(/\r?\n/)
+      const results = runData002Psql(container, steps);
+      // Every original success/failure remains checked, including restorations.
+      for (const [name, result] of results) {
+        if (name.startsWith('blocked-') || name === 'conflict')
+          expect(result.status, name).not.toBe(0);
+        else expect(result.status, name).toBe(0);
+      }
+      const preflight = results.get('preflight')!.output;
+      expect(preflight).not.toMatch(
+        /FALTA_INACTIVA_O_CARACTERISTICA_INCORRECTA|RELACION_FALTA_O_INACTIVA|DATA002_PREFLIGHT_BLOCKED/,
+      );
+      const existingProductCount = results.get('initial-count')!.output;
+      for (const index of negativeCases.keys()) {
+        for (const name of ['blocked-preflight-', 'blocked-batch-']) {
+          const result = results.get(name + index)!;
+          expect(result.status).not.toBe(0);
+          expect(result.output).toContain('DATA002_PREFLIGHT_BLOCKED');
+        }
+        expect(results.get('count-' + index)!.output).toBe(
+          existingProductCount,
+        );
+      }
+      const postcheckRows = results
+        .get('postcheck')!
+        .output.split(/\r?\n/)
         .filter((row) => row.length > 0);
       expect(postcheckRows).toHaveLength(12);
       expect(postcheckRows.every((row) => row.endsWith('|PASS'))).toBe(true);
       expect(postcheckRows).toContain('productos|15|15|PASS');
       expect(postcheckRows).toContain('variantes|45|45|PASS');
       expect(postcheckRows).toContain('payloads_jsonb_validos|0|0|PASS');
-
-      mark('conflict');
-      const conflict = measured(() =>
-        spawnSync(
-          'docker',
-          [
-            'exec',
-            '-i',
-            container,
-            'psql',
-            '-X',
-            '-q',
-            '-U',
-            'postgres',
-            '-v',
-            'ON_ERROR_STOP=1',
-          ],
-          {
-            encoding: 'utf8',
-            input: `UPDATE catalog.products SET descripcion = 'different payload' WHERE id = '96c6972f-2bd2-5528-8028-5293fe719db9';\nSET ROLE po_catalog_owner;\n${batch}`,
-            timeout: 120000,
-            windowsHide: true,
-          },
-        ),
-      );
-      expect(conflict.error).toBeUndefined();
+      const conflict = results.get('conflict')!;
       expect(conflict.status).not.toBe(0);
-      expect(conflict.stderr).toContain(
+      expect(conflict.output).toContain(
         'DATA-002 contenido diferente en catalog.products',
       );
-      mark('done');
-      console.log(
-        'DATA002_DIAGNOSTIC_TOTAL_MS=' +
-          (performance.now() - started).toFixed(1),
-      );
-    });
+    }, 5000);
 
     // These provider tests use authoritative master fixtures, never shared Taxonomy or Supabase writes.
     function mutationService(
