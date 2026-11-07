@@ -5,7 +5,7 @@ readonly ROOT
 readonly WORKFLOW="$ROOT/.github/workflows/cd-services-azure.yml"
 readonly CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
-for required in "workflow_run:" "workflow_dispatch:" "environment: azure-h4" "id-token: write" "cancel-in-progress: false" "max-parallel: 1" "packages: write" "azure/login@v2" "container-apps/deploy.sh" "smoke-marketplace.sh"; do
+for required in "workflow_run:" "workflow_dispatch:" "environment: azure-h4" "id-token: write" "cancel-in-progress: false" "max-parallel: 1" "packages: write" "azure/login@v2" "container-apps/deploy.sh" "smoke-marketplace.sh" "  recover:" "needs: [prepare, deploy, smoke]" "needs.smoke.result == 'failure'" "if: always()"; do
   grep -Fq "$required" "$WORKFLOW" || fail "falta $required"
 done
 if grep -Fq '  push:' "$WORKFLOW"; then fail 'CD no debe publicarse desde push no validado'; fi
@@ -21,10 +21,15 @@ done
 for service in api-gateway catalog-svc taxonomy-svc inventory-svc combos-svc promotions-svc pricing-svc price-audit-svc bulk-svc; do
   grep -Fq -- "- $service" "$WORKFLOW" || fail "faltó el servicio $service"
 done
-grep -Fq 'readonly max_attempts=6' "$ROOT/ops/azure/container-apps/smoke-marketplace.sh" || fail 'reintentos HTTPS no acotados'
+grep -Fq 'SMOKE_MAX_ATTEMPTS:-6' "$ROOT/ops/azure/container-apps/smoke-marketplace.sh" || fail 'reintentos HTTPS por defecto no acotados'
 grep -Fq 'Reintento %s/%s' "$ROOT/ops/azure/container-apps/smoke-marketplace.sh" || fail 'reintentos HTTPS no registrados'
+grep -Fq 'DEPLOY_RECEIPT' "$ROOT/ops/azure/container-apps/deploy.sh" || fail 'recibo para recuperación coordinada ausente'
+grep -Fq -- '--restore' "$ROOT/ops/azure/container-apps/deploy.sh" || fail 'modo de recuperación por digest ausente'
+grep -Fq 'select(.name == "caddy")' "$ROOT/ops/azure/container-apps/deploy.sh" || fail 'identidad efectiva caddy minúscula no validada'
+grep -Fq 'del(.revisionSuffix)' "$ROOT/ops/azure/container-apps/deploy.sh" || fail 'metadato revisionSuffix no normalizado'
+grep -Fq 'containerApps/write' "$ROOT/ops/azure/container-apps/CONFIGURACION_OIDC_H4.md" || fail 'limitación del permiso genérico write no documentada'
 grep -Fq 'azure_cd_h4:' "$CI_WORKFLOW" || fail 'pruebas del ejecutor no conectadas a CI'
-for test_file in validate-source.test.sh deploy.test.sh workflow.test.sh; do
+for test_file in validate-source.test.sh deploy.test.sh smoke.test.sh workflow.test.sh; do
   grep -Fq "ops/azure/container-apps/tests/$test_file" "$CI_WORKFLOW" || fail "CI no ejecuta $test_file"
 done
 printf 'PASS: workflow separa auto/manual, publica, usa OIDC, limita Azure y serializa despliegues\n'

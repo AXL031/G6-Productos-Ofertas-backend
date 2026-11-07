@@ -330,7 +330,16 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
           IMAGE: ${{ steps.image.outputs.value }}
+          DEPLOY_RECEIPT: ${{ matrix.service }}.receipt
         run: bash ops/azure/container-apps/deploy.sh "$SERVICE" "$IMAGE"
+      - name: Guardar recibo de recuperación coordinada
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-receipt-${{ matrix.service }}
+          path: ${{ matrix.service }}.receipt
+          if-no-files-found: ignore
+          retention-days: 1
 
   smoke:
     name: Smoke HTTPS Marketplace posterior al despliegue
@@ -347,3 +356,55 @@ jobs:
           persist-credentials: false
       - name: Comprobar cinco lecturas HTTPS con reintentos acotados
         run: bash ops/azure/container-apps/smoke-marketplace.sh
+
+  recover:
+    name: Recuperación coordinada tras fallo
+    needs: [prepare, deploy, smoke]
+    if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
+    runs-on: ubuntu-latest
+    environment: azure-h4
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Obtener ejecutor validado de master
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+      - name: Descargar recibos de servicios aplicados
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: azure-receipt-*
+          path: receipts
+          merge-multiple: true
+      - name: Autenticar en Azure mediante OIDC para recuperación
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Restaurar servicios sin cambios concurrentes
+        run: |
+          set -Eeuo pipefail
+          mkdir -p receipts
+          shopt -s nullglob
+          receipts=(receipts/*.receipt)
+          (( ${#receipts[@]} > 0 )) || { echo 'RECUPERACIÓN PARCIAL: ningún recibo disponible; identificar manualmente qué apps aplicaron el nuevo digest.' | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
+          failed=0
+          for receipt in "${receipts[@]}"; do
+            service="$(sed -n 's/^service=//p' "$receipt")"
+            previous="$(sed -n 's/^previous=//p' "$receipt")"
+            target="$(sed -n 's/^target=//p' "$receipt")"
+            config_hash="$(sed -n 's/^config_sha256=//p' "$receipt")"
+            if bash ops/azure/container-apps/deploy.sh --restore "$service" "$previous" "$target" "$config_hash"; then
+              printf 'PASS recuperación verificada: %s → %s\n' "$service" "$previous" >> "$GITHUB_STEP_SUMMARY"
+            else
+              printf 'RECUPERACIÓN NO VERIFICADA: %s; revisar ACA y restaurar manualmente solo tras confirmar imagen/configuración actuales. Anterior=%s Aplicada=%s\n' "$service" "$previous" "$target" | tee -a "$GITHUB_STEP_SUMMARY"
+              failed=1
+            fi
+          done
+          ((failed == 0)) || exit 1
+          echo 'Todas las recuperaciones fueron verificadas.' >> "$GITHUB_STEP_SUMMARY"

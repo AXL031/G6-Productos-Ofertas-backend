@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-readonly base='https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io'
+readonly base="${SMOKE_BASE_URL:-https://api-gateway.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io}"
 readonly -a paths=(
   '/api/v1/categorias'
   '/api/v1/marcas'
@@ -9,9 +9,9 @@ readonly -a paths=(
   '/api/v1/productos/32a4172c-81b2-b643-1d0f-ae66f627f2ef?canal=MARKETPLACE'
   '/api/v1/productos/por-slug/ent22-inka-athletics?canal=MARKETPLACE'
 )
-readonly max_attempts=6
-readonly request_timeout=20
-readonly retry_delay=5
+readonly max_attempts="${SMOKE_MAX_ATTEMPTS:-6}"
+readonly request_timeout="${SMOKE_REQUEST_TIMEOUT:-20}"
+readonly retry_delay="${SMOKE_RETRY_DELAY_SECONDS:-5}"
 
 for path in "${paths[@]}"; do
   success=false

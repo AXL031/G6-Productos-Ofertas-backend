@@ -4,47 +4,43 @@ umask 077
 
 readonly RESOURCE_GROUP='rg-g6-aca-chile'
 readonly REPOSITORY='ghcr.io/taller-sw-web/g6-productos-ofertas-backend'
-
 fail() { printf 'Despliegue Azure fallido: %s\n' "$1" >&2; exit 1; }
-[[ $# == 2 ]] || fail 'uso: deploy.sh <servicio> <imagen-con-digest>'
-service="$1" image="$2"
-case "$service" in
-  api-gateway|bulk-svc|catalog-svc|combos-svc|inventory-svc|price-audit-svc|pricing-svc|promotions-svc|taxonomy-svc) ;;
-  *) fail 'servicio fuera de la allowlist de nueve aplicaciones' ;;
-esac
-[[ "$image" == "$REPOSITORY/$service@sha256:"* && "${image##*@sha256:}" =~ ^[0-9a-f]{64}$ ]] || fail 'imagen fuera del paquete oficial o sin digest inmutable'
-app="$service"
-container="$service"
+
+mode=deploy
+if [[ "${1:-}" == --restore ]]; then
+  [[ $# == 5 ]] || fail 'uso: deploy.sh --restore <servicio> <digest-anterior> <digest-aplicado> <sha256-configuración>'
+  mode=restore; service="$2"; previous_image="$3"; image="$4"; expected_config_hash="$5"
+else
+  [[ $# == 2 ]] || fail 'uso: deploy.sh <servicio> <imagen-con-digest>'
+  service="$1"; image="$2"
+fi
+case "$service" in api-gateway|bulk-svc|catalog-svc|combos-svc|inventory-svc|price-audit-svc|pricing-svc|promotions-svc|taxonomy-svc) ;; *) fail 'servicio fuera de la allowlist de nueve aplicaciones' ;; esac
+for candidate in "$image" "${previous_image:-$image}"; do
+  [[ "$candidate" == "$REPOSITORY/$service@sha256:"* && "${candidate##*@sha256:}" =~ ^[0-9a-f]{64}$ ]] || fail 'imagen fuera del paquete oficial o sin digest inmutable'
+done
+[[ "$mode" != restore || "$expected_config_hash" =~ ^[0-9a-f]{64}$ ]] || fail 'hash de configuración inválido'
+
+app="$service"; container="$service"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
-
+before="$work/before.json"; after="$work/after.json"; revision="$work/revision.json"
 read_app() { az containerapp show --name "$app" --resource-group "$RESOURCE_GROUP" --output json; }
-read_containers() { jq -e '.properties.template.containers | type == "array" and length > 0' "$1" >/dev/null; }
 normalize_app() {
   jq -S -c --arg target "$container" '
     {
-      configuration: .properties.configuration,
-      template: (.properties.template | .containers |= map(if .name == $target then del(.image) else . end))
+      identity: .identity,
+      location: .location,
+      tags: .tags,
+      kind: .kind,
+      properties: (
+        .properties
+        | del(.latestRevisionName, .latestReadyRevisionName, .latestRevisionFqdn, .provisioningState)
+        | .template |= (del(.revisionSuffix) | .containers |= map(if .name == $target then del(.image) else . end))
+      )
     }' "$1"
 }
 container_image() { jq -er --arg name "$container" '[.properties.template.containers[] | select(.name == $name) | .image] | if length == 1 then .[0] else error("container target ausente o duplicado") end' "$1"; }
-revision_health() {
-  local revision="$1" output="$2"
-  az containerapp revision show --name "$app" --resource-group "$RESOURCE_GROUP" --revision "$revision" --output json > "$output"
-}
-
-before="$work/before.json"
-after="$work/after.json"
-revision="$work/revision.json"
-read_app > "$before" || fail "no se pudo inspeccionar ACA ${app}"
-read_containers "$before" || fail 'respuesta ACA sin lista de contenedores válida'
-if [[ "$service" == api-gateway ]]; then
-  jq -e '[.properties.template.containers[] | select(.name == "Caddy")] | length == 1' "$before" >/dev/null || fail 'Gateway no contiene exactamente un sidecar Caddy; actualización cancelada'
-fi
-previous_image="$(container_image "$before")" || fail 'no se encontró exactamente un contenedor de destino'
-[[ "$previous_image" == "$REPOSITORY/$service@sha256:"* && "${previous_image##*@sha256:}" =~ ^[0-9a-f]{64}$ ]] || fail 'la imagen previa no es un digest oficial verificable; rollback seguro imposible'
-normalize_app "$before" > "$work/before-normalized.json"
-
+revision_health() { az containerapp revision show --name "$app" --resource-group "$RESOURCE_GROUP" --revision "$1" --output json > "$2"; }
 verify_revision() {
   local expected="$1" deadline_attempts="${ACA_POLL_ATTEMPTS:-30}" delay="${ACA_POLL_INTERVAL_SECONDS:-10}" attempt current latest ready revision_image health active running
   for ((attempt=1; attempt<=deadline_attempts; attempt++)); do
@@ -64,11 +60,46 @@ verify_revision() {
   return 1
 }
 
+if [[ "$mode" == restore ]]; then
+  read_app > "$before" || fail 'no se pudo inspeccionar ACA para recuperación'
+  current="$(container_image "$before")" || fail 'no se pudo verificar imagen actual'
+  normalize_app "$before" > "$work/current-normalized.json"
+  current_hash="$(sha256sum "$work/current-normalized.json" | awk '{print $1}')"
+  if [[ "$current" == "$previous_image" && "$current_hash" == "$expected_config_hash" ]]; then
+    printf 'RECUPERACIÓN YA PRESENTE: servicio=%s conserva digest anterior y configuración.\n' "$service"
+    exit 0
+  fi
+  [[ "$current" == "$image" && "$current_hash" == "$expected_config_hash" ]] || {
+    printf 'RECUPERACIÓN OMITIDA: %s cambió concurrentemente (imagen/configuración); no se sobrescribe. Revisión manual requerida.\n' "$service" >&2
+    exit 1
+  }
+  az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --container-name "$container" --image "$previous_image" --output none || fail 'Azure rechazó la recuperación'
+  verify_revision "$previous_image" || fail 'revisión de recuperación no Healthy'
+  normalize_app "$after" > "$work/after-normalized.json"
+  cmp -s "$work/current-normalized.json" "$work/after-normalized.json" || fail 'la configuración cambió durante la recuperación'
+  printf 'ROLLBACK COORDINADO VERIFICADO: servicio=%s revision=%s image=%s.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$previous_image"
+  exit 0
+fi
+
+read_app > "$before" || fail "no se pudo inspeccionar ACA ${app}"
+jq -e '.properties.template.containers | type == "array" and length > 0' "$before" >/dev/null || fail 'respuesta ACA sin lista de contenedores válida'
+if [[ "$service" == api-gateway ]]; then
+  jq -e '[.properties.template.containers[] | select(.name == "caddy")] | length == 1' "$before" >/dev/null || fail 'Gateway no contiene exactamente un sidecar caddy; actualización cancelada'
+fi
+previous_image="$(container_image "$before")" || fail 'no se encontró exactamente un contenedor de destino'
+[[ "$previous_image" == "$REPOSITORY/$service@sha256:"* && "${previous_image##*@sha256:}" =~ ^[0-9a-f]{64}$ ]] || fail 'la imagen previa no es un digest oficial verificable; rollback seguro imposible'
+normalize_app "$before" > "$work/before-normalized.json"
+baseline_hash="$(sha256sum "$work/before-normalized.json" | awk '{print $1}')"
+if [[ -n "${DEPLOY_RECEIPT:-}" ]]; then
+  printf 'service=%s\nprevious=%s\ntarget=%s\nconfig_sha256=%s\n' "$service" "$previous_image" "$image" "$baseline_hash" > "$DEPLOY_RECEIPT"
+fi
+
 if [[ "$previous_image" == "$image" ]]; then
   printf 'Idempotencia: %s ya usa la imagen/digest solicitado; verificando revisión existente.\n' "$service"
   verify_revision "$image" || fail 'imagen ya presente, pero revisión activa no está Healthy'
 else
-  printf 'Actualizando solo %s/%s en %s; configuración privada y otros contenedores se verificarán sin imprimirlos.\n' "$app" "$container" "$RESOURCE_GROUP"
+  # Store only hashes and immutable image references; never serialize ACA secrets into artifacts.
+  printf 'Actualizando solo %s/%s en %s; configuración ACA se comparará sin imprimirla.\n' "$app" "$container" "$RESOURCE_GROUP"
   if az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --container-name "$container" --image "$image" --output none && \
      verify_revision "$image" && normalize_app "$after" > "$work/after-normalized.json" && \
      cmp -s "$work/before-normalized.json" "$work/after-normalized.json"; then
@@ -76,7 +107,15 @@ else
     exit 0
   fi
 
-  printf 'Fallo tras actualización de %s; restaurando la imagen previa por digest.\n' "$service" >&2
+  printf 'Fallo tras actualización de %s; se comprobará concurrencia antes del rollback local.\n' "$service" >&2
+  read_app > "$after" || fail 'ROLLBACK NO VERIFICADO: no se pudo releer ACA; revisar manualmente'
+  current="$(container_image "$after" 2>/dev/null || true)"
+  normalize_app "$after" > "$work/failure-normalized.json"
+  failure_hash="$(sha256sum "$work/failure-normalized.json" | awk '{print $1}')"
+  if [[ "$current" != "$image" || "$failure_hash" != "$baseline_hash" ]]; then
+    printf 'ROLLBACK OMITIDO: %s cambió concurrentemente; imagen_actual=%s. Revisar ACA manualmente.\n' "$service" "${current:-desconocida}" >&2
+    exit 1
+  fi
   if az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --container-name "$container" --image "$previous_image" --output none && \
      verify_revision "$previous_image" && normalize_app "$after" > "$work/rollback-normalized.json" && \
      cmp -s "$work/before-normalized.json" "$work/rollback-normalized.json"; then
@@ -88,5 +127,5 @@ else
 fi
 
 normalize_app "$after" > "$work/after-normalized.json"
-cmp -s "$work/before-normalized.json" "$work/after-normalized.json" || fail 'la revisión actual no conserva las propiedades/configuración de contenedores inspeccionadas'
+cmp -s "$work/before-normalized.json" "$work/after-normalized.json" || fail 'la revisión actual no conserva las propiedades/configuración persistentes inspeccionadas'
 printf 'Despliegue verificado: servicio=%s revision=%s image=%s health=Healthy.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$image"

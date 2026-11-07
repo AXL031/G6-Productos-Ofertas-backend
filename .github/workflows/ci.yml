@@ -38,6 +38,7 @@ jobs:
         set -Eeuo pipefail
         bash ops/azure/container-apps/tests/validate-source.test.sh
         bash ops/azure/container-apps/tests/deploy.test.sh
+        bash ops/azure/container-apps/tests/smoke.test.sh
         bash ops/azure/container-apps/tests/workflow.test.sh
   tipos:
     name: Comprobar tipos TypeScript

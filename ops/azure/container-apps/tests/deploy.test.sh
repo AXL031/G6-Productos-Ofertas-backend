@@ -10,7 +10,7 @@ readonly TARGET='ghcr.io/taller-sw-web/g6-productos-ofertas-backend/api-gateway@
 trap 'rm -rf "$TEMP"' EXIT
 mkdir "$TEMP/bin"
 cat > "$TEMP/state.json" <<EOF
-{"properties":{"configuration":{"secrets":[{"name":"ACA_PRIVATE_SENTINEL","value":"must-not-be-printed"}],"ingress":{"external":true,"targetPort":3000}},"template":{"containers":[{"name":"api-gateway","image":"$PREVIOUS","env":[{"name":"PRIVATE_SETTING","value":"must-not-be-printed"}]},{"name":"Caddy","image":"ghcr.io/taller-sw-web/caddy@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}],"scale":{"minReplicas":0,"maxReplicas":1}},"latestRevisionName":"rev-0","latestReadyRevisionName":"rev-0"},"revision":{"properties":{"healthState":"Healthy","active":true,"runningState":"Running"}},"updates":0}
+{"properties":{"configuration":{"secrets":[{"name":"ACA_PRIVATE_SENTINEL","value":"must-not-be-printed"}],"ingress":{"external":true,"targetPort":3000}},"template":{"revisionSuffix":"initial","containers":[{"name":"api-gateway","image":"$PREVIOUS","env":[{"name":"PRIVATE_SETTING","value":"must-not-be-printed"}]},{"name":"caddy","image":"ghcr.io/taller-sw-web/caddy@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}],"scale":{"minReplicas":0,"maxReplicas":1}},"latestRevisionName":"rev-0","latestReadyRevisionName":"rev-0"},"revision":{"properties":{"healthState":"Healthy","active":true,"runningState":"Running","template":{"containers":[{"name":"api-gateway","image":"$PREVIOUS","env":[{"name":"PRIVATE_SETTING","value":"must-not-be-printed"}]},{"name":"caddy","image":"ghcr.io/taller-sw-web/caddy@sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}],"scale":{"minReplicas":0,"maxReplicas":1}}}},"updates":0}
 EOF
 cat > "$TEMP/bin/az" <<'MOCK'
 #!/usr/bin/env bash
@@ -18,7 +18,7 @@ set -Eeuo pipefail
 state="${MOCK_STATE:?}"
 [[ "$*" == *'--resource-group rg-g6-aca-chile'* ]] || { echo 'wrong resource group' >&2; exit 61; }
 if [[ "${1:-}" == containerapp && "${2:-}" == show ]]; then cat "$state"; exit 0; fi
-if [[ "${1:-}" == containerapp && "${2:-}" == revision && "${3:-}" == show ]]; then jq -c '.revision as $revision | .properties.template as $template | $revision + {properties: ($revision.properties + {template: $template})}' "$state"; exit 0; fi
+if [[ "${1:-}" == containerapp && "${2:-}" == revision && "${3:-}" == show ]]; then jq -c '.revision' "$state"; exit 0; fi
 if [[ "${1:-}" == containerapp && "${2:-}" == update ]]; then
   [[ "$*" == *'--container-name api-gateway'* ]] || { echo 'container name missing' >&2; exit 62; }
   image=''
@@ -29,6 +29,8 @@ if [[ "${1:-}" == containerapp && "${2:-}" == update ]]; then
     .properties.template.containers |= map(if .name == "api-gateway" then .image=$image else . end) |
     .properties.latestRevisionName = ("rev-" + (.updates|tostring)) |
     .properties.latestReadyRevisionName = .properties.latestRevisionName |
+    .properties.template.revisionSuffix = ("revision-" + (.updates|tostring)) |
+    .revision.properties.template = .properties.template |
     .revision.properties.healthState = (if $image == $unhealthy_target or ($unhealthy_rollback == "true" and ($image | contains("@sha256:aaaaaaaa"))) then "Unhealthy" else "Healthy" end) |
     .revision.properties.runningState = "Running"
   ' "$state" > "$state.tmp"
@@ -39,6 +41,7 @@ exit 64
 MOCK
 chmod +x "$TEMP/bin/az"
 export PATH="$TEMP/bin:$PATH" MOCK_STATE="$TEMP/state.json" ACA_POLL_ATTEMPTS=1 ACA_POLL_INTERVAL_SECONDS=0
+export DEPLOY_RECEIPT="$TEMP/gateway.receipt"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 if bash "$DEPLOY" bad-service "$TARGET" >/dev/null 2>&1; then fail 'servicio no autorizado'; fi
@@ -48,16 +51,32 @@ printf 'PASS: rechaza servicio, paquete cruzado e imagen sin digest\n'
 
 if bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/deploy.log" 2>&1; then :; else cat "$TEMP/deploy.log"; fail 'despliegue esperado'; fi
 jq -e --arg target "$TARGET" '.properties.template.containers[] | select(.name == "api-gateway") | .image == $target' "$MOCK_STATE" >/dev/null || fail 'imagen objetivo no aplicada'
-jq -e '.properties.template.containers[] | select(.name == "Caddy") | .image | contains("cccccccc")' "$MOCK_STATE" >/dev/null || fail 'Caddy no conservado'
+jq -e '.properties.template.containers[] | select(.name == "caddy") | .image | contains("cccccccc")' "$MOCK_STATE" >/dev/null || fail 'caddy no conservado'
 jq -e '.properties.configuration.ingress.external == true and .properties.configuration.secrets[0].value == "must-not-be-printed" and .properties.template.scale.maxReplicas == 1' "$MOCK_STATE" >/dev/null || fail 'configuración ACA no conservada'
 if grep -Fq 'must-not-be-printed' "$TEMP/deploy.log"; then fail 'se imprimió configuración privada'; fi
-printf 'PASS: actualización de un solo contenedor conserva Caddy/configuración y no imprime secretos\n'
+printf 'PASS: actualiza con sidecar caddy en minúscula y conserva imagen/configuración sin imprimir secretos\n'
+cp "$DEPLOY_RECEIPT" "$TEMP/first.receipt"
 
 updates="$(jq -r .updates "$MOCK_STATE")"
 bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/idempotent.log" 2>&1 || fail 'despliegue idempotente'
 [[ "$(jq -r .updates "$MOCK_STATE")" == "$updates" ]] || fail 'idempotencia creó una revisión'
 grep -Fq Idempotencia "$TEMP/idempotent.log" || fail 'idempotencia no registrada'
 printf 'PASS: repetir el mismo digest no crea otra revisión\n'
+
+previous_from_receipt="$(sed -n 's/^previous=//p' "$TEMP/first.receipt")"
+target_from_receipt="$(sed -n 's/^target=//p' "$TEMP/first.receipt")"
+config_from_receipt="$(sed -n 's/^config_sha256=//p' "$TEMP/first.receipt")"
+[[ "$previous_from_receipt" == "$PREVIOUS" && "$target_from_receipt" == "$TARGET" && "$config_from_receipt" =~ ^[0-9a-f]{64}$ ]] || fail 'recibo no conserva digests/configuración necesarios'
+jq '.properties.configuration.ingress.targetPort=3001' "$MOCK_STATE" > "$TEMP/state.tmp"
+mv "$TEMP/state.tmp" "$MOCK_STATE"
+if bash "$DEPLOY" --restore api-gateway "$PREVIOUS" "$TARGET" "$config_from_receipt" > "$TEMP/concurrent.log" 2>&1; then fail 'recuperación sobrescribió cambio concurrente de ingress'; fi
+grep -Fq 'RECUPERACIÓN OMITIDA' "$TEMP/concurrent.log" || fail 'cambio concurrente no diagnosticado'
+jq '.properties.configuration.ingress.targetPort=3000' "$MOCK_STATE" > "$TEMP/state.tmp"
+mv "$TEMP/state.tmp" "$MOCK_STATE"
+bash "$DEPLOY" --restore api-gateway "$PREVIOUS" "$TARGET" "$config_from_receipt" > "$TEMP/restore.log" 2>&1 || { cat "$TEMP/restore.log"; fail 'recuperación coordinada válida'; }
+grep -Fq 'ROLLBACK COORDINADO VERIFICADO' "$TEMP/restore.log" || fail 'recuperación no quedó confirmada'
+DEPLOY_RECEIPT="$TEMP/redeploy.receipt" bash "$DEPLOY" api-gateway "$TARGET" >/dev/null 2>&1 || fail 'reaplicación de fixture'
+printf 'PASS: recibo digest-only permite recuperar y omite cambios concurrentes de ingress\n'
 
 jq --arg previous "$PREVIOUS" '.properties.template.containers |= map(if .name == "api-gateway" then .image=$previous else . end) | .properties.latestRevisionName="rev-restore" | .properties.latestReadyRevisionName="rev-restore" | .revision.properties.healthState="Healthy"' "$MOCK_STATE" > "$TEMP/state.tmp"
 mv "$TEMP/state.tmp" "$MOCK_STATE"
