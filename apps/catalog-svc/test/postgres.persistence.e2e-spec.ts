@@ -1418,6 +1418,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         const collisionResult = await nextResult(
           (message) => message.causation_id === collisionId,
         );
+        // The deliberate collision is not a Catalog result for its active
+        // attempt. With pause-on-invalid recovery it must be explicitly
+        // inspected and disposed by this disposable fixture before resuming.
+        const collisionDelivery = await broker.next('po.catalogo.q');
+        expect(
+          JSON.parse(collisionDelivery.content.toString()).message_id,
+        ).toBe(collisionResult.message.message_id);
         runtime = new CatalogAmqpRuntime(
           new CatalogMessageService(database),
           broker.settings,

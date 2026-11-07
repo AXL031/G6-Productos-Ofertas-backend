@@ -286,6 +286,8 @@ export class DisposableCatalogBroker {
       const message = await this.channel!.get(queue, { noAck: false });
       if (message) {
         this.channel!.ack(message);
+        // Flush basic.ack on this channel before another consumer starts.
+        await this.channel!.checkQueue(queue);
         return message;
       }
       await pause(50);
