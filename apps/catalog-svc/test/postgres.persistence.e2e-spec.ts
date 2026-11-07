@@ -4042,7 +4042,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         if (!dependency || row.event_name.startsWith(dependency + '.'))
           await messages.consume(resultFor(row));
     }
-    it('HTTP-50: all 18 operations with PostgreSQL TLS and signed G7 identity (Taxonomy/results fixtures)', async () => {
+    it('HTTP-50: Catalog operations with PostgreSQL TLS and signed G7 identity (Taxonomy/results fixtures)', async () => {
       const http = new CatalogGatewayHarness();
       await http.start(persistenceSettings, { timeoutMs: 300000 });
       try {
@@ -4072,6 +4072,36 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           sku_base: input.skuBase,
           catalog_version: 0,
         });
+        const adminPath = '/productos/administracion/' + id;
+        const admin = await call('GET', adminPath, undefined, 200);
+        expect(admin).toMatchObject({
+          productId: id,
+          estado: 'BORRADOR',
+          catalogVersion: product.catalog_version,
+          skuBase: input.skuBase,
+        });
+        const list = await call(
+          'GET',
+          '/productos/administracion?estado=BORRADOR&q=' +
+            encodeURIComponent(input.skuBase),
+          undefined,
+          200,
+        );
+        expect(list.items).toContainEqual(
+          expect.objectContaining({ productId: id }),
+        );
+        const marketplace = await http.call(
+          'GET',
+          path + '?canal=MARKETPLACE',
+          undefined,
+          http.token({
+            tipo: 'servicio',
+            sub: 'modulo-marketplace',
+            scope: 'catalogo:leer',
+            roles: undefined,
+          }),
+        );
+        expect(marketplace.status).toBe(404);
         await call('POST', '/productos', input, 409, 'SKU_DUPLICADO');
         await call('POST', '/productos', {}, 400, 'VALIDACION');
         const updated = await call(
@@ -4079,13 +4109,18 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           path,
           {
             descripcion: 'HTTP update',
-            catalogVersion: product.catalog_version,
+            catalogVersion: admin.catalogVersion,
           },
           200,
         );
         expect(Number(updated.catalog_version)).toBeGreaterThan(
           Number(product.catalog_version),
         );
+        expect(await call('GET', adminPath, undefined, 200)).toMatchObject({
+          productId: id,
+          descripcion: 'HTTP update',
+          catalogVersion: updated.catalog_version,
+        });
         await call(
           'PATCH',
           path,

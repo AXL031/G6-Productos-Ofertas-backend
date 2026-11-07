@@ -1539,6 +1539,19 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         await tx
           .insert(priceValidities)
           .values({ ...snapshot(price.id), validFrom: started });
+        const [retail] = await tx
+          .insert(prices)
+          .values({ productId, channelId: 'RETAIL', priceVersion: 7n })
+          .returning();
+        const future = new Date(Date.now() + 86_400_000);
+        await tx.insert(priceValidities).values([
+          {
+            ...snapshot(retail.id, 6n),
+            validFrom: started,
+            validUntil: future,
+          },
+          { ...snapshot(retail.id, 7n), validFrom: future },
+        ]);
       });
       const correlation = randomUUID();
       const response = await request(app!.getHttpServer())
@@ -1558,6 +1571,23 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         price_version: 1,
       });
       expect(response.text).not.toContain('fixture-actor');
+      const admin = `/api/v1/precios/administracion/productos/${productId}`;
+      const token = `Bearer ${identity.token()}`;
+      const retail = await request(app!.getHttpServer())
+        .get(admin + '?channelId=RETAIL')
+        .set('Authorization', token)
+        .expect(200);
+      expect(retail.body).toMatchObject({
+        productId,
+        sku: null,
+        channelId: 'RETAIL',
+        priceVersion: 7,
+        vigenciaActual: { precioRegular: 99.99 },
+      });
+      await request(app!.getHttpServer())
+        .get(admin + '?channelId=MARKETPLACE')
+        .set('Authorization', token)
+        .expect(404);
       const unknown = await request(app!.getHttpServer())
         .get(`/api/v1/precios/productos/${randomUUID()}`)
         .set('Authorization', `Bearer ${identity.token()}`)

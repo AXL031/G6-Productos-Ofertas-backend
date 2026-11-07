@@ -50,7 +50,20 @@ describe('Catalog HTTP routes and security (isolated use-case fixtures)', () => 
       correlation_id: correlation,
     })),
   };
+  const adminId = '11111111-1111-4111-8111-111111111111';
+  const adminProduct = {
+    productId: adminId,
+    estado: 'BORRADOR',
+    catalogVersion: 4,
+  };
   const queryRepository = {
+    listAdminProducts: vi.fn(async () => ({
+      items: [adminProduct],
+      meta: { pagina: 1, tamanio: 20, total: 1, totalPaginas: 1 },
+    })),
+    findAdminProduct: vi.fn(async (id: string) =>
+      id === adminId ? adminProduct : null,
+    ),
     physicalData: vi.fn(async (skus: string[]) => ({
       productos: [],
       noEncontrados: skus,
@@ -97,6 +110,48 @@ describe('Catalog HTTP routes and security (isolated use-case fixtures)', () => 
       marca: { marca_id: 'brand', name: 'Brand' },
     })),
   };
+  it('routes the private admin list and validates pagination without calling the commercial service', async () => {
+    const path = '/api/v1/productos/administracion';
+    await request(app.getHttpServer()).get(path).expect(401);
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Authorization', 'Bearer channel')
+      .expect(403);
+    await request(app.getHttpServer())
+      .get(path + '?canal=MARKETPLACE')
+      .set('Authorization', 'Bearer manager')
+      .expect(400);
+    await request(app.getHttpServer())
+      .get(path + '?pagina=0')
+      .set('Authorization', 'Bearer manager')
+      .expect(400);
+    const response = await request(app.getHttpServer())
+      .get(path + '?estado=BORRADOR')
+      .set('Authorization', 'Bearer manager')
+      .expect(200);
+    expect(response.body.items).toEqual([adminProduct]);
+    expect(queryRepository.listAdminProducts).toHaveBeenCalledWith(
+      expect.objectContaining({ estado: 'BORRADOR' }),
+    );
+  });
+
+  it('reads an administrative draft and distinguishes malformed IDs from missing products', async () => {
+    const path = '/api/v1/productos/administracion';
+    const response = await request(app.getHttpServer())
+      .get(path + '/' + adminId)
+      .set('Authorization', 'Bearer manager')
+      .expect(200);
+    expect(response.body).toEqual(adminProduct);
+    await request(app.getHttpServer())
+      .get(path + '/' + randomUUID())
+      .set('Authorization', 'Bearer manager')
+      .expect(404);
+    await request(app.getHttpServer())
+      .get(path + '/invalid')
+      .set('Authorization', 'Bearer manager')
+      .expect(400);
+  });
+
   beforeAll(async () => {
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(CatalogMutationService)

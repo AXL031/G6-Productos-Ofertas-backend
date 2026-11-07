@@ -1,6 +1,9 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { cents, contains, scheduledStatus } from '../domain/price.js';
-import { PricingRepository } from '../persistence/pricing.repository.js';
+import {
+  PricingRepository,
+  type PriceLookupTarget,
+} from '../persistence/pricing.repository.js';
 import { PricingHttpError } from './pricing-http.error.js';
 
 const importCodes = new Set([
@@ -68,6 +71,32 @@ export class PricingReads {
       valid_from: validity.validFrom.toISOString(),
       valid_until: validity.validUntil?.toISOString() ?? null,
       price_version: wireVersion(result.definition.priceVersion),
+    };
+  }
+
+  async adminDefinition(target: PriceLookupTarget, channelId: string | null) {
+    const now = new Date();
+    const result = await this.repository.readDefinition(target, channelId);
+    if (!result) throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    const { definition, validities } = result;
+    const validity = validities.find((value) => contains(value, now));
+    return {
+      productId: definition.productId,
+      sku: definition.sku,
+      channelId: definition.channelId,
+      priceVersion: wireVersion(definition.priceVersion),
+      vigenciaActual: validity
+        ? {
+            precioRegular: wireMoney(validity.precioRegular),
+            precioOferta:
+              validity.precioOferta === null
+                ? null
+                : wireMoney(validity.precioOferta),
+            currency: validity.currency,
+            validFrom: validity.validFrom.toISOString(),
+            validUntil: validity.validUntil?.toISOString() ?? null,
+          }
+        : null,
     };
   }
 

@@ -1,0 +1,767 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Catálogo administrativo G6 · PROPUESTA_H4",
+    "version": "0.6.0-h4-catalog-admin"
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/productos/administracion": {
+      "get": {
+        "operationId": "listarProductosAdministracion",
+        "summary": "Listar productos administrativos",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "x-required-role": "GESTOR_COMERCIAL",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "name": "pagina",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 9007199254740991,
+              "default": 1
+            }
+          },
+          {
+            "name": "tamanio",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20
+            }
+          },
+          {
+            "name": "estado",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "BORRADOR",
+                "ACTIVO",
+                "INACTIVO"
+              ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 200,
+              "description": "Búsqueda literal en nombre o SKU base. Ignora mayúsculas y espacios exteriores."
+            }
+          },
+          {
+            "name": "categoriaId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "marcaId",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lectura administrativa de Catálogo.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaProductosAdministracion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDACION",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "TOKEN_INVALIDO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_INSUFICIENTE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "ERROR_INTERNO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICIO_NO_DISPONIBLE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDACION"
+          ],
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ]
+        }
+      }
+    },
+    "/productos/administracion/{productoId}": {
+      "get": {
+        "operationId": "obtenerProductoAdministracion",
+        "summary": "Obtener producto administrativo",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "x-required-role": "GESTOR_COMERCIAL",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "name": "productoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Lectura administrativa de Catálogo.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProductoAdministracionDetalle"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDACION",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "TOKEN_INVALIDO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_INSUFICIENTE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PRODUCTO_NO_ENCONTRADO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "ERROR_INTERNO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICIO_NO_DISPONIBLE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDACION"
+          ],
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "404": [
+            "PRODUCTO_NO_ENCONTRADO"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ]
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "userBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "CorrelationId": {
+        "name": "X-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "schemas": {
+      "ProductoAdministracion": {
+        "type": "object",
+        "required": [
+          "productId",
+          "catalogVersion",
+          "estado",
+          "nombre",
+          "descripcion",
+          "categoriaId",
+          "marcaId",
+          "tipoProductoId",
+          "skuBase",
+          "slug",
+          "tieneVariantes",
+          "publicadoAlgunaVez",
+          "creadoEn",
+          "actualizadoEn"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "catalogVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "BORRADOR",
+              "ACTIVO",
+              "INACTIVO"
+            ]
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "descripcion": {
+            "type": "string"
+          },
+          "categoriaId": {
+            "type": "string"
+          },
+          "marcaId": {
+            "type": "string"
+          },
+          "tipoProductoId": {
+            "type": "string"
+          },
+          "skuBase": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tieneVariantes": {
+            "type": "boolean"
+          },
+          "publicadoAlgunaVez": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "creadoEn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actualizadoEn": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PaginaProductosAdministracion": {
+        "type": "object",
+        "required": [
+          "items",
+          "meta"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProductoAdministracion"
+            }
+          },
+          "meta": {
+            "type": "object",
+            "required": [
+              "pagina",
+              "tamanio",
+              "total",
+              "totalPaginas"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "pagina": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9007199254740991
+              },
+              "tamanio": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 100
+              },
+              "total": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalPaginas": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 9007199254740991
+              }
+            }
+          }
+        }
+      },
+      "ProductoAdministracionDetalle": {
+        "type": "object",
+        "required": [
+          "productId",
+          "catalogVersion",
+          "estado",
+          "nombre",
+          "descripcion",
+          "categoriaId",
+          "marcaId",
+          "tipoProductoId",
+          "skuBase",
+          "slug",
+          "tieneVariantes",
+          "publicadoAlgunaVez",
+          "creadoEn",
+          "actualizadoEn",
+          "imagenes",
+          "atributos",
+          "perfilFisico",
+          "caracteristicasIdentificadoras"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "productId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "catalogVersion": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "estado": {
+            "type": "string",
+            "enum": [
+              "BORRADOR",
+              "ACTIVO",
+              "INACTIVO"
+            ]
+          },
+          "nombre": {
+            "type": "string"
+          },
+          "descripcion": {
+            "type": "string"
+          },
+          "categoriaId": {
+            "type": "string"
+          },
+          "marcaId": {
+            "type": "string"
+          },
+          "tipoProductoId": {
+            "type": "string"
+          },
+          "skuBase": {
+            "type": "string"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "tieneVariantes": {
+            "type": "boolean"
+          },
+          "publicadoAlgunaVez": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "creadoEn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "actualizadoEn": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "imagenes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "url",
+                "principal",
+                "posicion"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "url": {
+                  "type": "string"
+                },
+                "principal": {
+                  "type": "boolean"
+                },
+                "posicion": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              }
+            }
+          },
+          "atributos": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "caracteristicaId",
+                "nombre",
+                "valorId",
+                "valor"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "caracteristicaId": {
+                  "type": "string"
+                },
+                "nombre": {
+                  "type": "string"
+                },
+                "valorId": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "valor": {
+                  "description": "Valor JSON persistido en Catálogo."
+                }
+              }
+            }
+          },
+          "perfilFisico": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "required": [
+              "pesoKg",
+              "dimensionesCm",
+              "actualizadoEn"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "pesoKg": {
+                "type": [
+                  "number",
+                  "null"
+                ],
+                "exclusiveMinimum": 0
+              },
+              "dimensionesCm": {
+                "type": "object",
+                "required": [
+                  "largo",
+                  "ancho",
+                  "alto"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "largo": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "exclusiveMinimum": 0
+                  },
+                  "ancho": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "exclusiveMinimum": 0
+                  },
+                  "alto": {
+                    "type": [
+                      "number",
+                      "null"
+                    ],
+                    "exclusiveMinimum": 0
+                  }
+                }
+              },
+              "actualizadoEn": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "caracteristicasIdentificadoras": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string"
+            },
+            "description": "Selección persistida por producto para identificar variantes. Una lista vacía indica que Catálogo aún no tiene selección para el producto."
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code",
+          "correlationId"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      }
+    }
+  }
+}
