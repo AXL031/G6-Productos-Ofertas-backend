@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Inject,
   Injectable,
@@ -132,7 +133,7 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
 
   private async getChannel(): Promise<ConfirmChannel> {
     if (this.channel) return this.channel;
-    const connection = await amqp.connect(this.amqpUrl!);
+    const connection = await connectPrivateAmqps(amqp.connect, this.amqpUrl!);
     connection.on('error', () => {
       if (!this.stopping) this.state = 'RECOVERING';
       void this.closeTransport();

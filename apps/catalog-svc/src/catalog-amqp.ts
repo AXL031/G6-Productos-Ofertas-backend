@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from './private-amqps.js';
 import {
   Inject,
   Injectable,
@@ -249,7 +250,9 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     this.busy = true;
     try {
       if (!this.connection) {
-        const connection = await connect(this.config.url, { timeout: 5000 });
+        const connection = await connectPrivateAmqps(connect, this.config.url, {
+          timeout: 5000,
+        });
         if (this.stopped) {
           await connection.close();
           return;
