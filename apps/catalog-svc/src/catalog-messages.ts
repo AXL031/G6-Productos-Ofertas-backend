@@ -174,15 +174,21 @@ export function assertCatalogPublication(message: CatalogEnvelope): void {
       throw new InvalidCatalogMessage();
   }
   if (message.name === 'pricing.product.initialization.requested') {
+    const historical = data.modalidad === 'RECUPERACION_HISTORICA';
     if (
       !UUID.test(String(message.operation_id)) ||
       typeof data.product_id !== 'string' ||
       !data.product_id ||
       typeof data.sku_base !== 'string' ||
       !data.sku_base ||
-      typeof data.precio_regular !== 'number' ||
-      !Number.isFinite(data.precio_regular) ||
-      data.precio_regular <= 0 ||
+      (data.modalidad !== undefined &&
+        data.modalidad !== 'ALTA_PRODUCTO' &&
+        !historical) ||
+      (historical
+        ? Object.hasOwn(data, 'precio_regular')
+        : typeof data.precio_regular !== 'number' ||
+          !Number.isFinite(data.precio_regular) ||
+          data.precio_regular <= 0) ||
       typeof data.moneda !== 'string' ||
       data.moneda.length !== 3 ||
       data.channel_id !== null ||

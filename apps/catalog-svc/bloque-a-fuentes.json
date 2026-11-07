@@ -1,0 +1,248 @@
+{
+  "closure_current": {
+    "moneda": "APROBADA por Marco: obligatoria PRICING, prohibida INVENTARIO-only, ISO y fingerprint; publicación Docs posterior no bloquea pruebas",
+    "pricingPreliminarySha": "807189f7ca49d4af3b4ad367043260bc3050fb3d",
+    "pricingPreliminaryEvidence": {
+      "catalogSource": "7b1645a5c3f7e6d001c9a0ab8e3ed9e97a5b95a5",
+      "headRun": 42340658622,
+      "headJob": 128307398165,
+      "compatibilityRun": 42340661277,
+      "compatibilityJob": 128307404056,
+      "compatibilityCheckout": "00e8cfdab5386434e5c9c00a6135f3133182b625",
+      "status": "PRELIMINARY_E2E_PASS: real pinned Pricing807 and Inventory56aa432",
+      "headFullCi": "SUCCESS 19/19",
+      "compatibilityFullCi": "SUCCESS 19/19",
+      "catalogPostgresPass": 97,
+      "catalogPostgresSkip": 0,
+      "bulkPass": 2,
+      "generalUnitPass": 2519,
+      "generalUnitSkip": 72,
+      "generalE2ePass": 1008,
+      "generalE2eSkip": 207,
+      "data002HeadMs": 676,
+      "data002CompatibilityMs": 848,
+      "data002LimitMs": 5000,
+      "temporaryInstrumentation": "REMOVED"
+    },
+    "pricingDefinitive": "WAITING_PUBLISHED_SHA: Vera anunció cambios locales adicionales aún sin commit; no acreditados",
+    "inventorySha": "56aa4322725060b529bf316872f891582d7d1b2e",
+    "masterIntegrated": "d21c24fcec5fe587545a43b76fa921e91eb25e0a",
+    "integrationCommit": "95a766a4380f9136858cde3691635ee2dc88c8a6",
+    "data002FixCommit": "ecdf34b125f022aa5ecae34c0fe517a903d31805",
+    "data002OriginalMeasurement": {
+      "source": "fdb8f146bf1574809bdc63db5fadfe6a59a25b64",
+      "run": 42339227598,
+      "job": 128302972988,
+      "timeoutMs": 5000,
+      "suiteMs": 1869.1,
+      "isolatedMs": 1892.1,
+      "dockerProcesses": 22,
+      "linuxTimeoutReproduced": false
+    },
+    "data002CorrectedMeasurement": {
+      "source": "ecdf34b125f022aa5ecae34c0fe517a903d31805",
+      "run": 42339989926,
+      "job": 128305325303,
+      "timeoutMs": 5000,
+      "suiteTestMs": 867,
+      "isolatedTestMs": 712,
+      "suiteSqlMs": 553.6,
+      "isolatedSqlMs": 443.8,
+      "dockerProcesses": 1,
+      "psqlSessions": 22,
+      "headCi": "SUCCESS 19/19",
+      "compatibilityRun": 42339992613,
+      "compatibilityCi": "SUCCESS 19/19",
+      "temporaryInstrumentation": "Retirada después de medir; transporte mínimo, sesiones y verificaciones conservados"
+    },
+    "sharedMigration": "Aplicación manual autorizada a responsable. Consulta BEGIN READ ONLY confirma catalog.historical_preparation_requests, owner po_catalog_owner, RLS=true; sin escrituras del agente ni acreditación completa DDL/ACL",
+    "productionAdapter": "SIN CAMBIOS: cerrado por defecto, habilitable solo NODE_ENV=test",
+    "finalEvidence": "Ver BLOQUE-A.md y PR #194: SHA exacto, resultados preliminares y definitivos separados; se conservan cortes anteriores debajo"
+  },
+  "consulted": "2026-11-05",
+  "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
+  "ref": "master",
+  "sources": [
+    {
+      "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+      "blob": "8372b2f4ee72e5e073865778519cb332c1902f5d",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md",
+      "blob": "8653d68ebc2c82e5c4dfcddacf01aaef1a0fe18c",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-010-asociacion-tipo-producto-caracteristica.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-003-gestion-productos-crud.md",
+      "blob": "b736587d476a45d37338f627f718f45b8e52aee0",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-003-gestion-productos-crud.md"
+    },
+    {
+      "path": "requisitos/flujos/FLOW-004-gestion-variantes-skus.md",
+      "blob": "56227784e6d96f37aed3029c90a547628e012f11",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/flujos/FLOW-004-gestion-variantes-skus.md"
+    },
+    {
+      "path": "contratos/http/openapi.yaml",
+      "blob": "6ff062c563d381d4bcf7976f223590b400ace4ec",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml"
+    },
+    {
+      "path": "contratos/eventos/asyncapi.yaml",
+      "blob": "a3e9d518fad68546d3f42b44f4fa77011fa15d66",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/asyncapi.yaml"
+    },
+    {
+      "path": "arquitectura/decisiones/REGISTRO_DEC_F.md",
+      "blob": "8d698a9b932d3746de1b98fe5a00a8d60d64f5b6",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/REGISTRO_DEC_F.md"
+    },
+    {
+      "path": "arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md",
+      "blob": "a7a334dca4f3ae85416ef3bc6146004c19daad67",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md"
+    },
+    {
+      "path": "arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md",
+      "blob": "37c905b510454c3684d5b35e02513b3d35112a40",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_G2_G6_H4_2026-11-02.md",
+      "blob": "000205a4830831deba23634451198d8f283185a9",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_G2_G6_H4_2026-11-02.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md",
+      "blob": "adf3d2ebe9c6eb3789748db6861bc394ca8450d4",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_PRICING_CATALOGO_SKU_CONTEXT.md"
+    },
+    {
+      "path": "integraciones/MATRIZ_INTERMODULAR_BACKEND.md",
+      "blob": "ff2daa31a95b1dfbbe3027a3dc0cb94f1f6fe269",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ_INTERMODULAR_BACKEND.md"
+    },
+    {
+      "path": "datos/catalog-svc/physical-model.md",
+      "blob": "097ca340c970149eb525abd2942dda2e5fc9a8c7",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/catalog-svc/physical-model.md"
+    },
+    {
+      "path": "contratos/http/catalogo-errores.md",
+      "blob": "f6feabe315bf0d532df9b533c98ee1b18f775c40",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/catalogo-errores.md"
+    },
+    {
+      "path": "contratos/pruebas/pruebas-contrato.md",
+      "blob": "39a0df34621c31e0498d066a8909766347d70530",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/pruebas/pruebas-contrato.md"
+    },
+    {
+      "path": "integraciones/ALINEACION_MARKETPLACE.md",
+      "blob": "7fa6e341be45a6c273a9e22e15bf8a223545da07",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ALINEACION_MARKETPLACE.md"
+    },
+    {
+      "path": "integraciones/ACUERDO_G1_G6_H4_2026-10-20.md",
+      "blob": "567268977050cfbc69e483b104dc9d7f10792910",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md"
+    },
+    {
+      "path": "datos/inventory-svc/migration.sql",
+      "blob": "ca464fd912e0a76c767ffd5af9c5d83bba92ce42",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/inventory-svc/migration.sql"
+    },
+    {
+      "path": "datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql",
+      "blob": "78a3c025ad1ae6f7a13072f2f24092e4a60e3f43",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/datos/inventory-svc/migrations/0002_order_id_operaciones_disponibilidad.sql"
+    },
+    {
+      "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+      "blob": "d600d6bd399677a0995683448bcf2fccedfb8ed1",
+      "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
+    }
+  ],
+  "continuation": {
+    "consulted": "2026-11-05",
+    "scope": "Continuación A1 candidata y A2 bilateral",
+    "sources": [
+      {
+        "path": "contratos/http/openapi.yaml",
+        "blob": "6ff062c563d381d4bcf7976f223590b400ace4ec",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml"
+      },
+      {
+        "path": "contratos/eventos/asyncapi.yaml",
+        "blob": "a3e9d518fad68546d3f42b44f4fa77011fa15d66",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/asyncapi.yaml"
+      },
+      {
+        "path": "requisitos/specs/SPEC-003-gestion-productos-crud.md",
+        "blob": "8372b2f4ee72e5e073865778519cb332c1902f5d",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-003-gestion-productos-crud.md"
+      },
+      {
+        "path": "requisitos/specs/SPEC-004-gestion-variantes-skus.md",
+        "blob": "d600d6bd399677a0995683448bcf2fccedfb8ed1",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/requisitos/specs/SPEC-004-gestion-variantes-skus.md"
+      },
+      {
+        "path": "arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md",
+        "blob": "37c905b510454c3684d5b35e02513b3d35112a40",
+        "url": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/ACUERDOS-INTEGRACION-INTERNA-G6-H4.md"
+      }
+    ],
+    "authorization": "Decisiones escritas de Marco confirmadas por el usuario en el chat; DTO HTTP candidato autorizado para #194 DRAFT; discriminador Pricing no definido",
+    "inventory": {
+      "bilateralSha": "8adcb6e2937580d289b9d20a1c7437473428aa8b",
+      "pr": 176,
+      "ci": 42148293659,
+      "noLocationSha": "167090af6d4ae93adbde54b6741dd994d91bf70b",
+      "mergedPr": 199,
+      "combinedSha": null
+    }
+  },
+  "consolidated_2026_11_06": {
+    "authorization": "Encargo explícito del usuario: adaptador candidato Pricing, delta HTTP moneda pendiente Marco, integración consolidada descartable; sin Supabase/Docs/Gateway writes",
+    "pricing": {
+      "pr": 205,
+      "sha": "7398e6fbc577ec3d595a6c04d4aa9f884fbf527d",
+      "schemaBlob": "5ce459c7b898945073005935a68c421edf9e302e",
+      "discriminator": "data.modalidad=RECUPERACION_HISTORICA",
+      "contractStatus": "CONTRATO_CANDIDATO; publicación Docs pendiente"
+    },
+    "inventory": {
+      "pr": 176,
+      "sha": "56aa4322725060b529bf316872f891582d7d1b2e",
+      "contains": ["AMQP userId g6_inventario", "#199 sin ubicación"]
+    },
+    "masterConsulted": "61171913510daddc5baedc9532b236de1953fac5",
+    "newHttpDelta": "moneda explícita para PRICING, sin precio_regular; pendiente aprobación Marco",
+    "spec013Blob": "fdeca927bd03c548d816028e2e2b6f181620812d",
+    "sharedDatabaseAudit": "Proporcionada externamente por usuario; no reinvestigada ni modificada",
+    "ciEvidence": "Ver descripción PR #194: HEAD, base/merge sintético y jobs finales exactos",
+    "functionalEvidence": {
+      "catalogHead": "4d5b0ef218ea0e041d7a75a13ff30adff504b669",
+      "ciRun": 42227609213,
+      "status": "SUCCESS",
+      "jobsSuccess": 18,
+      "checkoutPrMerge": "267265a08aab4e4f2594b9bec8dfd2e96ee1f622",
+      "base": "61171913510daddc5baedc9532b236de1953fac5",
+      "e2eJob": 127924983199,
+      "unitJob": 127924983192,
+      "unitPass": 2326,
+      "unitSkip": 71,
+      "e2ePass": 1060,
+      "e2eSkip": 200,
+      "catalogPostgresPass": 98,
+      "catalogPostgresSkip": 0,
+      "bulkOutagePass": 2,
+      "historicalSimpleParentVariants": "PASS with real pinned peers",
+      "monetaryDmlDuringAdoption": "NONE; rejection triggers and snapshot equality",
+      "stockReference": "14 representative disposable balances preserved, not shared Supabase data",
+      "finalHeadEvidence": "PR #194 records final docs HEAD, compatibility CI and exact HEAD workflow_dispatch independently"
+    }
+  }
+}

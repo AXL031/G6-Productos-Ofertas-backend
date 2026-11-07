@@ -13,6 +13,7 @@ import {
 
 /** Test infrastructure only: loopback ports, fixture credentials, no caller URLs. */
 export class DisposableCatalogBroker {
+  constructor(private readonly inventoryUser = 'inventory-joint') {}
   private readonly name = 'catalog-joint-' + process.pid + '-' + Date.now();
   private readonly password = 'disposable-joint-fixture';
   private connections: ChannelModel[] = [];
@@ -82,7 +83,8 @@ export class DisposableCatalogBroker {
             '.initialization.' +
             result,
         );
-      const user = prefix + '-joint';
+      const user =
+        prefix === 'inventory' ? this.inventoryUser : prefix + '-joint';
       this.command([
         'exec',
         this.name,
@@ -165,7 +167,7 @@ export class DisposableCatalogBroker {
         user: 'catalog-joint',
         producerUsers: {
           'pricing-svc': 'pricing-joint',
-          'inventory-svc': 'inventory-joint',
+          'inventory-svc': this.inventoryUser,
           'taxonomy-svc': 'taxonomy-joint',
           'bulk-svc': 'bulk-joint',
         },
@@ -174,6 +176,78 @@ export class DisposableCatalogBroker {
   }
   get bulkUrl(): string {
     return 'amqp://bulk-joint:' + this.password + this.base;
+  }
+  peerUrl(peer: 'pricing' | 'inventory'): string {
+    const user = peer === 'inventory' ? this.inventoryUser : peer + '-joint';
+    return 'amqp://' + user + ':' + this.password + this.base;
+  }
+  /** Transport-only replay/tampering cases, never a replacement for a real peer. */
+  async commandEnvelope(body: Record<string, unknown>): Promise<void> {
+    await this.sendAsCatalog('po.comandos.x', body);
+  }
+  async wrongIdentityResult(body: Record<string, unknown>): Promise<void> {
+    await this.sendAsCatalog('po.resultados.x', body);
+  }
+  private async sendAsCatalog(
+    exchange: string,
+    body: Record<string, unknown>,
+  ): Promise<void> {
+    const connection = await this.open('catalog-joint');
+    const channel = await connection.createConfirmChannel();
+    channel.on('error', () => undefined);
+    try {
+      await new ConfirmedCatalogPublisher(channel, 'catalog-joint').raw(
+        exchange,
+        String(body.name),
+        Buffer.from(JSON.stringify(body)),
+        {
+          messageId: String(body.message_id),
+          correlationId: String(body.correlation_id),
+        },
+      );
+    } finally {
+      await channel.close();
+    }
+  }
+  async brokerRejectsFalseUser(
+    body: Record<string, unknown>,
+  ): Promise<boolean> {
+    const connection = await this.open('catalog-joint');
+    const channel = await connection.createConfirmChannel();
+    let verifiedUserFailure = false;
+    channel.on('error', (error: Error & { code?: number }) => {
+      verifiedUserFailure =
+        error.code === 406 &&
+        /user.?id.*authenticated user/i.test(error.message);
+    });
+    try {
+      await new Promise<void>((done, reject) => {
+        channel.publish(
+          'po.resultados.x',
+          String(body.name),
+          Buffer.from(JSON.stringify(body)),
+          {
+            userId: this.inventoryUser,
+            persistent: true,
+            contentType: 'application/json',
+          },
+          (error) => (error ? reject(error) : done()),
+        );
+      });
+      return false;
+    } catch {
+      return verifiedUserFailure;
+    } finally {
+      await channel.close().catch(() => undefined);
+    }
+  }
+  async observeResults(): Promise<string> {
+    const queue = 'catalog-block-a-observation';
+    await this.channel!.assertQueue(queue, { durable: false });
+    await this.channel!.bindQueue(queue, 'po.resultados.x', '#');
+    // Inventory emits a stock fact as well as the initialization result.
+    await this.channel!.bindQueue(queue, 'po.eventos.x', '#');
+    return queue;
   }
   bulkQueueStats(): string {
     return this.command([
