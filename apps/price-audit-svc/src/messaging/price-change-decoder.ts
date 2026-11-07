@@ -1,3 +1,4 @@
+import { validAuditTimestamp } from '../domain/audit-timestamp.js';
 import { uuid, validateChange, type AuditChange } from '../domain/audit.js';
 import { AuditHttpError } from '../http/audit-http.error.js';
 import { record } from '../http/audit-read.guard.js';
@@ -81,11 +82,7 @@ export function decodePriceChange(
     data.currency.length !== 3 ||
     !Number.isSafeInteger(data.price_version) ||
     Number(data.price_version) < 1 ||
-    typeof data.valid_from !== 'string' ||
-    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(
-      data.valid_from,
-    ) ||
-    !Number.isFinite(Date.parse(data.valid_from)) ||
+    !validAuditTimestamp(data.valid_from) ||
     (data.batch_id !== null &&
       (typeof data.batch_id !== 'string' || !uuid.test(data.batch_id))) ||
     ![data.previous_price, data.new_price].every(

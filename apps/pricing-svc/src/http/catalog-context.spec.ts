@@ -88,22 +88,50 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   ])('conserva flags active=%s eligible=%s', async (active, eligible) => {
     body = { sku, productId: 'product', isVariant: true, active, eligible };
     expect(
-      await new CatalogContextHttp({
-        ...config(),
-        demoNoAuthEnabled: true,
-      }).resolve(sku),
+      await new CatalogContextHttp(
+        {
+          ...config(),
+        },
+        async () => 'fixture-service-token',
+      ).resolve(sku),
     ).toEqual(body);
+    expect(received[0].authorization).toBe('Bearer fixture-service-token');
+  });
+  it('uses only its fixed public context read in Phase 1 and never downgrades phases 2/3', async () => {
+    const tokens = vi.fn(async () => 'unused');
+    await expect(
+      new CatalogContextHttp(
+        {
+          ...config(),
+          securityMode: 'PUBLIC_READ_ONLY',
+          publicOperations: ['consultarPrecios'],
+        },
+        tokens,
+      ).resolve(sku),
+    ).resolves.toEqual(body);
     expect(received[0].authorization).toBeUndefined();
+    expect(tokens).not.toHaveBeenCalled();
+    for (const securityMode of ['SIMULATED_AUTH', 'G7_AUTHENTICATED'] as const)
+      await expect(
+        new CatalogContextHttp({
+          ...config(),
+          securityMode,
+          publicOperations: [],
+        }).resolve(sku),
+      ).rejects.toMatchObject({ status: 503 });
+    expect(received).toHaveLength(1);
   });
   it('solo traduce el 404 contractual a null', async () => {
     status = 404;
     type = 'application/problem+json';
     body = { status: 404, code: 'SKU_NO_ENCONTRADO' };
     expect(
-      await new CatalogContextHttp({
-        ...config(),
-        demoNoAuthEnabled: true,
-      }).resolve(sku),
+      await new CatalogContextHttp(
+        {
+          ...config(),
+        },
+        async () => 'fixture-service-token',
+      ).resolve(sku),
     ).toBeNull();
   });
   it.each([401, 403, 404, 503, 302])(
@@ -113,10 +141,12 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
       type = 'application/problem+json';
       body = { status: code, code: 'OTHER' };
       await expect(
-        new CatalogContextHttp({
-          ...config(),
-          demoNoAuthEnabled: true,
-        }).resolve(sku),
+        new CatalogContextHttp(
+          {
+            ...config(),
+          },
+          async () => 'fixture-service-token',
+        ).resolve(sku),
       ).rejects.toMatchObject({ status: 503 });
       expect(received).toHaveLength(1);
     },
@@ -134,9 +164,10 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     if (invalid === 'missing-field') body = { sku, productId: 'product' };
     if (invalid === 'wrong-type') type = 'text/plain';
     await expect(
-      new CatalogContextHttp({ ...config(), demoNoAuthEnabled: true }).resolve(
-        sku,
-      ),
+      new CatalogContextHttp(
+        config(),
+        async () => 'fixture-service-token',
+      ).resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
   });
   it('falla cerrado sin URL o token, sin llamadas HTTP', async () => {
@@ -151,12 +182,13 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   it('limita el tiempo de respuesta HTTP', async () => {
     delay = 2200;
     await expect(
-      new CatalogContextHttp({ ...config(), demoNoAuthEnabled: true }).resolve(
-        sku,
-      ),
+      new CatalogContextHttp(
+        config(),
+        async () => 'fixture-service-token',
+      ).resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
   });
-  it('valida el origen configurado y permite solo HTTP privado demo o loopback test', () => {
+  it('valida el origen configurado y permite solo HTTP loopback de pruebas', () => {
     const env = {
       NODE_ENV: 'test',
       PORT: '3002',
@@ -165,14 +197,13 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     expect(
       validateEnvironment({ ...env, PRICING_CATALOG_URL: origin }).catalogUrl,
     ).toBe(origin);
-    expect(
+    expect(() =>
       validateEnvironment({
         ...env,
         NODE_ENV: 'development',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         PRICING_CATALOG_URL: 'http://catalog-svc:3001',
-      }).catalogUrl,
-    ).toBe('http://catalog-svc:3001');
+      }),
+    ).toThrow();
     for (const url of [
       'http://public.example',
       'https://user:pass@example.com',

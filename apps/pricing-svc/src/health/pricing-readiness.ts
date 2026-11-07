@@ -15,8 +15,10 @@ export class PricingReadiness {
   ) {}
 
   check(): Promise<boolean> {
-    if (!this.config.demoNoAuthEnabled && !this.config.auth)
-      return Promise.resolve(false);
+    const publicReadOnly =
+      this.config.securityMode === 'PUBLIC_READ_ONLY' &&
+      this.config.publicOperations.length > 0;
+    if (!this.config.auth && !publicReadOnly) return Promise.resolve(false);
     if (
       this.config.amqpUrl &&
       (!this.consumer?.available || !this.relay?.available)

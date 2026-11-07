@@ -5,6 +5,7 @@ import type { App } from 'supertest/types.js';
 import { PricingSvcModule } from '../src/pricing-svc.module.js';
 import { PricingMutations } from '../src/application/pricing-mutations.js';
 import { PricingRepository } from '../src/persistence/pricing.repository.js';
+import { SignedUser } from './signed-user.js';
 import {
   PRICING_FACT_FACTORY,
   PRICING_WRITE_AUTHORIZER,
@@ -16,15 +17,19 @@ describe('Fronteras de escritura bloqueadas por contrato', () => {
   const update = vi.fn();
   const schedule = vi.fn();
   const transaction = vi.fn();
+  const identity = new SignedUser();
 
   beforeAll(async () => {
+    await identity.start();
     const module = await Test.createTestingModule({
       imports: [
         PricingSvcModule.forRoot({
           NODE_ENV: 'test',
           PRICING_SVC_PORT: '3002',
           DATABASE_URL: 'postgresql://pricing:fixture@127.0.0.1:1/fixture',
-          GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+          G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+          AUTH_ISSUER: identity.issuer,
+          AUTH_JWKS_URL: identity.issuer + '/jwks',
         }),
       ],
     })
@@ -43,6 +48,7 @@ describe('Fronteras de escritura bloqueadas por contrato', () => {
 
   afterAll(async () => {
     await app?.close();
+    await identity.stop();
   });
 
   it.each([
@@ -58,6 +64,7 @@ describe('Fronteras de escritura bloqueadas por contrato', () => {
       const client = request(app.getHttpServer());
       const call = method === 'PATCH' ? client.patch(path) : client.post(path);
       await call
+        .set('Authorization', `Bearer ${identity.token()}`)
         .send({ precioRegular: 12.3, priceVersion: 1 })
         .expect(path.includes('/importaciones') ? 404 : 503);
       expect(update).not.toHaveBeenCalled();

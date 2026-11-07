@@ -1,0 +1,28 @@
+services:
+  caddy:
+    image: caddy:2.11.6-alpine
+    container_name: g6-caddy
+    restart: unless-stopped
+    environment:
+      - G6_PUBLIC_DOMAIN=${G6_PUBLIC_DOMAIN:?G6_PUBLIC_DOMAIN es obligatorio}
+    ports:
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+    volumes:
+      - /etc/g6-caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - g6_caddy_data:/data
+      - g6_caddy_config:/config
+    networks:
+      g6-edge:
+        aliases:
+          - g6-caddy
+
+volumes:
+  g6_caddy_data:
+  g6_caddy_config:
+
+networks:
+  g6-edge:
+    external: true
+    name: g6-edge

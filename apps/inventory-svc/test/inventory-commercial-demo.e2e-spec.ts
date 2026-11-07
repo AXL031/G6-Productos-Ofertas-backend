@@ -39,6 +39,8 @@ const input = (channel: string = 'MARKETPLACE', quantity = 2) => ({
   lines: [{ sku, quantity }],
 });
 const artifact = process.env.INVENTORY_GATEWAY_ARTIFACT_DIR;
+const serviceAuthorization = (channel = 'MARKETPLACE') =>
+  `Bearer ${createCryptographicJwt({ clientId: channel === 'CHATBOT' ? 'modulo-chatbot' : channel === 'RETAIL' ? 'modulo-retail' : 'modulo-marketplace', scope: 'inventario:disponibilidad:leer' })}`;
 
 describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#100)', () => {
   let app: INestApplication;
@@ -57,6 +59,13 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
     });
   beforeAll(async () => {
     vi.stubEnv('RABBITMQ_URL', undefined);
+    vi.stubEnv('G6_SECURITY_MODE', 'PUBLIC_READ_ONLY');
+    vi.stubEnv(
+      'INVENTORY_PUBLIC_OPERATION_IDS',
+      'consultarDisponibilidadComercial',
+    );
+    vi.stubEnv('G7_JWT_ISSUER', TEST_ISSUER);
+    InventoryAuthGuard.setTrustedPublicKey(TEST_PUBLIC_KEY);
     db = new InMemoryDatabaseMock();
     const module = await Test.createTestingModule({
       imports: [InventorySvcModule],
@@ -79,12 +88,11 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
     vi.restoreAllMocks();
     db.seedDefaults();
     incoming = [];
-    vi.stubEnv('INVENTORY_DEMO_NO_AUTH_ENABLED', 'true');
-    vi.stubEnv('INVENTORY_DEMO_GATEWAY_IPS', '127.0.0.1');
-    vi.stubEnv('G7_JWT_ISSUER', undefined);
-    vi.stubEnv('G7_JWT_PUBLIC_KEY', undefined);
-    vi.stubEnv('JWT_PUBLIC_KEY', undefined);
-    InventoryAuthGuard.setTrustedPublicKey(null);
+    vi.stubEnv('G6_SECURITY_MODE', 'PUBLIC_READ_ONLY');
+    vi.stubEnv(
+      'INVENTORY_PUBLIC_OPERATION_IDS',
+      'consultarDisponibilidadComercial',
+    );
     db.commercialRoutes.push(
       ...channels.map((channel_id, index) => ({
         id: `route-${index}`,
@@ -103,7 +111,7 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
   });
 
   it.each(channels)(
-    'consulta y verifica %s sin JWT, sin identidad ni efectos',
+    'expone GET %s anónimo y protege POST de consulta con identidad válida',
     async (channel) => {
       const before = state();
       const transaction = vi.spyOn(db, 'transaction');
@@ -111,8 +119,10 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
         .get(`${commercial}?skus=${sku}&canal=${channel}`)
         .expect(200);
       expect(get.body).toEqual({ items: [{ sku, status: 'DISPONIBLE' }] });
+      await request(origin).post(verify).send(input(channel)).expect(401);
       const post = await request(origin)
         .post(verify)
+        .set('Authorization', serviceAuthorization(channel))
         .send(input(channel))
         .expect(200);
       expect(post.body).toMatchObject({
@@ -122,10 +132,8 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
       expect(JSON.stringify([get.body, post.body])).not.toMatch(
         /on_hand|reserved|blocked|available|location_id|stock_version/,
       );
-      for (const req of incoming) {
-        expect('user' in req).toBe(false);
-        expect('clientId' in req).toBe(false);
-      }
+      expect('user' in incoming[0]).toBe(false);
+      expect('clientId' in incoming[0]).toBe(false);
       expect(state()).toEqual(before);
       expect(transaction).not.toHaveBeenCalled();
     },
@@ -135,6 +143,7 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
     db.commercialRoutes = [];
     const res = await request(origin)
       .post(verify)
+      .set('Authorization', serviceAuthorization('RETAIL'))
       .send(input('RETAIL'))
       .expect(200);
     expect(res.body.items[0].result).toBe('INDETERMINADO');
@@ -143,6 +152,7 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
   it('no suma ubicaciones para satisfacer una cantidad que ninguna cubre', async () => {
     const res = await request(origin)
       .post(verify)
+      .set('Authorization', serviceAuthorization())
       .send(input('MARKETPLACE', 20))
       .expect(200);
     expect(res.body.items[0].result).toBe('INSUFICIENTE');
@@ -156,13 +166,15 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
     });
     const ambiguous = await request(origin)
       .post(verify)
+      .set('Authorization', serviceAuthorization())
       .send(input())
       .expect(200);
     expect(ambiguous.body.items[0].result).toBe('INDETERMINADO');
   });
 
   it('con flag apagado restaura JWT y correspondencia canal/cliente', async () => {
-    vi.stubEnv('INVENTORY_DEMO_NO_AUTH_ENABLED', 'false');
+    vi.stubEnv('G6_SECURITY_MODE', 'G7_AUTHENTICATED');
+    vi.stubEnv('INVENTORY_PUBLIC_OPERATION_IDS', '');
     await request(origin)
       .get(`${commercial}?skus=${sku}&canal=MARKETPLACE`)
       .expect(401);
@@ -189,10 +201,9 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
       .expect(403);
   });
 
-  it('rechaza conexión fuera de allowlist pese a headers o trust proxy', async () => {
-    vi.stubEnv('INVENTORY_DEMO_GATEWAY_IPS', '192.0.2.10');
+  it('client supplied IP headers cannot grant a private read', async () => {
     await request(origin)
-      .get(`${commercial}?skus=${sku}&canal=MARKETPLACE`)
+      .get('/api/v1/inventario/disponibilidad?skus=SKU')
       .set('X-Forwarded-For', '192.0.2.10')
       .set('Forwarded', 'for=192.0.2.10')
       .set('X-Inventory-Demo', 'true')
@@ -240,7 +251,11 @@ describe('Inventory comercial demo — HTTP real, persistencia de prueba (#25/#1
     'demo conserva validación de dominio: $code/$status',
     async ({ body, status, code }) => {
       const before = state();
-      const res = await request(origin).post(verify).send(body).expect(status);
+      const res = await request(origin)
+        .post(verify)
+        .set('Authorization', serviceAuthorization())
+        .send(body)
+        .expect(status);
       expect(res.body.code).toBe(code);
       expect(state()).toEqual(before);
     },

@@ -222,26 +222,28 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     expect(db.inbox).toHaveLength(1);
   });
 
-  it('sin ubicación explícita rechaza la ambigüedad, y resuelve cuando solo queda una activa', async () => {
+  it('sin ubicación explícita confirma identidad sin crear saldo ni elegir una ubicación', async () => {
     const command = {
       ...message(),
       data: { sku: 'SIN-UBICACION', product_id: 'PRODUCTO' },
     };
     expect(await service.process(command)).toMatchObject({
-      status: 'REJECTED',
+      status: 'INITIALIZED',
     });
-    for (const row of db.locations) row.active = row.id === location;
-    expect(
-      await service.process({
-        ...command,
-        operation_id: randomUUID(),
-        message_id: randomUUID(),
-      }),
-    ).toMatchObject({ status: 'INITIALIZED' });
-    expect(
-      db.stockBalance.find((row) => row.sku_id === 'SIN-UBICACION')
-        ?.location_id,
-    ).toBe(location);
+    expect(db.inbox[0].status).toBe('PROCESSED');
+    expect(db.operations[0].status).toBe('APLICADO');
+    expect(db.operations[0].request_payload).toMatchObject({
+      sku: 'SIN-UBICACION',
+      product_id: 'PRODUCTO',
+    });
+    expect(db.stockBalance.some((row) => row.sku_id === 'SIN-UBICACION')).toBe(
+      false,
+    );
+    expect(db.outbox[0]?.payload.data).toMatchObject({
+      sku: 'SIN-UBICACION',
+      status: 'INITIALIZED',
+      code: null,
+    });
   });
 
   it('mantiene bloqueado inventory.bulk.stock.adjust.requested mientras su contrato siga en GenericData', async () => {
@@ -457,4 +459,61 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
       expect(db.skuLifecycle).toHaveLength(0);
     },
   );
+
+  it('preserva saldos en TODAS las ubicaciones cuando el SKU ya tiene stock registrado en varias', async () => {
+    // Escenario: SKU con saldo en dos ubicaciones distintas, ambas con stock real.
+    // La pregunta de Poma: Inventory no debe reiniciar ninguna ubicación a cero.
+    const sku = 'NIK-REV7-NEG-41'; // ya existe en el mock con saldo en locLurin
+    const locLurin = location; // '9129b578-631e-1735-8427-b683fb524380'
+    const locSegunda = randomUUID();
+
+    // Agregar segunda ubicación activa y saldo existente
+    db.locations.push({
+      id: locSegunda,
+      code: 'LOC-SEGUNDA',
+      name: 'Segunda Ubicación',
+      type: 'ALMACEN',
+      active: true,
+    });
+    db.stockBalance.push({
+      sku_id: sku,
+      location_id: locSegunda,
+      on_hand: 10,
+      reserved: 2,
+      blocked: 0,
+      available: 8,
+      stock_version: 3,
+    });
+
+    // Capturar estado antes de la re-inicialización
+    const before = structuredClone(db.stockBalance);
+    const countBefore = before.filter((r) => r.sku_id === sku).length;
+    expect(countBefore).toBeGreaterThanOrEqual(2); // al menos 2 ubicaciones
+
+    // Intentar re-inicializar con una ubicación específica
+    const command = {
+      ...message(),
+      data: {
+        sku,
+        product_id: 'PRODUCTO-NUEVO',
+        default_location_id: locLurin,
+      },
+    };
+    const result = await service.process(command);
+
+    // Debe reportar INITIALIZED (reutiliza el resultado durable de la op anterior)
+    // O bien INITIALIZED con saldo ya existente sin crear uno nuevo
+    expect(['INITIALIZED', 'REJECTED']).toContain(result.status);
+
+    // Los saldos existentes deben permanecer INTACTOS
+    expect(db.stockBalance).toEqual(before);
+
+    // No debe publicar inventory.stock.changed para este SKU (no hubo mutación de saldo)
+    const stockChangedForSku = db.outbox.filter(
+      (row) =>
+        row.event_type === 'inventory.stock.changed' &&
+        row.aggregate_id === sku,
+    );
+    expect(stockChangedForSku).toHaveLength(0);
+  });
 });

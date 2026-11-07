@@ -17,7 +17,7 @@ describe('Pricing bootstrap', () => {
     ).rejects.toThrow('DATABASE_URL');
     expect(create).not.toHaveBeenCalled();
   });
-  it('rechaza demo production no confirmada antes de crear Nest o abrir puertos', async () => {
+  it('rechaza el bypass demo heredado antes de crear Nest o abrir puertos', async () => {
     const create = vi.spyOn(NestFactory, 'create');
     await expect(
       createApplication({
@@ -27,7 +27,7 @@ describe('Pricing bootstrap', () => {
           'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
         GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
       }),
-    ).rejects.toThrow('PRICING_DEMO_PRODUCTION_CONFIRMED=true');
+    ).rejects.toThrow('bypasses demo heredados están deshabilitados');
     expect(create).not.toHaveBeenCalled();
   });
 

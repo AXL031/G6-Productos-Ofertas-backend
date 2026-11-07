@@ -6,18 +6,40 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { Pool } from 'pg';
-import amqp from 'amqplib';
 import {
   BULK_ENVIRONMENT,
   BULK_READINESS_POOL,
   type BulkEnvironment,
 } from '../config/bulk-environment.js';
 import { BULK_AMQP_URL } from '../messaging/bulk-rabbitmq.js';
+import { BulkOutboxRelay } from '../messaging/bulk-outbox-relay.js';
+import { CatalogBulkResultConsumer } from '../messaging/catalog-bulk-result-consumer.js';
 
 export interface BulkReadinessPool {
   query(sql: string): Promise<unknown>;
   end(): Promise<void>;
   on(event: 'error', listener: () => void): this;
+}
+
+export type BulkReadinessReason =
+  | 'READY'
+  | 'AUTHORIZED_DEMO'
+  | 'DATABASE_NOT_CONFIGURED'
+  | 'DATABASE_UNAVAILABLE'
+  | 'AMQP_NOT_CONFIGURED'
+  | 'AMQP_DISABLED'
+  | 'AMQP_TEMPORARY_UNAVAILABLE'
+  | 'AMQP_TOPOLOGY_BLOCKED';
+
+export type BulkReadReadinessReason =
+  | 'READY'
+  | 'DATABASE_NOT_CONFIGURED'
+  | 'DATABASE_UNAVAILABLE'
+  | 'STORAGE_UNAVAILABLE';
+
+export interface BulkReadinessResult {
+  ready: boolean;
+  reason: BulkReadinessReason;
 }
 
 export function createBulkReadinessPool(
@@ -51,21 +73,62 @@ export class BulkReadinessService implements OnModuleDestroy {
     @Optional()
     @Inject(BULK_AMQP_URL)
     private readonly amqpUrl: string | null = null,
+    @Optional() private readonly relay?: BulkOutboxRelay,
+    @Optional() private readonly resultConsumer?: CatalogBulkResultConsumer,
   ) {}
 
   async check(): Promise<boolean> {
-    if (!this.config.databaseUrl || !this.pool) return false;
+    return (await this.probe()).ready;
+  }
+
+  async probeReads(storage: { ready(): Promise<boolean> }): Promise<{
+    ready: boolean;
+    reason: BulkReadReadinessReason;
+  }> {
+    if (!this.config.databaseUrl || !this.pool)
+      return { ready: false, reason: 'DATABASE_NOT_CONFIGURED' };
     try {
       await this.pool.query('SELECT 1 FROM bulk.batch_jobs LIMIT 0');
-      if (this.amqpUrl) {
-        const connection = await amqp.connect(this.amqpUrl, { timeout: 1500 });
-        await connection.close();
-      }
-      return true;
     } catch {
       this.logger.warn('La comprobación de PostgreSQL no está disponible.');
-      return false;
+      return { ready: false, reason: 'DATABASE_UNAVAILABLE' };
     }
+    if (!(await storage.ready()))
+      return { ready: false, reason: 'STORAGE_UNAVAILABLE' };
+    return { ready: true, reason: 'READY' };
+  }
+
+  async probe(): Promise<BulkReadinessResult> {
+    if (!this.config.databaseUrl || !this.pool)
+      return { ready: false, reason: 'DATABASE_NOT_CONFIGURED' };
+    try {
+      await this.pool.query('SELECT 1 FROM bulk.batch_jobs LIMIT 0');
+    } catch {
+      this.logger.warn('La comprobación de PostgreSQL no está disponible.');
+      return { ready: false, reason: 'DATABASE_UNAVAILABLE' };
+    }
+
+    if (!this.amqpUrl) {
+      return {
+        ready: false,
+        reason:
+          process.env.BULK_AMQP_ENABLED === 'false'
+            ? 'AMQP_DISABLED'
+            : 'AMQP_NOT_CONFIGURED',
+      };
+    }
+
+    if (process.env.BULK_AMQP_ENABLED !== 'true')
+      return { ready: false, reason: 'AMQP_NOT_CONFIGURED' };
+    const workerStates = [
+      this.relay?.getOperationalState(),
+      this.resultConsumer?.getOperationalState(),
+    ];
+    if (workerStates.includes('TOPOLOGY_BLOCKED'))
+      return { ready: false, reason: 'AMQP_TOPOLOGY_BLOCKED' };
+    if (workerStates.some((state) => state !== 'READY'))
+      return { ready: false, reason: 'AMQP_TEMPORARY_UNAVAILABLE' };
+    return { ready: true, reason: 'READY' };
   }
 
   async onModuleDestroy(): Promise<void> {

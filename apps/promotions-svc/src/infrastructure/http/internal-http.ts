@@ -50,7 +50,7 @@ export type ServiceAccessTokenSource = (
 export interface InternalHttpOptions {
   origin: string;
   origins?: Partial<Record<Upstream, string>>;
-  mode?: 'AUTHENTICATED' | 'RESTRICTED_DEMO';
+  mode?: 'AUTHENTICATED' | 'RESTRICTED_DEMO' | 'PUBLIC_READ_ONLY';
   getServiceAccessToken?: ServiceAccessTokenSource;
 }
 
@@ -122,7 +122,10 @@ export class InternalHttpReader {
       Accept: 'application/json',
       'X-Correlation-Id': correlationId ?? randomUUID(),
     };
-    if (this.options.mode !== 'RESTRICTED_DEMO') {
+    if (
+      this.options.mode !== 'RESTRICTED_DEMO' &&
+      this.options.mode !== 'PUBLIC_READ_ONLY'
+    ) {
       // Own service credentials only. For HTTP aliases, the deployment must first
       // prove the private network above; an alias string alone proves no secrecy.
       const token = await this.options.getServiceAccessToken?.(

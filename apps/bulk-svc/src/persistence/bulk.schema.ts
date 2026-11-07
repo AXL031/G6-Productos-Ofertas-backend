@@ -265,6 +265,8 @@ export const exportJobs = bulk.table(
     createdAt: tz('created_at').notNull().defaultNow(),
     completedAt: tz('completed_at'),
     updatedAt: tz('updated_at').notNull().defaultNow(),
+    claimToken: uuid('claim_token'),
+    leaseUntil: tz('lease_until'),
   },
   (t) => [
     primaryKey({ name: 'pk_export_jobs', columns: [t.id] }),
@@ -309,6 +311,8 @@ export const outbox = bulk.table(
     check('ck_outbox_kind', sql`${t.kind} IN ('command','event','result')`),
     check('ck_outbox_schema_version', sql`${t.schemaVersion} > 0`),
     check('ck_outbox_attempts', sql`${t.attempts} >= 0`),
+    // A Catalog command remains pending until its correlated result proves
+    // that the primary consumer handled it; confirms alone are insufficient.
     index('ix_outbox_pending').on(t.publishedAt, t.occurredAt),
   ],
 );

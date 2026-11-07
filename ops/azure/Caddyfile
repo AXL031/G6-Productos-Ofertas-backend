@@ -1,0 +1,39 @@
+{
+	admin off
+}
+
+{$G6_PUBLIC_DOMAIN:localhost} {
+	request_body {
+		max_size 10MB
+	}
+
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		-Server
+	}
+
+	handle /health {
+		reverse_proxy g6-api-gateway:3000 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 5s
+			}
+		}
+	}
+
+	handle /api/v1/* {
+		reverse_proxy g6-api-gateway:3000 {
+			transport http {
+				dial_timeout 3s
+				response_header_timeout 15s
+			}
+		}
+	}
+
+	handle {
+		header Content-Type "application/problem+json; charset=utf-8"
+		respond `{"type":"about:blank","title":"Not Found","status":404,"code":"RUTA_NO_PUBLICADA"}` 404
+	}
+}

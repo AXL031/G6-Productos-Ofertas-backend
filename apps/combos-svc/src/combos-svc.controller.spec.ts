@@ -4,6 +4,11 @@ import { CombosSvcService } from './combos-svc.service.js';
 import { CombosDatabase } from './persistence/combos.database.js';
 import { CombosRepository } from './persistence/combos.repository.js';
 import { CombosEventConsumer } from './messaging/combos-event-consumer.js';
+import {
+  ComboTokenVerifier,
+  CombosAuthGuard,
+  SimulatedComboTokenVerifier,
+} from './http/combos-auth.js';
 import type { Response } from 'express';
 
 describe('CombosSvcController', () => {
@@ -15,6 +20,9 @@ describe('CombosSvcController', () => {
       controllers: [CombosSvcController],
       providers: [
         CombosSvcService,
+        ComboTokenVerifier,
+        SimulatedComboTokenVerifier,
+        CombosAuthGuard,
         { provide: CombosDatabase, useValue: { ready: async () => true } },
         { provide: CombosRepository, useValue: {} },
         {
@@ -46,6 +54,37 @@ describe('CombosSvcController', () => {
       await controller.ready(response as unknown as Response);
       return response;
     }
+
+    async function responseForGatewayReadiness() {
+      const response = {
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      };
+      await controller.gatewayReadiness(response as unknown as Response);
+      return response;
+    }
+
+    it('exposes the Gateway readiness contract while AMQP is disabled', async () => {
+      amqpStatus = 'disabled';
+      const response = await responseForGatewayReadiness();
+      expect(response.status).toHaveBeenCalledWith(200);
+      expect(response.json).toHaveBeenCalledWith({
+        status: 'ready',
+        service: 'combos-svc',
+        dependencies: { postgres: 'ok' },
+      });
+    });
+
+    it('reports a failed Gateway readiness probe without masking AMQP failure', async () => {
+      amqpStatus = 'not_ready';
+      const response = await responseForGatewayReadiness();
+      expect(response.status).toHaveBeenCalledWith(503);
+      expect(response.json).toHaveBeenCalledWith({
+        status: 'not_ready',
+        service: 'combos-svc',
+        dependencies: { postgres: 'ok', rabbitmq: 'error' },
+      });
+    });
 
     it('preserves HTTP readiness when AMQP is explicitly disabled', async () => {
       amqpStatus = 'disabled';

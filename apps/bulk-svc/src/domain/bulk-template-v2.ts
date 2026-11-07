@@ -865,6 +865,11 @@ function parseDataRows(
         'PLANTILLA_INCOMPATIBLE',
         'stock_inicial debe ser un entero no negativo.',
       );
+    if (mode === 'ACTUALIZACION' && stock > 0)
+      fail(
+        'PLANTILLA_INCOMPATIBLE',
+        'stock_inicial positivo no se admite en ACTUALIZACION.',
+      );
     const productAttributes = validateAttributes(
       jsonCell<unknown>(rawProductAttributes!, 'atributos_producto', []),
       'atributos_producto',

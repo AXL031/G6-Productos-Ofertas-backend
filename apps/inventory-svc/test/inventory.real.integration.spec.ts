@@ -525,6 +525,88 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
     cleanupOwnedResources();
   }, 30_000);
 
+  it('PUBLIC_READ_ONLY sirve disponibilidad comercial sin filtrar stock ni mutar y protege POST', async () => {
+    const previousMode = process.env.G6_SECURITY_MODE;
+    const previousPublicOperations = process.env.INVENTORY_PUBLIC_OPERATION_IDS;
+    let app: INestApplication | undefined;
+    const sku = await seedStock();
+    const route = await database.query<{ id: string }>(
+      `INSERT INTO inventory.commercial_fulfillment_routes
+        (channel_id, mode, fulfillment_ref, location_id, active)
+       VALUES ('MARKETPLACE', 'ENVIO_DOMICILIO', $1, $2, true) RETURNING id`,
+      [`phase1-${randomUUID()}`, locationId],
+    );
+    const snapshot = async () => {
+      const result = await database.query<{ value: string }>(
+        `SELECT jsonb_build_object(
+          'stock', (SELECT to_jsonb(s) FROM inventory.stock_balance s WHERE s.sku_id=$1 AND s.location_id=$2),
+          'reservations', (SELECT count(*) FROM inventory.reservations),
+          'operations', (SELECT count(*) FROM inventory.inventory_operations),
+          'kardex', (SELECT count(*) FROM inventory.kardex),
+          'outbox', (SELECT count(*) FROM inventory.outbox),
+          'inbox', (SELECT count(*) FROM inventory.inbox)
+        )::text AS value`,
+        [sku, locationId],
+      );
+      return result.rows[0]?.value;
+    };
+    process.env.G6_SECURITY_MODE = 'PUBLIC_READ_ONLY';
+    process.env.INVENTORY_PUBLIC_OPERATION_IDS =
+      'consultarDisponibilidadComercial';
+    try {
+      const module = await Test.createTestingModule({
+        imports: [InventorySvcModule],
+      })
+        .overrideProvider(InventoryWorkersService)
+        .useValue({})
+        .compile();
+      app = module.createNestApplication();
+      app.useGlobalFilters(new ProblemDetailsFilter());
+      await app.listen(0, '127.0.0.1');
+      const origin = await app.getUrl();
+      const before = await snapshot();
+      const read = await request(origin)
+        .get(
+          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
+        )
+        .expect(200);
+      expect(read.body).toEqual({
+        items: [{ sku, status: 'DISPONIBLE' }],
+      });
+      expect(JSON.stringify(read.body)).not.toMatch(
+        /on_hand|reserved|blocked|available|location_id|stock_version/,
+      );
+      await request(origin)
+        .post('/api/v1/inventario/disponibilidad/comercial/verificar')
+        .send({
+          channel_id: 'MARKETPLACE',
+          fulfillment: { mode: 'ENVIO_DOMICILIO' },
+          lines: [{ sku, quantity: 2 }],
+        })
+        .expect(401);
+      await request(origin)
+        .get(`/api/v1/inventario/disponibilidad?skus=${sku}`)
+        .expect(401);
+      expect(await snapshot()).toBe(before);
+    } finally {
+      await app?.close();
+      await database.query(
+        `DELETE FROM inventory.commercial_fulfillment_routes WHERE id=$1`,
+        [route.rows[0]?.id],
+      );
+      await database.query(
+        `DELETE FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2`,
+        [sku, locationId],
+      );
+      if (previousMode === undefined) delete process.env.G6_SECURITY_MODE;
+      else process.env.G6_SECURITY_MODE = previousMode;
+      if (previousPublicOperations === undefined)
+        delete process.env.INVENTORY_PUBLIC_OPERATION_IDS;
+      else
+        process.env.INVENTORY_PUBLIC_OPERATION_IDS = previousPublicOperations;
+    }
+  }, 60_000);
+
   async function withProductionPostgresTls(
     databaseUrl: string,
     caPath: string,
@@ -1403,7 +1485,9 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
   });
 
   describe('Consumer real — ACK durable, deduplicación y recuperación (#102/#103)', () => {
-    function initializationCommand(defaultLocation = locationId) {
+    function initializationCommand(
+      defaultLocation: string | null = locationId,
+    ) {
       return {
         message_id: randomUUID(),
         operation_id: randomUUID(),
@@ -1457,6 +1541,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       const first = initializationCommand();
       const replay = { ...first, message_id: randomUUID() };
       const rejected = initializationCommand(randomUUID());
+      const withoutLocation = initializationCommand(null);
       try {
         expect(
           (await brokerChannel.checkQueue('po.inventario.q')).messageCount,
@@ -1468,6 +1553,7 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           first,
           replay,
           rejected,
+          withoutLocation,
         ].entries()) {
           await publishCommand(
             writer,
@@ -1479,8 +1565,8 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           }, 5000);
         }
         expect(consumer.getMetrics()).toMatchObject({
-          received: 4,
-          acknowledged: 4,
+          received: 5,
+          acknowledged: 5,
           duplicates: 1,
           rejected: 1,
           failures: 0,
@@ -1491,9 +1577,16 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           status: string;
         }>(
           `SELECT message_id,status FROM inventory.inbox WHERE message_id=ANY($1::uuid[])`,
-          [[first.message_id, replay.message_id, rejected.message_id]],
+          [
+            [
+              first.message_id,
+              replay.message_id,
+              rejected.message_id,
+              withoutLocation.message_id,
+            ],
+          ],
         );
-        expect(inbox.rows).toHaveLength(3);
+        expect(inbox.rows).toHaveLength(4);
         expect(inbox.rows.every((row) => row.status === 'PROCESSED')).toBe(
           true,
         );
@@ -1503,9 +1596,15 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           result_code: string | null;
         }>(
           `SELECT operation_id,status,result_code FROM inventory.inventory_operations WHERE operation_id=ANY($1::uuid[])`,
-          [[first.operation_id, rejected.operation_id]],
+          [
+            [
+              first.operation_id,
+              rejected.operation_id,
+              withoutLocation.operation_id,
+            ],
+          ],
         );
-        expect(operations.rows).toHaveLength(2);
+        expect(operations.rows).toHaveLength(3);
         expect(operations.rows).toContainEqual({
           operation_id: first.operation_id,
           status: 'APLICADO',
@@ -1516,12 +1615,20 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           status: 'RECHAZADO',
           result_code: 'UBICACION_NO_ENCONTRADA',
         });
+        expect(operations.rows).toContainEqual({
+          operation_id: withoutLocation.operation_id,
+          status: 'APLICADO',
+          result_code: null,
+        });
         expect(
           await stockRepo.findBySkus([first.data.sku], locationId),
         ).toMatchObject([
           { on_hand: 0, reserved: 0, blocked: 0, stock_version: 0 },
         ]);
         expect(await stockRepo.findBySkus([rejected.data.sku])).toHaveLength(0);
+        expect(
+          await stockRepo.findBySkus([withoutLocation.data.sku]),
+        ).toHaveLength(0);
         const events = await database.query<{
           event_type: string;
           count: string;
@@ -1538,6 +1645,38 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           event_type: 'inventory.sku.initialization.completed',
           count: '2',
         });
+
+        // Catalog valida delivery.properties.userId contra su producerUsers.
+        // El publisher real debe propagar el usuario AMQP autenticado de la
+        // conexión (extraído de RABBITMQ_URL), no un valor del payload.
+        for (;;) {
+          const dispatched = await new OutboxPublisherService(
+            database,
+            outboxRepo,
+          ).dispatchPending(10);
+          if (dispatched.dispatched === 0) break;
+        }
+        const initializationUserIds = new Map<string, string | undefined>();
+        for (;;) {
+          const message = await brokerChannel.get(queue);
+          if (!message) break;
+          const payload = JSON.parse(message.content.toString('utf8')) as {
+            name?: string;
+          };
+          if (
+            payload.name === 'inventory.sku.initialization.completed' ||
+            payload.name === 'inventory.sku.initialization.rejected'
+          ) {
+            initializationUserIds.set(payload.name, message.properties.userId);
+          }
+          brokerChannel.ack(message);
+        }
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.completed'),
+        ).toBe('inventory_test');
+        expect(
+          initializationUserIds.get('inventory.sku.initialization.rejected'),
+        ).toBe('inventory_test');
       } finally {
         await consumer.onModuleDestroy();
         await writer.close();

@@ -1,5 +1,69 @@
 # Price Audit — resolución local de #63, #65, #66, #68 y #69
 
+## Revalidación — 2026-11-05
+
+Rama `vera`, base `5b659656a53abae557d6ce929e0a04df4906d0d1` (PR #169 ya
+integrado). Esta entrega refuerza la implementación existente; el resto del
+documento conserva su evidencia histórica, no acredita ejecuciones nuevas.
+Código y regresiones: `fc95725798f038621b0c1497f812bec81e72bc0b`;
+este reporte se incorpora en un commit documental posterior.
+
+Fuentes reconsultadas: los cinco issues abiertos, AGENTS, las seis guías Oracle,
+Docs oficial `a7778ec1a22811c1213a94ef096ab905911342cc`, OpenAPI `0.6.0-rc.3`,
+AsyncAPI `0.6.0-rc.4`, SPEC-014, DEC-G6-INT-06, registro y matriz
+DEC-F-001/006/009/012, matriz intermodular, arquitectura y modelo físico propio.
+
+### Cambio
+
+`Date.parse` normalizaba días inexistentes (30 de febrero, 31 de abril) y
+`24:00:00`. Se rechazan antes de convertir `occurred_at`, `valid_from` y filtros
+temporales de consulta/exportación para evitar asientos con fechas alteradas.
+Se conservan años bisiestos y offsets válidos que cruzan de día/año.
+Regresiones AMQP con fecha imposible en envelope y payload comprueban mensaje
+retenido sin ACK, cero Inbox/asientos y readiness 503. La disposición manual
+del mensaje es exclusiva de la fixture; no hay descarte ni DLQ productiva.
+
+### Estado por issue
+
+| Issue | Estado | Pendiente específico / condición verificable |
+|---|---|---|
+| #63 | IMPLEMENTAR_PARCIAL | Captura/cálculo/invariantes existentes y validación temporal reforzada. Vera + Marco deben aprobar formato/storage/proceso recuperable P-AUD-03 antes del archivo frío o retiro de originales. |
+| #65 | IMPLEMENTAR_AHORA (superficie contractual) | POST exportaciones y lecturas probados. SPEC-014 prohíbe edición/borrado del histórico: no se inventan escrituras HTTP de asientos. Aplicación compartida de migración separada. |
+| #66 | IMPLEMENTAR_PARCIAL | Inbox/ACK/dedupe/recuperación probados con broker/SQL aislados. Marco/infra (#29/#110): acreditar ACL/red/bindings y corte coordinado de backlog/productor/consumidores antes de activar flujo compartido. |
+| #68 | BLOQUEADO_ESPECÍFICO | Marco/Gateway (#21), frontend (#45) y G7: ruta/composición React reales, token/grant efectivo e interacción visible sin fallback, con SHA/entorno. Sin cambios en componentes ajenos al ownership. |
+| #69 | IMPLEMENTAR_PARCIAL | AMQP → Inbox/log → HTTP real aislado probado; productor/JWKS de fixture. Vera/Pricing: acreditar emisión post-commit real conjunta. Marco/frontend/G7: recorrido Gateway/UI/auth real con SHAs. Oracle requiere liberación individual #111. |
+
+La discrepancia HTTP sigue vigente en Docs consultado: `sku/canal_origen` son
+string en OpenAPI, mientras SPEC-014/DEC-G6-INT-06 permiten null. Marco/owner
+contractual debe aprobar versión compatible y coordinar consumidores; se conserva
+el 503 de esa frontera sin ocultar filas. Marco/BD debe incorporar la migración
+propuesta al ledger canónico y autorizar destino/aplicación/postcheck. No se
+ejecuta SQL compartido, despliegue ni cambios de autenticación.
+
+### Validación de esta entrega
+
+Node 26.13.0, Docker 29.8.2; PostgreSQL/RabbitMQ desechables y JWT/JWKS de
+fixture, sin credenciales compartidas.
+
+- `npm test -- apps/price-audit-svc`: PASS, 141 pruebas.
+- `npm run test:e2e -- apps/price-audit-svc`, con
+  `PRICE_AUDIT_TEST_POSTGRES=1` y `PRICE_AUDIT_TEST_AMQP=1`: PASS, 31 pruebas.
+- `npm test -- --maxWorkers=2`: PASS, 1958 pruebas / 56 omitidas.
+- `npm run typecheck`, `npm run lint`, `npm run build:price-audit-svc`: PASS.
+- `npm run format:check`, `git diff --check`: PASS.
+- E2E general `npm run test:e2e -- --maxWorkers=2`: FAIL, 1015 PASS /
+  137 omitidas / un timeout de 5000 ms en
+  `apps/catalog-svc/test/postgres.persistence.e2e-spec.ts:883` (DATA-002),
+  ya registrado en la revisión histórica. No se modifica Catalog.
+- Repetición `npm run test:e2e -- --maxWorkers=2 --testTimeout=15000`:
+  PASS, 1016 pruebas / 137 omitidas, con los dos flags propios habilitados
+  y OpenSSL de Git en PATH. El margen solo aplica al comando local;
+  no cambia tests/configuración/CI. Las integraciones opcionales de otros
+  servicios no habilitadas siguen omitidas, no se declaran ejecutadas.
+
+CI del nuevo SHA, integración autenticada externa, homologación y despliegue
+no se infieren de estos resultados. Estado integral: PARTIAL; no READY_FOR_DEPLOY.
+
 ## Revisión de auditoría PR #169 — 2026-11-02
 
 Rama `vera`, owner Leonardo Vera. El SHA publicado auditado es
