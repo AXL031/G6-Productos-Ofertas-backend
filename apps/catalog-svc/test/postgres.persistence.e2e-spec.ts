@@ -1374,13 +1374,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         const forged = { ...first, message_id: randomUUID() };
         expect(await broker.brokerRejectsFalseUser(forged)).toBe(true);
         await broker.wrongIdentityResult(forged);
-        const quarantined = await broker.next('po.catalogo.q.dlq');
-        expect(JSON.parse(quarantined.content.toString()).message_id).toBe(
+        await expect.poll(() => runtime!.ready).toBe(false);
+        const preserved = await broker.next('po.catalogo.q');
+        expect(JSON.parse(preserved.content.toString()).message_id).toBe(
           forged.message_id,
         );
-        expect(quarantined.properties.headers?.['x-catalog-failure']).toBe(
-          'INVALID_OR_BLOCKED_CONTRACT',
-        );
+        expect(preserved.fields.redelivered).toBe(true);
+        expect(preserved.properties.userId).not.toBe('g6_inventario');
         expect(
           await database.read((db) =>
             db
