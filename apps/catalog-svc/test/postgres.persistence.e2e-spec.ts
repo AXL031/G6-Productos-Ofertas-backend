@@ -1486,15 +1486,19 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           code: 'IDEMPOTENCY_CONFLICT',
           manual_retry_allowed: false,
         });
-        // The priming fixture's genuine result has the foreign SKU, so Catalog
-        // correctly quarantines it before the original request is rejected.
-        const collisionQuarantine = await broker.next('po.catalogo.q.dlq');
+        // The foreign-SKU result was explicitly inspected and ACKed by the
+        // disposable fixture while Catalog was paused. It never enters Inbox.
         expect(
-          JSON.parse(collisionQuarantine.content.toString()).message_id,
+          JSON.parse(collisionDelivery.content.toString()).message_id,
         ).toBe(collisionResult.message.message_id);
         expect(
-          collisionQuarantine.properties.headers?.['x-catalog-failure'],
-        ).toBe('INVALID_OR_BLOCKED_CONTRACT');
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(eq(inbox.message_id, collisionResult.message.message_id)),
+          ),
+        ).toEqual([]);
         await call(
           'POST',
           '/productos/' + rejectedProduct.product_id + '/activar',
