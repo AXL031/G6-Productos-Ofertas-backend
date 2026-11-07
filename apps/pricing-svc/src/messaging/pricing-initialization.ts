@@ -14,7 +14,10 @@ import {
   sql,
 } from 'drizzle-orm';
 import { initializeProduct, PriceRuleError } from '../domain/price.js';
-import { PricingRepository } from '../persistence/pricing.repository.js';
+import {
+  PricingRepository,
+  lockGlobalProduct,
+} from '../persistence/pricing.repository.js';
 import {
   inbox,
   outbox,
@@ -115,8 +118,25 @@ function semanticInput(data: Record<string, unknown>, rawAmount?: string) {
         ? { invalid: data.precio_regular }
         : null),
     moneda: typeof data.moneda === 'string' ? data.moneda : '',
-    channel_id: data.channel_id ?? 'INVALID',
-    motivo_cambio: data.motivo_cambio ?? 'INVALID',
+    channel_id: Object.hasOwn(data, 'channel_id')
+      ? { present: true, value: data.channel_id }
+      : { present: false },
+    motivo_cambio: Object.hasOwn(data, 'motivo_cambio')
+      ? { present: true, value: data.motivo_cambio }
+      : { present: false },
+  };
+}
+
+function semanticIntent(data: Record<string, unknown>, rawAmount?: string) {
+  const field = (key: string) =>
+    Object.hasOwn(data, key)
+      ? { present: true, value: data[key] }
+      : { present: false };
+  return {
+    ...semanticInput(data, rawAmount),
+    product_id: field('product_id'),
+    sku_base: field('sku_base'),
+    moneda: field('moneda'),
   };
 }
 
@@ -133,6 +153,7 @@ export class PricingProductInitialization {
       throw new Error('PRICING_INVALID_MESSAGE_JSON');
     }
     const message = parseEnvelope(parsed);
+    const operationId = message.operation_id.toLowerCase();
     const input = semanticInput(message.data);
     let amount: string | undefined;
     let domainCode: string | undefined;
@@ -165,7 +186,7 @@ export class PricingProductInitialization {
 
     return this.repository.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${message.operation_id}, 0))`,
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${operationId}, 0))`,
       );
       const [sameMessage] = await tx
         .select()
@@ -178,7 +199,20 @@ export class PricingProductInitialization {
         )
         .limit(1);
       if (sameMessage) {
-        if (canonical(sameMessage.payload) !== canonical(parsed))
+        const previous = sameMessage.payload;
+        const normalizedPrevious = object(previous)
+          ? {
+              ...previous,
+              operation_id:
+                typeof previous.operation_id === 'string'
+                  ? previous.operation_id.toLowerCase()
+                  : previous.operation_id,
+            }
+          : previous;
+        if (
+          canonical(normalizedPrevious) !==
+          canonical({ ...message, operation_id: operationId })
+        )
           throw new Error('PRICING_MESSAGE_ID_CONFLICT');
         return sameMessage.result === 'APPLIED' ? 'APPLIED' : 'DUPLICATE';
       }
@@ -190,7 +224,7 @@ export class PricingProductInitialization {
           and(
             eq(inbox.handler, HANDLER),
             ne(inbox.result, 'OPERATION_ID_CONFLICT'),
-            sql`${inbox.payload}->>'operation_id' = ${message.operation_id}`,
+            sql`lower(${inbox.payload}->>'operation_id') = ${operationId}`,
           ),
         )
         .orderBy(asc(inbox.createdAt), asc(inbox.id))
@@ -199,9 +233,9 @@ export class PricingProductInitialization {
         const prior = priorOperation[0].payload;
         const priorData = object(prior) && object(prior.data) ? prior.data : {};
         const sameIntent =
-          JSON.stringify(
-            semanticInput(priorData, amountFromPrior(priorData) ?? undefined),
-          ) === JSON.stringify(normalized);
+          canonical(
+            semanticIntent(priorData, amountFromPrior(priorData) ?? undefined),
+          ) === canonical(semanticIntent(message.data, amount));
         if (sameIntent) {
           const [priorResult] = await tx
             .select()
@@ -254,6 +288,7 @@ export class PricingProductInitialization {
         return 'REJECTED';
       }
 
+      await lockGlobalProduct(tx, normalized.product_id);
       if (historical) {
         return this.adoptHistorical(
           tx,

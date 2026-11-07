@@ -21,6 +21,12 @@ no publicado ni fusionado en Docs. No se declara aceptación por silencio de Cat
 
 ## Artefactos
 
+El schema limita el valor numérico a centavos y al rango numeric(12,2).
+JSON Schema no conserva la representación textual del número: la validación
+runtime también rechaza exponentes o más de dos decimales en el texto JSON.
+El validador debe usar aritmética decimal exacta para `multipleOf`: algunos
+validadores con flotantes binarios rechazan erróneamente importes como 0.29.
+
 - `recuperacion-historica-docs.patch`: modificaciones concordantes de
   `contratos/eventos/asyncapi.yaml` y
   `requisitos/specs/SPEC-013-gestion-precios-individuales-masivos.md`.

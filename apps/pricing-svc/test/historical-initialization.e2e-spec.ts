@@ -52,8 +52,11 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
     let repository: PricingRepository;
     let initialization: PricingProductInitialization;
     let consumer: PricingInboxConsumer | undefined;
-    const consume = (message: ReturnType<typeof command>) =>
-      initialization.consume(Buffer.from(JSON.stringify(message)));
+    const consume = (
+      message: Omit<ReturnType<typeof command>, 'operation_id'> & {
+        operation_id: string;
+      },
+    ) => initialization.consume(Buffer.from(JSON.stringify(message)));
     const result = async (messageId: string) =>
       (
         await postgres.admin!.query(
@@ -182,15 +185,79 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       expect(await snapshot(stored.productId)).toEqual(before);
       await noFacts(request.operation_id);
     });
-    it.each([125.5, 125.5])(
+    it.each(['125.5', '125.50'])(
       'valida el importe exacto proporcionado: %s',
       async (amount) => {
         const stored = await seed();
-        const request = command(stored.productId, { precio_regular: amount });
-        expect(await consume(request)).toBe('APPLIED');
+        const request = command(stored.productId, { precio_regular: 125.5 });
+        const raw = JSON.stringify(request).replace(
+          '"precio_regular":125.5',
+          `"precio_regular":${amount}`,
+        );
+        expect(await initialization.consume(Buffer.from(raw))).toBe('APPLIED');
         await noFacts(request.operation_id);
       },
     );
+    it('trata las variantes de mayúsculas del operation_id como una operación', async () => {
+      const stored = await seed();
+      const first = command(stored.productId);
+      first.operation_id = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+      expect(await consume(first)).toBe('APPLIED');
+      const replay = {
+        ...first,
+        message_id: randomUUID(),
+        operation_id: first.operation_id.toUpperCase(),
+      };
+      expect(await consume(replay)).toBe('DUPLICATE');
+      expect((await result(replay.message_id)).payload).toEqual(
+        (await result(first.message_id)).payload,
+      );
+      const conflict = {
+        ...replay,
+        message_id: randomUUID(),
+        data: { ...replay.data, moneda: 'USD' },
+      };
+      expect(await consume(conflict)).toBe('REJECTED');
+      expect((await result(conflict.message_id)).payload.code).toBe(
+        'OPERATION_ID_CONFLICT',
+      );
+    });
+    it.each(['INVALID', undefined])(
+      'no confunde channel_id null con %s',
+      async (channel) => {
+        const stored = await seed();
+        const first = command(stored.productId);
+        expect(await consume(first)).toBe('APPLIED');
+        const next = {
+          ...first,
+          message_id: randomUUID(),
+          data: { ...first.data, channel_id: channel },
+        };
+        expect(await consume(next)).toBe('REJECTED');
+        expect((await result(next.message_id)).payload.code).toBe(
+          'OPERATION_ID_CONFLICT',
+        );
+      },
+    );
+    it('compara objetos inválidos sin depender del orden de claves en JSONB', async () => {
+      const stored = await seed();
+      const first = command(stored.productId, {
+        channel_id: { z: 1, a: { segundo: 2, primero: 1 } },
+      });
+      expect(await consume(first)).toBe('REJECTED');
+      const replay = {
+        ...first,
+        message_id: randomUUID(),
+        data: {
+          ...first.data,
+          channel_id: { a: { primero: 1, segundo: 2 }, z: 1 },
+        },
+      };
+      expect(await consume(replay)).toBe('DUPLICATE');
+      expect((await result(replay.message_id)).payload).toEqual(
+        (await result(first.message_id)).payload,
+      );
+    });
     it.each([
       { precio_regular: 125.51 },
       { precio_regular: 0 },
@@ -243,6 +310,63 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
         schedules: null,
       });
       await noFacts(request.operation_id);
+    });
+    it('reproduce que una lectura vacía no impide crear el precio antes del corte', async () => {
+      const productId = randomUUID();
+      const reader = await postgres.admin!.connect();
+      const writer = await postgres.admin!.connect();
+      try {
+        await reader.query('BEGIN');
+        const empty = await reader.query(
+          'SELECT id FROM pricing.prices WHERE product_id=$1 AND sku IS NULL AND channel_id IS NULL FOR UPDATE',
+          [productId],
+        );
+        expect(empty.rowCount).toBe(0);
+        await writer.query('BEGIN');
+        const created = await writer.query(
+          'INSERT INTO pricing.prices(product_id,sku,channel_id) VALUES($1,NULL,NULL) RETURNING id',
+          [productId],
+        );
+        await writer.query(
+          "INSERT INTO pricing.price_validities(price_id,precio_regular,currency,valid_from,price_version,motivo_cambio) VALUES($1,125.50,'PEN','2000-01-01Z',1,'CARGA_HISTORICA')",
+          [created.rows[0].id],
+        );
+        await writer.query('COMMIT');
+        const observed = await reader.query(
+          'SELECT clock_timestamp() AS cutoff, EXISTS(SELECT 1 FROM pricing.prices WHERE product_id=$1) AS present',
+          [productId],
+        );
+        expect(observed.rows[0].present).toBe(true);
+        await reader.query('ROLLBACK');
+      } finally {
+        await reader.query('ROLLBACK');
+        await writer.query('ROLLBACK');
+        reader.release();
+        writer.release();
+      }
+    });
+    it('espera el lock del producto ausente sin bloquear otro producto', async () => {
+      const productId = randomUUID();
+      const reader = await postgres.admin!.connect();
+      try {
+        await reader.query('BEGIN');
+        await reader.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1,0))',
+          ['pricing-global-product:' + productId],
+        );
+        let finished = false;
+        const pending = consume(command(productId)).then((value) => {
+          finished = true;
+          return value;
+        });
+        expect(await consume(command(randomUUID()))).toBe('REJECTED');
+        expect(finished).toBe(false);
+        await reader.query('COMMIT');
+        expect(await pending).toBe('REJECTED');
+      } finally {
+        await reader.query('ROLLBACK');
+        reader.release();
+      }
     });
     it('rechaza múltiples elegibles incluso ante corrupción histórica; conserva todo', async () => {
       const stored = await seed();

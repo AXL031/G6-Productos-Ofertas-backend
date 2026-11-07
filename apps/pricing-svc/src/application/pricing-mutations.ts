@@ -9,7 +9,10 @@ import {
   type PriceDefinition,
   type PriceUpdate,
 } from '../domain/price.js';
-import { PricingRepository } from '../persistence/pricing.repository.js';
+import {
+  PricingRepository,
+  lockGlobalProduct,
+} from '../persistence/pricing.repository.js';
 import type { PricingTransaction } from '../persistence/pricing.database.js';
 import {
   prices,
@@ -49,6 +52,8 @@ export class PricingMutations {
   ) {
     return this.repository.transaction(async (tx) => {
       await this.lockSkuAndRejectDeactivated(tx, target);
+      if (target.productId !== undefined && channelId === null)
+        await lockGlobalProduct(tx, target.productId);
       const loaded = await this.loadMaybe(tx, target, channelId);
       if (!loaded) {
         requireRule(expectedVersion === 0n, 'PRECIO_NO_ENCONTRADO');
