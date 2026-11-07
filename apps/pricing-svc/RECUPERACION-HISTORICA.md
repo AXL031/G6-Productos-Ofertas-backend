@@ -119,3 +119,51 @@ Sin despliegue, merge, activación de datos reales ni escrituras compartidas.
 
 Estado integral: PARTIAL por publicación contractual/E2E Catalog/CI por verificar;
 la adaptación interna no queda bloqueada por esas evidencias independientes.
+
+## Auditoría de replay y representación — seguimiento de PR #205
+
+Base auditada: `807189f7ca49d4af3b4ad367043260bc3050fb3d`.
+Las pruebas nuevas reprodujeron siete fallos antes de la corrección y después
+pasaron 40 escenarios históricos en PostgreSQL/RabbitMQ descartables. El replay
+conserva el token inválido en metadatos privados versionados de Inbox; las filas
+anteriores carecen del token y su representación no puede recuperarse.
+
+Los homónimos anidados no intervienen; para propiedades duplicadas prevalece la
+última, conforme a JSON.parse. JSON Schema valida valores, no representación
+textual. La migración 0003 añade el índice de replay, sin DDL de arranque; su
+homologación y aplicación compartida corresponden a Marco. El detalle y límites
+de EXPLAIN figuran en `contracts/README.md`.
+
+CI, contrato Docs, integración histórica Catalog y despliegue deben verificarse
+por separado contra sus propios SHA. Las pruebas con productor fixture no
+acreditan integración Catalog ni despliegue.
+
+Validación de esta auditoría: unitarias Pricing 318 PASS; E2E Pricing con
+POSTGRES/AMQP/AUDIT activos 112 PASS y una omitida (Catalog); unitarias generales
+2309 PASS y 66 omitidas; typecheck, lint, build Pricing y format:check PASS.
+E2E general: primer intento FAIL por OpenSSL ausente del PATH; con OpenSSL de
+Git disponible, 1046 PASS, 235 omitidas y un FAIL por timeout de 5000 ms en
+`apps/catalog-svc/test/postgres.persistence.e2e-spec.ts:1041`. El mismo test
+falló también aislado, con el límite original. No se modificó Catalog ni se
+amplió el timeout. No hay commit, push ni CI para estos cambios pendientes.
+
+## Integración de master y corrección decimal
+
+Código Pricing: `3aa530d372aaad20636afde1bfc5c6f1b0e01945`; merge local de
+master `797a043` sobre `72c3d238abfa3004e00fabb8839fa91cc9a7a3d1`. El merge se
+realizó a solicitud expresa del usuario, sin modificar master ni el estado de PR.
+Las pruebas de abajo se ejecutaron antes del commit con el mismo código Pricing.
+
+- Unitarias Pricing: 325 PASS. E2E Pricing con POSTGRES/AMQP/AUDIT activos:
+  112 PASS y una integración Catalog antigua omitida.
+- E2E general, límites originales: 1008 PASS y 247 omitidas en checkout
+  temporal de master con los cambios Pricing aplicados; no equivale a CI.
+- typecheck, lint, build:pricing-svc, format:check y diff --check: PASS.
+- Antes de la corrección, siete regresiones nuevas fallaron; luego la suite
+  histórica pasó 40 escenarios contra PostgreSQL/RabbitMQ descartables.
+- CI del HEAD documental final: pendiente de ejecución tras publicar.
+  Catalog/Poma debe fijar ese SHA y ejecutar E2E histórica real separada.
+
+El fallo DATA-002 anterior corresponde al checkout anterior a integrar master;
+la versión de Poma pasó en Windows y en la ejecución general integrada anterior.
+No se infiere homologación, grant, aplicación de la migración ni despliegue.
