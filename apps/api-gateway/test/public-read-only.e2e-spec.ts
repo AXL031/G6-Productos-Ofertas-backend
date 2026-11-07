@@ -123,6 +123,8 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
       ...security,
       CATALOG_SVC_PORT: '3001',
       CATALOG_TAXONOMY_URL: await taxonomy.getUrl(),
+      CATALOG_SERVICE_TOKEN_URL: new URL('/api/v1/auth/token', issuer).href,
+      CATALOG_SERVICE_CLIENT_SECRET: 'local-technical-fixture',
       G6_SECURITY_MODE: mode,
       CATALOG_PUBLIC_OPERATION_IDS:
         mode === 'PUBLIC_READ_ONLY' && enabled
@@ -176,7 +178,7 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
         ('${id(21)}','${id(14)}','HIDDEN-VARIANT','{"size":"L"}','INACTIVA');
       RESET session_replication_role;`);
     persistedBefore = snapshot();
-    issuerServer = createServer((req, res) => {
+    issuerServer = createServer(async (req, res) => {
       res.setHeader('content-type', 'application/json');
       if (req.url === '/issuer/jwks')
         res.end(
@@ -191,7 +193,23 @@ describe('Phase 1 real three-service integration on disposable PostgreSQL', () =
             ],
           }),
         );
-      else if (req.url === '/issuer/discovery')
+      else if (req.url === '/api/v1/auth/token' && req.method === 'POST') {
+        let form = '';
+        for await (const chunk of req) form += String(chunk);
+        const fields = new URLSearchParams(form);
+        expect(fields.get('grant_type')).toBe('client_credentials');
+        expect(fields.get('client_id')).toBe('modulo-productos');
+        expect(fields.get('client_secret')).toBe('local-technical-fixture');
+        expect(fields.get('scope')).toBe('catalogo:leer');
+        res.end(
+          JSON.stringify({
+            accessToken: token({ sub: 'modulo-productos' }),
+            tokenType: 'Bearer',
+            expiresIn: 600,
+            scopes: ['catalogo:leer'],
+          }),
+        );
+      } else if (req.url === '/issuer/discovery')
         res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
       else {
         res.statusCode = 404;

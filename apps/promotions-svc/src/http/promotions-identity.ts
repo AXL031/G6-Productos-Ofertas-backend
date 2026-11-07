@@ -36,6 +36,7 @@ export function remotePromotionsKeys(
 ): PromotionsKeySource {
   let cached: readonly JsonWebKey[] = [];
   let until = 0;
+  let validUntil = 0;
   let loading: Promise<readonly JsonWebKey[]> | undefined;
   return async (kid) => {
     if (Date.now() < until && cached.some((k) => k.kid === kid)) return cached;
@@ -73,7 +74,17 @@ export function remotePromotionsKeys(
           )
             throw new Error();
           cached = data.keys;
-          until = Date.now() + 60000;
+          const directives = response.headers.get('cache-control') ?? '';
+          const seconds = /(?:no-store|no-cache)/i.test(directives)
+            ? 0
+            : Math.min(
+                3600,
+                Number(
+                  directives.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1] ?? 3600,
+                ),
+              );
+          validUntil = Date.now() + seconds * 1000;
+          until = Date.now() + Math.min(60, seconds) * 1000;
           return cached;
         } catch {
           throw new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE');
@@ -84,8 +95,8 @@ export function remotePromotionsKeys(
       return await pending;
     } catch (error) {
       // G7's published profile: a JWKS outage must not invalidate known cached keys.
-      if (cached.some((k) => k.kid === kid)) {
-        until = Date.now() + 5000;
+      if (Date.now() < validUntil && cached.some((k) => k.kid === kid)) {
+        until = Math.min(validUntil, Date.now() + 5000);
         return cached;
       }
       throw error;

@@ -33,6 +33,7 @@ function decode(value: string): unknown {
 export class AuditReadGuard implements CanActivate {
   private cache: JsonWebKey[] = [];
   private expires = 0;
+  private validUntil = 0;
   private loading?: Promise<JsonWebKey[]>;
 
   constructor(
@@ -107,7 +108,7 @@ export class AuditReadGuard implements CanActivate {
         (header.typ !== undefined && header.typ !== 'JWT')
       )
         throw new Error();
-      const keys = (await this.keys()).filter(
+      const keys = (await this.keys(header.kid)).filter(
         (key) =>
           key.kid === header.kid &&
           key.kty === 'RSA' &&
@@ -115,7 +116,9 @@ export class AuditReadGuard implements CanActivate {
           (!key.use || key.use === 'sig') &&
           (!key.key_ops ||
             (Array.isArray(key.key_ops) && key.key_ops.includes('verify'))) &&
-          !key.d,
+          !['d', 'p', 'q', 'dp', 'dq', 'qi'].some(
+            (property) => property in key,
+          ),
       );
       if (keys.length !== 1) throw new Error();
       const key = createPublicKey({ key: keys[0], format: 'jwk' });
@@ -157,8 +160,12 @@ export class AuditReadGuard implements CanActivate {
     }
   }
 
-  private async keys(): Promise<JsonWebKey[]> {
-    if (Date.now() < this.expires) return this.cache;
+  private async keys(kid?: string): Promise<JsonWebKey[]> {
+    if (
+      Date.now() < this.expires &&
+      (!kid || this.cache.some((key) => key.kid === kid))
+    )
+      return this.cache;
     if (this.loading) return this.loading;
     this.loading = (async () => {
       try {
@@ -192,7 +199,15 @@ export class AuditReadGuard implements CanActivate {
         )
           throw new Error();
         this.cache = body.keys;
-        this.expires = Date.now() + 60000;
+        const directives = response.headers.get('cache-control') ?? '';
+        const seconds = /(?:no-store|no-cache)/i.test(directives)
+          ? 0
+          : Math.min(
+              3600,
+              Number(directives.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1] ?? 3600),
+            );
+        this.validUntil = Date.now() + seconds * 1000;
+        this.expires = Date.now() + Math.min(60, seconds) * 1000;
         return this.cache;
       } catch {
         throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
@@ -200,6 +215,15 @@ export class AuditReadGuard implements CanActivate {
     })();
     try {
       return await this.loading;
+    } catch (error) {
+      // Retain only a previously trusted kid within the bounded trust window.
+      if (
+        kid &&
+        Date.now() < this.validUntil &&
+        this.cache.some((key) => key.kid === kid)
+      )
+        return this.cache;
+      throw error;
     } finally {
       this.loading = undefined;
     }

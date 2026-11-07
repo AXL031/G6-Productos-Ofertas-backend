@@ -20,6 +20,10 @@ import {
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import { TaxonomyClient } from './taxonomy.client.js';
 import { createJwtFixture } from '../test/support/jwt-fixture.js';
+import { CatalogBulkIdentity } from './catalog-bulk.service.js';
+import { CatalogConfig } from './config.js';
+import { CatalogTokenVerifier } from './catalog-auth.js';
+import { CATALOG_TAXONOMY_IDENTITY } from './catalog-master.client.js';
 
 describe('Explicit internal read-only demo (HTTP provider, isolated repositories)', () => {
   let app: INestApplication;
@@ -240,7 +244,20 @@ describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin 
     };
 
     async function bootCatalog(env: Record<string, string | undefined>) {
+      const security = readCatalogSecurityConfig(env);
+      const ownIdentity = new CatalogBulkIdentity(
+        {
+          security,
+          serviceCredentials: {
+            tokenUrl: g7Server.issuer + '/api/v1/auth/token',
+            clientSecret: 'local-technical-fixture',
+          },
+        } as CatalogConfig,
+        new CatalogTokenVerifier(security),
+      );
       const mod = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(CATALOG_TAXONOMY_IDENTITY)
+        .useValue(ownIdentity)
         .overrideProvider(CATALOG_READ_DEMO)
         .useValue(readCatalogReadDemo(env))
         .overrideProvider(CATALOG_SECURITY_CONFIG)
@@ -398,10 +415,23 @@ describe('Fase 1 y reversión al camino JWT (emisores y Taxonomy de prueba, sin 
         issuer: g7Server.issuer,
         profile: 'm2m-marketplace',
       });
+      observedTaxonomyCalls.length = 0;
       await request(appPhase3G7.getHttpServer())
         .get('/api/v1/productos/por-slug/zapatilla-marathon?canal=MARKETPLACE')
         .set('Authorization', `Bearer ${g7M2mToken}`)
         .expect(200);
+      expect(observedTaxonomyCalls).toHaveLength(1);
+      const ownBearer = observedTaxonomyCalls[0]!.authorization!;
+      expect(ownBearer).not.toBe('Bearer ' + g7M2mToken);
+      const ownClaims = JSON.parse(
+        Buffer.from(ownBearer.slice(7).split('.')[1]!, 'base64url').toString(),
+      );
+      expect(ownClaims).toMatchObject({
+        sub: 'modulo-productos',
+        tipo: 'servicio',
+        aud: 'api-productos',
+        scope: 'catalogo:leer',
+      });
       await appPhase3G7.close();
     } finally {
       await simServer.close();
