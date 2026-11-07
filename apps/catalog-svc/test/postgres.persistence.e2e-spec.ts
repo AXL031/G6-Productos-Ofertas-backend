@@ -1903,10 +1903,27 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
             broker.settings,
           );
           runtime.onModuleInit();
-          const badOriginDlq = await broker.next('po.catalogo.q.dlq');
-          expect(JSON.parse(badOriginDlq.content.toString()).message_id).toBe(
-            badOrigin.message_id,
+          await expect.poll(() => runtime!.ready).toBe(false);
+          const badOriginDelivery = await broker.next('po.catalogo.q');
+          expect(
+            JSON.parse(badOriginDelivery.content.toString()).message_id,
+          ).toBe(badOrigin.message_id);
+          expect(badOriginDelivery.fields.redelivered).toBe(true);
+          expect(badOriginDelivery.properties.userId).toBe('catalog-joint');
+          expect(
+            await database.read((db) =>
+              db
+                .select()
+                .from(inbox)
+                .where(eq(inbox.message_id, badOrigin.message_id)),
+            ),
+          ).toEqual([]);
+          await runtime.onModuleDestroy();
+          runtime = new CatalogAmqpRuntime(
+            new CatalogMessageService(database),
+            broker.settings,
           );
+          runtime.onModuleInit();
           for (const item of [legacySimple, legacyParent]) {
             const expected =
               item === legacySimple ? originalSimple : originalParent;
