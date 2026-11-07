@@ -85,6 +85,8 @@ jobs:
       run: npm ci
     - name: Ejecutar pruebas unitarias
       run: npm test
+    - name: Verificar preflight y generación Azure para Fase 3
+      run: node --test ops/azure/container-apps/phase3-preflight.test.mjs ops/azure/container-apps/render-deployment.test.mjs
   e2e:
     name: Ejecutar pruebas de extremo a extremo
     runs-on: ubuntu-latest

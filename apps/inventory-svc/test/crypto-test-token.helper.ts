@@ -62,6 +62,7 @@ export function createCryptographicJwt(
         : 'inventario:reservar inventario:consumir inventario:liberar inventario:operaciones:leer inventario:disponibilidad:leer',
     exp,
     iat: options.iat ?? nowSec,
+    jti: crypto.randomUUID(),
   };
 
   if (options.scopes) {

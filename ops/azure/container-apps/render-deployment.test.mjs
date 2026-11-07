@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { rootCertificates } from 'node:tls';
 import { readFileSync } from 'node:fs';
+import { phase3Trust } from './phase3-preflight.mjs';
 import {
   makeDeployment,
   parseRelease,
@@ -139,4 +140,51 @@ test('G7 mode cannot retain any anonymous selectors', () => {
   for (const env of Object.values(input.runtime))
     env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
   assert.throws(() => makeDeployment(input), /EXACT_PUBLIC_SCOPE/);
+});
+
+test('G7 deployment renders with nine aligned trust configurations and no anonymous exceptions', () => {
+  const input = fixture(),
+    issuer = 'https://g7.contract.test/api/v1/auth';
+  input.enablePublicReads = false;
+  for (const [service, [iss, jwks, discovery]] of Object.entries(phase3Trust)) {
+    const env = input.runtime[service];
+    env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
+    for (const key of Object.keys(env))
+      if (
+        key.endsWith('_PUBLIC_OPERATION_IDS') ||
+        key === 'COMBOS_PUBLIC_READ_OPERATIONS'
+      )
+        delete env[key];
+    env[iss] = issuer;
+    env[jwks] = issuer + '/.well-known/jwks.json';
+    if (discovery)
+      env[discovery] = issuer + '/.well-known/openid-configuration';
+  }
+  for (const [service, prefix] of Object.entries({
+    'api-gateway': 'GATEWAY_SERVICE',
+    'catalog-svc': 'CATALOG_SERVICE',
+    'pricing-svc': 'PRICING_SERVICE',
+    'promotions-svc': 'PROMOTIONS_SERVICE',
+    'combos-svc': 'COMBOS_G7',
+  })) {
+    input.runtime[service][prefix + '_TOKEN_URL'] = issuer + '/token';
+    input.runtime[service][prefix + '_CLIENT_SECRET'] = 'isolated-g7-secret';
+  }
+  const plan = makeDeployment(input);
+  assert.equal(plan.template.resources.slice(1).length, 9);
+  assert.ok(!JSON.stringify(plan.template).includes('isolated-g7-secret'));
+  const deployedRuntime = plan.parameters.parameters.runtime.value;
+  for (const env of Object.values(deployedRuntime)) {
+    assert.equal(env.G6_SECURITY_MODE, 'G7_AUTHENTICATED');
+    assert.ok(
+      !Object.entries(env).some(
+        ([key, value]) =>
+          (key.endsWith('_PUBLIC_OPERATION_IDS') ||
+            key === 'COMBOS_PUBLIC_READ_OPERATIONS') &&
+          value,
+      ),
+    );
+  }
+  input.runtime['catalog-svc'].SECURITY_ISSUER = 'https://other.contract.test';
+  assert.throws(() => makeDeployment(input), /G7_TRUST_MISMATCH/);
 });

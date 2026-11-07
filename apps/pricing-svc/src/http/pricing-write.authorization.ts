@@ -76,9 +76,10 @@ export class PricingWriteAuthorization {
         },
         body: JSON.stringify({ token: bearer[1] }),
       });
+      // These HTTP errors concern G6's technical credential, not the user's session.
       if (response.status === 401) {
         await response.body?.cancel();
-        throw new PricingHttpError(401, 'TOKEN_INVALIDO');
+        throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
       }
       if (response.status === 403) {
         await response.body?.cancel();
@@ -101,7 +102,11 @@ export class PricingWriteAuthorization {
             !body.permisos.every(
               (permission) => typeof permission === 'string',
             ) ||
-            body.tipo !== 'acceso'))
+            body.tipo !== 'acceso' ||
+            (body.exp !== undefined &&
+              (!Number.isSafeInteger(body.exp) ||
+                Number(body.exp) <= Math.floor(Date.now() / 1000))) ||
+            (body.email !== undefined && typeof body.email !== 'string')))
       )
         throw new Error('Respuesta G7 incompatible.');
       if (!body.activo) throw new PricingHttpError(401, 'TOKEN_INVALIDO');

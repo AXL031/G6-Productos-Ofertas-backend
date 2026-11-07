@@ -1,3 +1,4 @@
+import { validatePhase3Runtime } from './phase3-preflight.mjs';
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -185,6 +186,7 @@ export function makeDeployment({
       Object.entries(env).filter(([, v]) => v !== ''),
     );
   }
+  if (mode === 'G7_AUTHENTICATED') validatePhase3Runtime(cleanRuntime);
   const resources = [
     {
       type: 'Microsoft.App/managedEnvironments',

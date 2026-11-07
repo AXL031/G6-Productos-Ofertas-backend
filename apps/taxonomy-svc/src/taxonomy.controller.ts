@@ -36,6 +36,7 @@ export class TaxonomyController {
     'modulo-marketplace',
     'modulo-chatbot',
     'modulo-retail',
+    'modulo-productos',
   )
   async listarCategorias(
     @Query() consulta: Consulta,
@@ -50,6 +51,7 @@ export class TaxonomyController {
     'modulo-marketplace',
     'modulo-chatbot',
     'modulo-retail',
+    'modulo-productos',
   )
   async listarMarcas(
     @Query() consulta: Consulta,

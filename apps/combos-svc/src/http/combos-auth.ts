@@ -48,6 +48,7 @@ interface Principal {
 interface KeySet {
   keys: ReadonlyMap<string, KeyObject>;
   expiresAt: number;
+  validUntil: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -140,15 +141,26 @@ export class ComboTokenVerifier {
     this.config = { issuer, discoveryUrl, jwksUrl };
   }
 
-  private loadKeys(): Promise<KeySet> {
+  private async loadKeys(kid?: string, force = false): Promise<KeySet> {
     if (!this.config) return Promise.reject(new ComboIdentityUnavailable());
-    if (this.cache && this.cache.expiresAt > Date.now())
+    if (!force && this.cache && this.cache.expiresAt > Date.now())
       return Promise.resolve(this.cache);
     if (!this.loading)
       this.loading = this.fetchKeys().finally(() => {
         this.loading = undefined;
       });
-    return this.loading;
+    try {
+      return await this.loading;
+    } catch (error) {
+      if (
+        kid &&
+        this.cache &&
+        this.cache.validUntil > Date.now() &&
+        this.cache.keys.has(kid)
+      )
+        return this.cache;
+      throw error;
+    }
   }
 
   private async fetchKeys(): Promise<KeySet> {
@@ -176,9 +188,13 @@ export class ComboTokenVerifier {
       const cacheAge = response.headers
         .get('cache-control')
         ?.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1];
-      const seconds = Math.max(0, Math.min(Number(cacheAge ?? 60), 300));
+      const seconds = /(?:no-store|no-cache)/i.test(
+        response.headers.get('cache-control') ?? '',
+      )
+        ? 0
+        : Math.max(0, Math.min(Number(cacheAge ?? 60), 3600));
       const jwks = await readJson(response);
-      if (!record(jwks) || !Array.isArray(jwks.keys))
+      if (!record(jwks) || !Array.isArray(jwks.keys) || jwks.keys.length > 100)
         throw new ComboIdentityUnavailable();
       const keys = new Map<string, KeyObject>();
       for (const item of jwks.keys) {
@@ -189,10 +205,18 @@ export class ComboTokenVerifier {
           (item.alg !== undefined && item.alg !== 'RS256') ||
           typeof item.kid !== 'string' ||
           typeof item.n !== 'string' ||
-          typeof item.e !== 'string'
+          typeof item.e !== 'string' ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi'].some((property) => property in item)
         )
           continue;
+        if (keys.has(item.kid)) throw new ComboIdentityUnavailable();
         try {
+          const publicKey = createPublicKey({
+            key: item as JsonWebKey,
+            format: 'jwk',
+          });
+          if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
+            continue;
           keys.set(
             item.kid,
             createPublicKey({ key: item as JsonWebKey, format: 'jwk' }),
@@ -202,7 +226,11 @@ export class ComboTokenVerifier {
         }
       }
       if (keys.size === 0) throw new ComboIdentityUnavailable();
-      this.cache = { keys, expiresAt: Date.now() + seconds * 1000 };
+      this.cache = {
+        keys,
+        expiresAt: Date.now() + Math.min(seconds, 60) * 1000,
+        validUntil: Date.now() + seconds * 1000,
+      };
       return this.cache;
     } catch (error) {
       if (error instanceof ComboIdentityUnavailable) throw error;
@@ -213,6 +241,7 @@ export class ComboTokenVerifier {
   async verify(token: string): Promise<Principal> {
     const segments = token.split('.');
     if (
+      token.length > 16384 ||
       segments.length !== 3 ||
       segments.some((part) => !/^[A-Za-z0-9_-]+$/.test(part))
     )
@@ -228,15 +257,18 @@ export class ComboTokenVerifier {
     if (
       !record(header) ||
       header.alg !== 'RS256' ||
+      header.crit !== undefined ||
+      (header.typ !== undefined && header.typ !== 'JWT') ||
       typeof header.kid !== 'string' ||
+      !header.kid ||
+      header.kid.length > 256 ||
       !record(claims)
     )
       throw new ComboTokenRejected();
-    const keySet = await this.loadKeys();
+    const keySet = await this.loadKeys(header.kid);
     let key = keySet.keys.get(header.kid);
     if (!key) {
-      this.cache = undefined;
-      key = (await this.loadKeys()).keys.get(header.kid);
+      key = (await this.loadKeys(header.kid, true)).keys.get(header.kid);
     }
     if (
       !key ||
@@ -270,7 +302,9 @@ export class ComboTokenVerifier {
     )
       throw new ComboTokenRejected();
     if (claims.tipo === 'acceso') {
-      const roles = stringList(claims.roles);
+      const roles = Array.isArray(claims.roles)
+        ? stringList(claims.roles)
+        : undefined;
       if (!USER_ID.test(claims.sub) || !roles) throw new ComboTokenRejected();
       return {
         kind: 'user',

@@ -2,6 +2,7 @@ import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
 import { readTaxonomyConfig } from './taxonomy-config.js';
 import { TaxonomyClient } from './taxonomy.client.js';
+import { readCatalogReadDemo } from './catalog-read-demo.js';
 
 describe('Taxonomy HTTP boundary', () => {
   let server: Server;
@@ -27,6 +28,8 @@ describe('Taxonomy HTTP boundary', () => {
       readTaxonomyConfig({
         CATALOG_TAXONOMY_URL: origin,
       }),
+      undefined,
+      readCatalogReadDemo({ G6_SECURITY_MODE: 'PUBLIC_READ_ONLY' }),
     );
     vi.stubEnv('CATALOG_TAXONOMY_URL', 'http://127.0.0.1:1');
   });
@@ -45,7 +48,11 @@ describe('Taxonomy HTTP boundary', () => {
   });
   it('keeps standalone tooling compatible using the same validated snapshot', async () => {
     vi.stubEnv('CATALOG_TAXONOMY_URL', origin);
-    const standalone = new TaxonomyClient();
+    const standalone = new TaxonomyClient(
+      undefined,
+      undefined,
+      readCatalogReadDemo({ G6_SECURITY_MODE: 'PUBLIC_READ_ONLY' }),
+    );
     vi.stubEnv('CATALOG_TAXONOMY_URL', 'malformed');
     body = { categories: [] };
     await expect(standalone.category('missing')).rejects.toMatchObject({
@@ -53,6 +60,59 @@ describe('Taxonomy HTTP boundary', () => {
     });
     expect(path).toBe('/api/v1/categorias');
     expect(() => new TaxonomyClient()).toThrow('CATALOG_TAXONOMY_URL');
+  });
+  it('uses its own technical identity in G7 mode for both incoming human and service tokens', async () => {
+    const ownIdentity = {
+      authorization: vi.fn().mockResolvedValue('Bearer catalog-own-token'),
+    };
+    const secured = new TaxonomyClient(
+      readTaxonomyConfig({ CATALOG_TAXONOMY_URL: origin }),
+      ownIdentity,
+      readCatalogReadDemo({ G6_SECURITY_MODE: 'G7_AUTHENTICATED' }),
+    );
+    body = { brands: [{ marca_id: 'b', name: 'Brand', status: 'ACTIVA' }] };
+    await secured.brand('b', 'trace', {
+      user: false,
+      authorization: 'Bearer consumer-token',
+    });
+    expect(authorization).toBe('Bearer catalog-own-token');
+    expect(path).toBe('/api/v1/marcas');
+    body = { marcaId: 'b', nombre: 'Brand', estado: 'ACTIVO', version: 1 };
+    await secured.brand('b', 'trace', {
+      user: true,
+      authorization: 'Bearer human-token',
+    });
+    expect(authorization).toBe('Bearer catalog-own-token');
+    expect(path).toBe('/api/v1/marcas/b');
+    expect(ownIdentity.authorization).toHaveBeenCalledTimes(2);
+    expect(ownIdentity.authorization.mock.calls[0]?.[0]).toBeInstanceOf(
+      AbortSignal,
+    );
+  });
+  it('fails closed in G7 mode without its own credential, including stale demo context', async () => {
+    const secured = new TaxonomyClient(
+      readTaxonomyConfig({ CATALOG_TAXONOMY_URL: origin }),
+    );
+    for (const restrictedDemo of [false, true]) {
+      await expect(
+        secured.brand('b', 'trace', {
+          user: false,
+          authorization: 'Bearer incoming-token',
+          restrictedDemo,
+        }),
+      ).rejects.toMatchObject({ status: 503 });
+    }
+    for (const authorization of [
+      '',
+      'Bearer invalid whitespace',
+      'incoming-token',
+    ]) {
+      const invalid = new TaxonomyClient(
+        readTaxonomyConfig({ CATALOG_TAXONOMY_URL: origin }),
+        { authorization: async () => authorization },
+      );
+      await expect(invalid.brand('b')).rejects.toMatchObject({ status: 503 });
+    }
   });
   it('projects the contractual brand, discarding administrative fields', async () => {
     body = {

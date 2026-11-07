@@ -147,18 +147,20 @@ export class CombosServiceIdentity {
         !Number.isSafeInteger(payload.expiresIn) ||
         Number(payload.expiresIn) < 1 ||
         !Array.isArray(payload.scopes) ||
-        payload.scopes.length !== 1 ||
-        payload.scopes[0] !== scope
+        !payload.scopes.every((value) => typeof value === 'string') ||
+        new Set(payload.scopes).size !== payload.scopes.length ||
+        !payload.scopes.includes(scope)
       )
         throw new Error('TOKEN_RESPONSE_INVALID');
+      const grantedScopes = payload.scopes;
       const principal = await verifier.verify(payload.accessToken);
       if (
         principal.kind !== 'service' ||
         principal.subject !== 'modulo-productos' ||
-        principal.audiences.length !== 1 ||
-        principal.audiences[0] !== 'api-productos' ||
-        principal.scopes.length !== 1 ||
-        principal.scopes[0] !== scope
+        !principal.audiences.includes('api-productos') ||
+        !principal.scopes.includes(scope) ||
+        principal.scopes.length !== payload.scopes.length ||
+        !principal.scopes.every((value) => grantedScopes.includes(value))
       )
         throw new Error('TOKEN_CLAIMS_INVALID');
       const claims: unknown = JSON.parse(
