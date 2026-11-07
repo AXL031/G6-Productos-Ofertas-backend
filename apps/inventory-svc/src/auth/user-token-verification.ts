@@ -141,6 +141,16 @@ export function verifyUserBearerToken(
     );
   }
 
+  if (
+    !Number.isSafeInteger(payload.iat) ||
+    typeof payload.jti !== 'string' ||
+    !payload.jti.trim()
+  )
+    throw ProblemDetailsException.tokenInvalido(
+      'Claims humanos incompletos',
+      correlationId,
+    );
+
   for (const claim of [payload.iat, payload.nbf]) {
     if (claim !== undefined && (!Number.isSafeInteger(claim) || claim > nowSec))
       throw ProblemDetailsException.tokenInvalido(

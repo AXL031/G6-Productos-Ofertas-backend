@@ -263,6 +263,7 @@ describe('InventoryAuthGuard — Verificación Criptográfica JWT RS256 de G7', 
     });
     const claims = encode({
       iss: simulatedIssuer,
+      jti: randomUUID(),
       sub: randomUUID(),
       aud: undefined,
       tipo: 'acceso',

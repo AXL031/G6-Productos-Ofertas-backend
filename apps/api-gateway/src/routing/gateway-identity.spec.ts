@@ -21,11 +21,12 @@ describe('Gateway identity from G6/G7 contracts', () => {
 
   it('fetches only configured JWKS, reuses cached keys and fails closed after expiry', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
-    const remote = vi
-      .fn()
-      .mockResolvedValue(
-        new Response(JSON.stringify({ keys: [signed.key] }), { status: 200 }),
-      );
+    const remote = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ keys: [signed.key] }), {
+        status: 200,
+        headers: { 'cache-control': 'max-age=60' },
+      }),
+    );
     vi.stubGlobal('fetch', remote);
     const identity = new GatewayIdentity({
       ...settings,
@@ -233,7 +234,14 @@ describe('Gateway identity from G6/G7 contracts', () => {
       (r) => r.operationId === 'actualizarPrecioSku',
     )!;
     let serviceToken = '';
-    let introspectionResponse: unknown = { activo: true };
+    const activeActor = {
+      activo: true,
+      sub: '11111111-1111-1111-1111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+      permisos: [],
+      tipo: 'acceso',
+    };
+    let introspectionResponse: unknown = activeActor;
     let introspectionStatus = 200;
     const calls: Array<{
       path: string;
@@ -315,30 +323,80 @@ describe('Gateway identity from G6/G7 contracts', () => {
         authorization: `Bearer ${serviceToken}`,
         body: { token: userToken },
       });
-      introspectionResponse = { activo: false };
+      await Promise.all(
+        Array.from({ length: 8 }, () =>
+          identity.authorize(pricing, 'Bearer ' + userToken),
+        ),
+      );
+      expect(
+        calls.filter((call) => call.path === '/api/v1/auth/token'),
+      ).toHaveLength(1);
+      expect(
+        calls.filter((call) => call.path === '/api/v1/auth/introspeccion'),
+      ).toHaveLength(9);
+      introspectionResponse = { activo: false, motivo: 'TOKEN_REVOCADO' };
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
       ).rejects.toMatchObject({ status: 401 });
-      introspectionResponse = { activo: true };
+      introspectionResponse = {
+        activo: true,
+        sub: '11111111-1111-1111-1111-111111111111',
+        roles: ['GESTOR_COMERCIAL'],
+        permisos: [],
+        tipo: 'acceso',
+      };
       introspectionStatus = 401;
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
-      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+      ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
       introspectionStatus = 403;
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
-      ).rejects.toMatchObject({ status: 403, code: 'SCOPE_INSUFICIENTE' });
+      ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
       introspectionStatus = 503;
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
       ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
       introspectionStatus = 200;
+      for (const incompatible of [
+        { activo: true },
+        {
+          ...activeActor,
+          sub: '22222222-2222-2222-2222-222222222222',
+        },
+        {
+          ...activeActor,
+          roles: ['CLIENTE'],
+        },
+      ]) {
+        introspectionResponse = incompatible;
+        await expect(
+          identity.authorize(pricing, 'Bearer ' + userToken),
+        ).rejects.toMatchObject({
+          status: !('sub' in incompatible)
+            ? 503
+            : incompatible.sub !== '11111111-1111-1111-1111-111111111111'
+              ? 401
+              : 403,
+        });
+      }
       introspectionResponse = {};
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
       ).rejects.toMatchObject({ status: 503 });
 
-      introspectionResponse = { activo: true };
+      introspectionResponse = {
+        activo: true,
+        sub: '11111111-1111-1111-1111-111111111111',
+        roles: ['GESTOR_COMERCIAL'],
+        permisos: [],
+        tipo: 'acceso',
+      };
+      introspectionStatus = 401;
+      await expect(
+        identity.authorize(pricing, 'Bearer ' + userToken),
+      ).rejects.toMatchObject({ status: 503 });
+      introspectionStatus = 200;
       serviceToken = signed.token({
         iss: `${origin}/issuer`,
         tipo: 'servicio',
@@ -348,7 +406,7 @@ describe('Gateway identity from G6/G7 contracts', () => {
       });
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
-      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+      ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
       const invalidSignature = signed.token({
         iss: `${origin}/issuer`,
         tipo: 'servicio',
@@ -359,12 +417,78 @@ describe('Gateway identity from G6/G7 contracts', () => {
       serviceToken = `${invalidSignature.slice(0, invalidSignature.lastIndexOf('.') + 1)}AAAA`;
       await expect(
         identity.authorize(pricing, `Bearer ${userToken}`),
-      ).rejects.toMatchObject({ status: 401, code: 'TOKEN_INVALIDO' });
+      ).rejects.toMatchObject({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' });
     } finally {
       await new Promise<void>((resolve, reject) =>
         server.close((error) => (error ? reject(error) : resolve())),
       );
     }
+  });
+  it('keeps transfers closed in phase 3 even for a signed commercial manager', async () => {
+    const human = signed.token({
+      tipo: 'acceso',
+      sub: '11111111-1111-1111-1111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+      aud: undefined,
+      scope: undefined,
+    });
+    for (const id of [
+      'listarTrasladosInventario',
+      'obtenerTrasladoInventario',
+      'registrarRecepcionTrasladoInventario',
+    ]) {
+      const route = CONTRACT_ROUTES.find((value) => value.operationId === id)!;
+      await expect(
+        signed.identity.authorize(route, 'Bearer ' + human),
+      ).rejects.toMatchObject({ status: 403 });
+    }
+  });
+  it('refreshes rotated kids and keeps known keys only within a bounded trust window', async () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    const remote = vi.fn().mockImplementation(
+      async () =>
+        new Response(JSON.stringify({ keys: [signed.key] }), {
+          headers: { 'cache-control': 'public, max-age=3600' },
+        }),
+    );
+    vi.stubGlobal('fetch', remote);
+    const verifier = new GatewayIdentity({
+      ...settings,
+      issuer: 'https://isolated.test/issuer',
+      jwksUrl: 'https://isolated.test/jwks',
+    });
+    await verifier.authorize(product, 'Bearer ' + signed.token());
+    remote.mockRejectedValue(new Error('offline'));
+    vi.setSystemTime(Date.now() + 61000);
+    await expect(
+      verifier.authorize(product, 'Bearer ' + signed.token()),
+    ).resolves.toBeUndefined();
+    await expect(
+      verifier.authorize(
+        product,
+        'Bearer ' + signed.token({}, { kid: 'rotated' }),
+      ),
+    ).rejects.toMatchObject({ status: 503 });
+    remote.mockImplementation(
+      async () =>
+        new Response(
+          JSON.stringify({
+            keys: [signed.key, { ...signed.key, kid: 'rotated' }],
+          }),
+          { headers: { 'cache-control': 'max-age=3600' } },
+        ),
+    );
+    await expect(
+      verifier.authorize(
+        product,
+        'Bearer ' + signed.token({}, { kid: 'rotated' }),
+      ),
+    ).resolves.toBeUndefined();
+    remote.mockRejectedValue(new Error('offline'));
+    vi.setSystemTime(Date.now() + 3601000);
+    await expect(
+      verifier.authorize(product, 'Bearer ' + signed.token()),
+    ).rejects.toMatchObject({ status: 503 });
   });
   it('does not grant anonymous access merely because security is empty', async () => {
     const publicRoute = CONTRACT_ROUTES.find(

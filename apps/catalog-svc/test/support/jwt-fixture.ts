@@ -16,12 +16,37 @@ export function createJwtFixture({ kid }: { kid: string }) {
   return {
     async listenLocalOnly(host: '127.0.0.1', port: number) {
       let issuer = '';
-      const server = createServer((req, res) => {
+      const server = createServer(async (req, res) => {
         res.setHeader('content-type', 'application/json');
         if (req.url === '/discovery')
           res.end(JSON.stringify({ issuer, jwks_uri: issuer + '/jwks' }));
         else if (req.url === '/jwks') res.end(JSON.stringify({ keys: [jwk] }));
-        else {
+        else if (req.url === '/api/v1/auth/token' && req.method === 'POST') {
+          let form = '';
+          for await (const chunk of req) form += String(chunk);
+          const fields = new URLSearchParams(form);
+          if (
+            fields.get('grant_type') !== 'client_credentials' ||
+            fields.get('client_id') !== 'modulo-productos' ||
+            fields.get('client_secret') !== 'local-technical-fixture' ||
+            fields.get('scope') !== 'catalogo:leer'
+          ) {
+            res.statusCode = 401;
+            res.end('{}');
+            return;
+          }
+          res.end(
+            JSON.stringify({
+              accessToken: this.mintProfile({
+                issuer,
+                profile: 'm2m-productos',
+              }),
+              tokenType: 'Bearer',
+              expiresIn: 600,
+              scopes: ['catalogo:leer'],
+            }),
+          );
+        } else {
           res.statusCode = 404;
           res.end('{}');
         }
@@ -52,7 +77,9 @@ export function createJwtFixture({ kid }: { kid: string }) {
           aud: 'api-productos',
           sub: user
             ? '11111111-2222-4333-8444-555555555555'
-            : 'modulo-marketplace',
+            : profile === 'm2m-productos'
+              ? 'modulo-productos'
+              : 'modulo-marketplace',
           tipo: user ? 'acceso' : 'servicio',
           ...(user
             ? {

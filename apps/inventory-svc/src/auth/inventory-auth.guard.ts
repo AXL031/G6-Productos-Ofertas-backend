@@ -156,6 +156,16 @@ export class InventoryAuthGuard implements CanActivate {
         );
     }
 
+    if (
+      !Number.isSafeInteger(payload.iat) ||
+      typeof payload.jti !== 'string' ||
+      !payload.jti.trim()
+    )
+      throw ProblemDetailsException.tokenInvalido(
+        'Claims de servicio incompletos',
+        correlationId,
+      );
+
     // 2. Comparar el issuer exacto publicado por el discovery de G7.
     const expectedIssuer = issuer;
     if (!expectedIssuer) {
@@ -191,8 +201,19 @@ export class InventoryAuthGuard implements CanActivate {
       );
     }
 
-    // 5. Verificación de clientes permitidos (client_id / sub)
-    const clientId = payload.client_id || payload.sub;
+    // G7's canonical client identity is the signed subject, never an override claim.
+    if (payload.client_id !== undefined && payload.client_id !== payload.sub) {
+      throw ProblemDetailsException.tokenInvalido(
+        'Identidad de servicio inconsistente',
+        correlationId,
+      );
+    }
+    const clientId = payload.sub;
+    if (typeof clientId !== 'string' || !clientId.trim())
+      throw ProblemDetailsException.tokenInvalido(
+        'Subject de servicio inválido',
+        correlationId,
+      );
     if (allowedClients && allowedClients.length > 0) {
       if (!clientId || !allowedClients.includes(clientId)) {
         throw ProblemDetailsException.scopeInsuficiente(

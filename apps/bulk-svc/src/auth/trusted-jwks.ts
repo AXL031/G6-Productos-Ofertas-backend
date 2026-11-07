@@ -5,6 +5,7 @@ export class JwksTokenRejected extends Error {}
 interface CachedKeys {
   keys: JsonWebKey[];
   expires: number;
+  validUntil: number;
 }
 const cache = new Map<string, CachedKeys>();
 const pending = new Map<string, Promise<JsonWebKey[]>>();
@@ -73,7 +74,18 @@ async function load(url: URL): Promise<JsonWebKey[]> {
       const keys = body.keys as JsonWebKey[];
       if (cache.size >= 4 && !cache.has(url.href))
         cache.delete(cache.keys().next().value!);
-      cache.set(url.href, { keys, expires: Date.now() + 60000 });
+      const directives = response.headers.get('cache-control') ?? '';
+      const seconds = /(?:no-store|no-cache)/i.test(directives)
+        ? 0
+        : Math.min(
+            3600,
+            Number(directives.match(/(?:^|,)\s*max-age=(\d+)/i)?.[1] ?? 3600),
+          );
+      cache.set(url.href, {
+        keys,
+        expires: Date.now() + Math.min(60, seconds) * 1000,
+        validUntil: Date.now() + seconds * 1000,
+      });
       return keys;
     } catch {
       throw new JwksUnavailable();
@@ -127,8 +139,19 @@ export async function trustedJwksPublicKey(
   }
   const url = trustedJwksUrl(rawUrl, nodeEnv),
     cached = cache.get(url.href);
-  let keys =
-    cached && cached.expires > Date.now() ? cached.keys : await load(url);
+  let keys: JsonWebKey[];
+  try {
+    keys =
+      cached && cached.expires > Date.now() ? cached.keys : await load(url);
+  } catch (error) {
+    if (
+      !cached ||
+      cached.validUntil <= Date.now() ||
+      !cached.keys.some((key) => key.kid === header.kid)
+    )
+      throw error;
+    keys = cached.keys;
+  }
   const matches = (values: JsonWebKey[]) =>
     values.filter(
       (key) =>
