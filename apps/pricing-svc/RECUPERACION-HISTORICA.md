@@ -1,5 +1,22 @@
 # Pricing — adopción histórica A1 de Catalog #194
 
+## Auditoría posterior: envelopes inválidos y espera de lock
+
+Una recepción identificable con envelope inválido permanece auditada en Inbox,
+pero no constituye una decisión de negocio y no debe seleccionarse para el
+replay por operación. La prueba con PostgreSQL y RabbitMQ reprodujo inicialmente
+`PRICING_INITIALIZATION_RESULT_MISSING` y la pausa del consumidor; con el filtro
+actual pasa, incluyendo replays concurrentes y conflicto de intención.
+
+Un lock retenido 7,2 segundos reprodujo una pausa permanente tras el timeout de
+PostgreSQL. Para `PricingPersistenceError.sqlState=57014`, después de tres
+intentos el canal se cierra para devolver las entregas sin ACK y se reconecta;
+la prueba real pasa sin modificar los límites existentes. Errores no reconocidos
+continúan pausando. La modificación del índice 0003 supone que esta migración
+aún no fue aplicada; el owner debe verificar el ledger antes de aplicarla. Si
+ya se aplicó, se requiere una migración incremental separada, sin alterar la
+migración histórica. No se aplicó DDL en el entorno compartido.
+
 ## Integración local con Catalog — 2026-11-07
 
 La prueba integral A1/A2 de Catalog pasó localmente usando Catalog

@@ -13,6 +13,7 @@ import {
 } from 'amqplib';
 import { and, eq, sql } from 'drizzle-orm';
 import { PricingRepository } from '../persistence/pricing.repository.js';
+import { PricingPersistenceError } from '../persistence/persistence.error.js';
 import { inbox } from '../persistence/pricing.schema.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { CatalogSkuDeactivated } from './catalog-sku-deactivated.js';
@@ -229,6 +230,15 @@ export class PricingInboxConsumer
             setTimeout(resolve, 100 * (attempt + 1)),
           );
         else {
+          if (
+            error instanceof PricingPersistenceError &&
+            error.sqlState === '57014'
+          ) {
+            this.available = false;
+            await owner.close().catch(() => undefined);
+            this.scheduleReconnect();
+            return;
+          }
           const rawCode = error instanceof Error ? error.message : '';
           const code = /^[A-Z0-9_]{1,64}$/.test(rawCode)
             ? rawCode

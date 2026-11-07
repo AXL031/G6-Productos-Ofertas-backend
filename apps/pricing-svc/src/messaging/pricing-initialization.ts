@@ -251,6 +251,7 @@ export class PricingProductInitialization {
           and(
             eq(inbox.handler, HANDLER),
             ne(inbox.result, 'OPERATION_ID_CONFLICT'),
+            ne(inbox.result, 'REJECTED_INVALID_ENVELOPE'),
             sql`lower(${inbox.payload}->>'operation_id') = ${operationId}`,
           ),
         )
