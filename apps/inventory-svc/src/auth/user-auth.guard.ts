@@ -125,6 +125,15 @@ export class UserAuthGuard implements CanActivate {
     }
 
     if (requiredCapability) {
+      // The owner has not defined the local grants source for real G7 users yet.
+      if (
+        (process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED') ===
+        'G7_AUTHENTICATED'
+      )
+        throw ProblemDetailsException.scopeInsuficiente(
+          'Operación pendiente de concesión de capacidades locales',
+          correlationId,
+        );
       const granted = this.collectCapabilities(payload);
       if (!granted.has(requiredCapability)) {
         throw ProblemDetailsException.scopeInsuficiente(

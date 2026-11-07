@@ -65,6 +65,28 @@ export class BulkStorageService {
     return { url: url.replace(/\/$/, ''), key, bucket };
   }
 
+  async ready(): Promise<boolean> {
+    try {
+      const { url, key, bucket } = this.config();
+      const response = await withStorageRequest(undefined, (signal) =>
+        fetch(`${url}/storage/v1/bucket/${encodeURIComponent(bucket)}`, {
+          headers: { apikey: key, authorization: `Bearer ${key}` },
+          signal,
+        }),
+      );
+      if (!response.ok) return false;
+      const metadata: unknown = await response.json();
+      return (
+        metadata !== null &&
+        typeof metadata === 'object' &&
+        !Array.isArray(metadata) &&
+        Reflect.get(metadata, 'public') === false
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async put(
     bytes: Buffer,
     contentType: string,

@@ -172,6 +172,8 @@ export class TaxonomySecurityUnavailable extends Error {}
 interface JwtHeader {
   alg?: unknown;
   kid?: unknown;
+  crit?: unknown;
+  typ?: unknown;
 }
 
 interface JwtClaims {
@@ -190,6 +192,7 @@ interface JwtClaims {
 interface CachedKeys {
   keys: ReadonlyMap<string, KeyObject>;
   expiresAt: number;
+  validUntil: number;
 }
 
 function record(value: unknown): value is Record<string, unknown> {
@@ -215,11 +218,15 @@ function audiences(value: unknown): string[] | undefined {
 }
 
 function cacheDuration(response: Response): number {
+  if (
+    /(?:no-store|no-cache)/i.test(response.headers.get('cache-control') ?? '')
+  )
+    return 0;
   const directive = response.headers
     .get('cache-control')
     ?.match(/(?:^|,)\s*max-age=(\d+)/i);
   const seconds = directive ? Number(directive[1]) : 60;
-  return Math.max(0, Math.min(seconds, 300)) * 1000;
+  return Math.max(0, Math.min(seconds, 3600)) * 1000;
 }
 
 async function jsonResponse(response: Response): Promise<unknown> {
@@ -262,9 +269,10 @@ export class TaxonomyTokenVerifier {
     private readonly config?: TaxonomySecurityConfig,
   ) {}
 
-  private async loadKeys(): Promise<CachedKeys> {
+  private async loadKeys(kid?: string, force = false): Promise<CachedKeys> {
     if (!this.config) throw new TaxonomySecurityUnavailable();
-    if (this.cache && this.cache.expiresAt > Date.now()) return this.cache;
+    if (!force && this.cache && this.cache.expiresAt > Date.now())
+      return this.cache;
     // Share discovery/JWKS work during expiry, outages and rotation.
     // A failed fetch is never cached as a healthy key set.
     if (!this.loading) {
@@ -272,7 +280,18 @@ export class TaxonomyTokenVerifier {
         this.loading = undefined;
       });
     }
-    return this.loading;
+    try {
+      return await this.loading;
+    } catch (error) {
+      if (
+        kid &&
+        this.cache &&
+        this.cache.validUntil > Date.now() &&
+        this.cache.keys.has(kid)
+      )
+        return this.cache;
+      throw error;
+    }
   }
 
   private async fetchKeys(): Promise<CachedKeys> {
@@ -302,7 +321,7 @@ export class TaxonomyTokenVerifier {
       });
       const duration = cacheDuration(response);
       const set: unknown = await jsonResponse(response);
-      if (!record(set) || !Array.isArray(set.keys))
+      if (!record(set) || !Array.isArray(set.keys) || set.keys.length > 100)
         throw new TaxonomySecurityUnavailable();
 
       const keys = new Map<string, KeyObject>();
@@ -314,10 +333,20 @@ export class TaxonomyTokenVerifier {
           (value.alg !== undefined && value.alg !== 'RS256') ||
           typeof value.kid !== 'string' ||
           typeof value.n !== 'string' ||
-          typeof value.e !== 'string'
+          typeof value.e !== 'string' ||
+          ['d', 'p', 'q', 'dp', 'dq', 'qi'].some(
+            (property) => property in value,
+          )
         )
           continue;
+        if (keys.has(value.kid)) throw new TaxonomySecurityUnavailable();
         try {
+          const publicKey = createPublicKey({
+            key: value as JsonWebKey,
+            format: 'jwk',
+          });
+          if ((publicKey.asymmetricKeyDetails?.modulusLength ?? 0) < 2048)
+            continue;
           keys.set(
             value.kid,
             createPublicKey({ key: value as JsonWebKey, format: 'jwk' }),
@@ -327,7 +356,11 @@ export class TaxonomyTokenVerifier {
         }
       }
       if (keys.size === 0) throw new TaxonomySecurityUnavailable();
-      this.cache = { keys, expiresAt: Date.now() + duration };
+      this.cache = {
+        keys,
+        expiresAt: Date.now() + Math.min(duration, 60000),
+        validUntil: Date.now() + duration,
+      };
       return this.cache;
     } catch (error) {
       if (error instanceof TaxonomySecurityUnavailable) throw error;
@@ -338,6 +371,7 @@ export class TaxonomyTokenVerifier {
   async verify(token: string): Promise<TaxonomyPrincipal> {
     const segments = token.split('.');
     if (
+      token.length > 16384 ||
       segments.length !== 3 ||
       segments.some((segment) => !/^[A-Za-z0-9_-]+$/.test(segment))
     )
@@ -353,16 +387,19 @@ export class TaxonomyTokenVerifier {
     if (
       !record(header) ||
       header.alg !== 'RS256' ||
+      header.crit !== undefined ||
+      (header.typ !== undefined && header.typ !== 'JWT') ||
       typeof header.kid !== 'string' ||
+      !header.kid ||
+      header.kid.length > 256 ||
       !record(claims)
     )
       throw new TaxonomyTokenRejected();
 
-    const keySet = await this.loadKeys();
+    const keySet = await this.loadKeys(header.kid);
     const key = keySet.keys.get(header.kid);
     if (!key) {
-      this.cache = undefined;
-      const refreshed = await this.loadKeys();
+      const refreshed = await this.loadKeys(header.kid, true);
       const rotated = refreshed.keys.get(header.kid);
       if (!rotated) throw new TaxonomyTokenRejected();
       return this.verifySignatureAndClaims(segments, rotated, claims);
@@ -391,22 +428,24 @@ export class TaxonomyTokenVerifier {
       claims.iss !== this.config.issuer ||
       typeof claims.sub !== 'string' ||
       typeof claims.iat !== 'number' ||
-      !Number.isFinite(claims.iat) ||
+      !Number.isSafeInteger(claims.iat) ||
       claims.iat > now ||
       typeof claims.exp !== 'number' ||
-      !Number.isFinite(claims.exp) ||
+      !Number.isSafeInteger(claims.exp) ||
       claims.exp <= now ||
       typeof claims.jti !== 'string' ||
       claims.jti.length === 0 ||
       (claims.nbf !== undefined &&
         (typeof claims.nbf !== 'number' ||
-          !Number.isFinite(claims.nbf) ||
+          !Number.isSafeInteger(claims.nbf) ||
           claims.nbf > now))
     )
       throw new TaxonomyTokenRejected();
 
     if (claims.tipo === 'acceso') {
-      const roles = claims.roles === undefined ? [] : strings(claims.roles);
+      const roles = Array.isArray(claims.roles)
+        ? strings(claims.roles)
+        : undefined;
       if (!UUID_PATTERN.test(claims.sub) || !roles)
         throw new TaxonomyTokenRejected();
       return {

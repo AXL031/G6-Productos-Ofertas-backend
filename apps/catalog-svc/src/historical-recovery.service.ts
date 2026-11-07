@@ -16,6 +16,7 @@ import {
   type HistoricalRecoveryAccepted,
 } from './historical-recovery.schema.js';
 import { CatalogPersistenceError } from './database-errors.js';
+import { isHistoricalCurrency } from './historical-pricing.contract.js';
 
 export const HISTORICAL_RECOVERY_CAPABILITIES = Symbol(
   'HISTORICAL_RECOVERY_CAPABILITIES',
@@ -32,7 +33,7 @@ export interface HistoricalRecoveryCapabilities {
     capability: typeof HISTORICAL_RECOVERY_CAPABILITY,
   ): boolean;
 }
-/** Internal adapter port only. No discriminator or historical monetary field is defined here. */
+/** Candidate adapter port. Pricing remains the authoritative monetary source. */
 export interface HistoricalPricingContract {
   command(context: {
     productId: string;
@@ -40,6 +41,7 @@ export interface HistoricalPricingContract {
     operationId: string;
     correlationId: string;
     requestId: string;
+    currency: string;
   }): CatalogEnvelope;
 }
 export function readHistoricalRecoveryCapabilities(
@@ -64,13 +66,15 @@ export interface HistoricalSelection {
   solicitudId: string;
   dependencias: Array<'PRICING' | 'INVENTARIO'>;
   variantIds: string[];
+  moneda?: string;
 }
 /** Explicit candidate DTO: no inferred dependencies, unknown fields, prices, or locations. */
 export function parseHistoricalSelection(body: unknown): HistoricalSelection {
   if (
     !object(body) ||
     Object.keys(body).some(
-      (key) => !['solicitudId', 'dependencias', 'variantIds'].includes(key),
+      (key) =>
+        !['solicitudId', 'dependencias', 'variantIds', 'moneda'].includes(key),
     ) ||
     typeof body.solicitudId !== 'string' ||
     !UUID.test(body.solicitudId) ||
@@ -96,10 +100,19 @@ export function parseHistoricalSelection(body: unknown): HistoricalSelection {
   ].sort() as HistoricalSelection['dependencias'];
   if (normalizedIds.length && !dependencies.includes('INVENTARIO'))
     catalogError(400, 'VALIDACION');
+  if (
+    dependencies.includes('PRICING')
+      ? !isHistoricalCurrency(body.moneda)
+      : body.moneda !== undefined
+  )
+    catalogError(400, 'VALIDACION');
   return {
     solicitudId: body.solicitudId.toLowerCase(),
     dependencias: dependencies,
     variantIds: normalizedIds.sort(),
+    ...(dependencies.includes('PRICING')
+      ? { moneda: body.moneda as string }
+      : {}),
   };
 }
 
@@ -112,7 +125,7 @@ export class HistoricalRecoveryService {
     private readonly capabilities: HistoricalRecoveryCapabilities,
     @Optional()
     @Inject(HISTORICAL_PRICING_CONTRACT)
-    private readonly pricing?: HistoricalPricingContract,
+    private readonly pricing?: HistoricalPricingContract | null,
   ) {}
 
   async recover(
@@ -131,13 +144,6 @@ export class HistoricalRecoveryService {
     )
       catalogError(400, 'VALIDACION');
     const selection = parseHistoricalSelection(body);
-    // Atomic selection: a request that includes Pricing admits nothing while its
-    // shared representation is undefined. No amount is read, inferred, or fabricated.
-    if (selection.dependencias.includes('PRICING') && !this.pricing)
-      throw new ServiceUnavailableException({
-        code: 'SERVICIO_NO_DISPONIBLE',
-        details: { dependency: 'PRICING', reason: 'BLOCKED_CONTRACT' },
-      });
     const product = productId.toLowerCase();
     const fingerprint = createHash('sha256')
       .update(
@@ -146,6 +152,9 @@ export class HistoricalRecoveryService {
           actor: actor.subject.toLowerCase(),
           dependencias: selection.dependencias,
           variantIds: selection.variantIds,
+          ...(selection.moneda === undefined
+            ? {}
+            : { moneda: selection.moneda }),
         }),
       )
       .digest('hex');
@@ -164,6 +173,13 @@ export class HistoricalRecoveryService {
             catalogError(409, 'IDEMPOTENCY_CONFLICT');
           return prior.response_payload;
         }
+        // A durable receipt must replay even if candidate admission is disabled.
+        // Authorization, input validation and fingerprint still precede the replay.
+        if (selection.dependencias.includes('PRICING') && !this.pricing)
+          throw new ServiceUnavailableException({
+            code: 'SERVICIO_NO_DISPONIBLE',
+            details: { dependency: 'PRICING', reason: 'BLOCKED_CONTRACT' },
+          });
         const row = await this.repository.lockProduct(tx, product);
         if (!row) catalogError(404, 'PRODUCTO_NO_ENCONTRADO');
         if (row.estado !== 'BORRADOR')
@@ -254,6 +270,7 @@ export class HistoricalRecoveryService {
                   operationId,
                   correlationId: actor.correlationId,
                   requestId: selection.solicitudId,
+                  currency: selection.moneda!,
                 });
           // The unresolved Pricing adapter must not be used to smuggle a monetary
           // reconstruction or another operation through this admission boundary.
@@ -263,11 +280,17 @@ export class HistoricalRecoveryService {
             message.causation_id !== selection.solicitudId ||
             message.producer !== 'catalog-svc' ||
             message.kind !== 'command' ||
+            message.schema_version !== 1 ||
+            !UUID.test(message.message_id) ||
             (target.dependency === 'PRICING' &&
               (message.name !== 'pricing.product.initialization.requested' ||
                 'precio_regular' in message.data ||
                 message.data.product_id !== product ||
-                message.data.sku_base !== target.sku))
+                message.data.sku_base !== target.sku ||
+                message.data.modalidad !== 'RECUPERACION_HISTORICA' ||
+                message.data.moneda !== selection.moneda ||
+                message.data.channel_id !== null ||
+                message.data.motivo_cambio !== 'ALTA_PRODUCTO'))
           )
             throw new ServiceUnavailableException();
           await this.repository.insertActivationCheck(tx, {
@@ -307,6 +330,9 @@ export class HistoricalRecoveryService {
           selection: {
             dependencias: selection.dependencias,
             variantIds: selection.variantIds,
+            ...(selection.moneda === undefined
+              ? {}
+              : { moneda: selection.moneda }),
           },
           response_payload: response,
         });

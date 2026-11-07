@@ -1,0 +1,209 @@
+# CONTRATO_CANDIDATO. Moneda aprobada por Marco; publicación Docs posterior.
+# Fragmento propuesto; no modifica OpenAPI oficial ni publica Gateway.
+openapi: 3.1.0
+info:
+  title: Catalog recuperación histórica candidata
+  version: 0.0.0-candidate
+paths:
+  /api/v1/productos/{productoId}/preparacion/recuperar-historica:
+    post:
+      operationId: recuperarPreparacionHistoricaProducto
+      x-contract-status: CONTRATO_CANDIDATO
+      x-required-role: GESTOR_COMERCIAL
+      x-internal-capability: CATALOG_RECUPERAR_PREPARACION_HISTORICA
+      description: >-
+        Admite dependencias explícitas ausentes de un BORRADOR. 202 es admisión,
+        no preparación completada. Solo humano autorizado, sin bypass demo.
+        Pricing del padre; Inventory de SKU simple o variantes seleccionadas.
+        Recibo idempotente durable; estados existentes no se reabren.
+        Adaptador Pricing cerrado por defecto y habilitable solo en tests.
+      security:
+        - userBearer: []
+      parameters:
+        - name: productoId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: X-Correlation-Id
+          in: header
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HistoricalRecoveryRequest'
+      responses:
+        '202':
+          description: Admisión o reproducción exacta del recibo original
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistoricalRecoveryAccepted'
+        '400':
+          description: >-
+            VALIDACION — selección, moneda o campos inválidos.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 400 }
+                      code: { const: VALIDACION }
+        '401':
+          description: TOKEN_INVALIDO — identidad ausente o inválida
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 401 }
+                      code: { const: TOKEN_INVALIDO }
+        '403':
+          description: SCOPE_INSUFICIENTE — humano/rol/capacidad requeridos
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 403 }
+                      code: { const: SCOPE_INSUFICIENTE }
+        '404':
+          description: PRODUCTO_NO_ENCONTRADO o VARIANTE_NO_ENCONTRADA
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 404 }
+                      code:
+                        {
+                          enum:
+                            [PRODUCTO_NO_ENCONTRADO, VARIANTE_NO_ENCONTRADA],
+                        }
+        '409':
+          description: >-
+            IDEMPOTENCY_CONFLICT, PREPARACION_NO_REINTENTABLE o
+            CAMBIO_ESTRUCTURAL_NO_PERMITIDO.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 409 }
+                      code:
+                        {
+                          enum:
+                            [
+                              IDEMPOTENCY_CONFLICT,
+                              PREPARACION_NO_REINTENTABLE,
+                              CAMBIO_ESTRUCTURAL_NO_PERMITIDO,
+                            ],
+                        }
+        '413':
+          description: VALIDACION — cuerpo supera el límite JSON de entrada existente (100 KiB)
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 413 }
+                      code: { const: VALIDACION }
+        '500':
+          description: ERROR_INTERNO — fallo inesperado sanitizado
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 500 }
+                      code: { const: ERROR_INTERNO }
+        '503':
+          description: SERVICIO_NO_DISPONIBLE — persistencia o nueva admisión Pricing deshabilitada
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/HistoricalRecoveryProblem'
+                  - properties:
+                      status: { const: 503 }
+                      code: { const: SERVICIO_NO_DISPONIBLE }
+components:
+  securitySchemes:
+    userBearer: { type: http, scheme: bearer, bearerFormat: JWT }
+  schemas:
+    HistoricalRecoveryRequest:
+      type: object
+      additionalProperties: false
+      required: [solicitudId, dependencias]
+      properties:
+        solicitudId: { type: string, format: uuid }
+        dependencias:
+          type: array
+          minItems: 1
+          maxItems: 2
+          uniqueItems: true
+          items: { type: string, enum: [PRICING, INVENTARIO] }
+        variantIds:
+          type: array
+          uniqueItems: true
+          items: { type: string, format: uuid }
+          description: Requerido no vacío para Inventory del padre; IDs deben pertenecerle y ser únicos tras normalizar mayúsculas UUID. No permitido con contenido para simple o Pricing-only. Sin maxItems arbitrario; presupuesto transaccional y cardinalidad quedan pendientes de validación operativa.
+        moneda:
+          type: string
+          minLength: 3
+          maxLength: 3
+          pattern: '^[A-Z]{3}$'
+          description: Aprobada por Marco para implementación. Moneda ISO conocida por ICU, explícita y sin default; Pricing valida coincidencia autoritativamente. No importe. Publicación Docs pendiente.
+      allOf:
+        - if:
+            properties:
+              dependencias: { contains: { const: PRICING } }
+            required: [dependencias]
+          then: { required: [moneda] }
+          else: { not: { required: [moneda] } }
+        - if:
+            properties:
+              dependencias: { contains: { const: INVENTARIO } }
+            required: [dependencias]
+          then: true
+          else:
+            properties:
+              variantIds: { maxItems: 0 }
+    HistoricalRecoveryProblem:
+      type: object
+      additionalProperties: false
+      required: [type, title, status, code, correlationId]
+      properties:
+        type: { type: string, format: uri-reference }
+        title: { type: string, minLength: 1 }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        code: { type: string, minLength: 1 }
+        correlationId: { type: string, format: uuid }
+    HistoricalRecoveryAccepted:
+      type: object
+      additionalProperties: false
+      required: [operation_id, status, correlation_id, preparaciones]
+      properties:
+        operation_id: { type: string, format: uuid }
+        status: { type: string, const: ACCEPTED }
+        correlation_id: { type: string, format: uuid }
+        preparaciones:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            additionalProperties: false
+            required: [dependencia, sku, variant_id, operation_id]
+            properties:
+              dependencia: { type: string, enum: [PRICING, INVENTARIO] }
+              sku: { type: string, minLength: 1 }
+              variant_id: { type: [string, 'null'], format: uuid }
+              operation_id: { type: string, format: uuid }

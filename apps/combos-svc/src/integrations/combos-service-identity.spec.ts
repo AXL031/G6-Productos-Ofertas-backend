@@ -16,6 +16,7 @@ describe('CombosServiceIdentity', () => {
   let issuer = '';
   let server: Server;
   let tokenRequests = 0;
+  let fullGrants = false;
   const encode = (value: unknown) =>
     Buffer.from(JSON.stringify(value)).toString('base64url');
   const signToken = (scope: string) => {
@@ -24,7 +25,7 @@ describe('CombosServiceIdentity', () => {
       iss: issuer,
       sub: 'modulo-productos',
       tipo: 'servicio',
-      aud: ['api-productos'],
+      aud: fullGrants ? ['api-productos', 'api-seguridad'] : ['api-productos'],
       scope,
       iat: now,
       exp: now + 600,
@@ -69,13 +70,15 @@ describe('CombosServiceIdentity', () => {
           response.writeHead(401).end('{}');
           return;
         }
-        const scope = form.get('scope') ?? '';
+        const scope = fullGrants
+          ? 'catalogo:leer precios:leer tokens:introspeccion'
+          : (form.get('scope') ?? '');
         response.end(
           JSON.stringify({
             accessToken: signToken(scope),
             tokenType: 'Bearer',
             expiresIn: 600,
-            scopes: [scope],
+            scopes: scope.split(' '),
           }),
         );
         return;
@@ -126,6 +129,23 @@ describe('CombosServiceIdentity', () => {
     expect(tokenRequests).toBe(3);
   });
 
+  it('accepts every granted G7 scope while enforcing the scope required by the caller', async () => {
+    fullGrants = true;
+    try {
+      const identity = new CombosServiceIdentity(new ComboTokenVerifier());
+      const value = await identity.authorization('catalogo:leer');
+      const claims = JSON.parse(
+        Buffer.from(value.split('.')[1], 'base64url').toString(),
+      );
+      expect(claims.aud).toEqual(['api-productos', 'api-seguridad']);
+      expect(claims.scope.split(' ')).toContain('precios:leer');
+      await expect(identity.authorization('precios:leer')).resolves.toEqual(
+        expect.any(String),
+      );
+    } finally {
+      fullGrants = false;
+    }
+  });
   it('selects independent simulated client credentials and never reuses a token across phases', async () => {
     const simPair = generateKeyPairSync('rsa', { modulusLength: 2048 });
     const simSecret = 'local-independent-sim-secret';

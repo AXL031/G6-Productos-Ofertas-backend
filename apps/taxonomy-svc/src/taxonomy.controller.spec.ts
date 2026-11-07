@@ -638,6 +638,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       'modulo-marketplace',
       'modulo-chatbot',
       'modulo-retail',
+      'modulo-productos',
     ]) {
       const autorizacion = 'Bearer ' + token({ sub: cliente });
       await request(app.getHttpServer())
@@ -651,7 +652,7 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
     }
     for (const cliente of [
       'catalog-svc',
-      'modulo-productos',
+      'modulo-seguridad',
       'otro-servicio',
     ]) {
       const autorizacion = 'Bearer ' + token({ sub: cliente });
@@ -914,6 +915,13 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
         'Authorization',
         'Bearer ' +
           token({ tipo: 'acceso', sub: randomUUID(), roles: undefined }),
+      )
+      .expect(401);
+    await request(app.getHttpServer())
+      .post(path)
+      .set(
+        'Authorization',
+        'Bearer ' + token({ tipo: 'acceso', sub: randomUUID(), roles: [] }),
       )
       .expect(403);
   });

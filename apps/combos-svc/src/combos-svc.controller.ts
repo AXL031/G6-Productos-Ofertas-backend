@@ -34,6 +34,16 @@ export class CombosSvcController {
     );
     return res.status(result.status === 'ok' ? 200 : 503).json(result);
   }
+  @Get('health/ready') async gatewayReadiness(@Res() res: Response) {
+    const result = await this.service.readiness(
+      this.consumer.readinessStatus(),
+    );
+    const ready = result.status === 'ok';
+    return res.status(ready ? 200 : 503).json({
+      ...result,
+      status: ready ? 'ready' : 'not_ready',
+    });
+  }
   @RequireComboAccess({ operationId: 'listarCombosAdmin', identity: 'user' })
   @Get('combos')
   async list(
