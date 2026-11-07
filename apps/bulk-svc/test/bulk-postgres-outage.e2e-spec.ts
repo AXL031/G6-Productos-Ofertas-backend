@@ -40,9 +40,11 @@ const encodeJwtPart = (value: object) =>
 const testJwtHeader = encodeJwtPart({ alg: 'RS256', typ: 'JWT' });
 const testJwtClaims = encodeJwtPart({
   iss: testIssuer,
-  sub: 'bulk-postgres-http-test-user',
-  aud: 'api-productos',
+  sub: '00000000-0000-4000-8000-000000000001',
+  tipo: 'acceso',
+  iat: Math.floor(Date.now() / 1000),
   exp: Math.floor(Date.now() / 1000) + 3600,
+  jti: randomUUID(),
   roles: ['GESTOR_COMERCIAL'],
 });
 const testJwtSigner = createSign('RSA-SHA256');

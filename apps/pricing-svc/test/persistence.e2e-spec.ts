@@ -1774,7 +1774,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       },
     );
 
-    it('demo explícita permite consultas sin Authorization/G7 y readiness sigue dependiendo de PostgreSQL', async () => {
+    it('G7_AUTHENTICATED permite consultas con JWT firmado y readiness sigue dependiendo de PostgreSQL', async () => {
       const { definition } = await repository.transaction(async (tx) => {
         const [definition] = await tx
           .insert(prices)
@@ -1793,7 +1793,9 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
             PRICING_SVC_PORT: '3002',
             DATABASE_URL: postgres.runtimeUrl,
             PGSSLMODE: 'disable',
-            GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+            G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+            AUTH_ISSUER: identity.issuer,
+            AUTH_JWKS_URL: identity.issuer + '/jwks',
           }),
         ],
       }).compile();
@@ -1805,6 +1807,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         await request(app!.getHttpServer()).get(path).expect(401);
         const result = await request(demoApp.getHttpServer())
           .get(path)
+          .set('Authorization', `Bearer ${identity.token()}`)
           .expect(200);
         expect(result.body).toMatchObject({
           product_id: definition.productId,
@@ -1813,16 +1816,21 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
         await request(demoApp.getHttpServer())
           .get(path)
           .set('Authorization', 'Bearer unused-invalid-token')
-          .expect(200);
+          .expect(401);
         await request(demoApp.getHttpServer())
           .get(`${path}/programaciones`)
+          .set('Authorization', `Bearer ${identity.token()}`)
           .expect(200);
         await request(demoApp.getHttpServer())
           .get(path)
+          .set('Authorization', `Bearer ${identity.token()}`)
           .set('X-Correlation-Id', 'invalid')
           .expect(400);
         await request(demoApp.getHttpServer()).get('/health/ready').expect(200);
-        expect(remote).not.toHaveBeenCalled();
+        expect(remote).toHaveBeenCalledWith(
+          identity.issuer + '/jwks',
+          expect.any(Object),
+        );
         await postgres.admin!.query(
           'REVOKE SELECT ON pricing.prices FROM pricing_app',
         );
@@ -1835,6 +1843,7 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
             .expect(503);
           const failed = await request(demoApp.getHttpServer())
             .get(path)
+            .set('Authorization', `Bearer ${identity.token()}`)
             .expect(503);
           expect(failed.body.code).toBe('SERVICIO_NO_DISPONIBLE');
         } finally {

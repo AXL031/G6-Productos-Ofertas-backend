@@ -1,4 +1,5 @@
 import { X509Certificate } from 'node:crypto';
+import { PHASE1_PUBLIC_OPERATION_IDS } from '../../phase1-public-reads.js';
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -31,6 +32,10 @@ type ConfigurationVariable =
   | 'PROMOTIONS_DEPENDENCY_PROBES_ENABLED'
   | 'PROMOTIONS_COUPON_RUNTIME_ENABLED'
   | 'GATEWAY_DEMO_NO_AUTH_ENABLED'
+  | 'G6_SECURITY_MODE'
+  | 'SIMULATED_AUTH_ISSUER'
+  | 'SIMULATED_AUTH_JWKS_URL'
+  | 'PROMOTIONS_PUBLIC_OPERATION_IDS'
   | 'AUTH_ISSUER'
   | 'AUTH_JWKS_URL'
   | 'PROMOTIONS_SERVICE_TOKEN_URL'
@@ -49,6 +54,9 @@ export class PromotionsConfigurationError extends Error {
 }
 
 export interface PromotionsConfiguration {
+  readonly securityMode:
+    'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
+  readonly publicOperations: readonly string[];
   readonly environment: 'development' | 'test' | 'production';
   readonly port: number;
   readonly database: {
@@ -62,7 +70,7 @@ export interface PromotionsConfiguration {
     readonly schema: 'promotions';
     readonly connectionMode: 'session';
   };
-  readonly rabbitmqUrl: string;
+  readonly rabbitmqUrl?: string;
   readonly dependencyProbesEnabled: boolean;
   readonly couponRuntimeEnabled: boolean;
   readonly localDemoEnabled: boolean;
@@ -90,22 +98,60 @@ export function validatePromotionsConfiguration(
   const invalid = new Set<
     ConfigurationVariable | (typeof upstreamVariables)[Upstream]
   >();
+  const securityMode = environment.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+  if (
+    !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
+      securityMode,
+    )
+  )
+    invalid.add('G6_SECURITY_MODE');
+  const publicOperations = (environment.PROMOTIONS_PUBLIC_OPERATION_IDS ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+  if (
+    publicOperations.some((id) => !PHASE1_PUBLIC_OPERATION_IDS.has(id)) ||
+    (securityMode !== 'PUBLIC_READ_ONLY' && publicOperations.length)
+  )
+    invalid.add('PROMOTIONS_PUBLIC_OPERATION_IDS');
+  const selectedIssuer =
+    securityMode === 'SIMULATED_AUTH'
+      ? environment.SIMULATED_AUTH_ISSUER
+      : environment.AUTH_ISSUER;
+  const selectedJwks =
+    securityMode === 'SIMULATED_AUTH'
+      ? environment.SIMULATED_AUTH_JWKS_URL
+      : environment.AUTH_JWKS_URL;
+  if (
+    securityMode === 'SIMULATED_AUTH' &&
+    (!selectedIssuer ||
+      !selectedJwks ||
+      selectedIssuer === environment.AUTH_ISSUER)
+  ) {
+    invalid.add('SIMULATED_AUTH_ISSUER');
+    invalid.add('SIMULATED_AUTH_JWKS_URL');
+  }
   let auth: PromotionsConfiguration['auth'];
   let serviceCredentials: PromotionsConfiguration['serviceCredentials'];
-  if (
-    environment.AUTH_ISSUER !== undefined ||
-    environment.AUTH_JWKS_URL !== undefined
-  ) {
-    for (const name of ['AUTH_ISSUER', 'AUTH_JWKS_URL'] as const) {
+  if (selectedIssuer !== undefined || selectedJwks !== undefined) {
+    for (const [name, value] of [
+      ['AUTH_ISSUER', selectedIssuer],
+      ['AUTH_JWKS_URL', selectedJwks],
+    ] as const) {
       try {
-        const url = new URL(environment[name] ?? '');
+        const url = new URL(value ?? '');
         if (
-          url.protocol !== 'https:' ||
+          (url.protocol !== 'https:' &&
+            !(
+              environment.NODE_ENV === 'test' &&
+              url.protocol === 'http:' &&
+              ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+            )) ||
           url.username ||
           url.password ||
           url.search ||
           url.hash ||
-          environment[name]?.trim() !== environment[name]
+          value?.trim() !== value
         )
           invalid.add(name);
       } catch {
@@ -113,10 +159,7 @@ export function validatePromotionsConfiguration(
       }
     }
     if (!invalid.has('AUTH_ISSUER') && !invalid.has('AUTH_JWKS_URL'))
-      auth = Object.freeze({
-        issuer: environment.AUTH_ISSUER!,
-        jwksUrl: environment.AUTH_JWKS_URL!,
-      });
+      auth = Object.freeze({ issuer: selectedIssuer!, jwksUrl: selectedJwks! });
   }
   if (
     environment.PROMOTIONS_SERVICE_TOKEN_URL !== undefined ||
@@ -156,6 +199,7 @@ export function validatePromotionsConfiguration(
   );
   const couponRuntimeEnabled = enabled('PROMOTIONS_COUPON_RUNTIME_ENABLED');
   const localDemoEnabled = enabled('GATEWAY_DEMO_NO_AUTH_ENABLED');
+  if (localDemoEnabled) invalid.add('GATEWAY_DEMO_NO_AUTH_ENABLED');
   const upstreams: Partial<Record<Upstream, string>> = {};
   for (const service of Object.keys(upstreamVariables) as Upstream[]) {
     const variable = upstreamVariables[service],
@@ -163,24 +207,23 @@ export function validatePromotionsConfiguration(
     if (value === undefined) continue;
     try {
       if (value.trim() !== value) throw new Error();
-      upstreams[service] = internalOrigin(value, localDemoEnabled, service);
+      upstreams[service] = internalOrigin(value, false, service);
     } catch {
       invalid.add(variable);
     }
   }
-  // Explicit activation only. Production additionally requires the independently
-  // verified private Gateway perimeter; the guard checks its actual TCP peer.
-  if (
-    localDemoEnabled &&
-    environment.NODE_ENV !== 'development' &&
-    environment.NODE_ENV !== 'test' &&
-    environment.NODE_ENV !== 'production'
-  )
-    invalid.add('GATEWAY_DEMO_NO_AUTH_ENABLED');
+  const httpOnly =
+    securityMode === 'PUBLIC_READ_ONLY' &&
+    !dependencyProbesEnabled &&
+    !couponRuntimeEnabled;
   const required = Object.fromEntries(
     requiredVariables.map((name) => {
       const value = environment[name] ?? '';
-      if (!value.trim() || value.includes('\0')) invalid.add(name);
+      if (
+        (!value.trim() && !(httpOnly && name === 'RABBITMQ_URL')) ||
+        value.includes('\0')
+      )
+        invalid.add(name);
       return [name, value];
     }),
   ) as Record<(typeof requiredVariables)[number], string>;
@@ -221,25 +264,28 @@ export function validatePromotionsConfiguration(
   } catch {
     invalid.add('PGSSLROOTCERT');
   }
-  try {
-    const broker = new URL(required.RABBITMQ_URL);
-    if (
-      !['amqp:', 'amqps:'].includes(broker.protocol) ||
-      /\s/.test(required.RABBITMQ_URL) ||
-      !broker.hostname ||
-      (broker.port !== '' && !isPort(broker.port)) ||
-      broker.search ||
-      broker.hash
-    ) {
+  if (required.RABBITMQ_URL || !httpOnly)
+    try {
+      const broker = new URL(required.RABBITMQ_URL);
+      if (
+        !['amqp:', 'amqps:'].includes(broker.protocol) ||
+        /\s/.test(required.RABBITMQ_URL) ||
+        !broker.hostname ||
+        (broker.port !== '' && !isPort(broker.port)) ||
+        broker.search ||
+        broker.hash
+      ) {
+        invalid.add('RABBITMQ_URL');
+      }
+    } catch {
       invalid.add('RABBITMQ_URL');
     }
-  } catch {
-    invalid.add('RABBITMQ_URL');
-  }
 
   if (invalid.size) throw new PromotionsConfigurationError([...invalid]);
 
   return Object.freeze({
+    securityMode: securityMode as PromotionsConfiguration['securityMode'],
+    publicOperations: Object.freeze(publicOperations),
     environment: nodeEnvironment as PromotionsConfiguration['environment'],
     port: Number(rawPort),
     database: Object.freeze({
@@ -253,15 +299,11 @@ export function validatePromotionsConfiguration(
       schema: 'promotions' as const,
       connectionMode: 'session' as const,
     }),
-    rabbitmqUrl: required.RABBITMQ_URL,
+    rabbitmqUrl: required.RABBITMQ_URL || undefined,
     dependencyProbesEnabled,
     couponRuntimeEnabled,
-    localDemoEnabled,
-    listenHost: localDemoEnabled
-      ? nodeEnvironment === 'production'
-        ? '0.0.0.0'
-        : '127.0.0.1'
-      : '::',
+    localDemoEnabled: false,
+    listenHost: '::',
     auth,
     serviceCredentials,
     upstreams: Object.freeze(upstreams),

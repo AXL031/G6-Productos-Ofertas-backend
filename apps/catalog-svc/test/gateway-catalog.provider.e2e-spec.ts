@@ -75,7 +75,9 @@ describe('Gateway demo to protected Catalog integration', () => {
         PATH: process.env.PATH,
         SystemRoot: process.env.SystemRoot,
         NODE_ENV: 'test',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+        AUTH_ISSUER: 'https://security.example.test/issuer',
+        AUTH_JWKS_URL: 'https://security.example.test/jwks',
         GATEWAY_CATALOG_SVC_URL: await catalog.getUrl(),
       },
     });
@@ -125,28 +127,22 @@ describe('Gateway demo to protected Catalog integration', () => {
       rmSync(directory, { recursive: true, force: true });
     }
   });
-  it.each([undefined, 'Bearer incoming-token-is-ignored'])(
-    'preserves the protected upstream 401 when demo strips Authorization (%s)',
-    async (authorization) => {
-      const correlation = randomUUID();
-      const response = await fetch(
-        base + '/api/v1/productos?canal=MARKETPLACE&pagina=0',
-        {
-          headers: {
-            'x-correlation-id': correlation,
-            ...(authorization ? { authorization } : {}),
-          },
-          signal: AbortSignal.timeout(5000),
-        },
-      );
-      expect(response.status).toBe(401);
-      expect(response.headers.get('x-correlation-id')).toBe(correlation);
-      expect(await response.json()).toMatchObject({
-        code: 'TOKEN_INVALIDO',
-        correlationId: correlation,
-      });
-    },
-  );
+  it('requires identity before forwarding a protected Catalog request', async () => {
+    const correlation = randomUUID();
+    const response = await fetch(
+      base + '/api/v1/productos?canal=MARKETPLACE&pagina=0',
+      {
+        headers: { 'x-correlation-id': correlation },
+        signal: AbortSignal.timeout(5000),
+      },
+    );
+    expect(response.status).toBe(401);
+    expect(response.headers.get('x-correlation-id')).toBe(correlation);
+    expect(await response.json()).toMatchObject({
+      code: 'TOKEN_INVALIDO',
+      correlationId: correlation,
+    });
+  });
   it('preserves unknown-route 404 without inventing a Catalog demo bypass', async () => {
     expect(
       (

@@ -19,14 +19,22 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
   afterAll(() => identity.stop());
   afterEach(() => vi.restoreAllMocks());
 
-  it('production demo confirmada ignora Authorization/G7 pero conserva validación de correlación', async () => {
+  it('rejects legacy demo bypass and requires bearer authentication', async () => {
+    expect(() =>
+      validateEnvironment({
+        NODE_ENV: 'production',
+        PRICING_SVC_PORT: '3002',
+        DATABASE_URL:
+          'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
+        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
+        PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
+      }),
+    ).toThrow('bypasses demo heredados están deshabilitados');
     const config = validateEnvironment({
       NODE_ENV: 'production',
       PRICING_SVC_PORT: '3002',
       DATABASE_URL:
         'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
-      GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
-      PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
     });
     const verifier = new PricingReadGuard(config);
     const remote = vi.spyOn(globalThis, 'fetch');
@@ -35,10 +43,16 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
         { headers },
         { setHeader: vi.fn(), once: vi.fn() },
       ]);
-    await expect(verifier.canActivate(context({}))).resolves.toBe(true);
+    await expect(verifier.canActivate(context({}))).rejects.toMatchObject({
+      status: 401,
+      code: 'TOKEN_INVALIDO',
+    });
     await expect(
       verifier.canActivate(context({ authorization: 'Bearer unused-invalid' })),
-    ).resolves.toBe(true);
+    ).rejects.toMatchObject({
+      status: 503,
+      code: 'SERVICIO_NO_DISPONIBLE',
+    });
     await expect(
       verifier.canActivate(context({ 'x-correlation-id': 'invalid' })),
     ).rejects.toMatchObject({ status: 400, code: 'VALIDACION' });
@@ -49,8 +63,6 @@ describe('Pricing: autenticación de las consultas administrativas', () => {
         PRICING_SVC_PORT: '3002',
         DATABASE_URL:
           'postgresql://pricing:fixture@localhost/fixture?sslmode=verify-full',
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'false',
-        PRICING_DEMO_PRODUCTION_CONFIRMED: 'true',
       }),
     );
     await expect(authenticated.canActivate(context({}))).rejects.toMatchObject({

@@ -8,9 +8,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import { createPublicKey, verify, type JsonWebKey } from 'node:crypto';
 import type { Request } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PromotionsConfigService } from '../infrastructure/config/promotions-config.js';
 import { httpContracts } from './http-contract.generated.js';
-import { restrictedDemoPeer } from './restricted-demo-peer.js';
 import {
   isUuid,
   object,
@@ -216,21 +216,15 @@ export class PromotionsQueryGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<Request>();
     if (!httpContracts[id])
       throw new PromotionsHttpError(503, 'SERVICIO_NO_DISPONIBLE');
-    if (this.config.settings.localDemoEnabled) {
-      // Use the TCP peer, never proxy/identity headers supplied by a caller.
-      const peer = request.socket.remoteAddress;
-      if (!(await restrictedDemoPeer(peer)))
-        throw new PromotionsHttpError(403, 'SCOPE_INSUFICIENTE');
-      const operation = httpContracts[id];
-      const path = new RegExp(
-        '^' + operation.path.replace(/\{[^}]+\}/g, '[^/]+') + '/?$',
-        'i',
-      );
-      if (request.method !== operation.method || !path.test(request.path))
-        throw new PromotionsHttpError(403, 'SCOPE_INSUFICIENTE');
-      // No synthetic user/service principal is installed. Business handlers run unchanged.
+    if (
+      isPhase1PublicRead(
+        request,
+        this.config.settings.securityMode,
+        this.config.settings.publicOperations,
+        id,
+      )
+    )
       return true;
-    }
     await this.identity.authorize(
       httpContracts[id],
       request.header('authorization'),

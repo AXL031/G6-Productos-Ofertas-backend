@@ -11,6 +11,7 @@ import {
   type ExecutionContext,
 } from '@nestjs/common';
 import type { Request, Response } from 'express';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingHttpError } from './pricing-http.error.js';
 import { SafeLogger } from '../logging/safe-logger.js';
@@ -60,12 +61,32 @@ export class PricingReadGuard implements CanActivate {
       (typeof correlation !== 'string' || !uuid.test(correlation))
     )
       throw new PricingHttpError(400, 'VALIDACION');
-    if (this.config.demoNoAuthEnabled) return true;
+    const handler = context.getHandler();
+    const operationId: string | undefined = (
+      {
+        batch: 'consultarPrecios',
+        sku: 'obtenerPrecioSku',
+        product: 'obtenerPrecioBaseProducto',
+        productSchedules: 'listarProgramacionesPrecioProducto',
+        skuSchedules: 'listarProgramacionesPrecioSku',
+        imported: 'obtenerImportacionPrecios',
+        importReport: 'descargarReporteImportacionPrecios',
+      } as Readonly<Record<string, string>>
+    )[handler?.name];
+    if (
+      operationId &&
+      isPhase1PublicRead(
+        request,
+        this.config.securityMode,
+        this.config.publicOperations,
+        operationId,
+      )
+    )
+      return true;
     const bearer = /^Bearer ([^\s]+)$/i.exec(
       request.headers.authorization ?? '',
     );
     if (!bearer) throw new PricingHttpError(401, 'TOKEN_INVALIDO');
-    const handler = context.getHandler();
     await this.authorize(
       bearer[1],
       !!handler &&

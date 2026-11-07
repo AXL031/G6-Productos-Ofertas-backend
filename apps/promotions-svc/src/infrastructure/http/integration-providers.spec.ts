@@ -31,7 +31,6 @@ describe('Configured integration providers', () => {
     const config = new PromotionsConfigService(
       validatePromotionsConfiguration({
         ...fixture.environment,
-        GATEWAY_DEMO_NO_AUTH_ENABLED: 'true',
         GATEWAY_CATALOG_SVC_URL: 'http://catalog-svc:3001',
         GATEWAY_PRICING_SVC_URL: 'http://pricing-svc:3002',
         GATEWAY_INVENTORY_SVC_URL: 'http://inventory-svc:3005',

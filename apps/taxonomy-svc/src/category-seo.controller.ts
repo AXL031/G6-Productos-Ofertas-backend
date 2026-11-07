@@ -9,7 +9,11 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import { TaxonomyCommercialGuard, TaxonomyUserGuard } from './taxonomy-auth.js';
+import {
+  TaxonomyAuthGuard,
+  TaxonomyCommercialGuard,
+  TaxonomyUserGuard,
+} from './taxonomy-auth.js';
 import { CategorySeoService } from './domain/category-seo.service.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
 
@@ -51,6 +55,7 @@ export class CategorySeoController {
   }
 
   @Get('seo/:slug')
+  @UseGuards(TaxonomyAuthGuard)
   async obtenerPublico(@Param('slug') slug: string) {
     const result = await this.seo.publico(slug);
     if (!result) throw problem(404, 'SLUG_NO_ENCONTRADO');
@@ -58,6 +63,7 @@ export class CategorySeoController {
   }
 
   @Get('seo/resoluciones/:slugAnterior')
+  @UseGuards(TaxonomyAuthGuard)
   async resolverAnterior(@Param('slugAnterior') slug: string) {
     const result = await this.seo.resolver(slug);
     if (!result) throw problem(404, 'SLUG_NO_ENCONTRADO');

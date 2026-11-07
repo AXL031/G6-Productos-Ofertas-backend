@@ -32,10 +32,11 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
   const service = () => createCryptographicJwt({ clientId: 'modulo-ventas' });
   const human = (options: Parameters<typeof createCryptographicJwt>[0] = {}) =>
     createCryptographicJwt({
-      tipo: 'usuario',
-      sub: 'gestor-prueba',
+      tipo: 'acceso',
+      sub: '00000000-0000-4000-8000-000000000001',
       roles: ['GESTOR_COMERCIAL'],
       scope: '',
+      includeAudience: false,
       ...options,
     });
   const state = () =>

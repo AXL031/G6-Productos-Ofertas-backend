@@ -1,6 +1,17 @@
 import { readCatalogReadDemo } from './catalog-read-demo.js';
+import { readCatalogSecurityConfig } from './catalog-auth.js';
 
 describe('Public-read authorization never selects Catalog demo data', () => {
+  it('rejects a simulated issuer configured as the G7 issuer', () => {
+    expect(() =>
+      readCatalogSecurityConfig({
+        G6_SECURITY_MODE: 'SIMULATED_AUTH',
+        SIMULATED_AUTH_ISSUER: 'https://g7.test/auth',
+        SIMULATED_AUTH_JWKS_URL: 'https://simulator.test/keys',
+        SECURITY_ISSUER: 'https://g7.test/auth',
+      }),
+    ).toThrow(/independiente/);
+  });
   it('keeps legacy data expansion disabled even when all three public candidates are enabled', () => {
     expect(
       readCatalogReadDemo({
@@ -19,7 +30,7 @@ describe('Public-read authorization never selects Catalog demo data', () => {
       ],
     });
   });
-  it('rejects legacy/public mixing, noncommercial operations and unapproved simulated auth', () => {
+  it('rejects legacy mixing and writes while accepting explicitly selected academic reads', () => {
     for (const flag of [
       'G6_READ_ONLY_DEMO_ENABLED',
       'GATEWAY_DEMO_NO_AUTH_ENABLED',
@@ -32,9 +43,9 @@ describe('Public-read authorization never selects Catalog demo data', () => {
         }),
       ).toThrow();
     for (const operation of [
-      'obtenerPreparacionProducto',
-      'obtenerContextoSku',
       'crearProducto',
+      'activarProducto',
+      'operacionInventada',
     ])
       expect(() =>
         readCatalogReadDemo({
@@ -42,9 +53,16 @@ describe('Public-read authorization never selects Catalog demo data', () => {
           CATALOG_PUBLIC_OPERATION_IDS: operation,
         }),
       ).toThrow();
-    expect(() =>
+    expect(
+      readCatalogReadDemo({
+        G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+        CATALOG_PUBLIC_OPERATION_IDS:
+          'obtenerPreparacionProducto,obtenerContextoSku',
+      }).publicOperations,
+    ).toEqual(['obtenerPreparacionProducto', 'obtenerContextoSku']);
+    expect(
       readCatalogReadDemo({ G6_SECURITY_MODE: 'SIMULATED_AUTH' }),
-    ).toThrow();
+    ).toMatchObject({ enabled: false, securityMode: 'SIMULATED_AUTH' });
     expect(
       readCatalogReadDemo({
         G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',

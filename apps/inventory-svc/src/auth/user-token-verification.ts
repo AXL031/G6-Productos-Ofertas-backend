@@ -1,13 +1,14 @@
 import { createVerify } from 'node:crypto';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import { InventoryAuthGuard } from './inventory-auth.guard.js';
-import { getConfiguredIssuer, EXPECTED_TOKEN_TYPE } from './auth.constants.js';
+import { getConfiguredIssuer } from './auth.constants.js';
 
 export interface UserTokenPayload {
   sub?: string;
   aud?: string | string[];
   exp?: number;
   iat?: number;
+  nbf?: number;
   iss?: string;
   roles?: string[];
   capabilities?: string[];
@@ -17,17 +18,19 @@ export interface UserTokenPayload {
 }
 
 const EXPECTED_ALGORITHM = 'RS256';
-const EXPECTED_AUDIENCE = 'api-productos';
+const USER_ID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Verifica y decodifica un JWT humano (userBearer) emitido por Seguridad y
  * Usuarios (G7). La validación ordinaria es local con material de confianza de
- * G7; no exige `tipo=servicio`. Reutiliza el material público ya cargado por
+ * G7; el perfil humano no define audiencia. Reutiliza el material público ya cargado por
  * InventoryAuthGuard para no duplicar la gestión de claves.
  */
 export function verifyUserBearerToken(
   rawToken: string,
   correlationId?: string,
+  trust?: { publicKey: string; issuer: string },
 ): UserTokenPayload {
   const parts = rawToken.split('.');
   if (parts.length !== 3) {
@@ -64,7 +67,8 @@ export function verifyUserBearerToken(
     );
   }
 
-  const publicKey = InventoryAuthGuard.getTrustedPublicKey();
+  const publicKey =
+    trust?.publicKey ?? InventoryAuthGuard.getTrustedPublicKey();
   if (!publicKey) {
     throw ProblemDetailsException.tokenInvalido(
       'Material de confianza de G7 no disponible para verificación criptográfica',
@@ -105,7 +109,7 @@ export function verifyUserBearerToken(
     );
   }
 
-  const expectedIssuer = getConfiguredIssuer();
+  const expectedIssuer = trust?.issuer ?? getConfiguredIssuer();
   if (!expectedIssuer || payload.iss !== expectedIssuer) {
     throw ProblemDetailsException.tokenInvalido(
       'Issuer humano ausente, incorrecto o no configurado en G7',
@@ -113,9 +117,9 @@ export function verifyUserBearerToken(
     );
   }
   if (
-    payload.tipo === EXPECTED_TOKEN_TYPE ||
+    payload.tipo !== 'acceso' ||
     typeof payload.sub !== 'string' ||
-    !payload.sub.trim()
+    !USER_ID.test(payload.sub)
   ) {
     throw ProblemDetailsException.tokenInvalido(
       'Se requiere identidad humana válida para esta operación',
@@ -137,15 +141,12 @@ export function verifyUserBearerToken(
     );
   }
 
-  const audMatches =
-    payload.aud === EXPECTED_AUDIENCE ||
-    (Array.isArray(payload.aud) && payload.aud.includes(EXPECTED_AUDIENCE));
-  if (!audMatches) {
-    throw ProblemDetailsException.tokenInvalido(
-      `Audiencia de token inválida. Se requiere '${EXPECTED_AUDIENCE}'`,
-      correlationId,
-    );
+  for (const claim of [payload.iat, payload.nbf]) {
+    if (claim !== undefined && (!Number.isSafeInteger(claim) || claim > nowSec))
+      throw ProblemDetailsException.tokenInvalido(
+        'Token humano todavía no válido',
+        correlationId,
+      );
   }
-
   return payload;
 }

@@ -1,26 +1,38 @@
 import { createVerify } from 'node:crypto';
+import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
 import {
   CanActivate,
   ExecutionContext,
   Injectable,
   UnauthorizedException,
   ForbiddenException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { isIP } from 'node:net';
+import { isPhase1PublicRead } from '../phase1-public-reads.js';
 
 @Injectable()
 export class BulkUserBearerGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
-    const demo = process.env.GATEWAY_DEMO_NO_AUTH_ENABLED === 'true';
-    const allowed = (process.env.BULK_DEMO_GATEWAY_IPS ?? '')
+    const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
+    if (
+      !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(mode)
+    )
+      throw new UnauthorizedException('TOKEN_INVALIDO');
+    const publicOperations = (process.env.BULK_PUBLIC_OPERATION_IDS ?? '')
       .split(',')
-      .map((ip) => ip.trim())
+      .map((id) => id.trim())
       .filter(Boolean);
-    const peer = request.socket.remoteAddress?.replace(/^::ffff:/, '');
-    if (demo && peer && isIP(peer) !== 0 && allowed.includes(peer)) return true;
-
+    if (
+      isPhase1PublicRead(
+        request,
+        mode,
+        publicOperations,
+        context.getHandler().name,
+      )
+    )
+      return true;
     const token = request.headers.authorization;
     if (typeof token !== 'string' || !token.startsWith('Bearer '))
       throw new UnauthorizedException('TOKEN_INVALIDO');
@@ -36,47 +48,73 @@ export class BulkUserBearerGuard implements CanActivate {
       claims = JSON.parse(
         Buffer.from(parts[1]!, 'base64url').toString('utf8'),
       ) as Record<string, unknown>;
+      if (
+        !header ||
+        typeof header !== 'object' ||
+        Array.isArray(header) ||
+        !claims ||
+        typeof claims !== 'object' ||
+        Array.isArray(claims)
+      )
+        throw new Error('Invalid JWT objects');
     } catch {
       throw new UnauthorizedException('TOKEN_INVALIDO');
     }
-    const key = process.env.G7_JWT_PUBLIC_KEY ?? process.env.JWT_PUBLIC_KEY;
-    const issuer = process.env.G7_JWT_ISSUER;
-    if (header.alg !== 'RS256' || !key || !issuer)
+    const issuer =
+      mode === 'SIMULATED_AUTH'
+        ? process.env.SIMULATED_AUTH_ISSUER
+        : process.env.G7_JWT_ISSUER;
+    if (header.alg !== 'RS256' || !issuer)
       throw new UnauthorizedException('TOKEN_INVALIDO');
     try {
+      const key =
+        mode === 'SIMULATED_AUTH' || process.env.G7_JWT_JWKS_URL !== undefined
+          ? await trustedJwksPublicKey(
+              token.slice(7).trim(),
+              mode === 'SIMULATED_AUTH'
+                ? process.env.SIMULATED_AUTH_JWKS_URL
+                : process.env.G7_JWT_JWKS_URL,
+              process.env.NODE_ENV,
+            )
+          : (process.env.G7_JWT_PUBLIC_KEY ?? process.env.JWT_PUBLIC_KEY);
+      if (!key) throw new JwksUnavailable();
       const verifier = createVerify('RSA-SHA256');
-      verifier.update(`${parts[0]}.${parts[1]}`);
+      verifier.update(parts[0] + '.' + parts[1]);
       if (
         !verifier.verify(
           key.replace(/\\n/g, '\n'),
-          Buffer.from(parts[2]!, 'base64url'),
+          Buffer.from(parts[2], 'base64url'),
         )
       )
         throw new Error();
-    } catch {
+    } catch (error) {
+      if (error instanceof JwksUnavailable)
+        throw new ServiceUnavailableException({
+          code: 'SERVICIO_NO_DISPONIBLE',
+        });
       throw new UnauthorizedException('TOKEN_INVALIDO');
     }
-    const aud = claims.aud;
+    const now = Math.floor(Date.now() / 1000);
     if (
       claims.iss !== issuer ||
+      claims.tipo !== 'acceso' ||
       typeof claims.sub !== 'string' ||
-      !claims.sub ||
-      typeof claims.exp !== 'number' ||
-      claims.exp <= Date.now() / 1000 ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        claims.sub,
+      ) ||
+      !Number.isSafeInteger(claims.iat) ||
+      (claims.iat as number) > now ||
+      !Number.isSafeInteger(claims.exp) ||
+      (claims.exp as number) <= now ||
+      typeof claims.jti !== 'string' ||
+      !claims.jti.trim() ||
       (claims.nbf !== undefined &&
-        (typeof claims.nbf !== 'number' ||
-          !Number.isFinite(claims.nbf) ||
-          claims.nbf > Date.now() / 1000)) ||
-      !(
-        aud === 'api-productos' ||
-        (Array.isArray(aud) && aud.includes('api-productos'))
-      )
+        (!Number.isSafeInteger(claims.nbf) || (claims.nbf as number) > now)) ||
+      !Array.isArray(claims.roles) ||
+      !claims.roles.every((role) => typeof role === 'string')
     )
       throw new UnauthorizedException('TOKEN_INVALIDO');
-    if (
-      !Array.isArray(claims.roles) ||
-      !claims.roles.includes('GESTOR_COMERCIAL')
-    )
+    if (!(claims.roles as string[]).includes('GESTOR_COMERCIAL'))
       throw new ForbiddenException('SCOPE_INSUFICIENTE');
     return true;
   }

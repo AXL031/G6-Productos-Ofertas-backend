@@ -17,7 +17,6 @@ export class CatalogServiceToken {
   async get(
     scope: PricingServiceScope = 'catalogo:leer',
   ): Promise<string | null> {
-    if (this.config.demoNoAuthEnabled && scope === 'catalogo:leer') return null;
     const cached = this.cached.get(scope);
     if (cached && Date.now() < cached.until) return cached.value;
     this.cached.delete(scope);

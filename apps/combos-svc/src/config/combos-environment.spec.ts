@@ -45,6 +45,28 @@ describe('readCombosEnvironment', () => {
       ssl: { rejectUnauthorized: true, servername: 'localhost', ca: cert },
     });
   });
+  it('only accepts explicit known public reads in Phase 1', () => {
+    const configured = {
+      ...base(),
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+      COMBOS_PUBLIC_READ_OPERATIONS:
+        'obtenerCombo,listarCombosAdmin,consultarDisponibilidadCombo',
+    };
+    expect(readCombosEnvironment(configured).securityMode).toBe(
+      'PUBLIC_READ_ONLY',
+    );
+    for (const mode of ['G7_AUTHENTICATED', 'SIMULATED_AUTH'])
+      expect(() =>
+        readCombosEnvironment({ ...configured, G6_SECURITY_MODE: mode }),
+      ).toThrow(/COMBOS_PUBLIC_READ_OPERATIONS/);
+    for (const value of ['*', 'crearCombo', 'unknown'])
+      expect(() =>
+        readCombosEnvironment({
+          ...configured,
+          COMBOS_PUBLIC_READ_OPERATIONS: value,
+        }),
+      ).toThrow(/COMBOS_PUBLIC_READ_OPERATIONS/);
+  });
   it('fails closed for missing or malformed configuration without echoing credentials', () => {
     const env = base();
     delete env.PGPASSWORD;

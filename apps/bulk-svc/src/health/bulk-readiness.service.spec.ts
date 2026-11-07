@@ -114,24 +114,22 @@ describe('BulkReadinessService', () => {
     await expect(service.onModuleDestroy()).resolves.toBeUndefined();
   });
 
-  it('distinguishes absent and explicitly disabled AMQP from an authorized demo peer', async () => {
+  it('distinguishes absent and explicitly disabled AMQP without a peer bypass', async () => {
     const { service } = serviceWith(async () => undefined, { amqpUrl: null });
-    await expect(service.probe('127.0.0.1')).resolves.toEqual({
+    await expect(service.probe()).resolves.toEqual({
       ready: false,
       reason: 'AMQP_NOT_CONFIGURED',
     });
     vi.stubEnv('BULK_AMQP_ENABLED', 'false');
-    await expect(service.probe('127.0.0.1')).resolves.toEqual({
+    await expect(service.probe()).resolves.toEqual({
       ready: false,
       reason: 'AMQP_DISABLED',
     });
-    vi.stubEnv('GATEWAY_DEMO_NO_AUTH_ENABLED', 'true');
-    vi.stubEnv('BULK_DEMO_GATEWAY_IPS', '127.0.0.1');
-    await expect(service.probe('127.0.0.1')).resolves.toEqual({
-      ready: true,
-      reason: 'AUTHORIZED_DEMO',
+    await expect(service.probe()).resolves.toEqual({
+      ready: false,
+      reason: 'AMQP_DISABLED',
     });
-    await expect(service.probe('127.0.0.2')).resolves.toMatchObject({
+    await expect(service.probe()).resolves.toMatchObject({
       ready: false,
       reason: 'AMQP_DISABLED',
     });
