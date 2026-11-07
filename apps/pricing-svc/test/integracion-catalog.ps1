@@ -21,13 +21,15 @@ try {
   $old = '807189f7ca49d4af3b4ad367043260bc3050fb3d'
   if (([regex]::Matches($source, $old)).Count -ne 1) { throw 'El pin original no aparece exactamente una vez.' }
   [System.IO.File]::WriteAllText($pin, $source.Replace($old, $PricingSha))
-  New-Item -ItemType Junction -Path (Join-Path $tmp 'node_modules') -Target (Join-Path $root 'node_modules') | Out-Null
+  $linkType = if ($IsWindows) { 'Junction' } else { 'SymbolicLink' }
+  New-Item -ItemType $linkType -Path (Join-Path $tmp 'node_modules') -Target (Join-Path $root 'node_modules') | Out-Null
   Write-Host "CATALOG_SHA=$CatalogSha PRICING_SHA=$PricingSha INVENTORY_SHA=56aa4322725060b529bf316872f891582d7d1b2e"
   Push-Location $tmp
   try {
     npm run test:e2e -- apps/catalog-svc/test/postgres.persistence.e2e-spec.ts -t 'BLOCK-A2: consolidated Inventory' --disableConsoleIntercept 2>&1 | Tee-Object -Variable salida
     if ($LASTEXITCODE -ne 0) { throw "Integracion fallida: $LASTEXITCODE" }
-    if (-not ($salida -match 'BLOCK_A1_INTEGRAL_HISTORY_PASS=')) { throw 'No se ejecuto el escenario historico integral.' }
+    $marker = "BLOCK_A1_INTEGRAL_HISTORY_PASS=pricing@$PricingSha,inventory@56aa4322725060b529bf316872f891582d7d1b2e"
+    if (-not ($salida -contains $marker)) { throw 'Falta el marcador historico con los SHA esperados.' }
   } finally { Pop-Location }
 } finally {
   Remove-Item -LiteralPath $tmp -Recurse -Force

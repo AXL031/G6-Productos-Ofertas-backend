@@ -1,0 +1,44 @@
+name: Integración histórica Pricing y Catalog
+
+on:
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: read
+
+jobs:
+  historica:
+    name: Catalog A1/A2 con HEAD de Pricing
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Obtener HEAD exacto de la PR y antecedentes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Configurar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - name: Instalar dependencias
+        run: npm ci
+      - name: Ejecutar integración con PostgreSQL y RabbitMQ descartables
+        env:
+          PRICING_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -o pipefail
+          test "$(git rev-parse HEAD)" = "$PRICING_HEAD_SHA"
+          pwsh -NoProfile -File apps/pricing-svc/test/integracion-catalog.ps1 \
+            -CatalogSha 72c3d238abfa3004e00fabb8839fa91cc9a7a3d1 \
+            -PricingSha "$PRICING_HEAD_SHA" 2>&1 | tee integracion-pricing-catalog.log
+      - name: Conservar evidencia
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: integracion-pricing-catalog-${{ github.event.pull_request.head.sha }}
+          path: integracion-pricing-catalog.log
+          if-no-files-found: warn
