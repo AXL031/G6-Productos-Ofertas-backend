@@ -7136,7 +7136,7 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       },
       '404': {
         types: ['application/problem+json'],
-        codes: [],
+        codes: ['OPERACION_INVENTARIO_NO_ENCONTRADA'],
         headers: [],
       },
       '429': {
