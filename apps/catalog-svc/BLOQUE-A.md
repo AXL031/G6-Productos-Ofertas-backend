@@ -2,7 +2,39 @@
 
 ## Continuación autorizada — diagnóstico DATA-002 e integración con master
 
-Estado actual: corrección DATA-002 publicada en ecdf34b, integración master
+### Resultado preliminar Pricing807 — ejecución real sin diagnóstico temporal
+
+Fuente funcional 7b1645a5c3f7e6d001c9a0ab8e3ed9e97a5b95a5, Pricing provisional
+807189f7ca49d4af3b4ad367043260bc3050fb3d e Inventory consolidado
+56aa4322725060b529bf316872f891582d7d1b2e. Productor sin cambios. La integración
+es PRELIMINAR respecto al SHA definitivo anunciado por Vera, aún sin publicar.
+
+| Ejecución real | Checkout | DATA-002 | General E2E |
+| --- | --- | --- | --- |
+| [HEAD puro](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42340658622/job/128307398165) | 7b1645a exacto | PASS 676 ms / límite 5000 ms | 1008 PASS / 207 SKIP, 117.74 s |
+| [Compatibilidad master](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42340661277/job/128307404056) | merge sintético 00e8cfdab5386434e5c9c00a6135f3133182b625 contra d21c24f | PASS 848 ms / límite 5000 ms | 1008 PASS / 207 SKIP, 136.18 s |
+
+Ambas ejecutan 97 PostgreSQL Catalog PASS / 0 SKIP y 2 Bulk PASS. Marcadores
+BLOCK_A_PRICING_SOURCE_SHA=807189f, BLOCK_A1_INTEGRAL_HISTORY_PASS con ambos
+SHA completos, BLOCK_A2_PINNED_IDENTITY_PASS y CONSOLIDATED_NO_LOCATION_PASS
+acreditados en los logs. Incluyen simple/padre/variantes hasta activación,
+completed/rejected reales, saldos intactos y ausencia de DML monetario; sin
+reemplazar publicadores por mocks. Unitarias de ambos runners: 2519 PASS /
+72 SKIP, incluidas 37 semánticas. Cada runner confirmó checkout por git log -1.
+CI funcional HEAD y compatibilidad: SUCCESS 19/19 jobs en ambas, incluidas
+imágenes, smokes e infraestructura, sin reintentos. El HEAD documental final y
+su CI se enlazan por SHA exacto en #194, sin atribuirle la ejecución anterior.
+Este corte conserva por separado las mediciones original/corregida aisladas;
+la última implementación ya no contiene el lanzador child, probes ni SQL timing.
+No se afirma reproducido el timeout original de Vera en Linux.
+
+Bloqueo restante de integración definitiva: Vera debe publicar el nuevo SHA
+de replay/importes y ejecutar Catalog de nuevo con ese peer fijado. Su HEAD
+publicado sigue en 807189f al comprobarlo. Docs puede publicarse después según
+Marco; moneda no está pendiente de aprobación. Sin READY_FOR_MERGE, merge a
+master, deploy ni apertura productiva del adaptador.
+
+Corte de publicación del arreglo, previo al resultado de arriba: DATA-002 en ecdf34b, integración master
 publicada en 95a766a y PR #194 MERGEABLE/DRAFT frente a d21c24f (sin aprobar
 merge a master). La preparación siguiente fija Pricing provisional 807189f y
 retira toda instrumentación temporal; sus resultados exactos y SHA final se
