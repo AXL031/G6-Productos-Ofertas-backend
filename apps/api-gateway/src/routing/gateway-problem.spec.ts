@@ -49,7 +49,12 @@ describe('Gateway and provider problem boundaries (H-01)', () => {
       ),
     ).toEqual({ status: 404, code: 'OPERACION_INVENTARIO_NO_ENCONTRADA' });
     expect(
-      gatewayProblem(inventoryOperation, 404, 'UNLISTED_PROVIDER_CODE', 'provider'),
+      gatewayProblem(
+        inventoryOperation,
+        404,
+        'UNLISTED_PROVIDER_CODE',
+        'provider',
+      ),
     ).toEqual({ status: 500, code: 'ERROR_INTERNO' });
   });
   it('accepts only the declared provider import error pair (H-02)', () => {
