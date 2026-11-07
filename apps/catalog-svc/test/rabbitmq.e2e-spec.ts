@@ -1,3 +1,6 @@
+import { Pool } from 'pg';
+import { sql } from 'drizzle-orm';
+import { Database } from '../src/database.js';
 import { spawnSync } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
@@ -297,6 +300,158 @@ describe.skipIf(!dockerAvailable)(
         await runtime.onModuleDestroy();
       }
     }, 15000);
+    it('retries a PostgreSQL rollback and ACKs a durable duplicate on a real broker', async () => {
+      const pgName = 'catalog-recovery-pg-' + process.pid + '-' + Date.now();
+      const telemetry = new CatalogTelemetry();
+      let pool: Pool | undefined;
+      let db: Database | undefined;
+      let runtime: CatalogAmqpRuntime | undefined;
+      try {
+        docker([
+          'run',
+          '--rm',
+          '-d',
+          '--name',
+          pgName,
+          '-p',
+          '127.0.0.1::5432',
+          '-e',
+          'POSTGRES_PASSWORD=' + password,
+          'postgres:17-alpine',
+        ]);
+        const port = Number(
+          docker(['port', pgName, '5432/tcp']).split(':').at(-1),
+        );
+        const settings = {
+          host: '127.0.0.1',
+          port,
+          database: 'postgres',
+          user: 'postgres',
+          password,
+          connectionTimeoutMillis: 1500,
+        };
+        pool = new Pool(settings);
+        await expect
+          .poll(
+            async () => {
+              try {
+                await pool!.query('SELECT 1');
+                return true;
+              } catch {
+                return false;
+              }
+            },
+            { timeout: 15000, interval: 250 },
+          )
+          .toBe(true);
+        await pool.query(
+          'CREATE TABLE recovery_inbox (message_id uuid PRIMARY KEY)',
+        );
+        db = new Database({
+          pool: settings,
+          expectedRole: 'postgres',
+          database: 'postgres',
+          user: 'postgres',
+          password,
+          mode: 'direct',
+        });
+        let attempts = 0;
+        let duplicate = 0;
+        const consume = async (message: { message_id: string }) => {
+          const attempt = ++attempts;
+          const result = await db!.transaction(async (tx) => {
+            const inserted =
+              await tx.execute(sql`INSERT INTO recovery_inbox VALUES (${message.message_id})
+              ON CONFLICT DO NOTHING RETURNING message_id`);
+            if (attempt === 1) {
+              await tx.execute(
+                sql`DO $$ BEGIN RAISE EXCEPTION 'fixture' USING ERRCODE = '40001'; END $$`,
+              );
+            }
+            return inserted.rows.length ? 'APPLIED' : 'DUPLICATE';
+          });
+          if (result === 'DUPLICATE') duplicate++;
+          return result;
+        };
+        runtime = new CatalogAmqpRuntime(
+          {
+            consume,
+            relayOne: async () => 'EMPTY',
+          } as unknown as CatalogMessageService,
+          {
+            connection: {
+              url,
+              user: 'catalog-test',
+              producerUsers: {
+                'inventory-svc': 'inventory-test',
+                'pricing-svc': 'pricing-test',
+                'taxonomy-svc': 'taxonomy-test',
+                'bulk-svc': 'bulk-test',
+              },
+            },
+          },
+          telemetry,
+        );
+        const producer = await connect(
+          url.replace('catalog-test:', 'inventory-test:'),
+        );
+        extraConnections.push(producer);
+        const publisher = new ConfirmedCatalogPublisher(
+          await producer.createConfirmChannel(),
+          'inventory-test',
+        );
+        const message = {
+          message_id: randomUUID(),
+          schema_version: 1,
+          occurred_at: new Date().toISOString(),
+          correlation_id: randomUUID(),
+          operation_id: randomUUID(),
+          causation_id: randomUUID(),
+          producer: 'inventory-svc',
+          kind: 'result',
+          name: 'inventory.sku.initialization.completed',
+          data: {
+            product_id: randomUUID(),
+            sku: '0000123',
+            variant_id: null,
+            status: 'INITIALIZED',
+            completed_at: new Date().toISOString(),
+          },
+        };
+        runtime.onModuleInit();
+        for (let i = 0; i < 2; i++)
+          await publisher.raw(
+            'po.resultados.x',
+            message.name,
+            Buffer.from(JSON.stringify(message)),
+            {
+              messageId: message.message_id,
+              correlationId: message.correlation_id,
+            },
+          );
+        await expect.poll(() => duplicate, { timeout: 10000 }).toBe(1);
+        expect(attempts).toBe(3);
+        expect(telemetry.snapshot().AMQP_LOCAL_RETRY).toBe(1);
+        expect(runtime.ready).toBe(true);
+        expect(
+          (await pool.query('SELECT count(*)::int AS n FROM recovery_inbox'))
+            .rows[0].n,
+        ).toBe(1);
+        await runtime.onModuleDestroy();
+        runtime = undefined;
+        expect((await channel.checkQueue('po.catalogo.q')).messageCount).toBe(
+          0,
+        );
+      } finally {
+        await runtime?.onModuleDestroy();
+        await db?.onModuleDestroy();
+        await pool?.end();
+        spawnSync('docker', ['rm', '-f', pgName], {
+          stdio: 'ignore',
+          timeout: 15000,
+        });
+      }
+    }, 45000);
     it('retains the broker delivery until the committed-use-case promise resolves', async () => {
       let release!: () => void, received!: () => void;
       const gate = new Promise<void>((resolve) => {
