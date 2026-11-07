@@ -161,7 +161,6 @@ export class DisposableCatalogBroker {
         'catalog.bulk.upsert.' + suffix,
       );
     this.settings = {
-      isolatedTestRecovery: true,
       connection: {
         url: 'amqp://catalog-joint:' + this.password + this.base,
         user: 'catalog-joint',
@@ -287,6 +286,8 @@ export class DisposableCatalogBroker {
       const message = await this.channel!.get(queue, { noAck: false });
       if (message) {
         this.channel!.ack(message);
+        // Flush basic.ack on this channel before another consumer starts.
+        await this.channel!.checkQueue(queue);
         return message;
       }
       await pause(50);

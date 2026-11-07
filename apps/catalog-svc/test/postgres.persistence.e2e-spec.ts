@@ -1374,13 +1374,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         const forged = { ...first, message_id: randomUUID() };
         expect(await broker.brokerRejectsFalseUser(forged)).toBe(true);
         await broker.wrongIdentityResult(forged);
-        const quarantined = await broker.next('po.catalogo.q.dlq');
-        expect(JSON.parse(quarantined.content.toString()).message_id).toBe(
+        await expect.poll(() => runtime!.ready).toBe(false);
+        const preserved = await broker.next('po.catalogo.q');
+        expect(JSON.parse(preserved.content.toString()).message_id).toBe(
           forged.message_id,
         );
-        expect(quarantined.properties.headers?.['x-catalog-failure']).toBe(
-          'INVALID_OR_BLOCKED_CONTRACT',
-        );
+        expect(preserved.fields.redelivered).toBe(true);
+        expect(preserved.properties.userId).not.toBe('g6_inventario');
         expect(
           await database.read((db) =>
             db
@@ -1418,6 +1418,13 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
         const collisionResult = await nextResult(
           (message) => message.causation_id === collisionId,
         );
+        // The deliberate collision is not a Catalog result for its active
+        // attempt. With pause-on-invalid recovery it must be explicitly
+        // inspected and disposed by this disposable fixture before resuming.
+        const collisionDelivery = await broker.next('po.catalogo.q');
+        expect(
+          JSON.parse(collisionDelivery.content.toString()).message_id,
+        ).toBe(collisionResult.message.message_id);
         runtime = new CatalogAmqpRuntime(
           new CatalogMessageService(database),
           broker.settings,
@@ -1479,15 +1486,19 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
           code: 'IDEMPOTENCY_CONFLICT',
           manual_retry_allowed: false,
         });
-        // The priming fixture's genuine result has the foreign SKU, so Catalog
-        // correctly quarantines it before the original request is rejected.
-        const collisionQuarantine = await broker.next('po.catalogo.q.dlq');
+        // The foreign-SKU result was explicitly inspected and ACKed by the
+        // disposable fixture while Catalog was paused. It never enters Inbox.
         expect(
-          JSON.parse(collisionQuarantine.content.toString()).message_id,
+          JSON.parse(collisionDelivery.content.toString()).message_id,
         ).toBe(collisionResult.message.message_id);
         expect(
-          collisionQuarantine.properties.headers?.['x-catalog-failure'],
-        ).toBe('INVALID_OR_BLOCKED_CONTRACT');
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(eq(inbox.message_id, collisionResult.message.message_id)),
+          ),
+        ).toEqual([]);
         await call(
           'POST',
           '/productos/' + rejectedProduct.product_id + '/activar',
@@ -1887,15 +1898,37 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               (r) => r.published_at === null,
             ),
           ).toBe(true);
+          const badOriginSignals = new CatalogTelemetry();
+          runtime = new CatalogAmqpRuntime(
+            new CatalogMessageService(database),
+            broker.settings,
+            badOriginSignals,
+          );
+          runtime.onModuleInit();
+          await expect
+            .poll(() => badOriginSignals.snapshot().AMQP_CONSUMER_PAUSED)
+            .toBe(1);
+          expect(runtime.ready).toBe(false);
+          const badOriginDelivery = await broker.next('po.catalogo.q');
+          expect(
+            JSON.parse(badOriginDelivery.content.toString()).message_id,
+          ).toBe(badOrigin.message_id);
+          expect(badOriginDelivery.fields.redelivered).toBe(true);
+          expect(badOriginDelivery.properties.userId).toBe('catalog-joint');
+          expect(
+            await database.read((db) =>
+              db
+                .select()
+                .from(inbox)
+                .where(eq(inbox.message_id, badOrigin.message_id)),
+            ),
+          ).toEqual([]);
+          await runtime.onModuleDestroy();
           runtime = new CatalogAmqpRuntime(
             new CatalogMessageService(database),
             broker.settings,
           );
           runtime.onModuleInit();
-          const badOriginDlq = await broker.next('po.catalogo.q.dlq');
-          expect(JSON.parse(badOriginDlq.content.toString()).message_id).toBe(
-            badOrigin.message_id,
-          );
           for (const item of [legacySimple, legacyParent]) {
             const expected =
               item === legacySimple ? originalSimple : originalParent;

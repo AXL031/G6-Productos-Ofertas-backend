@@ -17,7 +17,9 @@ import {
 import {
   CatalogContextHttp,
   PRICING_CATALOG_TOKEN,
+  PRICING_CATALOG_H4,
 } from './http/catalog-context.js';
+import { createH4CatalogClient } from './http/h4-catalog-client.js';
 import { CatalogServiceToken } from './http/catalog-token.js';
 import { PricingOutboxRelay } from './messaging/outbox-relay.js';
 import { createPricingPriceChangedFacts } from './messaging/pricing-fact.js';
@@ -58,10 +60,17 @@ import {
     CatalogContextHttp,
     { provide: PRICING_CATALOG_CONTEXT, useExisting: CatalogContextHttp },
     CatalogServiceToken,
+    { provide: PRICING_CATALOG_H4, useFactory: () => createH4CatalogClient() },
     {
       provide: PRICING_CATALOG_TOKEN,
-      useFactory: (tokens: CatalogServiceToken) => () => tokens.get(),
-      inject: [CatalogServiceToken],
+      useFactory:
+        (
+          tokens: CatalogServiceToken,
+          h4: ReturnType<typeof createH4CatalogClient>,
+        ) =>
+        async (sku?: string) =>
+          h4 && sku !== undefined ? h4.issue(sku) : tokens.get(),
+      inject: [CatalogServiceToken, PRICING_CATALOG_H4],
     },
     {
       provide: PRICING_WRITE_AUTHORIZER,

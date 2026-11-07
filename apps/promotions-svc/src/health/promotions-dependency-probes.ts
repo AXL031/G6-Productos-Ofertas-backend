@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { promotionsBrokerBinding } from '../coupons/event-contract.generated.js';
@@ -105,9 +106,13 @@ export function nativePromotionsDependencyProbes(
         try {
           if (!config.settings.rabbitmqUrl)
             throw new Error('AMQP_NOT_CONFIGURED');
-          connection = await connect(config.settings.rabbitmqUrl, {
-            timeout: 750,
-          });
+          connection = await connectPrivateAmqps(
+            connect,
+            config.settings.rabbitmqUrl,
+            {
+              timeout: 750,
+            },
+          );
           connection.on('error', () => undefined);
           signal.throwIfAborted();
           channel = await connection.createChannel();

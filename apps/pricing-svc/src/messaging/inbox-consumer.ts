@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Inject,
   Injectable,
@@ -97,7 +98,7 @@ export class PricingInboxConsumer
     let connection: ChannelModel | undefined;
     let channel: Channel | undefined;
     try {
-      connection = await connect(url, { timeout: 2500 });
+      connection = await connectPrivateAmqps(connect, url, { timeout: 2500 });
       this.connection = connection;
       connection.on('error', () => {
         if (this.connection === connection) this.available = false;
