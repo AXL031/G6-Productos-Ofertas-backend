@@ -1,3 +1,4 @@
+import { CatalogPersistenceError } from './database-errors.js';
 import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { connect, type ConsumeMessage, type ChannelModel } from 'amqplib';
@@ -12,7 +13,6 @@ vi.mock('amqplib', async (importOriginal) => ({
 
 describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
   const settings = {
-    isolatedTestRecovery: true as const,
     connection: {
       url: 'amqp://catalog:fixture@localhost/g6-productos-ofertas',
       user: 'catalog',
@@ -130,49 +130,8 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
     vi.useRealTimers();
     vi.unstubAllEnvs();
   });
-  it.each(['test', 'production'])(
-    'blocks shared runtime without approved recovery conditions in %s',
-    async (environment) => {
-      vi.stubEnv('NODE_ENV', environment);
-      const messages = { consume: vi.fn(), relayOne: vi.fn() };
-      active = new CatalogAmqpRuntime(
-        messages as unknown as CatalogMessageService,
-        { connection: settings.connection },
-        { record } as unknown as CatalogTelemetry,
-      );
-      active.onModuleInit();
-      await vi.advanceTimersByTimeAsync(60000);
-      expect(connect).not.toHaveBeenCalled();
-      expect(messages.consume).not.toHaveBeenCalled();
-      expect(messages.relayOne).not.toHaveBeenCalled();
-      expect(record).toHaveBeenCalledExactlyOnceWith('AMQP_RECOVERY_BLOCKED');
-      expect(vi.getTimerCount()).toBe(0);
-    },
-  );
-  it('does not allow isolated recovery in production', async () => {
+  it('starts with an explicitly enabled AMQP configuration in production', async () => {
     vi.stubEnv('NODE_ENV', 'production');
-    vi.stubEnv('CATALOG_AMQP_ENABLED', 'true');
-    vi.stubEnv('RABBITMQ_URL', settings.connection.url);
-    vi.stubEnv(
-      'CATALOG_AMQP_PRODUCER_USERS',
-      JSON.stringify(settings.connection.producerUsers),
-    );
-    expect(readCatalogAmqpConfig()).toEqual(settings.connection);
-    const messages = { consume: vi.fn(), relayOne: vi.fn() };
-    active = new CatalogAmqpRuntime(
-      messages as unknown as CatalogMessageService,
-      settings,
-      { record } as unknown as CatalogTelemetry,
-    );
-    active.onModuleInit();
-    await vi.advanceTimersByTimeAsync(60000);
-    expect(connect).not.toHaveBeenCalled();
-    expect(messages.consume).not.toHaveBeenCalled();
-    expect(messages.relayOne).not.toHaveBeenCalled();
-    expect(vi.getTimerCount()).toBe(0);
-    expect(record).toHaveBeenCalledWith('AMQP_RECOVERY_BLOCKED');
-  });
-  it('runs isolated recovery in test mode with valid disposable RabbitMQ config', async () => {
     vi.stubEnv('CATALOG_AMQP_ENABLED', 'true');
     vi.stubEnv('RABBITMQ_URL', settings.connection.url);
     vi.stubEnv(
@@ -246,26 +205,49 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
     await flush();
     expect(f.consumer.ack).toHaveBeenCalledWith(message);
   });
-  it('keeps delivery unacknowledged and closes the connection when retry publication is not confirmed', async () => {
+  it('retries a transient PostgreSQL failure three times then pauses without ACK or reconnect', async () => {
     const f = fixture();
     vi.mocked(connect).mockResolvedValue(
       f.connection as unknown as ChannelModel,
     );
-    f.publisher.publish.mockImplementation((_x, _k, _b, _p, confirm) => {
-      queueMicrotask(() => confirm(new Error('private broker details')));
-      return true;
+    const consume = vi.fn(async () => {
+      throw new CatalogPersistenceError('serialization', '40001');
     });
-    start({
-      consume: vi.fn(async () => {
-        throw new Error('private SQL');
-      }),
-    });
+    start({ consume });
     await flush();
     f.deliver(delivery());
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(consume).toHaveBeenCalledTimes(4);
+    expect(
+      record.mock.calls.filter(([signal]) => signal === 'AMQP_LOCAL_RETRY'),
+    ).toHaveLength(3);
+    expect(f.consumer.ack).not.toHaveBeenCalled();
+    expect(f.publisher.publish).not.toHaveBeenCalled();
+    expect(f.connection.close).toHaveBeenCalledOnce();
+    expect(connect).toHaveBeenCalledOnce();
+    expect(active?.ready).toBe(false);
+  });
+  it('ACKs only after a transient retry commits, including a broker redelivery', async () => {
+    const f = fixture();
+    vi.mocked(connect).mockResolvedValue(
+      f.connection as unknown as ChannelModel,
+    );
+    const consume = vi
+      .fn()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('deadlock'), { code: '40P01' }),
+      )
+      .mockResolvedValueOnce('DUPLICATE');
+    start({ consume });
+    await flush();
+    const message = delivery();
+    message.fields.redelivered = true;
+    f.deliver(message);
     await flush();
     expect(f.consumer.ack).not.toHaveBeenCalled();
-    expect(f.connection.close).toHaveBeenCalledOnce();
-    expect(f.publisher.publish.mock.calls[0]?.[0]).toBe('po.retry.x');
+    await vi.advanceTimersByTimeAsync(100);
+    expect(consume).toHaveBeenCalledTimes(2);
+    expect(f.consumer.ack).toHaveBeenCalledExactlyOnceWith(message);
   });
   it.each(['DUPLICATE', 'STALE', 'TERMINAL'] as const)(
     'ACKs a durably committed %s without a technical retry in the isolated fixture',
@@ -283,7 +265,7 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
       expect(f.publisher.publish).not.toHaveBeenCalled();
     },
   );
-  it('ACKs a committed business rejection, but disposes malformed JSON only in the explicit isolated DLQ fixture', async () => {
+  it('ACKs a committed business rejection, but pauses and preserves malformed JSON', async () => {
     const f = fixture();
     vi.mocked(connect).mockResolvedValue(
       f.connection as unknown as ChannelModel,
@@ -306,9 +288,10 @@ describe('Catalog AMQP lifecycle (transport doubles, not broker E2E)', () => {
     f.deliver(invalid);
     await flush();
     expect(service.consume).toHaveBeenCalledOnce();
-    expect(f.publisher.publish.mock.calls[0][0]).toBe('po.dlx.x');
-    expect(f.publisher.publish.mock.calls[0][1]).toBe('po.catalogo.q');
-    expect(f.consumer.ack).toHaveBeenCalledWith(invalid);
+    expect(f.publisher.publish).not.toHaveBeenCalled();
+    expect(f.consumer.ack).not.toHaveBeenCalledWith(invalid);
+    expect(f.connection.close).toHaveBeenCalledOnce();
+    expect(active?.ready).toBe(false);
     expect(JSON.stringify(record.mock.calls)).not.toContain('private-invalid');
   });
   it('bounds shutdown when a use case has not drained, preserving redelivery by closing the connection', async () => {

@@ -161,7 +161,6 @@ export class DisposableCatalogBroker {
         'catalog.bulk.upsert.' + suffix,
       );
     this.settings = {
-      isolatedTestRecovery: true,
       connection: {
         url: 'amqp://catalog-joint:' + this.password + this.base,
         user: 'catalog-joint',

@@ -13,6 +13,7 @@ import {
 } from '../src/catalog-amqp.js';
 import type { CatalogMessageService } from '../src/catalog-message.service.js';
 import { envelope } from '../src/catalog-messages.js';
+import { CatalogTelemetry } from '../src/catalog-telemetry.js';
 
 const dockerAvailable =
   spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
@@ -237,9 +238,10 @@ describe.skipIf(!dockerAvailable)(
       expect(JSON.parse(retried.content.toString())).toEqual(message);
       channel.ack(retried);
     }, 45000);
-    it('keeps a real queued message untouched when shared recovery is blocked', async () => {
+    it('pauses on invalid delivery and preserves it for redelivery on the real broker', async () => {
       const consume = vi.fn(),
         relayOne = vi.fn();
+      const telemetry = new CatalogTelemetry();
       const runtime = new CatalogAmqpRuntime(
         { consume, relayOne } as unknown as CatalogMessageService,
         {
@@ -254,6 +256,7 @@ describe.skipIf(!dockerAvailable)(
             },
           },
         },
+        telemetry,
       );
       const content = Buffer.from('isolated-pending-message');
       await publisher.raw(
@@ -264,19 +267,36 @@ describe.skipIf(!dockerAvailable)(
       );
       try {
         runtime.onModuleInit();
-        await pause(100);
-        expect((await channel.checkQueue('po.catalogo.q')).consumerCount).toBe(
-          0,
-        );
-        expect(consume).not.toHaveBeenCalled();
-        expect(relayOne).not.toHaveBeenCalled();
+        await expect
+          .poll(() => telemetry.snapshot().AMQP_CONSUMER_PAUSED, {
+            timeout: 5000,
+          })
+          .toBe(1);
         const pending = await next('po.catalogo.q');
         expect(pending.content).toEqual(content);
+        expect(pending.fields.redelivered).toBe(true);
+        // A pending basic.get registers a quorum delivery holder. Release
+        // the disposable test delivery before checking active subscriptions.
         channel.ack(pending);
+        await channel.checkQueue('po.catalogo.q');
+        expect(
+          docker([
+            'exec',
+            container,
+            'rabbitmqctl',
+            'list_consumers',
+            '-p',
+            vhost,
+            '-q',
+          ]),
+        ).not.toMatch(/^po\.catalogo\.q\s/m);
+        expect(telemetry.snapshot().AMQP_CONNECTED).toBe(1);
+        expect(consume).not.toHaveBeenCalled();
+        expect(runtime.ready).toBe(false);
       } finally {
         await runtime.onModuleDestroy();
       }
-    });
+    }, 15000);
     it('retains the broker delivery until the committed-use-case promise resolves', async () => {
       let release!: () => void, received!: () => void;
       const gate = new Promise<void>((resolve) => {
@@ -295,7 +315,6 @@ describe.skipIf(!dockerAvailable)(
           relayOne: async () => 'EMPTY',
         } as unknown as CatalogMessageService,
         {
-          isolatedTestRecovery: true,
           connection: {
             url,
             user: 'catalog-test',
