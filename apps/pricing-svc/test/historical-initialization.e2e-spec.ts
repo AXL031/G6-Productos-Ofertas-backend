@@ -146,6 +146,59 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       await postgres.stop();
     }, 30000);
 
+    it.each(['1e2', '125.500', '125.500000000000001'])(
+      'reproduce rechazo de importe inválido %s y detecta intención distinta',
+      async (token) => {
+        const stored = await seed();
+        const first = command(stored.productId, { precio_regular: 125.5 });
+        const send = (message: typeof first, value: string) =>
+          initialization.consume(
+            Buffer.from(
+              JSON.stringify(message).replace(
+                '"precio_regular":125.5',
+                `"precio_regular":${value}`,
+              ),
+            ),
+          );
+        expect(await send(first, token)).toBe('REJECTED');
+        const replay = { ...first, message_id: randomUUID() };
+        expect(await send(replay, token)).toBe('DUPLICATE');
+        expect((await result(replay.message_id)).payload).toEqual(
+          (await result(first.message_id)).payload,
+        );
+        const conflict = { ...first, message_id: randomUUID() };
+        expect(await send(conflict, '125.50')).toBe('REJECTED');
+        expect((await result(conflict.message_id)).payload.code).toBe(
+          'OPERATION_ID_CONFLICT',
+        );
+        await noFacts(first.operation_id);
+      },
+    );
+    it.each([
+      ['homónimo raíz', '"extra":{"precio_regular":1},"data":', '"data":'],
+      ['homónimo anidado', '"data":{"extra":{"precio_regular":1},', '"data":{'],
+      [
+        'duplicado',
+        '"precio_regular":1,"precio_regular":125.50',
+        '"precio_regular":125.5',
+      ],
+      [
+        'clave escapada',
+        '"precio_\\u0072egular":125.50',
+        '"precio_regular":125.5',
+      ],
+    ])('acepta importe exacto con %s', async (_name, replacement, original) => {
+      const stored = await seed();
+      const request = command(stored.productId, { precio_regular: 125.5 });
+      const before = await snapshot(stored.productId);
+      expect(
+        await initialization.consume(
+          Buffer.from(JSON.stringify(request).replace(original, replacement)),
+        ),
+      ).toBe('APPLIED');
+      expect(await snapshot(stored.productId)).toEqual(before);
+      await noFacts(request.operation_id);
+    });
     it('adopta vigencia global real sin precio enviado ni inferencia por motivo, con corte persistido', async () => {
       const stored = await seed();
       const before = await snapshot(stored.productId);
@@ -300,6 +353,33 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
         await noFacts(request.operation_id);
       },
     );
+    it('usa la última clave duplicada incluso cuando es inválida', async () => {
+      const stored = await seed();
+      const request = command(stored.productId, { precio_regular: 125.5 });
+      const raw = JSON.stringify(request).replace(
+        '"precio_regular":125.5',
+        '"precio_regular":125.50,"precio_\\u0072egular":1e2',
+      );
+      expect(await initialization.consume(Buffer.from(raw))).toBe('REJECTED');
+      expect((await result(request.message_id)).payload.code).toBe(
+        'HISTORICAL_PRICE_CONFLICT',
+      );
+      await noFacts(request.operation_id);
+    });
+    it('mantiene compatibilidad con Inbox anterior sin metadatos', async () => {
+      const stored = await seed();
+      const first = command(stored.productId, { precio_regular: 125.5 });
+      expect(await consume(first)).toBe('APPLIED');
+      await postgres.admin!.query(
+        "UPDATE pricing.inbox SET payload=payload-'_pricing_initialization' WHERE message_id=$1",
+        [first.message_id],
+      );
+      const replay = { ...first, message_id: randomUUID() };
+      expect(await consume(replay)).toBe('DUPLICATE');
+      expect((await result(replay.message_id)).payload).toEqual(
+        (await result(first.message_id)).payload,
+      );
+    });
     it('cero vigencias/producto exacto: no toma precio de otro producto ni fabrica alta', async () => {
       await seed();
       const request = command(randomUUID());

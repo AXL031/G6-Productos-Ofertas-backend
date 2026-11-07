@@ -83,25 +83,8 @@ function parseEnvelope(value: unknown): Envelope {
   return value as unknown as Envelope;
 }
 
-function amountFromRawJson(raw: string, parsed: unknown): string {
-  const matches = [
-    ...raw.matchAll(
-      /"precio_regular"\s*:\s*(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g,
-    ),
-  ];
-  if (
-    matches.length !== 1 ||
-    !object(parsed) ||
-    !object(parsed.data) ||
-    typeof parsed.data.precio_regular !== 'number' ||
-    !Number.isFinite(parsed.data.precio_regular)
-  )
-    throw new PriceRuleError('PRECIO_INVALIDO');
-  const token = matches[0][1];
-  if (
-    Number(token) !== parsed.data.precio_regular ||
-    !/^\d{1,10}(?:\.\d{1,2})?$/.test(token)
-  )
+function amountFromRawJson(token: string | undefined): string {
+  if (token === undefined || !/^\d{1,10}(?:\.\d{1,2})?$/.test(token))
     throw new PriceRuleError('PRECIO_INVALIDO');
   const [whole, fraction = ''] = token.split('.');
   return `${whole}.${fraction.padEnd(2, '0')}`;
@@ -147,14 +130,29 @@ export class PricingProductInitialization {
   async consume(raw: Buffer): Promise<'APPLIED' | 'DUPLICATE' | 'REJECTED'> {
     const rawText = raw.toString('utf8');
     let parsed: unknown;
+    const sources = new WeakMap<object, string>();
     try {
-      parsed = JSON.parse(rawText) as unknown;
+      parsed = JSON.parse(
+        rawText,
+        function (key: string, value: unknown, context?: { source?: string }) {
+          if (
+            key === 'precio_regular' &&
+            typeof value === 'number' &&
+            context?.source
+          )
+            sources.set(this as object, context.source);
+          return value;
+        },
+      ) as unknown;
     } catch {
       throw new Error('PRICING_INVALID_MESSAGE_JSON');
     }
     const message = parseEnvelope(parsed);
     const operationId = message.operation_id.toLowerCase();
     const input = semanticInput(message.data);
+    const token = sources.get(message.data);
+    if (typeof message.data.precio_regular === 'number' && token === undefined)
+      throw new Error('PRICING_JSON_SOURCE_UNAVAILABLE');
     let amount: string | undefined;
     let domainCode: string | undefined;
     try {
@@ -162,12 +160,26 @@ export class PricingProductInitialization {
         message.data.modalidad !== 'RECUPERACION_HISTORICA' ||
         Object.hasOwn(message.data, 'precio_regular')
       )
-        amount = amountFromRawJson(rawText, parsed);
+        amount = amountFromRawJson(token);
     } catch (error) {
       domainCode =
         error instanceof PriceRuleError ? error.code : 'PRECIO_INVALIDO';
     }
     const normalized = semanticInput(message.data, amount);
+    const intent = semanticIntent(message.data, amount);
+    if (token !== undefined && amount === undefined)
+      intent.precio_regular = { invalid: { numericSource: token } };
+    const savedPayload = {
+      ...message,
+      _pricing_initialization: {
+        version: 1,
+        intent,
+        token: token ?? null,
+        ...(object(parsed) && Object.hasOwn(parsed, '_pricing_initialization')
+          ? { original: parsed._pricing_initialization }
+          : {}),
+      },
+    };
     const historical = message.data.modalidad === 'RECUPERACION_HISTORICA';
     const validFields =
       (message.data.modalidad === undefined ||
@@ -200,9 +212,23 @@ export class PricingProductInitialization {
         .limit(1);
       if (sameMessage) {
         const previous = sameMessage.payload;
+        const metadata = object(previous._pricing_initialization)
+          ? previous._pricing_initialization
+          : undefined;
+        const { _pricing_initialization: _internal, ...withoutInternal } =
+          previous;
+        const originalPrevious =
+          metadata?.version === 1
+            ? {
+                ...withoutInternal,
+                ...(Object.hasOwn(metadata, 'original')
+                  ? { _pricing_initialization: metadata.original }
+                  : {}),
+              }
+            : previous;
         const normalizedPrevious = object(previous)
           ? {
-              ...previous,
+              ...originalPrevious,
               operation_id:
                 typeof previous.operation_id === 'string'
                   ? previous.operation_id.toLowerCase()
@@ -211,7 +237,8 @@ export class PricingProductInitialization {
           : previous;
         if (
           canonical(normalizedPrevious) !==
-          canonical({ ...message, operation_id: operationId })
+            canonical({ ...message, operation_id: operationId }) ||
+          (metadata?.version === 1 && metadata.token !== (token ?? null))
         )
           throw new Error('PRICING_MESSAGE_ID_CONFLICT');
         return sameMessage.result === 'APPLIED' ? 'APPLIED' : 'DUPLICATE';
@@ -232,10 +259,17 @@ export class PricingProductInitialization {
       if (priorOperation.length) {
         const prior = priorOperation[0].payload;
         const priorData = object(prior) && object(prior.data) ? prior.data : {};
-        const sameIntent =
-          canonical(
-            semanticIntent(priorData, amountFromPrior(priorData) ?? undefined),
-          ) === canonical(semanticIntent(message.data, amount));
+        const metadata = object(prior._pricing_initialization)
+          ? prior._pricing_initialization
+          : undefined;
+        const priorIntent =
+          metadata?.version === 1 && object(metadata.intent)
+            ? metadata.intent
+            : semanticIntent(
+                priorData,
+                amountFromPrior(priorData) ?? undefined,
+              );
+        const sameIntent = canonical(priorIntent) === canonical(intent);
         if (sameIntent) {
           const [priorResult] = await tx
             .select()
@@ -260,7 +294,13 @@ export class PricingProductInitialization {
             historical && typeof priorPayload.completed_at === 'string'
               ? priorPayload.completed_at
               : undefined;
-          await this.insertInbox(tx, message, parsed, 'DUPLICATE', decisionAt);
+          await this.insertInbox(
+            tx,
+            message,
+            savedPayload,
+            'DUPLICATE',
+            decisionAt,
+          );
           await this.insertResult(
             tx,
             message,
@@ -277,7 +317,12 @@ export class PricingProductInitialization {
           );
           return 'DUPLICATE';
         }
-        await this.insertInbox(tx, message, parsed, 'OPERATION_ID_CONFLICT');
+        await this.insertInbox(
+          tx,
+          message,
+          savedPayload,
+          'OPERATION_ID_CONFLICT',
+        );
         await this.insertResult(
           tx,
           message,
@@ -293,7 +338,7 @@ export class PricingProductInitialization {
         return this.adoptHistorical(
           tx,
           message,
-          parsed,
+          savedPayload,
           normalized,
           amount,
           domainCode !== undefined,
@@ -301,7 +346,7 @@ export class PricingProductInitialization {
       }
 
       if (domainCode) {
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(tx, message, savedPayload, 'REJECTED');
         await this.insertResult(tx, message, input, 'REJECTED', domainCode);
         return 'REJECTED';
       }
@@ -331,7 +376,7 @@ export class PricingProductInitialization {
           initial[0].precioRegular === amount &&
           initial[0].currency.trim() === message.data.moneda
         ) {
-          await this.insertInbox(tx, message, parsed, 'DUPLICATE');
+          await this.insertInbox(tx, message, savedPayload, 'DUPLICATE');
           await this.insertResult(
             tx,
             message,
@@ -343,7 +388,7 @@ export class PricingProductInitialization {
           );
           return 'DUPLICATE';
         }
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(tx, message, savedPayload, 'REJECTED');
         await this.insertResult(
           tx,
           message,
@@ -376,7 +421,7 @@ export class PricingProductInitialization {
           .onConflictDoNothing()
           .returning();
         if (!definition) {
-          await this.insertInbox(tx, message, parsed, 'REJECTED');
+          await this.insertInbox(tx, message, savedPayload, 'REJECTED');
           await this.insertResult(
             tx,
             message,
@@ -423,7 +468,7 @@ export class PricingProductInitialization {
             occurredAt: new Date(message.occurred_at),
           })),
         );
-        await this.insertInbox(tx, message, parsed, 'APPLIED');
+        await this.insertInbox(tx, message, savedPayload, 'APPLIED');
         await this.insertResult(
           tx,
           message,
@@ -436,7 +481,7 @@ export class PricingProductInitialization {
         return 'APPLIED';
       } catch (error) {
         if (error instanceof PriceRuleError) {
-          await this.insertInbox(tx, message, parsed, 'REJECTED');
+          await this.insertInbox(tx, message, savedPayload, 'REJECTED');
           await this.insertResult(tx, message, input, 'REJECTED', error.code);
           return 'REJECTED';
         }

@@ -66,3 +66,21 @@ con valid_from <= corte y corte < valid_until (o fin abierto). La versión
 retornada es la del snapshot adoptado, incluso si existe otro snapshot futuro
 con versión más nueva. No cambia definición, ofertas, fechas, motivos ni historial.
 No se generan hechos monetarios ni inicialización artificial.
+
+## Representación monetaria e índice de Inbox
+
+El runtime toma el token JSON del campo `data.precio_regular` efectivo; ante
+claves duplicadas se usa la última, también si el nombre utiliza escapes Unicode.
+Homónimos anidados no participan. Exponentes y más de dos decimales se rechazan
+sin redondear. JSON Schema valida el valor matemático y no puede validar estas
+restricciones de representación ni detectar claves duplicadas.
+
+Inbox guarda metadatos internos versionados para reintentos nuevos. Las filas
+antiguas carecen del token original: se conserva su lectura previa, pero no puede
+reconstruirse si un número llegó en exponente o con precisión perdida.
+
+La migración aditiva `0003_initialization_operation_index.sql` requiere aplicación
+separada por el propietario del esquema; no se ejecuta al iniciar el servicio.
+En PostgreSQL 16 descartable, con 100.001 filas sintéticas y buffers calientes,
+EXPLAIN ANALYZE midió 25,7–27,3 ms sin índice y 0,072 ms con el índice candidato.
+La migración normativa compartida y su aplicación siguen pendientes de Marco.
