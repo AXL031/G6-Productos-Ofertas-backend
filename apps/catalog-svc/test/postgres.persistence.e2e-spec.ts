@@ -1898,12 +1898,17 @@ INSERT INTO inventory.locations(code,name,type) VALUES ('block-a', 'Disposable',
               (r) => r.published_at === null,
             ),
           ).toBe(true);
+          const badOriginSignals = new CatalogTelemetry();
           runtime = new CatalogAmqpRuntime(
             new CatalogMessageService(database),
             broker.settings,
+            badOriginSignals,
           );
           runtime.onModuleInit();
-          await expect.poll(() => runtime!.ready).toBe(false);
+          await expect
+            .poll(() => badOriginSignals.snapshot().AMQP_CONSUMER_PAUSED)
+            .toBe(1);
+          expect(runtime.ready).toBe(false);
           const badOriginDelivery = await broker.next('po.catalogo.q');
           expect(
             JSON.parse(badOriginDelivery.content.toString()).message_id,
