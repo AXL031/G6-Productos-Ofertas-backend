@@ -34,18 +34,19 @@ Variantes únicas y pertenecientes al producto. Simple no admite variantIds.
 Padre exige variantes explícitas para Inventory; su SKU base nunca es físico.
 Pricing corresponde solo a producto/padre, nunca a variante.
 
-### Delta HTTP pendiente de aprobación de Marco: moneda explícita
+### Delta HTTP aprobado por Marco: moneda explícita
 
-Si la selección incluye PRICING se propone exigir `moneda`, sin default:
+Si la selección incluye PRICING se exige `moneda`, sin default:
 `{"solicitudId":"UUID","dependencias":["PRICING","INVENTARIO"],"moneda":"USD"}`.
 Tres letras mayúsculas de moneda ISO reconocidas por ICU del runtime Node;
 se rechazan espacios, minúsculas y códigos desconocidos. No se convierte ni
 deduce de Pricing, de Catalog o de un GET demo. Es afirmación humana de entrada:
 Pricing conserva la autoridad y rechaza incompatibilidades con su vigencia.
 `precio_regular` sigue prohibido en este DTO. Para Inventory-only se omite
-moneda; se propone rechazarla si se envía para evitar intención irrelevante.
-Este delta NO se presenta como aprobado ni publicado: necesita aprobación
-de Marco antes de publicación normativa. Fragmento OpenAPI propuesto y cambios
+moneda; se rechaza si se envía para evitar intención irrelevante.
+Marco aprobó expresamente este delta y autorizó continuar implementación y
+pruebas antes de publicación normativa. No se presenta como publicado ni como
+habilitación productiva. Fragmento OpenAPI propuesto y cambios
 SPEC/FLOW en `contracts/`, sin modificar Docs master ni Gateway.
 
 Respuesta candidata 202: campos base de OperationAccepted y lista de operaciones:
@@ -106,18 +107,21 @@ del productor autenticado y causalidad vigente. REJECTED permanece terminal.
 ## Propuesta de migración aditiva
 
 `migrations/0004_historical_preparation_requests.sql` es candidata. No modifica
-migraciones históricas y no se aplicó en Supabase compartida; solo en PostgreSQL
-descartable durante pruebas. Tabla local con PK solicitud, FK/índice producto,
+migraciones históricas. El agente la aplicó solo en PostgreSQL descartable durante
+pruebas. Tabla local con PK solicitud, FK/índice producto,
 sujeto, correlación, fingerprint, selección y recibo. RLS y SELECT/INSERT solo
 para catalog_app, sin UPDATE/DELETE. Es autorización del rol runtime del servicio,
 no acceso directo de usuarios ni exposición por Data API. No crea roles/grants
 ajenos ni guarda JWT, precio o saldo. Bootstrap no ejecuta migraciones.
-Aplicación compartida/despliegue necesita proceso/autorización separados.
+Marco autorizó aplicación manual compartida por el responsable en SQL Editor.
+Este agente no la aplica. Consulta BEGIN READ ONLY confirmó presencia de tabla,
+owner po_catalog_owner y RLS; no prueba por sí sola todo el DDL/ACL de 0004.
+Despliegue y activación productiva necesitan autorización separada.
 
 ## Pendientes
 
 - Revisar/publicar DTO, errores y concesión interna de esta propuesta.
-- Marco: aprobar el delta HTTP moneda y publicar operación/DTO/errores.
+- Owners Docs: publicar operación/DTO/errores con moneda ya aprobada por Marco.
 - Marco/contratos: publicar SPEC-013/AsyncAPI conforme al patch de Vera #205.
 - Inventory consolidado #176: 56aa4322725060b529bf316872f891582d7d1b2e.
 - Ejecución integral por SHA y resultados: BLOQUE-A.md y CI final de #194.

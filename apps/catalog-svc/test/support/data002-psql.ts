@@ -8,8 +8,6 @@ export interface Data002Step {
 export interface Data002Result {
   status: number;
   output: string;
-  wallMs: number;
-  sqlMs: number;
 }
 
 /** One Docker transport, independent real psql sessions. A failing script still
@@ -28,18 +26,14 @@ export function runData002Psql(
       if (step.input.includes(token))
         throw new Error('Ambiguous DATA-002 framing');
       return `printf '\\036${token}:BEGIN:${index}\\037\\n'
-start=$(awk '{printf "%.0f", $1*1000}' /proc/uptime)
 psql -X -q -At -F '|' -U postgres -v ON_ERROR_STOP=1 2>&1 <<'${delimiter}'
-\\timing on
 ${step.input}
 ${delimiter}
 status=$?
-end=$(awk '{printf "%.0f", $1*1000}' /proc/uptime)
-printf '\\036${token}:END:${index}:%s:%s\\037\\n' "$status" "$((end-start))"
+printf '\\036${token}:END:${index}:%s\\037\\n' "$status"
 `;
     })
     .join('\n');
-  const start = performance.now();
   const processResult = spawnSync('docker', ['exec', '-i', container, 'sh'], {
     input: script,
     encoding: 'utf8',
@@ -59,40 +53,14 @@ printf '\\036${token}:END:${index}:%s:%s\\037\\n' "$status" "$((end-start))"
         token +
         ':END:' +
         index +
-        ':(\\d+):(\\d+)\\x1f',
+        ':(\\d+)\\x1f',
     );
     const match = processResult.stdout.match(pattern);
     if (!match) throw new Error('Missing DATA-002 result: ' + step.name);
-    let sqlMs = 0;
-    const output = match[1]
-      .split(/\r?\n/)
-      .filter((line) => {
-        const timing = /^Time: ([\d.]+) ms(?: .*)?$/.exec(line);
-        if (!timing) return true;
-        sqlMs += Number(timing[1]);
-        return false;
-      })
-      .join('\n')
-      .trim();
     results.set(step.name, {
       status: Number(match[2]),
-      output,
-      wallMs: Number(match[3]),
-      sqlMs,
+      output: match[1].trim(),
     });
   }
-  console.log(
-    'DATA002_PSQL_METRICS=' +
-      JSON.stringify({
-        dockerProcesses: 1,
-        psqlSessions: steps.length,
-        totalMs: +(performance.now() - start).toFixed(1),
-        steps: [...results].map(([name, result]) => ({
-          name,
-          wallMs: +result.wallMs.toFixed(1),
-          sqlMs: +result.sqlMs.toFixed(1),
-        })),
-      }),
-  );
   return results;
 }

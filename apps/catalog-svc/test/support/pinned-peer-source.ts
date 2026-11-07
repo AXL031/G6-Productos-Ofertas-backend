@@ -5,7 +5,7 @@ import { join } from 'node:path';
 export const INVENTORY_BILATERAL_SHA =
   '56aa4322725060b529bf316872f891582d7d1b2e';
 export const PRICING_HISTORICAL_SHA =
-  '7398e6fbc577ec3d595a6c04d4aa9f884fbf527d';
+  '807189f7ca49d4af3b4ad367043260bc3050fb3d';
 
 /** Export immutable, unmodified peer source into the owned disposable directory.
  * A shallow CI checkout need not contain the peer commit. Fetch into a separate

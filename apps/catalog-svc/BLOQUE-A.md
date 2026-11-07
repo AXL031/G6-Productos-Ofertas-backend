@@ -2,6 +2,20 @@
 
 ## Continuación autorizada — diagnóstico DATA-002 e integración con master
 
+Estado actual: corrección DATA-002 publicada en ecdf34b, integración master
+publicada en 95a766a y PR #194 MERGEABLE/DRAFT frente a d21c24f (sin aprobar
+merge a master). La preparación siguiente fija Pricing provisional 807189f y
+retira toda instrumentación temporal; sus resultados exactos y SHA final se
+enlazan en la descripción de #194. No se altera el payload productor.
+La espera del SHA definitivo de Vera es un bloqueo específico de integración
+definitiva; las correcciones locales que anunció todavía no están publicadas.
+
+Consulta Supabase puntual autorizada: BEGIN READ ONLY y pg_catalog confirmaron
+catalog.historical_preparation_requests, owner po_catalog_owner y RLS=true.
+No se consultaron registros de negocio ni se escribieron datos/DDL. Es evidencia
+de presencia, no acreditación completa de DDL/ACL, historial de aplicación,
+despliegue ni activación productiva. No se repitió la auditoría general.
+
 ### DATA-002 — medición original y reducción de procesos
 
 [Diagnóstico Linux 42339227598](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42339227598/job/128302972988),
@@ -28,11 +42,21 @@ La causa exacta del timeout en el entorno de Vera no se afirma reproducida.
 Corrección: un solo transporte docker exec con 22 sesiones psql independientes;
 conserva scripts originales, rollback al cerrar cada conexión fallida, códigos de
 salida, tres negativos/preflight/carga, conteos sin efectos, restauraciones,
-doble carga idempotente, 12 postchecks y conflicto de contenido. Registra tiempos
-SQL reales y de sesiones. Mantiene límite localizado 5000 ms, sin cambiar el
-global ni adoptar los 120 s sin medición que traía master para este caso.
-La instrumentación temporal repetirá también el caso corregido aisladamente;
-su resultado se registrará antes de retirarla. No hay PASS aún de esa corrección.
+doble carga idempotente, 12 postchecks y conflicto de contenido. Durante el ensayo
+se registraron tiempos SQL reales y de sesiones. Mantiene límite localizado
+5000 ms, sin cambiar el global ni adoptar los 120 s sin medición que traía master.
+
+[Corrección Linux 42339989926](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/actions/runs/42339989926/job/128305325303),
+fuente ecdf34b125f022aa5ecae34c0fe517a903d31805: test 867 ms en suite y 712 ms
+aislado, ambos PASS con 5000 ms. Transporte/cuerpo SQL 861.6 / 704.1 ms; SQL
+553.6 / 443.8 ms. General 1008 PASS / 207 SKIP. Aislado: 1 PASS / 96 no
+seleccionadas, sin atribuirles cobertura. Limpieza 401.0 / 348.1 ms fuera del test.
+Mejora de test 53.6% en suite y 62.4% aislado respecto al diagnóstico anterior.
+Suite PostgreSQL actual: 97 PASS, 0 SKIP. Master sustituyó HTTP-50 parametrizado
+en dos modos por un caso firmado G7 (conservado), de ahí 98→97; no se eliminó
+cobertura para fabricar un PASS. Ambos peers anteriores siguen acreditados en
+ese run. La instrumentación temporal de etapas/probes/child y SQL timing se
+retira tras medir; el runner final ejecutará la implementación mínima sin ella.
 
 Integración master → poma realizada por merge no destructivo 95a766a4380f9136858cde3691635ee2dc88c8a6,
 contra d21c24fcec5fe587545a43b76fa921e91eb25e0a. Conflictos resueltos por bloques

@@ -1,4 +1,42 @@
 {
+  "closure_current": {
+    "moneda": "APROBADA por Marco: obligatoria PRICING, prohibida INVENTARIO-only, ISO y fingerprint; publicación Docs posterior no bloquea pruebas",
+    "pricingPreliminarySha": "807189f7ca49d4af3b4ad367043260bc3050fb3d",
+    "pricingDefinitive": "WAITING_PUBLISHED_SHA: Vera anunció cambios locales adicionales aún sin commit; no acreditados",
+    "inventorySha": "56aa4322725060b529bf316872f891582d7d1b2e",
+    "masterIntegrated": "d21c24fcec5fe587545a43b76fa921e91eb25e0a",
+    "integrationCommit": "95a766a4380f9136858cde3691635ee2dc88c8a6",
+    "data002FixCommit": "ecdf34b125f022aa5ecae34c0fe517a903d31805",
+    "data002OriginalMeasurement": {
+      "source": "fdb8f146bf1574809bdc63db5fadfe6a59a25b64",
+      "run": 42339227598,
+      "job": 128302972988,
+      "timeoutMs": 5000,
+      "suiteMs": 1869.1,
+      "isolatedMs": 1892.1,
+      "dockerProcesses": 22,
+      "linuxTimeoutReproduced": false
+    },
+    "data002CorrectedMeasurement": {
+      "source": "ecdf34b125f022aa5ecae34c0fe517a903d31805",
+      "run": 42339989926,
+      "job": 128305325303,
+      "timeoutMs": 5000,
+      "suiteTestMs": 867,
+      "isolatedTestMs": 712,
+      "suiteSqlMs": 553.6,
+      "isolatedSqlMs": 443.8,
+      "dockerProcesses": 1,
+      "psqlSessions": 22,
+      "headCi": "SUCCESS 19/19",
+      "compatibilityRun": 42339992613,
+      "compatibilityCi": "SUCCESS 19/19",
+      "temporaryInstrumentation": "Retirada después de medir; transporte mínimo, sesiones y verificaciones conservados"
+    },
+    "sharedMigration": "Aplicación manual autorizada a responsable. Consulta BEGIN READ ONLY confirma catalog.historical_preparation_requests, owner po_catalog_owner, RLS=true; sin escrituras del agente ni acreditación completa DDL/ACL",
+    "productionAdapter": "SIN CAMBIOS: cerrado por defecto, habilitable solo NODE_ENV=test",
+    "finalEvidence": "Ver BLOQUE-A.md y PR #194: SHA exacto, resultados preliminares y definitivos separados; se conservan cortes anteriores debajo"
+  },
   "consulted": "2026-11-05",
   "repository": "Taller-SW-Web/G6-Productos-Ofertas-docs",
   "ref": "master",

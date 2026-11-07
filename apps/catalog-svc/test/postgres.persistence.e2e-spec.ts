@@ -308,30 +308,6 @@ describe.skipIf(!dockerAvailable)(
     }, 180000);
 
     afterAll(async () => {
-      const probes: Record<string, number[]> = {
-        dockerExec: [],
-        psqlSelect: [],
-      };
-      for (let attempt = 0; attempt < 3; attempt++) {
-        let start = performance.now();
-        command('docker', ['exec', container, 'true']);
-        probes.dockerExec.push(+(performance.now() - start).toFixed(1));
-        start = performance.now();
-        command('docker', [
-          'exec',
-          container,
-          'psql',
-          '-X',
-          '-At',
-          '-U',
-          'postgres',
-          '-c',
-          'SELECT 1',
-        ]);
-        probes.psqlSelect.push(+(performance.now() - start).toFixed(1));
-      }
-      console.log('DATA002_DIAGNOSTIC_PROBES=' + JSON.stringify(probes));
-      const cleanupStart = performance.now();
       await jointRuntime?.onModuleDestroy();
       await jointBroker.close();
       if (!closed) await database?.onModuleDestroy();
@@ -350,43 +326,7 @@ describe.skipIf(!dockerAvailable)(
           throw new Error('Invalid isolated test cleanup path');
         rmSync(directory, { recursive: true, force: true });
       }
-      console.log(
-        'DATA002_DIAGNOSTIC_CLEANUP_MS=' +
-          (performance.now() - cleanupStart).toFixed(1),
-      );
     }, 30000);
-
-    // Temporary diagnostic: same original 5000 ms case in a fresh isolated suite.
-    afterAll(async () => {
-      if (process.env.CATALOG_DATA002_DIAGNOSTIC_CHILD === '1') return;
-      const child = spawn(
-        process.execPath,
-        [
-          resolve('node_modules/vitest/vitest.mjs'),
-          'run',
-          '--config',
-          'vitest.config.e2e.ts',
-          'apps/catalog-svc/test/postgres.persistence.e2e-spec.ts',
-          '--testNamePattern=validates the DATA-002 batch in disposable PostgreSQL',
-          '--reporter=verbose',
-        ],
-        {
-          env: { ...process.env, CATALOG_DATA002_DIAGNOSTIC_CHILD: '1' },
-          windowsHide: true,
-        },
-      );
-      child.stdout.on('data', (data: Buffer) =>
-        console.log('DATA002_ISOLATED: ' + data.toString()),
-      );
-      child.stderr.on('data', (data: Buffer) =>
-        console.log('DATA002_ISOLATED_STDERR: ' + data.toString()),
-      );
-      const code = await new Promise<number | null>((resolveExit, reject) => {
-        child.once('error', reject);
-        child.once('close', resolveExit);
-      });
-      expect(code).toBe(0);
-    }, 180000);
 
     function productInput(sku: string) {
       return {

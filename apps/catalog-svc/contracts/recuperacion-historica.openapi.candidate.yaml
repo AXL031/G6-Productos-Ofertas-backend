@@ -1,4 +1,4 @@
-# CONTRATO_CANDIDATO. Delta moneda pendiente de aprobación de Marco.
+# CONTRATO_CANDIDATO. Moneda aprobada por Marco; publicación Docs posterior.
 # Fragmento propuesto; no modifica OpenAPI oficial ni publica Gateway.
 openapi: 3.1.0
 info:
@@ -161,7 +161,7 @@ components:
           minLength: 3
           maxLength: 3
           pattern: '^[A-Z]{3}$'
-          description: Delta pendiente de aprobación. Moneda ISO conocida por ICU, explícita y sin default; Pricing valida coincidencia autoritativamente. No importe.
+          description: Aprobada por Marco para implementación. Moneda ISO conocida por ICU, explícita y sin default; Pricing valida coincidencia autoritativamente. No importe. Publicación Docs pendiente.
       allOf:
         - if:
             properties:

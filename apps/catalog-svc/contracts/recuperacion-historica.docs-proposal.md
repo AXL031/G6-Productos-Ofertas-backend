@@ -1,18 +1,20 @@
 # Propuesta para Docs — CONTRATO_CANDIDATO, no publicación
 
 Fuentes: autorización escrita del encargo 06/11/2026, Catalog #194,
-Pricing #205 @7398e6fbc577ec3d595a6c04d4aa9f884fbf527d e Inventory #176
+Pricing #205 provisional @807189f7ca49d4af3b4ad367043260bc3050fb3d e Inventory #176
 @56aa4322725060b529bf316872f891582d7d1b2e. No se modificó Docs master.
 
-## Delta nuevo que Marco debe aprobar
+## Delta HTTP aprobado por Marco; publicación posterior
 
 En el DTO HTTP candidato, `moneda` explícita obligatoria solo si incluye PRICING;
 tres letras mayúsculas ISO conocidas por ICU del runtime, sin default ni importe.
 Es afirmación humana, no autoridad monetaria; Pricing valida contra su snapshot.
-Inventory-only no requiere moneda y se propone rechazarla si se suministra.
+Inventory-only prohíbe moneda y la rechaza si se suministra.
 La moneda forma parte del fingerprint: misma solicitud con moneda diferente
 conflicta aunque el adaptador esté deshabilitado. No usar GET demo, inferencias
-o PEN por defecto. La aprobación anterior de la operación no aprueba este delta.
+o PEN por defecto. El usuario confirmó la aprobación expresa de Marco para este
+delta y autorizó continuar pruebas antes de publicar Docs. La operación permanece
+deshabilitada por defecto; publicación posterior no impide implementación ni CI.
 
 ## OpenAPI
 
@@ -84,10 +86,13 @@ Completed real con price_version/vigencia_id; rechazo durable sin falso éxito.
 
 0004 es candidata aditiva compatible con 0001–0003, exige po_catalog_owner,
 RLS y SELECT/INSERT para catalog_app; sin UPDATE/DELETE ni acceso ajeno.
-Requiere aplicación separada, aprobación y revisión por owner DB antes de uso
-compartido. No se aplicó a Supabase y bootstrap no migra. La base compartida
-auditada externamente no contiene esta tabla: su ausencia bloquea la operación
-autorizada allí; no se crea silenciosamente ni se simula persistencia.
+Marco autorizó su aplicación manual separada por el responsable en SQL Editor.
+Este agente no la aplicó. Consulta puntual BEGIN READ ONLY confirmó la tabla
+catalog.historical_preparation_requests, owner po_catalog_owner y RLS habilitado;
+no acredita por sí sola todo el DDL/ACL de 0004 ni su historial de aplicación.
+Bootstrap no migra, no crea silenciosamente la tabla
+ni simula persistencia. Autorización, aplicación manual y uso productivo son
+estados independientes.
 
 CATALOG_HISTORICAL_PRICING_CANDIDATE_ENABLED=false/ausente es cerrado;
 true solo permitido NODE_ENV=test. Capacidad humana por concesión interna
