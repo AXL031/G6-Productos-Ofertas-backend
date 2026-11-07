@@ -5,7 +5,7 @@ readonly ROOT
 readonly WORKFLOW="$ROOT/.github/workflows/cd-services-azure.yml"
 readonly CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
-for required in "workflow_run:" "workflow_dispatch:" "environment: azure-h4" "id-token: write" "cancel-in-progress: false" "max-parallel: 1" "packages: write" "azure/login@v2" "container-apps/deploy.sh" "smoke-marketplace.sh" "  recover:" "needs: [prepare, deploy, smoke]" "needs.smoke.result == 'failure'" "if: always()"; do
+for required in "workflow_run:" "workflow_dispatch:" "environment: azure-h4" "id-token: write" "cancel-in-progress: false" "max-parallel: 1" "packages: write" "azure/login@v2" "container-apps/deploy.sh" "smoke-marketplace.sh" "  recover:" "needs: [prepare, deploy, smoke]" "needs.smoke.result == 'failure'" "if: always()" "Recuperación supervisada" "reconcile-recovery.sh" "needs.prepare.outputs.services" "gh api"; do
   grep -Fq "$required" "$WORKFLOW" || fail "falta $required"
 done
 if grep -Fq '  push:' "$WORKFLOW"; then fail 'CD no debe publicarse desde push no validado'; fi
@@ -29,7 +29,7 @@ grep -Fq 'select(.name == "caddy")' "$ROOT/ops/azure/container-apps/deploy.sh" |
 grep -Fq 'del(.revisionSuffix)' "$ROOT/ops/azure/container-apps/deploy.sh" || fail 'metadato revisionSuffix no normalizado'
 grep -Fq 'containerApps/write' "$ROOT/ops/azure/container-apps/CONFIGURACION_OIDC_H4.md" || fail 'limitación del permiso genérico write no documentada'
 grep -Fq 'azure_cd_h4:' "$CI_WORKFLOW" || fail 'pruebas del ejecutor no conectadas a CI'
-for test_file in validate-source.test.sh deploy.test.sh smoke.test.sh workflow.test.sh; do
+for test_file in validate-source.test.sh deploy.test.sh smoke.test.sh reconcile-recovery.test.sh workflow.test.sh; do
   grep -Fq "ops/azure/container-apps/tests/$test_file" "$CI_WORKFLOW" || fail "CI no ejecuta $test_file"
 done
 printf 'PASS: workflow separa auto/manual, publica, usa OIDC, limita Azure y serializa despliegues\n'

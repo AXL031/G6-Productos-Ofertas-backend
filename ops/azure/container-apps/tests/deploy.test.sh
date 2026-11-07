@@ -18,21 +18,29 @@ set -Eeuo pipefail
 state="${MOCK_STATE:?}"
 [[ "$*" == *'--resource-group rg-g6-aca-chile'* ]] || { echo 'wrong resource group' >&2; exit 61; }
 if [[ "${1:-}" == containerapp && "${2:-}" == show ]]; then cat "$state"; exit 0; fi
-if [[ "${1:-}" == containerapp && "${2:-}" == revision && "${3:-}" == show ]]; then jq -c '.revision' "$state"; exit 0; fi
+if [[ "${1:-}" == containerapp && "${2:-}" == revision && "${3:-}" == show ]]; then
+  jq -c --arg startup "${MOCK_STARTUP:-false}" '(.revisionPolls += 1) | if $startup == "true" and .revisionPolls == 1 then .revision.properties.runningState="Processing" elif $startup == "true" and .revisionPolls >= 2 then .revision.properties.runningState="Running" else . end | .revision' "$state"
+  jq --arg startup "${MOCK_STARTUP:-false}" '(.revisionPolls += 1) | if $startup == "true" and .revisionPolls == 1 then .revision.properties.runningState="Processing" elif $startup == "true" and .revisionPolls >= 2 then .revision.properties.runningState="Running" else . end' "$state" > "$state.tmp"
+  mv "$state.tmp" "$state"
+  exit 0
+fi
 if [[ "${1:-}" == containerapp && "${2:-}" == update ]]; then
   [[ "$*" == *'--container-name api-gateway'* ]] || { echo 'container name missing' >&2; exit 62; }
   image=''
   while (($#)); do [[ "$1" != --image ]] || { shift; image="$1"; }; shift || true; done
   [[ -n "$image" ]] || exit 63
-  jq --arg image "$image" --arg unhealthy_target "${MOCK_UNHEALTHY_TARGET:-}" --arg unhealthy_rollback "${MOCK_UNHEALTHY_ROLLBACK:-false}" '
+  jq --arg image "$image" --arg unhealthy_target "${MOCK_UNHEALTHY_TARGET:-}" --arg unhealthy_rollback "${MOCK_UNHEALTHY_ROLLBACK:-false}" --arg scale_zero "${MOCK_SCALE_ZERO:-false}" '
     .updates += 1 |
     .properties.template.containers |= map(if .name == "api-gateway" then .image=$image else . end) |
     .properties.latestRevisionName = ("rev-" + (.updates|tostring)) |
     .properties.latestReadyRevisionName = .properties.latestRevisionName |
     .properties.template.revisionSuffix = ("revision-" + (.updates|tostring)) |
     .revision.properties.template = .properties.template |
-    .revision.properties.healthState = (if $image == $unhealthy_target or ($unhealthy_rollback == "true" and ($image | contains("@sha256:aaaaaaaa"))) then "Unhealthy" else "Healthy" end) |
-    .revision.properties.runningState = "Running"
+    .revisionPolls = 0 |
+    .revision.properties.replicas = (if $scale_zero == "true" then 0 else 1 end) |
+    .revision.properties.provisioningState = "Provisioned" |
+    .revision.properties.healthState = (if $image == $unhealthy_target or ($unhealthy_rollback == "true" and ($image | contains("@sha256:aaaaaaaa"))) then "Unhealthy" elif $scale_zero == "true" then "None" else "Healthy" end) |
+    .revision.properties.runningState = (if $image == $unhealthy_target or ($unhealthy_rollback == "true" and ($image | contains("@sha256:aaaaaaaa"))) then "Failed" elif $scale_zero == "true" then "Stopped" else "Running" end)
   ' "$state" > "$state.tmp"
   mv "$state.tmp" "$state"
   exit 0
@@ -40,8 +48,9 @@ fi
 exit 64
 MOCK
 chmod +x "$TEMP/bin/az"
-export PATH="$TEMP/bin:$PATH" MOCK_STATE="$TEMP/state.json" ACA_POLL_ATTEMPTS=1 ACA_POLL_INTERVAL_SECONDS=0
+export PATH="$TEMP/bin:$PATH" MOCK_STATE="$TEMP/state.json" ACA_POLL_ATTEMPTS=2 ACA_POLL_INTERVAL_SECONDS=0
 export DEPLOY_RECEIPT="$TEMP/gateway.receipt"
+export MOCK_STARTUP=true
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 
 if bash "$DEPLOY" bad-service "$TARGET" >/dev/null 2>&1; then fail 'servicio no autorizado'; fi
@@ -50,18 +59,23 @@ if bash "$DEPLOY" api-gateway "${TARGET%@*}" >/dev/null 2>&1; then fail 'imagen 
 printf 'PASS: rechaza servicio, paquete cruzado e imagen sin digest\n'
 
 if bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/deploy.log" 2>&1; then :; else cat "$TEMP/deploy.log"; fail 'despliegue esperado'; fi
+grep -Fq 'modo=running réplicas=1 salud=Healthy' "$TEMP/deploy.log" || fail 'arranque Processing→Running no se verificó'
 jq -e --arg target "$TARGET" '.properties.template.containers[] | select(.name == "api-gateway") | .image == $target' "$MOCK_STATE" >/dev/null || fail 'imagen objetivo no aplicada'
 jq -e '.properties.template.containers[] | select(.name == "caddy") | .image | contains("cccccccc")' "$MOCK_STATE" >/dev/null || fail 'caddy no conservado'
 jq -e '.properties.configuration.ingress.external == true and .properties.configuration.secrets[0].value == "must-not-be-printed" and .properties.template.scale.maxReplicas == 1' "$MOCK_STATE" >/dev/null || fail 'configuración ACA no conservada'
 if grep -Fq 'must-not-be-printed' "$TEMP/deploy.log"; then fail 'se imprimió configuración privada'; fi
 printf 'PASS: actualiza con sidecar caddy en minúscula y conserva imagen/configuración sin imprimir secretos\n'
 cp "$DEPLOY_RECEIPT" "$TEMP/first.receipt"
+unset MOCK_STARTUP
 
 updates="$(jq -r .updates "$MOCK_STATE")"
-bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/idempotent.log" 2>&1 || fail 'despliegue idempotente'
+jq '.revision.properties.runningState="Stopped" | .revision.properties.healthState="None" | .revision.properties.replicas=0 | .revision.properties.provisioningState="Provisioned"' "$MOCK_STATE" > "$TEMP/state.tmp"
+mv "$TEMP/state.tmp" "$MOCK_STATE"
+bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/idempotent.log" 2>&1 || { cat "$TEMP/idempotent.log"; fail 'idempotencia tras inactividad'; }
 [[ "$(jq -r .updates "$MOCK_STATE")" == "$updates" ]] || fail 'idempotencia creó una revisión'
 grep -Fq Idempotencia "$TEMP/idempotent.log" || fail 'idempotencia no registrada'
-printf 'PASS: repetir el mismo digest no crea otra revisión\n'
+grep -Fq 'modo=scale-to-zero réplicas=0 salud=None' "$TEMP/idempotent.log" || fail 'estado Scale to 0 no fue distinguido'
+printf 'PASS: idempotencia tras inactividad acepta Stopped/0 sin crear revisión\n'
 
 previous_from_receipt="$(sed -n 's/^previous=//p' "$TEMP/first.receipt")"
 target_from_receipt="$(sed -n 's/^target=//p' "$TEMP/first.receipt")"
@@ -76,6 +90,11 @@ mv "$TEMP/state.tmp" "$MOCK_STATE"
 bash "$DEPLOY" --restore api-gateway "$PREVIOUS" "$TARGET" "$config_from_receipt" > "$TEMP/restore.log" 2>&1 || { cat "$TEMP/restore.log"; fail 'recuperación coordinada válida'; }
 grep -Fq 'ROLLBACK COORDINADO VERIFICADO' "$TEMP/restore.log" || fail 'recuperación no quedó confirmada'
 DEPLOY_RECEIPT="$TEMP/redeploy.receipt" bash "$DEPLOY" api-gateway "$TARGET" >/dev/null 2>&1 || fail 'reaplicación de fixture'
+jq --arg previous "$PREVIOUS" '.properties.template.containers |= map(if .name == "api-gateway" then .image=$previous else . end)' "$MOCK_STATE" > "$TEMP/state.tmp"
+mv "$TEMP/state.tmp" "$MOCK_STATE"
+MOCK_SCALE_ZERO=true DEPLOY_RECEIPT="$TEMP/scale-zero.receipt" bash "$DEPLOY" api-gateway "$TARGET" > "$TEMP/scale-zero.log" 2>&1 || { cat "$TEMP/scale-zero.log"; fail 'actualización válida con escala cero'; }
+grep -Fq 'modo=scale-to-zero réplicas=0 salud=None' "$TEMP/scale-zero.log" || fail 'revisión nueva escalada a cero no aceptada'
+printf 'PASS: revisión nueva valida Scale to 0 sin afirmar liveness/readiness\n'
 printf 'PASS: recibo digest-only permite recuperar y omite cambios concurrentes de ingress\n'
 
 jq --arg previous "$PREVIOUS" '.properties.template.containers |= map(if .name == "api-gateway" then .image=$previous else . end) | .properties.latestRevisionName="rev-restore" | .properties.latestReadyRevisionName="rev-restore" | .revision.properties.healthState="Healthy"' "$MOCK_STATE" > "$TEMP/state.tmp"

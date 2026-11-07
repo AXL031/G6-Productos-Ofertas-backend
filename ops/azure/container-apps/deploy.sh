@@ -10,6 +10,9 @@ mode=deploy
 if [[ "${1:-}" == --restore ]]; then
   [[ $# == 5 ]] || fail 'uso: deploy.sh --restore <servicio> <digest-anterior> <digest-aplicado> <sha256-configuración>'
   mode=restore; service="$2"; previous_image="$3"; image="$4"; expected_config_hash="$5"
+elif [[ "${1:-}" == --inspect ]]; then
+  [[ $# == 3 ]] || fail 'uso: deploy.sh --inspect <servicio> <imagen-candidata>'
+  mode=inspect; service="$2"; image="$3"
 else
   [[ $# == 2 ]] || fail 'uso: deploy.sh <servicio> <imagen-con-digest>'
   service="$1"; image="$2"
@@ -42,7 +45,7 @@ normalize_app() {
 container_image() { jq -er --arg name "$container" '[.properties.template.containers[] | select(.name == $name) | .image] | if length == 1 then .[0] else error("container target ausente o duplicado") end' "$1"; }
 revision_health() { az containerapp revision show --name "$app" --resource-group "$RESOURCE_GROUP" --revision "$1" --output json > "$2"; }
 verify_revision() {
-  local expected="$1" deadline_attempts="${ACA_POLL_ATTEMPTS:-30}" delay="${ACA_POLL_INTERVAL_SECONDS:-10}" attempt current latest ready revision_image health active running
+  local expected="$1" deadline_attempts="${ACA_POLL_ATTEMPTS:-30}" delay="${ACA_POLL_INTERVAL_SECONDS:-10}" attempt current latest ready revision_image health active running replicas min_replicas provisioning
   for ((attempt=1; attempt<=deadline_attempts; attempt++)); do
     read_app > "$after" || { sleep "$delay"; continue; }
     current="$(container_image "$after" 2>/dev/null || true)"
@@ -53,12 +56,36 @@ verify_revision() {
       health="$(jq -r '.properties.healthState // empty' "$revision")"
       active="$(jq -r '.properties.active // false' "$revision")"
       running="$(jq -r '.properties.runningState // empty' "$revision")"
-      if [[ "$revision_image" == "$expected" && "$health" == Healthy && "$active" == true && "$running" == Running ]]; then return 0; fi
+      replicas="$(jq -r '.properties.replicas // -1' "$revision")"
+      min_replicas="$(jq -r '.properties.template.scale.minReplicas // -1' "$revision")"
+      provisioning="$(jq -r '.properties.provisioningState // empty' "$revision")"
+      if [[ "$revision_image" == "$expected" && "$active" == true && "$running" == Running && "$health" == Healthy ]]; then
+        verified_mode=running; verified_replicas="$replicas"; verified_health="$health"
+        return 0
+      fi
+      if [[ "$revision_image" == "$expected" && "$active" == true && "$running" == Stopped && "$replicas" == 0 && "$min_replicas" == 0 && "$provisioning" == Provisioned && ( "$health" == None || "$health" == Healthy ) ]]; then
+        verified_mode=scale-to-zero; verified_replicas=0; verified_health="$health"
+        return 0
+      fi
     fi
     sleep "$delay"
   done
   return 1
 }
+
+if [[ "$mode" == inspect ]]; then
+  read_app > "$before" || { echo 'INSPECTION_UNKNOWN: no se pudo leer ACA.'; exit 2; }
+  current="$(container_image "$before" 2>/dev/null || true)"
+  if [[ "$current" == "$image" ]]; then
+    printf 'TARGET_ACTIVE: %s\n' "$service"
+  elif [[ "$current" == "$REPOSITORY/$service@sha256:"* && "${current##*@sha256:}" =~ ^[0-9a-f]{64}$ ]]; then
+    printf 'TARGET_NOT_ACTIVE: %s current=%s\n' "$service" "$current"
+  else
+    printf 'INSPECTION_UNKNOWN: imagen actual ausente/no verificable para %s.\n' "$service"
+    exit 2
+  fi
+  exit 0
+fi
 
 if [[ "$mode" == restore ]]; then
   read_app > "$before" || fail 'no se pudo inspeccionar ACA para recuperación'
@@ -97,13 +124,14 @@ fi
 if [[ "$previous_image" == "$image" ]]; then
   printf 'Idempotencia: %s ya usa la imagen/digest solicitado; verificando revisión existente.\n' "$service"
   verify_revision "$image" || fail 'imagen ya presente, pero revisión activa no está Healthy'
+  printf 'REVISIÓN VERIFICADA: servicio=%s modo=%s réplicas=%s salud=%s.\n' "$service" "$verified_mode" "$verified_replicas" "$verified_health"
 else
   # Store only hashes and immutable image references; never serialize ACA secrets into artifacts.
   printf 'Actualizando solo %s/%s en %s; configuración ACA se comparará sin imprimirla.\n' "$app" "$container" "$RESOURCE_GROUP"
   if az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --container-name "$container" --image "$image" --output none && \
      verify_revision "$image" && normalize_app "$after" > "$work/after-normalized.json" && \
      cmp -s "$work/before-normalized.json" "$work/after-normalized.json"; then
-    printf 'Despliegue verificado: servicio=%s revision=%s image=%s health=Healthy.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$image"
+    printf 'Despliegue verificado: servicio=%s revision=%s image=%s modo=%s réplicas=%s salud=%s.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$image" "$verified_mode" "$verified_replicas" "$verified_health"
     exit 0
   fi
 
@@ -119,7 +147,7 @@ else
   if az containerapp update --name "$app" --resource-group "$RESOURCE_GROUP" --container-name "$container" --image "$previous_image" --output none && \
      verify_revision "$previous_image" && normalize_app "$after" > "$work/rollback-normalized.json" && \
      cmp -s "$work/before-normalized.json" "$work/rollback-normalized.json"; then
-    printf 'ROLLBACK VERIFICADO: servicio=%s revision=%s image=%s health=Healthy; configuración comparada.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$previous_image" >&2
+    printf 'ROLLBACK VERIFICADO: servicio=%s revision=%s image=%s modo=%s réplicas=%s salud=%s; configuración comparada.\n' "$service" "$(jq -r '.properties.latestRevisionName' "$after")" "$previous_image" "$verified_mode" "$verified_replicas" "$verified_health" >&2
   else
     printf 'ROLLBACK NO VERIFICADO: servicio=%s; revisar ACA manualmente antes de reintentar.\n' "$service" >&2
   fi

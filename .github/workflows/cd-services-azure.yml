@@ -358,7 +358,7 @@ jobs:
         run: bash ops/azure/container-apps/smoke-marketplace.sh
 
   recover:
-    name: Recuperación coordinada tras fallo
+    name: Recuperación supervisada (requiere aprobación azure-h4)
     needs: [prepare, deploy, smoke]
     if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
     runs-on: ubuntu-latest
@@ -377,7 +377,7 @@ jobs:
         uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          pattern: azure-receipt-*
+          pattern: azure-*
           path: receipts
           merge-multiple: true
       - name: Autenticar en Azure mediante OIDC para recuperación
@@ -389,22 +389,13 @@ jobs:
       - name: Restaurar servicios sin cambios concurrentes
         run: |
           set -Eeuo pipefail
-          mkdir -p receipts
-          shopt -s nullglob
-          receipts=(receipts/*.receipt)
-          (( ${#receipts[@]} > 0 )) || { echo 'RECUPERACIÓN PARCIAL: ningún recibo disponible; identificar manualmente qué apps aplicaron el nuevo digest.' | tee -a "$GITHUB_STEP_SUMMARY"; exit 1; }
-          failed=0
-          for receipt in "${receipts[@]}"; do
-            service="$(sed -n 's/^service=//p' "$receipt")"
-            previous="$(sed -n 's/^previous=//p' "$receipt")"
-            target="$(sed -n 's/^target=//p' "$receipt")"
-            config_hash="$(sed -n 's/^config_sha256=//p' "$receipt")"
-            if bash ops/azure/container-apps/deploy.sh --restore "$service" "$previous" "$target" "$config_hash"; then
-              printf 'PASS recuperación verificada: %s → %s\n' "$service" "$previous" >> "$GITHUB_STEP_SUMMARY"
-            else
-              printf 'RECUPERACIÓN NO VERIFICADA: %s; revisar ACA y restaurar manualmente solo tras confirmar imagen/configuración actuales. Anterior=%s Aplicada=%s\n' "$service" "$previous" "$target" | tee -a "$GITHUB_STEP_SUMMARY"
-              failed=1
-            fi
-          done
-          ((failed == 0)) || exit 1
-          echo 'Todas las recuperaciones fueron verificadas.' >> "$GITHUB_STEP_SUMMARY"
+          if ! gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"; then
+            echo '{"jobs":[]}' > "$RUNNER_TEMP/jobs.json"
+            echo 'No se pudo recuperar la evidencia de pasos GitHub; servicios sin recibo quedarán como desconocidos.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          bash ops/azure/container-apps/reconcile-recovery.sh "$SELECTED_SERVICES" receipts "$RUNNER_TEMP/jobs.json"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          SELECTED_SERVICES: ${{ needs.prepare.outputs.services }}
