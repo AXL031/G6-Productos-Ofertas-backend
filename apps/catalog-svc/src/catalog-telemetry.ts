@@ -4,7 +4,8 @@ import { isCorrelationId } from './correlation.js';
 import { SanitizedLogger } from './sanitized-logger.js';
 
 export type CatalogSignal =
-  | 'AMQP_RECOVERY_BLOCKED'
+  | 'AMQP_LOCAL_RETRY'
+  | 'AMQP_CONSUMER_PAUSED'
   | 'AMQP_CONNECTED'
   | 'AMQP_CONNECTION_FAILURE'
   | 'AMQP_CHANNEL_FAILURE'
@@ -21,9 +22,7 @@ export type CatalogSignal =
   | 'MASTER_BARRIER_UNPROVEN_FINAL'
   | 'MASTER_BARRIER_BLOCKED_ASSOCIATION'
   | 'MASTER_BARRIER_OPERATION_CONFLICT'
-  | 'MASTER_BARRIER_FINAL_PENDING'
-  | 'AMQP_RETRY_CONFIRMED'
-  | 'AMQP_DLQ_CONFIRMED';
+  | 'MASTER_BARRIER_FINAL_PENDING';
 
 /** Internal process indicators, not a new public metrics contract or health claim. */
 @Injectable()

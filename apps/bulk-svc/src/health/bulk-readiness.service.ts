@@ -31,6 +31,12 @@ export type BulkReadinessReason =
   | 'AMQP_TEMPORARY_UNAVAILABLE'
   | 'AMQP_TOPOLOGY_BLOCKED';
 
+export type BulkReadReadinessReason =
+  | 'READY'
+  | 'DATABASE_NOT_CONFIGURED'
+  | 'DATABASE_UNAVAILABLE'
+  | 'STORAGE_UNAVAILABLE';
+
 export interface BulkReadinessResult {
   ready: boolean;
   reason: BulkReadinessReason;
@@ -73,6 +79,23 @@ export class BulkReadinessService implements OnModuleDestroy {
 
   async check(): Promise<boolean> {
     return (await this.probe()).ready;
+  }
+
+  async probeReads(storage: { ready(): Promise<boolean> }): Promise<{
+    ready: boolean;
+    reason: BulkReadReadinessReason;
+  }> {
+    if (!this.config.databaseUrl || !this.pool)
+      return { ready: false, reason: 'DATABASE_NOT_CONFIGURED' };
+    try {
+      await this.pool.query('SELECT 1 FROM bulk.batch_jobs LIMIT 0');
+    } catch {
+      this.logger.warn('La comprobación de PostgreSQL no está disponible.');
+      return { ready: false, reason: 'DATABASE_UNAVAILABLE' };
+    }
+    if (!(await storage.ready()))
+      return { ready: false, reason: 'STORAGE_UNAVAILABLE' };
+    return { ready: true, reason: 'READY' };
   }
 
   async probe(): Promise<BulkReadinessResult> {

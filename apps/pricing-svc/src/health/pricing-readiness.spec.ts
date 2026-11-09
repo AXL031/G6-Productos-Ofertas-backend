@@ -78,6 +78,29 @@ describe('PricingReadiness', () => {
     await database.onApplicationShutdown();
   });
 
+  it('comprueba PostgreSQL en PUBLIC_READ_ONLY con una allowlist explícita', async () => {
+    const config = validateEnvironment({
+      NODE_ENV: 'test',
+      PRICING_SVC_PORT: '3002',
+      DATABASE_URL: 'postgresql://pricing:fixture@localhost/fixture',
+      G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
+      PRICING_PUBLIC_OPERATION_IDS: 'obtenerPrecioSku',
+    });
+    const database = new PricingDatabase(config);
+    const readiness = new PricingReadiness(database, config);
+    const pool = vi.mocked(Pool).mock.instances.at(-1)!;
+    vi.mocked(pool.query).mockImplementationOnce(async () => ({ rows: [] }));
+    vi.mocked(pool.query).mockImplementationOnce(async () => ({
+      rows: [{ compatible: true }],
+    }));
+
+    expect(config.auth).toBeUndefined();
+    expect(await readiness.check()).toBe(true);
+    expect(pool.query).toHaveBeenCalledTimes(2);
+
+    await database.onApplicationShutdown();
+  });
+
   it('pasa TLS explícito al pool sin parámetros URL que puedan degradarlo', async () => {
     const config = validateEnvironment({
       NODE_ENV: 'production',

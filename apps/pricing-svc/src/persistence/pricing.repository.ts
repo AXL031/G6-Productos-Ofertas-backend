@@ -1,10 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, eq, isNull, or, lte, gt, inArray } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  eq,
+  isNull,
+  or,
+  lte,
+  gt,
+  inArray,
+  sql,
+} from 'drizzle-orm';
 import type { PriceDefinition } from '../domain/price.js';
 import {
   PricingDatabase,
   type PricingTransaction,
 } from './pricing.database.js';
+
+export async function lockGlobalProduct(
+  tx: PricingTransaction,
+  productId: string,
+) {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${'pricing-global-product:' + productId}, 0))`,
+  );
+}
 import {
   prices,
   priceValidities,

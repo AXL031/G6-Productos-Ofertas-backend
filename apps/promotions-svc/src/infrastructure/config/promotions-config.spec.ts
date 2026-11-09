@@ -10,7 +10,7 @@ import {
 
 describe('Promotions configuration', () => {
   const fixture = createEnvironmentFixture();
-  it('permits explicit HTTP-only Phase 1 without a fake broker, but requires messaging for enabled workers', () => {
+  it('permits PostgreSQL probes without a broker in read-only mode, but requires messaging for coupon runtime', () => {
     const environment = {
       ...fixture.environment,
       G6_SECURITY_MODE: 'PUBLIC_READ_ONLY',
@@ -28,12 +28,17 @@ describe('Promotions configuration', () => {
         PROMOTIONS_COUPON_RUNTIME_ENABLED: 'true',
       }),
     ).toThrow(PromotionsConfigurationError);
-    expect(() =>
+    expect(
       validatePromotionsConfiguration({
         ...environment,
         PROMOTIONS_DEPENDENCY_PROBES_ENABLED: 'true',
       }),
-    ).toThrow(PromotionsConfigurationError);
+    ).toMatchObject({
+      securityMode: 'PUBLIC_READ_ONLY',
+      dependencyProbesEnabled: true,
+      couponRuntimeEnabled: false,
+      rabbitmqUrl: undefined,
+    });
   });
   afterAll(() => fixture.cleanup());
   it('selects an independent simulated issuer and JWKS while keeping public operations empty', () => {

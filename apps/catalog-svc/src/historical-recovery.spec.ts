@@ -1,8 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import {
-  ForbiddenException,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { ForbiddenException } from '@nestjs/common';
 import {
   HistoricalRecoveryService,
   HISTORICAL_RECOVERY_CAPABILITY,
@@ -73,14 +70,16 @@ describe('Historical recovery candidate admission boundary', () => {
         solicitudId: id.toUpperCase(),
         dependencias: ['PRICING', 'INVENTARIO'],
         variantIds: [child],
+        moneda: 'USD',
       }),
     ).toEqual({
       solicitudId: id,
       dependencias: ['INVENTARIO', 'PRICING'],
       variantIds: [child],
+      moneda: 'USD',
     });
   });
-  it('rejects missing capability before persistence and blocks only Pricing emission without creating an intent', async () => {
+  it('rejects missing capability before persistence', async () => {
     const transactions = Object.create(
       CatalogTransactionManager.prototype,
     ) as CatalogTransactionManager;
@@ -95,20 +94,6 @@ describe('Historical recovery candidate admission boundary', () => {
     await expect(
       denied.recover(randomUUID(), {}, actor),
     ).rejects.toBeInstanceOf(ForbiddenException);
-    const allowed = new HistoricalRecoveryService(
-      transactions,
-      repository,
-      readHistoricalRecoveryCapabilities({
-        CATALOG_HISTORICAL_RECOVERY_ALLOWED_SUBJECTS: actor.subject,
-      }),
-    );
-    await expect(
-      allowed.recover(
-        randomUUID(),
-        { solicitudId: randomUUID(), dependencias: ['PRICING', 'INVENTARIO'] },
-        actor,
-      ),
-    ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(run).not.toHaveBeenCalled();
   });
 });

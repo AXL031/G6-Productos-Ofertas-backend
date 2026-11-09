@@ -163,6 +163,145 @@ describe.skipIf(process.env.PRICING_TEST_AMQP !== '1')(
       expect(consumer.available).toBe(true);
     });
 
+    it('procesa una operación válida después de un envelope inválido auditable', async () => {
+      const productId = randomUUID();
+      const invalid = {
+        message_id: randomUUID(),
+        schema_version: 99,
+        occurred_at: new Date().toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: randomUUID(),
+        producer: 'catalog-svc',
+        kind: 'command',
+        name: 'pricing.product.initialization.requested',
+        data: {
+          modalidad: 'RECUPERACION_HISTORICA',
+          product_id: productId,
+          sku_base: 'BASE-' + productId,
+          moneda: 'PEN',
+          channel_id: null,
+          motivo_cambio: 'ALTA_PRODUCTO',
+        },
+      };
+      const valid = { ...invalid, schema_version: 1, message_id: randomUUID() };
+      await send('po.comandos.x', invalid.name, invalid);
+      await waitFor(async () => {
+        const found = await postgres.admin!.query(
+          'SELECT result FROM pricing.inbox WHERE message_id=$1',
+          [invalid.message_id],
+        );
+        return found.rows[0]?.result === 'REJECTED_INVALID_ENVELOPE';
+      });
+      await send('po.comandos.x', valid.name, valid);
+      await waitFor(async () => {
+        const found = await postgres.admin!.query(
+          "SELECT count(*)::int AS n FROM pricing.outbox WHERE causation_id=$1 AND kind='result'",
+          [valid.message_id],
+        );
+        return found.rows[0].n === 1;
+      });
+      expect(consumer.available).toBe(true);
+      const result = await postgres.admin!.query(
+        'SELECT result FROM pricing.inbox WHERE message_id=$1',
+        [invalid.message_id],
+      );
+      expect(result.rows[0].result).toBe('REJECTED_INVALID_ENVELOPE');
+      const replay = {
+        ...valid,
+        message_id: randomUUID(),
+        correlation_id: randomUUID(),
+      };
+      const replay2 = {
+        ...valid,
+        message_id: randomUUID(),
+        correlation_id: randomUUID(),
+      };
+      const conflict = {
+        ...valid,
+        message_id: randomUUID(),
+        data: { ...valid.data, moneda: 'USD' },
+      };
+      await Promise.all(
+        [replay, replay2, conflict].map((item) =>
+          send('po.comandos.x', item.name, item),
+        ),
+      );
+      await waitFor(async () => {
+        const rows = await postgres.admin!.query(
+          "SELECT count(*)::int AS n FROM pricing.outbox WHERE operation_id=$1 AND kind='result'",
+          [valid.operation_id],
+        );
+        return rows.rows[0].n === 4;
+      });
+      const outcomes = await postgres.admin!.query(
+        "SELECT causation_id, payload FROM pricing.outbox WHERE operation_id=$1 AND kind='result'",
+        [valid.operation_id],
+      );
+      const payloadFor = (id: string) =>
+        outcomes.rows.find((row) => row.causation_id === id).payload;
+      expect(payloadFor(replay.message_id)).toEqual(
+        payloadFor(valid.message_id),
+      );
+      expect(payloadFor(replay2.message_id)).toEqual(
+        payloadFor(valid.message_id),
+      );
+      expect(payloadFor(conflict.message_id).code).toBe(
+        'OPERATION_ID_CONFLICT',
+      );
+      const facts = await postgres.admin!.query(
+        "SELECT count(*)::int AS n FROM pricing.outbox WHERE operation_id=$1 AND event_name='pricing.price.changed'",
+        [valid.operation_id],
+      );
+      expect(facts.rows[0].n).toBe(0);
+    }, 15000);
+
+    it('reanuda la entrega tras una espera prolongada de lock transitoria', async () => {
+      const operationId = randomUUID();
+      const productId = randomUUID();
+      const command = {
+        message_id: randomUUID(),
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        correlation_id: randomUUID(),
+        causation_id: null,
+        operation_id: operationId,
+        producer: 'catalog-svc',
+        kind: 'command',
+        name: 'pricing.product.initialization.requested',
+        data: {
+          modalidad: 'RECUPERACION_HISTORICA',
+          product_id: productId,
+          sku_base: 'BASE-' + productId,
+          moneda: 'PEN',
+          channel_id: null,
+          motivo_cambio: 'ALTA_PRODUCTO',
+        },
+      };
+      const holder = await postgres.admin!.connect();
+      try {
+        await holder.query('BEGIN');
+        await holder.query(
+          'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))',
+          [operationId],
+        );
+        await send('po.comandos.x', command.name, command);
+        await delay(7200);
+        await holder.query('COMMIT');
+        await waitFor(async () => {
+          const found = await postgres.admin!.query(
+            "SELECT count(*)::int AS n FROM pricing.outbox WHERE causation_id=$1 AND kind='result'",
+            [command.message_id],
+          );
+          return found.rows[0].n === 1;
+        }, 10000);
+        expect(consumer.available).toBe(true);
+      } finally {
+        await holder.query('ROLLBACK');
+        holder.release();
+      }
+    }, 25000);
+
     it('recibe baja SKU, cancela solo su programación futura y persiste una única disposición', async () => {
       const productId = randomUUID();
       const sku = 'AMQP-SKU-' + randomUUID();

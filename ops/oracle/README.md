@@ -9,10 +9,7 @@
 | Estado de la VM (corte 19-oct-2026) | [`ESTADO_ACTUAL.md`](ESTADO_ACTUAL.md) |
 | Preparar un servicio desde desarrollo | [`GUIA_DEVTEAM.md`](GUIA_DEVTEAM.md) |
 | Política única de demo H4 y autenticación reversible | [H4-MODO-DEMO-AUTH-REVERSIBLE.md](H4-MODO-DEMO-AUTH-REVERSIBLE.md) |
-| Seguridad progresiva (`PUBLIC_READ_ONLY`, `SIMULATED_AUTH`, `G7_AUTHENTICATED`) | La política H4 enlazada arriba; consultar el estado por servicio de la rama y no interpretar soporte parcial como release |
-| Matriz de 66 lecturas candidatas y evidencias | [`OPERACIONES_PUBLICAS_H4.md`](OPERACIONES_PUBLICAS_H4.md) y [`H4-MATRIZ-OPERACIONES-FASE1.csv`](H4-MATRIZ-OPERACIONES-FASE1.csv) |
-| Topología HTTP nueve servicios y Caddy | [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md), [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md), [`Caddyfile`](Caddyfile) |
-| Construcción local de nueve imágenes desde un mismo SHA | [`build-h4-release.sh`](build-h4-release.sh) |
+| Seguridad progresiva (`PUBLIC_READ_ONLY`, `SIMULATED_AUTH`, `G7_AUTHENTICATED`) | La política H4 enlazada arriba; `G6_SECURITY_MODE` sigue siendo propuesta documental, no runtime |
 | Requisitos comunes para build y runtime | [`CONTRATO_DESPLIEGUE.md`](CONTRATO_DESPLIEGUE.md) |
 | Brechas específicas por servicio | [`servicios/`](servicios/) |
 | Estado comparado por servicio y propuesta de gate CI | [`ESTADO_SERVICIOS.md`](ESTADO_SERVICIOS.md) |
@@ -283,7 +280,7 @@ Las pruebas `ops/oracle/tests/validate-cd-source.test.sh`, `select-cd-services.t
 
 - Procedimiento futuro, reversible y sin despliegue: [`INSTALACION_H4_NUEVE_SERVICIOS.md`](INSTALACION_H4_NUEVE_SERVICIOS.md).
 - Variables verificadas en parsers, límites de preparación y bloqueos externos: [`RUNTIME_H4_NUEVE_SERVICIOS.md`](RUNTIME_H4_NUEVE_SERVICIOS.md).
-- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); simulación local: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
-- Pruebas locales de nueve servicios y redes: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
+- Candidato Caddy Oracle: [`Caddyfile`](Caddyfile); prueba dinámica aislada con la imagen oficial Caddy: [`tests/caddy-h4.test.sh`](tests/caddy-h4.test.sh).
+- Pruebas de registro, puertos, aliases y Compose JSON de nueve servicios: [`tests/topologia-nueve-servicios.test.sh`](tests/topologia-nueve-servicios.test.sh).
 
 El Caddyfile general es candidato local únicamente. No se instala ni activa mientras Gateway conserve un bypass demo o hasta cumplir los gates de autenticación y exposición del procedimiento H4.

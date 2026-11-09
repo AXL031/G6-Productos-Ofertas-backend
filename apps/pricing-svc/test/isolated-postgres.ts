@@ -95,6 +95,14 @@ export class IsolatedPostgres {
     await this.admin.query('BEGIN');
     try {
       await this.admin.query(scheduleContextMigration);
+      const initializationIndex = await readFile(
+        new URL(
+          '../migrations/0003_initialization_operation_index.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      );
+      await this.admin.query(initializationIndex);
       await this.admin.query('COMMIT');
     } catch (error) {
       await this.admin.query('ROLLBACK');

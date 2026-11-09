@@ -5,6 +5,9 @@ describe('Gateway and provider problem boundaries (H-01)', () => {
   const commercialCheck = CONTRACT_ROUTES.find(
     (route) => route.operationId === 'verificarCantidadComercial',
   )!;
+  const inventoryOperation = CONTRACT_ROUTES.find(
+    (route) => route.operationId === 'consultarOperacionInventario',
+  )!;
   const seo = CONTRACT_ROUTES.find(
     (route) => route.operationId === 'obtenerSeoPorSlug',
   )!;
@@ -30,6 +33,28 @@ describe('Gateway and provider problem boundaries (H-01)', () => {
     });
     expect(
       gatewayProblem(seo, 400, 'PRIVATE_UPSTREAM_SECRET', 'gateway'),
+    ).toEqual({ status: 500, code: 'ERROR_INTERNO' });
+  });
+
+  it('preserves the declared inventory operation missing result', () => {
+    expect(inventoryOperation.responses['404']?.codes).toContain(
+      'OPERACION_INVENTARIO_NO_ENCONTRADA',
+    );
+    expect(
+      gatewayProblem(
+        inventoryOperation,
+        404,
+        'OPERACION_INVENTARIO_NO_ENCONTRADA',
+        'provider',
+      ),
+    ).toEqual({ status: 404, code: 'OPERACION_INVENTARIO_NO_ENCONTRADA' });
+    expect(
+      gatewayProblem(
+        inventoryOperation,
+        404,
+        'UNLISTED_PROVIDER_CODE',
+        'provider',
+      ),
     ).toEqual({ status: 500, code: 'ERROR_INTERNO' });
   });
   it('accepts only the declared provider import error pair (H-02)', () => {

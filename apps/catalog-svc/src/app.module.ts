@@ -1,3 +1,4 @@
+import { H4SkuListener } from './h4-sku-listener.js';
 import { ReadinessController as CommercialReadinessController } from './readiness.controller.js';
 import { DynamicModule, Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -68,6 +69,14 @@ import {
 import { CatalogPricingIdentityProvider } from './catalog-pricing-identity.js';
 import { BarcodeRepository } from './barcode.repository.js';
 import { BarcodeService } from './barcode.service.js';
+import { HistoricalRecoveryController } from './historical-recovery.controller.js';
+import {
+  HistoricalRecoveryService,
+  HISTORICAL_RECOVERY_CAPABILITIES,
+  HISTORICAL_PRICING_CONTRACT,
+  readHistoricalRecoveryCapabilities,
+} from './historical-recovery.service.js';
+import { readHistoricalPricingContract } from './historical-pricing.contract.js';
 
 @Module({
   imports: [],
@@ -77,9 +86,11 @@ import { BarcodeService } from './barcode.service.js';
     CatalogSkuContextController,
     CatalogQueryController,
     CatalogMutationController,
+    HistoricalRecoveryController,
     ReadinessController,
   ],
   providers: [
+    H4SkuListener,
     AppService,
     Database,
     CatalogTransactionManager,
@@ -97,6 +108,15 @@ import { BarcodeService } from './barcode.service.js';
     BarcodeService,
     CatalogQueryService,
     CatalogMutationService,
+    HistoricalRecoveryService,
+    {
+      provide: HISTORICAL_PRICING_CONTRACT,
+      useFactory: () => readHistoricalPricingContract(),
+    },
+    {
+      provide: HISTORICAL_RECOVERY_CAPABILITIES,
+      useFactory: () => readHistoricalRecoveryCapabilities(),
+    },
     {
       provide: CATALOG_PRODUCT_CREATION_POLICY,
       useValue: approvedCatalogProductPolicy,
@@ -152,6 +172,10 @@ export class AppModule {
     return {
       module: AppModule,
       providers: [
+        {
+          provide: HISTORICAL_PRICING_CONTRACT,
+          useValue: config.historicalPricingContract,
+        },
         { provide: CatalogConfig, useValue: config },
         { provide: CATALOG_TAXONOMY_CONFIG, useValue: config.taxonomy },
         { provide: CATALOG_SECURITY_CONFIG, useValue: config.security },
@@ -159,6 +183,10 @@ export class AppModule {
         { provide: CATALOG_PREPARATION_CONFIG, useValue: config.preparation },
         { provide: CATALOG_POSTGRES_CONFIG, useValue: config.database },
         { provide: CATALOG_READ_DEMO, useValue: config.readDemo },
+        {
+          provide: HISTORICAL_RECOVERY_CAPABILITIES,
+          useValue: config.historicalRecoveryCapabilities,
+        },
         {
           provide: CATALOG_MARKETPLACE_PREVIEW,
           useValue: config.marketplaceDemoPreview,
