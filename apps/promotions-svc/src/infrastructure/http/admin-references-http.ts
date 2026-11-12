@@ -31,7 +31,7 @@ export class HttpAdminReferences implements AdminReferences {
         for (const id of new Set(request.products)) {
           const row = await this.reader.read(
             'obtenerProducto',
-            '/productos/' + encodeURIComponent(id),
+            '/productos/' + encodeURIComponent(id) + '?canal=MARKETPLACE',
             bounded,
             true,
           );
