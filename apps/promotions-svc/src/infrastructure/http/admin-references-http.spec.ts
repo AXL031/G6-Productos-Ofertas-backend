@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { HttpAdminReferences } from './admin-references-http.js';
+import type { InternalHttpOptions } from './internal-http.js';
 import { CommercialDependencyError } from '../../domain/commercial-context.js';
 
 async function fixture(
@@ -9,12 +10,17 @@ async function fixture(
     path: string,
     value: unknown,
   ) => { status?: number; body?: unknown } = (_p, body) => ({ body }),
+  options: Omit<InternalHttpOptions, 'origin'> = { mode: 'RESTRICTED_DEMO' },
 ) {
   const calls: string[] = [];
   const server = createServer((req, res) => {
     const path = req.url!;
     calls.push(path);
-    expect(req.headers.authorization).toBeUndefined();
+    expect(req.headers.authorization).toBe(
+      options.mode === 'AUTHENTICATED'
+        ? 'Bearer synthetic-own-service-token'
+        : undefined,
+    );
     const raw = path.includes('/skus/')
       ? {
           sku: '0001',
@@ -49,7 +55,7 @@ async function fixture(
     await work(
       new HttpAdminReferences({
         origin: `http://127.0.0.1:${address.port}`,
-        mode: 'RESTRICTED_DEMO',
+        ...options,
       }),
       calls,
     );
@@ -67,11 +73,63 @@ describe('Authoritative HTTP admin references #74', () => {
       expect([...result.skus]).toEqual(['0001']);
       expect([...result.categories]).toEqual(['C']);
       expect(calls).toEqual([
-        '/api/v1/productos/P',
+        '/api/v1/productos/P?canal=MARKETPLACE',
         '/api/v1/productos/skus/0001/contexto',
         '/api/v1/categorias/C',
       ]);
     });
+  });
+  it.each(['PUBLIC_READ_ONLY', 'AUTHENTICATED'] as const)(
+    'supplies the required Marketplace channel in %s while preserving the credential boundary',
+    async (mode) => {
+      const tokens = vi.fn(async () => 'synthetic-own-service-token');
+      await fixture(
+        async (client, calls) => {
+          const result = await client.verify(
+            { products: ['P'], skus: [], categories: [] },
+            new AbortController().signal,
+          );
+          expect([...result.products]).toEqual(['P']);
+          expect(calls).toEqual(['/api/v1/productos/P?canal=MARKETPLACE']);
+        },
+        (path, body) => {
+          if (
+            new URL(path, 'http://fixture').searchParams.get('canal') !==
+            'MARKETPLACE'
+          )
+            return { status: 400, body: { status: 400, code: 'VALIDACION' } };
+          return { body };
+        },
+        { mode, getServiceAccessToken: tokens },
+      );
+      if (mode === 'AUTHENTICATED') {
+        expect(tokens).toHaveBeenCalledExactlyOnceWith(
+          {
+            operationId: 'obtenerProducto',
+            audience: 'api-productos',
+            scope: 'catalogo:leer',
+          },
+          expect.any(AbortSignal),
+        );
+      } else expect(tokens).not.toHaveBeenCalled();
+    },
+  );
+  it('treats a commercially hidden product as ineligible without claiming administrative absence', async () => {
+    await fixture(
+      async (client, calls) => {
+        const result = await client.verify(
+          { products: ['P'], skus: [], categories: [] },
+          new AbortController().signal,
+        );
+        expect(result.products.size).toBe(0);
+        expect(calls).toEqual(['/api/v1/productos/P?canal=MARKETPLACE']);
+      },
+      () => ({
+        status: 404,
+        body: { status: 404, code: 'PRODUCTO_NO_ENCONTRADO' },
+      }),
+      { mode: 'PUBLIC_READ_ONLY' },
+    );
   });
   it('excludes inactive references while preserving their distinction from technical failure', async () => {
     await fixture(
