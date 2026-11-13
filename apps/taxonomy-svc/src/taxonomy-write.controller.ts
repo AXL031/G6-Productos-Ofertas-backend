@@ -28,6 +28,7 @@ import {
   type SolicitudMaestra,
 } from './domain/master-deactivation-request.service.js';
 import { validarLogo } from './domain/brand-logo.js';
+import { persistirLogo } from './infrastructure/brand-logo-storage.js';
 import { esPaisIso } from './domain/iso-country.js';
 import { ProblemDetailsException, esUuid } from './errors/taxonomy.errors.js';
 
@@ -145,12 +146,12 @@ export class TaxonomyWriteController {
     return result.categoria;
   }
 
-  private entradaMarca(
+  private async entradaMarca(
     body: unknown,
     file:
       { buffer: Buffer; originalname: string; mimetype: string } | undefined,
     crear: boolean,
-  ): EntradaMarca {
+  ): Promise<EntradaMarca> {
     if (!body || typeof body !== 'object' || Array.isArray(body))
       throw ProblemDetailsException.validacion('Formulario inválido.');
     const input = body as Record<string, unknown>;
@@ -168,7 +169,7 @@ export class TaxonomyWriteController {
           !Number.isSafeInteger(Number(input.version))))
     )
       throw ProblemDetailsException.validacion('Datos de marca inválidos.');
-    if (crear || file) validarLogo(file);
+    const logoValidado = crear || file ? validarLogo(file) : undefined;
     if (
       input.logo !== undefined &&
       ((input.logo !== '' && input.logo !== null) || crear || file)
@@ -193,11 +194,11 @@ export class TaxonomyWriteController {
           'logoUrl debe ser una URL HTTP(S) válida.',
         );
       }
-    } else if (
-      (crear && file) ||
-      (!crear && (input.logo === '' || input.logo === null || file))
-    )
+    } else if (logoValidado) {
+      logoUrl = await persistirLogo(logoValidado);
+    } else if (!crear && (input.logo === '' || input.logo === null)) {
       logoUrl = null;
+    }
     return {
       ...(typeof input.nombre === 'string' ? { nombre: input.nombre } : {}),
       ...(typeof input.descripcion === 'string' || input.descripcion === null
@@ -240,7 +241,7 @@ export class TaxonomyWriteController {
       throw ProblemDetailsException.validacion(
         'X-Correlation-Id debe ser un UUID válido.',
       );
-    const data = this.entradaMarca(body, file, true);
+    const data = await this.entradaMarca(body, file, true);
     const result = await this.marcas.crear(data);
     if (result.estado === 'DUPLICADA')
       throw new ProblemDetailsException({
@@ -277,7 +278,7 @@ export class TaxonomyWriteController {
       throw ProblemDetailsException.validacion(
         'X-Correlation-Id debe ser un UUID válido.',
       );
-    const data = this.entradaMarca(body, file, false);
+    const data = await this.entradaMarca(body, file, false);
     const result = await this.marcas.actualizar(id, data);
     if (result.estado === 'NO_ENCONTRADA')
       throw new ProblemDetailsException({

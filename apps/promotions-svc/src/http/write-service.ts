@@ -223,6 +223,19 @@ function unchangedReferences(
       'reintentar con las referencias vigentes del agregado',
     );
 }
+function checkedIdentity<T extends { id: string }>(
+  expected: string,
+  row: T | undefined,
+): T {
+  if (
+    !row ||
+    !isUuid(row.id) ||
+    row.id.toLowerCase() !== expected.toLowerCase()
+  )
+    throw new Error('INVALID_WRITE_RESPONSE_IDENTITY');
+  return row;
+}
+
 function missing(
   code: ConstructorParameters<typeof PromotionRuleError>[0],
 ): never {
@@ -306,7 +319,12 @@ export class PromotionsWriteService {
         if (!(await r.queries.promotion(key as string)))
           missing('PROMOCION_NO_ENCONTRADA');
         await r.promotions.update(key as string, { state: 'INACTIVO' });
-        return promotionDto((await r.queries.promotion(key as string))!);
+        return promotionDto(
+          checkedIdentity(
+            key as string,
+            await r.queries.promotion(key as string),
+          ),
+        );
       });
     const body: PromotionInput =
       id === 'activarPromocion' ? { estado: 'ACTIVO' } : request.body;
@@ -314,7 +332,10 @@ export class PromotionsWriteService {
       ? undefined
       : await this.persistence.read((r) => r.queries.promotion(key as string));
     if (!create && !previous) missing('PROMOCION_NO_ENCONTRADA');
-    const prepared = promotionInput(body, previous);
+    const prepared = promotionInput(
+      body,
+      create ? undefined : checkedIdentity(key as string, previous),
+    );
     const refs = scopeRequest(prepared.scopes);
     const active = await this.verify(refs); // Never call Catalog while holding a DB lock.
     return this.persistence.transaction(async (r) => {
@@ -323,12 +344,16 @@ export class PromotionsWriteService {
         ? undefined
         : await r.queries.promotion(key as string);
       if (!create && !current) missing('PROMOCION_NO_ENCONTRADA');
-      const next = promotionInput(body, current);
+      const next = promotionInput(
+        body,
+        create ? undefined : checkedIdentity(key as string, current),
+      );
       unchangedReferences(refs, scopeRequest(next.scopes));
       assertActiveScopes(next.scopes, active.products, active.skus);
       const saved = create
         ? await r.promotions.create(next.p, next.scopes, next.policy)
         : await r.promotions.update(key as string, next.p);
+      if (!create) checkedIdentity(key as string, saved);
       if (
         !create &&
         (body.alcance !== undefined || body.politicaCombinacion !== undefined)
@@ -338,7 +363,9 @@ export class PromotionsWriteService {
           next.scopes,
           next.policy,
         );
-      return promotionDto((await r.queries.promotion(saved.id))!);
+      return promotionDto(
+        checkedIdentity(saved.id, await r.queries.promotion(saved.id)),
+      );
     });
   }
 
@@ -356,6 +383,7 @@ export class PromotionsWriteService {
         ? undefined
         : await r.queries.coupon(key as string);
       if (!create && !current) missing('CUPON_NO_ENCONTRADO');
+      if (!create) checkedIdentity(key as string, current);
       const next: NewCoupon = {
         code: body.codigo ?? current?.code ?? missing('LIMITE_CUPON_INVALIDO'),
         promotionId:
@@ -400,7 +428,10 @@ export class PromotionsWriteService {
       const saved = create
         ? await r.coupons.create(next)
         : await r.coupons.update(key as string, next);
-      return couponDto((await r.queries.coupon(saved.id))!);
+      if (!create) checkedIdentity(key as string, saved);
+      return couponDto(
+        checkedIdentity(saved.id, await r.queries.coupon(saved.id)),
+      );
     });
   }
 
@@ -414,7 +445,9 @@ export class PromotionsWriteService {
         if (!(await r.queries.rule(key as string)))
           missing('REGLA_RECOMENDACION_NO_ENCONTRADA');
         await r.recommendations.update(key as string, { state: 'INACTIVO' });
-        return ruleDto((await r.queries.rule(key as string))!);
+        return ruleDto(
+          checkedIdentity(key as string, await r.queries.rule(key as string)),
+        );
       });
     const body: RuleInput =
       id === 'activarReglaRecomendacion' ? { estado: 'ACTIVO' } : request.body;
@@ -422,13 +455,19 @@ export class PromotionsWriteService {
       ? undefined
       : await this.persistence.read((r) => r.queries.rule(key as string));
     if (!create && !previous) missing('REGLA_RECOMENDACION_NO_ENCONTRADA');
-    const prepared = ruleInput(body, previous);
+    const prepared = ruleInput(
+      body,
+      create ? undefined : checkedIdentity(key as string, previous),
+    );
     const active = await this.verify(prepared.request);
     return this.persistence.transaction(async (r) => {
       if (!create) await r.recommendations.lock(key as string);
       const current = create ? undefined : await r.queries.rule(key as string);
       if (!create && !current) missing('REGLA_RECOMENDACION_NO_ENCONTRADA');
-      const next = ruleInput(body, current);
+      const next = ruleInput(
+        body,
+        create ? undefined : checkedIdentity(key as string, current),
+      );
       unchangedReferences(prepared.request, next.request);
       if (next.items.some((item) => !active.products.has(item.productId)))
         missing('PRODUCTO_RECOMENDADO_INVALIDO');
@@ -441,9 +480,10 @@ export class PromotionsWriteService {
       const saved = create
         ? await r.recommendations.create(next.rule, next.items)
         : await r.recommendations.update(key as string, next.rule);
+      if (!create) checkedIdentity(key as string, saved);
       if (!create && body.recomendados !== undefined)
         await r.recommendations.replaceItems(saved.id, next.items);
-      return ruleDto((await r.queries.rule(saved.id))!);
+      return ruleDto(checkedIdentity(saved.id, await r.queries.rule(saved.id)));
     });
   }
 }
