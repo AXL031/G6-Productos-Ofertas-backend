@@ -162,7 +162,7 @@ describe('inventory-svc: phase 3 trust lifecycle', () => {
       authorize({ client_id: 'modulo-retail' }),
     ).rejects.toMatchObject({ status: 401 });
   });
-  it('does not authorize pending transfer capabilities from extra claims in real G7 mode', async () => {
+  it('authorizes transfers only from an explicit local grant for the verified G7 sub', async () => {
     function transferRead() {}
     Reflect.defineMetadata(
       REQUIRED_CAPABILITY_KEY,
@@ -186,9 +186,25 @@ describe('inventory-svc: phase 3 trust lifecycle', () => {
       class Protected {},
       transferRead,
     );
-    await expect(
-      new UserAuthGuard(new Reflector()).canActivate(ctx),
-    ).rejects.toMatchObject({ status: 403 });
+    vi.stubEnv('INVENTORY_G7_TRANSFER_GRANTS', '');
+    const guard = new UserAuthGuard(new Reflector());
+    await expect(guard.canActivate(ctx)).rejects.toMatchObject({ status: 403 });
+    const subject = '44444444-4444-4444-8444-444444444444';
+    const req = ctx
+      .switchToHttp()
+      .getRequest<{ headers: { authorization: string } }>();
+    req.headers.authorization =
+      'Bearer ' + token(first, 'first', { sub: subject });
+    vi.stubEnv(
+      'INVENTORY_G7_TRANSFER_GRANTS',
+      JSON.stringify({ [subject]: ['INVENTARIO_TRASLADOS_LEER'] }),
+    );
+    await expect(guard.canActivate(ctx)).resolves.toBe(true);
+    vi.stubEnv(
+      'INVENTORY_G7_TRANSFER_GRANTS',
+      '{"invalid":["INVENTARIO_TRASLADOS_LEER"]}',
+    );
+    await expect(guard.canActivate(ctx)).rejects.toMatchObject({ status: 503 });
   });
   it('requires temporal claims and jti from the G7 profile', async () => {
     for (const extra of [

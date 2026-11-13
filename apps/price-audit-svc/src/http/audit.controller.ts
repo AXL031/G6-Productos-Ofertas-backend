@@ -42,6 +42,10 @@ export function wireAudit(row: typeof auditLog.$inferSelect) {
   // OpenAPI rc.3 aun no admite SKU/canal nulos de DEC-G6-INT-06.
   if (row.sku === null || row.channel === null)
     throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+  return wireAdminAudit(row);
+}
+
+export function wireAdminAudit(row: typeof auditLog.$inferSelect) {
   return {
     id_auditoria: row.id,
     target_type: row.targetType,
@@ -82,11 +86,22 @@ export class AuditController {
     @Inject(AUDIT_EXPORT_WORKER)
     private readonly worker?: AuditExportWorker,
   ) {}
-  @Get() async list(@Query() query: Record<string, unknown>) {
+  @Get() list(@Query() query: Record<string, unknown>) {
+    return this.listWith(query, wireAudit);
+  }
+
+  @Get('administracion') adminList(@Query() query: Record<string, unknown>) {
+    return this.listWith(query, wireAdminAudit);
+  }
+
+  private async listWith(
+    query: Record<string, unknown>,
+    project: typeof wireAdminAudit,
+  ) {
     const { filters, page, size } = parseFilters(query);
     const { items, total } = await this.repository.list(filters, page, size);
     return {
-      items: items.map(wireAudit),
+      items: items.map(project),
       meta: {
         pagina: page,
         tamanio: size,
@@ -157,14 +172,29 @@ export class AuditController {
       );
     response.send(file.data);
   }
-  @Get(':auditId') async detail(
+  @Get('administracion/:auditId') adminDetail(
     @Param('auditId') id: string,
     @Query() query: Record<string, unknown>,
+  ) {
+    return this.detailWith(id, query, wireAdminAudit);
+  }
+
+  @Get(':auditId') detail(
+    @Param('auditId') id: string,
+    @Query() query: Record<string, unknown>,
+  ) {
+    return this.detailWith(id, query, wireAudit);
+  }
+
+  private async detailWith(
+    id: string,
+    query: Record<string, unknown>,
+    project: typeof wireAdminAudit,
   ) {
     if (!uuid.test(id) || Object.keys(query).length)
       throw new AuditHttpError(400, 'VALIDACION');
     const row = await this.repository.detail(id);
     if (!row) throw new AuditHttpError(404, 'AUDITORIA_PRECIO_NO_ENCONTRADA');
-    return wireAudit(row);
+    return project(row);
   }
 }

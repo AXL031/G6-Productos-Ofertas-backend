@@ -36,10 +36,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 docs_root="${COMBOS_TEST_DOCS_ROOT:-$(cd "$repo_root/../docs" && pwd)}"
 catalog_migration="$docs_root/datos/catalog-svc/migrations/0001_create_catalog.sql"
 combos_migration="$docs_root/datos/combos/migrations/0001_create_combos_persistence.sql"
+combo_receipts_migration="$repo_root/apps/combos-svc/migrations/0002_create_combo_creation_receipts.sql"
 pricing_migration="$repo_root/apps/pricing-svc/test/fixtures/pricing.sql"
 pricing_official_migration="$docs_root/datos/pricing/migrations/0001_create_pricing.sql"
 pricing_context_migration="$repo_root/apps/pricing-svc/migrations/0002_schedule_effective_events.sql"
-for migration in "$catalog_migration" "$combos_migration" "$pricing_migration" "$pricing_official_migration" "$pricing_context_migration"; do
+for migration in "$catalog_migration" "$combos_migration" "$combo_receipts_migration" "$pricing_migration" "$pricing_official_migration" "$pricing_context_migration"; do
   if [[ ! -f "$migration" ]]; then
     printf 'No se encontró la migración oficial: %s\n' "$migration" >&2
     exit 1
@@ -249,6 +250,7 @@ for context in catalog combos; do
   {
     printf 'SET ROLE %s;\n' "$owner"
     cat "$source_file"
+    if [[ "$context" == combos ]]; then cat "$combo_receipts_migration"; fi
   } | docker exec -i "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 -f - >/dev/null
 done
 

@@ -15,8 +15,16 @@ import {
 import type { Request, Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { CombosEventConsumer } from './messaging/combos-event-consumer.js';
-import { CombosAuthGuard, RequireComboAccess } from './http/combos-auth.js';
-import { CombosSvcService, type ComboInput } from './combos-svc.service.js';
+import {
+  CombosAuthGuard,
+  RequireComboAccess,
+  type ComboActorRequest,
+} from './http/combos-auth.js';
+import {
+  ComboError,
+  CombosSvcService,
+  type ComboInput,
+} from './combos-svc.service.js';
 
 @Controller()
 @UseGuards(CombosAuthGuard)
@@ -64,6 +72,28 @@ export class CombosSvcController {
       .status(201)
       .json(await this.service.create(body, correlationId ?? randomUUID()));
   }
+  @RequireComboAccess({
+    operationId: 'crearComboAdministracion',
+    identity: 'user',
+    allowedRoles: ['GESTOR_COMERCIAL'],
+  })
+  @Post('combos/administracion')
+  async createRecoverable(
+    @Req() req: ComboActorRequest,
+    @Body() body: ComboInput,
+    @Headers('idempotency-key') key?: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    if (!req.comboActor)
+      throw new ComboError(401, 'TOKEN_INVALIDO', 'Identidad humana requerida');
+    if (typeof key !== 'string' || !/^[A-Za-z0-9._:-]{1,128}$/.test(key))
+      throw new ComboError(400, 'VALIDACION', 'Idempotency-Key inválida');
+    return this.service.create(body, correlationId ?? randomUUID(), {
+      actor: req.comboActor,
+      key,
+    });
+  }
+
   @RequireComboAccess({
     operationId: 'obtenerCombo',
     identity: 'user_or_service',

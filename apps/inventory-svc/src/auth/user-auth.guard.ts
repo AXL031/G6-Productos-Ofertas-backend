@@ -2,7 +2,10 @@ import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { trustedJwksPublicKey, JwksUnavailable } from './trusted-jwks.js';
 import { isPhase1PublicRead } from '../phase1-public-reads.js';
-import { REQUIRED_CAPABILITY_KEY } from './auth.constants.js';
+import {
+  INVENTORY_CAPABILITIES,
+  REQUIRED_CAPABILITY_KEY,
+} from './auth.constants.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
   UserTokenPayload,
@@ -125,16 +128,11 @@ export class UserAuthGuard implements CanActivate {
     }
 
     if (requiredCapability) {
-      // The owner has not defined the local grants source for real G7 users yet.
-      if (
+      const granted =
         (process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED') ===
-        'G7_AUTHENTICATED'
-      )
-        throw ProblemDetailsException.scopeInsuficiente(
-          'Operación pendiente de concesión de capacidades locales',
-          correlationId,
-        );
-      const granted = this.collectCapabilities(payload);
+        'SIMULATED_AUTH'
+          ? this.collectCapabilities(payload)
+          : this.localTransferCapabilities(payload.sub ?? '', correlationId);
       if (!granted.has(requiredCapability)) {
         throw ProblemDetailsException.scopeInsuficiente(
           `Capacidad insuficiente. Se requiere '${requiredCapability}'`,
@@ -146,6 +144,45 @@ export class UserAuthGuard implements CanActivate {
     request.user = payload;
     request.userId = payload.sub;
     return true;
+  }
+
+  private localTransferCapabilities(
+    subject: string,
+    correlationId?: string,
+  ): Set<string> {
+    const raw = process.env.INVENTORY_G7_TRANSFER_GRANTS;
+    if (!raw?.trim()) return new Set();
+    const allowed = new Set<string>(Object.values(INVENTORY_CAPABILITIES));
+    const uuid =
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed))
+        throw new Error();
+      const grants = new Map<string, Set<string>>();
+      for (const [id, entries] of Object.entries(parsed)) {
+        const key = id.toLowerCase();
+        if (
+          !uuid.test(id) ||
+          grants.has(key) ||
+          !Array.isArray(entries) ||
+          !entries.every(
+            (value: unknown) => typeof value === 'string' && allowed.has(value),
+          )
+        )
+          throw new Error();
+        grants.set(key, new Set(entries));
+      }
+      return grants.get(subject.toLowerCase()) ?? new Set();
+    } catch {
+      throw new ProblemDetailsException({
+        type: '/errores/servicio-no-disponible',
+        title: 'Servicio no disponible',
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+        correlationId,
+      });
+    }
   }
 
   private collectCapabilities(payload: UserTokenPayload): Set<string> {

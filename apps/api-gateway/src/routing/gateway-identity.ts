@@ -238,6 +238,7 @@ export class GatewayIdentity {
     } else throw new GatewayFailure(403, 'SCOPE_INSUFICIENTE');
     if (
       this.settings.securityMode === 'G7_AUTHENTICATED' &&
+      !this.settings.inventoryLocalGrantsEnabled &&
       [
         'listarTrasladosInventario',
         'obtenerTrasladoInventario',

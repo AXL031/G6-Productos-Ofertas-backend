@@ -58,6 +58,21 @@ export interface ComboPatch {
   }>;
 }
 
+export interface ComboCreationIntent {
+  actor: string;
+  key: string;
+  fingerprint: string;
+}
+
+function verifyReceipt(
+  intent: ComboCreationIntent,
+  receipt?: { combo_id: string; fingerprint: string },
+) {
+  if (receipt && receipt.fingerprint !== intent.fingerprint)
+    throw new ConflictException({ code: 'IDEMPOTENCY_CONFLICT' });
+  return receipt?.combo_id;
+}
+
 const COMPONENT_CATALOG_LOCK_KEY = 840084;
 type CombosTransaction = NodePgTransaction<
   typeof combosTables,
@@ -405,12 +420,40 @@ export class CombosRepository {
     }
   }
 
-  async create(input: NewCombo): Promise<string> {
+  async findCreation(intent: ComboCreationIntent): Promise<string | undefined> {
+    try {
+      return await this.database.query(async (client) => {
+        const { rows } = await client.query<{
+          combo_id: string;
+          fingerprint: string;
+        }>(
+          'SELECT combo_id, fingerprint FROM combos.combo_creation_receipts WHERE actor_id = $1 AND idempotency_key = $2',
+          [intent.actor, intent.key],
+        );
+        return verifyReceipt(intent, rows[0]);
+      });
+    } catch (error) {
+      return this.throwIfUnavailable(error);
+    }
+  }
+
+  async create(input: NewCombo, intent?: ComboCreationIntent): Promise<string> {
     try {
       return await this.database.drizzle().transaction(async (tx) => {
         await tx.execute(
           sql`SELECT pg_advisory_xact_lock(${COMPONENT_CATALOG_LOCK_KEY})`,
         );
+        if (intent) {
+          const { rows } = await tx.execute<{
+            combo_id: string;
+            fingerprint: string;
+          }>(
+            sql`SELECT combo_id, fingerprint FROM combos.combo_creation_receipts
+                WHERE actor_id = ${intent.actor} AND idempotency_key = ${intent.key}`,
+          );
+          const replay = verifyReceipt(intent, rows[0]);
+          if (replay) return replay;
+        }
         await this.assertComponentsNotDeactivated(tx, input.components);
         const [combo] = await tx
           .insert(combos)
@@ -445,6 +488,11 @@ export class CombosRepository {
             catalogObservedAt: new Date(observedAtBySku.get(item.sku)!),
           })),
         );
+        if (intent)
+          await tx.execute(
+            sql`INSERT INTO combos.combo_creation_receipts (actor_id, idempotency_key, fingerprint, combo_id)
+                VALUES (${intent.actor}, ${intent.key}, ${intent.fingerprint}, ${combo.id})`,
+          );
         return combo.id;
       });
     } catch (error) {
