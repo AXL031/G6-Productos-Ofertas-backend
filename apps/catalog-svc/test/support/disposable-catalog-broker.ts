@@ -160,6 +160,32 @@ export class DisposableCatalogBroker {
         'po.resultados.x',
         'catalog.bulk.upsert.' + suffix,
       );
+    this.command([
+      'exec',
+      this.name,
+      'rabbitmqctl',
+      'add_user',
+      'taxonomy-joint',
+      this.password,
+    ]);
+    this.command([
+      'exec',
+      this.name,
+      'rabbitmqctl',
+      'set_permissions',
+      '-p',
+      'g6-productos-ofertas',
+      'taxonomy-joint',
+      '.*',
+      '.*',
+      '.*',
+    ]);
+    for (const name of [
+      'taxonomy.category.updated',
+      'taxonomy.product-type-schema.changed',
+      'taxonomy.characteristic-value.updated',
+    ])
+      await this.channel.bindQueue('po.catalogo.q', 'po.eventos.x', name);
     this.settings = {
       connection: {
         url: 'amqp://catalog-joint:' + this.password + this.base,
@@ -172,6 +198,25 @@ export class DisposableCatalogBroker {
         },
       },
     };
+  }
+  /** Taxonomy wire fixture, not a producer implementation or an Azure certification. */
+  async taxonomyFact(body: Record<string, unknown>): Promise<void> {
+    const connection = await this.open('taxonomy-joint');
+    const channel = await connection.createConfirmChannel();
+    channel.on('error', () => undefined);
+    try {
+      await new ConfirmedCatalogPublisher(channel, 'taxonomy-joint').raw(
+        'po.eventos.x',
+        String(body.name),
+        Buffer.from(JSON.stringify(body)),
+        {
+          messageId: String(body.message_id),
+          correlationId: String(body.correlation_id),
+        },
+      );
+    } finally {
+      await channel.close();
+    }
   }
   get bulkUrl(): string {
     return 'amqp://bulk-joint:' + this.password + this.base;
