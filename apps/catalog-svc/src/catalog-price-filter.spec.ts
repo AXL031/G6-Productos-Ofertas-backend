@@ -46,7 +46,7 @@ describe('D-CAT price filtering (isolated HTTP fixtures, no external grant claim
       headers: { 'content-type': 'application/json' },
     });
 
-  it('omits authorization and never invokes G7 in restricted demo', async () => {
+  it('omits authorization and never invokes G7 in restricted demo or PUBLIC_READ_ONLY across all channels', async () => {
     fetchMock.mockResolvedValue(response([row('sku')]));
     const demo = new CatalogPriceFilter(
       {
@@ -61,6 +61,32 @@ describe('D-CAT price filtering (isolated HTTP fixtures, no external grant claim
     expect(identity.authorization).not.toHaveBeenCalled();
     const init = fetchMock.mock.calls[0][1];
     expect(new Headers(init?.headers).has('authorization')).toBe(false);
+
+    const publicReadOnly = new CatalogPriceFilter({
+      pricingOrigin: 'http://pricing-svc:3002',
+      readDemo: {
+        enabled: false,
+        restricted: false,
+        securityMode: 'PUBLIC_READ_ONLY',
+      },
+    } as CatalogConfig);
+    for (const canal of [
+      'MARKETPLACE',
+      'CHATBOT',
+      'RETAIL',
+      'VENTAS',
+    ] as const) {
+      fetchMock.mockResolvedValueOnce(
+        response([{ ...row('sku'), channel_id: canal }]),
+      );
+      expect(
+        await publicReadOnly.matchingProducts(
+          [{ productId: 'p', sku: 'sku' }],
+          { ...query, canal },
+        ),
+      ).toEqual(['p']);
+    }
+    expect(identity.authorization).not.toHaveBeenCalled();
   });
 
   it('preserves decimal bounds and wire numbers without binary rounding or exponent expansion', () => {
