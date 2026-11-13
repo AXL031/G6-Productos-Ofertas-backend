@@ -308,6 +308,7 @@ export class HttpCommercialContext implements CommercialContext {
           products.set(id, p.skus);
         }
         const uniqueSkus = [...new Set([...products.values()].flat())];
+        if (uniqueSkus.length) commercialChannel(channelId);
         const availability = new Map<
           string,
           RecommendationCandidate['availability'] | 'INDETERMINADO'
@@ -448,6 +449,10 @@ function finitePositive(value: unknown): string {
   return String(value);
 }
 function channel(value: string) {
+  if (!['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'].includes(value))
+    throw new Error('UNSUPPORTED_COMMERCIAL_CHANNEL');
+}
+function commercialChannel(value: string) {
   if (!['MARKETPLACE', 'CHATBOT', 'RETAIL'].includes(value))
     throw new Error('UNSUPPORTED_COMMERCIAL_CHANNEL');
 }
