@@ -4046,6 +4046,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       const http = new CatalogGatewayHarness();
       await http.start(persistenceSettings, { timeoutMs: 300000 });
       try {
+        const manager = http.token({ aud: undefined, scope: undefined });
         const call = async (
           method: string,
           path: string,
@@ -4053,7 +4054,7 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           status: number,
           code?: string,
         ) => {
-          const response = await http.call(method, path, body, http.token());
+          const response = await http.call(method, path, body, manager);
           expect(
             response.status,
             method + ' ' + path + ': ' + JSON.stringify(response.body),
@@ -4080,16 +4081,46 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           catalogVersion: product.catalog_version,
           skuBase: input.skuBase,
         });
-        const list = await call(
-          'GET',
-          '/productos/administracion?estado=BORRADOR&q=' +
-            encodeURIComponent(input.skuBase),
-          undefined,
-          200,
-        );
-        expect(list.items).toContainEqual(
-          expect.objectContaining({ productId: id }),
-        );
+        const adminList = '/productos/administracion';
+        const filters = new URLSearchParams({
+          q: input.skuBase,
+          categoriaId: input.categoriaId,
+          marcaId: input.marcaId,
+          pagina: '1',
+          tamanio: '1',
+        });
+        const assertAdminState = async (
+          estado: 'BORRADOR' | 'ACTIVO' | 'INACTIVO',
+          persistedVersion: unknown,
+        ) => {
+          const expected = {
+            productId: id,
+            estado,
+            catalogVersion: persistedVersion,
+          };
+          expect(await call('GET', adminPath, undefined, 200)).toMatchObject(
+            expected,
+          );
+          expect(
+            await call(
+              'GET',
+              `${adminList}?${filters}&estado=${estado}`,
+              undefined,
+              200,
+            ),
+          ).toMatchObject({
+            items: [expected],
+            meta: { pagina: 1, tamanio: 1, total: 1, totalPaginas: 1 },
+          });
+        };
+        await assertAdminState('BORRADOR', product.catalog_version);
+        for (const key of ['categoriaId', 'marcaId']) {
+          const nonMatching = new URLSearchParams(filters);
+          nonMatching.set(key, randomUUID());
+          expect(
+            await call('GET', `${adminList}?${nonMatching}`, undefined, 200),
+          ).toMatchObject({ items: [], meta: { total: 0 } });
+        }
         const marketplace = await http.call(
           'GET',
           path + '?canal=MARKETPLACE',
@@ -4128,6 +4159,11 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           409,
           'VERSION_CONFLICT',
         );
+        expect(await call('GET', adminPath, undefined, 200)).toMatchObject({
+          descripcion: 'HTTP update',
+          nombre: input.nombre,
+          catalogVersion: updated.catalog_version,
+        });
         await call('POST', path + '/activar', {}, 422, 'DATOS_INCOMPLETOS');
         const prep = await call('GET', path + '/preparacion', undefined, 200);
         expect(prep.pricing).toMatchObject({
@@ -4184,7 +4220,8 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           ),
         ).toHaveLength(2);
         await complete(id);
-        await call('POST', path + '/activar', {}, 200);
+        const active = await call('POST', path + '/activar', {}, 200);
+        await assertAdminState('ACTIVO', active.catalog_version);
         const detail = await call('GET', path, undefined, 200);
         expect(detail).toMatchObject({
           product_id: id,
@@ -4218,7 +4255,8 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
           404,
           'PRODUCTO_NO_ENCONTRADO',
         );
-        await call('POST', path + '/desactivar', {}, 200);
+        const inactive = await call('POST', path + '/desactivar', {}, 200);
+        await assertAdminState('INACTIVO', inactive.catalog_version);
         await call('GET', path, undefined, 404, 'PRODUCTO_NO_ENCONTRADO');
         await call('POST', path + '/reactivar', {}, 200);
 
