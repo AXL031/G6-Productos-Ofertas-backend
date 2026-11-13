@@ -9,6 +9,9 @@ import { Database, type CatalogTransaction } from './database.js';
 import {
   activationChecks,
   outbox,
+  productAttributes,
+  productImages,
+  productIdentifyingCharacteristics,
   products,
   skuIdentity,
   skuPhysicalProfiles,
@@ -16,7 +19,7 @@ import {
   variantImages,
   variants,
 } from './catalog.schema.js';
-import type { Attribute } from './commercial.types.js';
+import type { Attribute, ProductQuery } from './commercial.types.js';
 import type {
   AdminVariant,
   PhysicalSkuData,
@@ -51,6 +54,28 @@ function numericValues(values: (string | null)[]): number[] | null {
   return numbers.every((value) => Number.isFinite(value) && value > 0)
     ? numbers
     : null;
+}
+
+function adminProductSummary(row: typeof products.$inferSelect) {
+  const catalogVersion = Number(row.catalog_version);
+  if (!Number.isSafeInteger(catalogVersion) || catalogVersion < 0)
+    throw new ServiceUnavailableException();
+  return {
+    productId: row.id,
+    catalogVersion,
+    estado: row.estado,
+    nombre: row.nombre,
+    descripcion: row.descripcion,
+    categoriaId: row.categoria_id,
+    marcaId: row.marca_id,
+    tipoProductoId: row.tipo_producto_id,
+    skuBase: row.sku_base,
+    slug: row.slug,
+    tieneVariantes: row.tiene_variantes,
+    publicadoAlgunaVez: row.publicado_alguna_vez,
+    creadoEn: row.created_at.toISOString(),
+    actualizadoEn: row.updated_at.toISOString(),
+  };
 }
 
 @Injectable()
@@ -190,6 +215,130 @@ export class CatalogQueryRepository {
           throw error;
         throw new ServiceUnavailableException();
       });
+  }
+
+  listAdminProducts(query: ProductQuery) {
+    const { pagina, tamanio, estado, categoriaId, marcaId, q } = query;
+    const pattern =
+      q === undefined
+        ? undefined
+        : '%' +
+          q.trim().replace(/[\\%_]/g, (character) => '\\' + character) +
+          '%';
+    const condition = and(
+      estado === undefined ? undefined : eq(products.estado, estado),
+      categoriaId === undefined
+        ? undefined
+        : eq(products.categoria_id, categoriaId),
+      marcaId === undefined ? undefined : eq(products.marca_id, marcaId),
+      pattern === undefined
+        ? undefined
+        : or(
+            sql`${products.nombre} ILIKE ${pattern}`,
+            sql`${products.sku_base} ILIKE ${pattern}`,
+          ),
+    );
+    return this.database.read((db) =>
+      db.transaction(
+        async (tx) => {
+          const [count] = await tx
+            .select({ total: sql<number>`count(*)::integer` })
+            .from(products)
+            .where(condition);
+          const rows = await tx
+            .select()
+            .from(products)
+            .where(condition)
+            .orderBy(asc(products.nombre), asc(products.id))
+            .limit(tamanio)
+            .offset((pagina - 1) * tamanio);
+          const total = count?.total ?? 0;
+          return {
+            items: rows.map(adminProductSummary),
+            meta: {
+              pagina,
+              tamanio,
+              total,
+              totalPaginas: Math.ceil(total / tamanio),
+            },
+          };
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      ),
+    );
+  }
+
+  findAdminProduct(productId: string) {
+    return this.database.read((db) =>
+      db.transaction(
+        async (tx) => {
+          const [product] = await tx
+            .select()
+            .from(products)
+            .where(eq(products.id, productId));
+          if (!product) return null;
+          const imagenes = await tx
+            .select({
+              url: productImages.url,
+              principal: productImages.principal,
+              posicion: productImages.posicion,
+            })
+            .from(productImages)
+            .where(eq(productImages.product_id, product.id))
+            .orderBy(asc(productImages.posicion), asc(productImages.id));
+          const atributos = await tx
+            .select({
+              caracteristicaId: productAttributes.caracteristica_id,
+              nombre: productAttributes.nombre_snapshot,
+              valorId: productAttributes.valor_id,
+              valor: productAttributes.valor,
+            })
+            .from(productAttributes)
+            .where(eq(productAttributes.product_id, product.id))
+            .orderBy(asc(productAttributes.caracteristica_id));
+          const identifying = await tx
+            .select({ id: productIdentifyingCharacteristics.caracteristica_id })
+            .from(productIdentifyingCharacteristics)
+            .where(eq(productIdentifyingCharacteristics.product_id, product.id))
+            .orderBy(asc(productIdentifyingCharacteristics.caracteristica_id));
+          const [profile] = await tx
+            .select({
+              pesoKg: skuPhysicalProfiles.peso_kg,
+              largo: skuPhysicalProfiles.largo_cm,
+              ancho: skuPhysicalProfiles.ancho_cm,
+              alto: skuPhysicalProfiles.alto_cm,
+              actualizadoEn: skuPhysicalProfiles.updated_at,
+            })
+            .from(skuIdentity)
+            .innerJoin(
+              skuPhysicalProfiles,
+              eq(skuPhysicalProfiles.sku_identity_id, skuIdentity.id),
+            )
+            .where(eq(skuIdentity.product_id, product.id));
+          return {
+            ...adminProductSummary(product),
+            imagenes,
+            atributos,
+            caracteristicasIdentificadoras: identifying.map((row) => row.id),
+            perfilFisico: profile
+              ? {
+                  pesoKg:
+                    profile.pesoKg === null ? null : Number(profile.pesoKg),
+                  dimensionesCm: {
+                    largo:
+                      profile.largo === null ? null : Number(profile.largo),
+                    ancho:
+                      profile.ancho === null ? null : Number(profile.ancho),
+                    alto: profile.alto === null ? null : Number(profile.alto),
+                  },
+                  actualizadoEn: profile.actualizadoEn.toISOString(),
+                }
+              : null,
+          };
+        },
+        { isolationLevel: 'repeatable read', accessMode: 'read only' },
+      ),
+    );
   }
 
   listVariants(

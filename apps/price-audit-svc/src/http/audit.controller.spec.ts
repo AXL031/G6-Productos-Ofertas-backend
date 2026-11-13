@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { wireAudit } from './audit.controller.js';
+import { wireAdminAudit, wireAudit } from './audit.controller.js';
 import type { auditLog } from '../persistence/audit.schema.js';
 
 const row: typeof auditLog.$inferSelect = {
@@ -43,6 +43,23 @@ describe('Proyección HTTP de importes PostgreSQL', () => {
     expect(json).toContain(`"precio_nuevo":${value},`);
     expect(json).toContain(`"variacion_porcentual":-${value},`);
     expect(() => JSON.parse(json)).not.toThrow();
+  });
+  it('admin acepta un objetivo PRODUCTO sin SKU y canal global nulo sin cambiar rc.3', () => {
+    const global = {
+      ...row,
+      targetType: 'PRODUCTO',
+      sku: null,
+      channel: null,
+      next: '9007199254740993.01',
+    };
+    expect(() => wireAudit(global)).toThrow('SERVICIO_NO_DISPONIBLE');
+    const json = JSON.stringify(wireAdminAudit(global));
+    expect(JSON.parse(json)).toMatchObject({
+      target_type: 'PRODUCTO',
+      sku: null,
+      canal_origen: null,
+    });
+    expect(json).toContain('"precio_nuevo":9007199254740993.01,');
   });
   it('conserva null y cero como valores distintos', () => {
     const json = JSON.stringify(wireAudit(row));

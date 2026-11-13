@@ -100,6 +100,14 @@ export class InventoryAdminController {
     );
   }
 
+  @Get('administracion/saldos')
+  listarSaldosFisicos(
+    @Query() query: Record<string, unknown>,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    return this.dashboardService.listarSaldosFisicos(query, correlationId);
+  }
+
   @Get('traslados')
   @RequireCapability(INVENTORY_CAPABILITIES.TRASLADOS_LEER)
   async listarTraslados(
