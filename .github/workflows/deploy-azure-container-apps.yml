@@ -1,0 +1,142 @@
+name: Azure QA - despliegue de imágenes oficiales
+
+on:
+  push:
+    branches: [cueva, codex/azure-aca-actions]
+    paths:
+      - .github/workflows/deploy-azure-container-apps.yml
+      - ops/azure/container-apps/deploy-release.mjs
+      - ops/azure/container-apps/deploy-release.test.mjs
+  pull_request:
+    branches: [master]
+    paths:
+      - .github/workflows/deploy-azure-container-apps.yml
+      - ops/azure/container-apps/deploy-release.mjs
+      - ops/azure/container-apps/deploy-release.test.mjs
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: SHA oficial vigente de master, con CI posterior al merge exitosa
+        type: string
+        required: true
+      service:
+        description: Componente existente que se actualizará
+        type: choice
+        required: true
+        default: all
+        options: [all, api-gateway, catalog-svc, taxonomy-svc, pricing-svc, price-audit-svc, inventory-svc, combos-svc, bulk-svc, promotions-svc]
+      mode:
+        description: Plan no cambia Azure; deploy actualiza solo imágenes
+        type: choice
+        required: true
+        default: plan
+        options: [plan, deploy]
+
+permissions: {}
+concurrency:
+  group: azure-qa-container-apps-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Pruebas aisladas del despliegue, sin Azure ni Docker
+        run: node --test ops/azure/container-apps/deploy-release.test.mjs
+
+  azure:
+    needs: validate
+    if: github.event_name == 'workflow_dispatch' && github.repository == 'AXL031/G6-Productos-Ofertas-backend' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    environment: azure-qa
+    permissions:
+      contents: read
+      actions: read
+      packages: read
+      id-token: write
+    env:
+      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      AZURE_RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
+      RELEASE_SHA: ${{ inputs.sha }}
+      RELEASE_SERVICE: ${{ inputs.service }}
+      RELEASE_MODE: ${{ inputs.mode }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24.15.0'
+      - name: Comprobar configuración antes de autenticar
+        env:
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          GHCR_READ_TOKEN: ${{ secrets.GHCR_READ_TOKEN }}
+          GHCR_READ_USER: ${{ vars.GHCR_READ_USER }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$RELEASE_SHA" =~ ^[a-f0-9]{40}$ ]]
+          [[ -n "$AZURE_CLIENT_ID" && -n "$AZURE_TENANT_ID" && -n "$AZURE_SUBSCRIPTION_ID" && -n "$AZURE_RESOURCE_GROUP" && -n "$GHCR_READ_TOKEN" && -n "$GHCR_READ_USER" ]]
+          case "$RELEASE_MODE" in plan|deploy) ;; *) exit 1 ;; esac
+      - uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      - name: Acceso de lectura a GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ vars.GHCR_READ_USER }}
+          password: ${{ secrets.GHCR_READ_TOKEN }}
+      - name: Resolver artefactos oficiales existentes, sin construir ni publicar
+        run: |
+          set -Eeuo pipefail
+          mkdir -p azure-evidence
+          case "$RELEASE_SERVICE" in
+            all) selected='catalog-svc taxonomy-svc pricing-svc price-audit-svc inventory-svc combos-svc bulk-svc promotions-svc api-gateway' ;;
+            api-gateway|catalog-svc|taxonomy-svc|pricing-svc|price-audit-svc|inventory-svc|combos-svc|bulk-svc|promotions-svc) selected="$RELEASE_SERVICE" ;;
+            *) exit 1 ;;
+          esac
+          : > azure-evidence/release.psv
+          for service in $selected; do
+            output="$(mktemp)"
+            if ! bash ops/oracle/ensure-ghcr-sha-image.sh Taller-SW-Web/G6-Productos-Ofertas-backend "$service" "$RELEASE_SHA" "$output"; then
+              rm -f "$output"
+              exit 1
+            fi
+            exists="$(sed -n 's/^exists=//p' "$output")"
+            digest="$(sed -n 's/^digest=//p' "$output")"
+            rm -f "$output"
+            [[ "$exists" == true && "$digest" =~ ^sha256:[a-f0-9]{64}$ ]] || { echo "Falta imagen oficial: $service" >&2; exit 1; }
+            printf '%s|%s|%s\n' "$service" "$RELEASE_SHA" "$digest" >> azure-evidence/release.psv
+          done
+      - name: Plan o actualización de imágenes y comprobación de revisión
+        run: |
+          set -Eeuo pipefail
+          args=(--release azure-evidence/release.psv --sha "$RELEASE_SHA" --out azure-evidence)
+          if [[ "$RELEASE_MODE" == deploy ]]; then args+=(--apply); fi
+          node ops/azure/container-apps/deploy-release.mjs "${args[@]}"
+      - name: Conservar evidencia sin configuración runtime ni tokens
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-qa-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            azure-evidence/release.psv
+            azure-evidence/plan.json
+            azure-evidence/rollback-images.psv
+            azure-evidence/result.json
+          if-no-files-found: ignore
+          retention-days: 14
