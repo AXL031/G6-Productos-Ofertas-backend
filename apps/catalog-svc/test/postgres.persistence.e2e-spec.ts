@@ -1,3 +1,5 @@
+import { productAttributes, variantAttributes } from '../src/catalog.schema.js';
+import { currentTaxonomyValue } from '../src/catalog-taxonomy-update.js';
 import {
   CatalogBulkService,
   CatalogBulkIdentity,
@@ -42,7 +44,7 @@ import type { TaxonomyClient } from '../src/taxonomy.client.js';
 import type { ProductQuery, ProductSummary } from '../src/commercial.types.js';
 import { CatalogAmqpRuntime } from '../src/catalog-amqp.js';
 import { CatalogTelemetry } from '../src/catalog-telemetry.js';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import {
   CatalogMutationService,
   type CatalogProductCreationPolicy,
@@ -340,6 +342,400 @@ describe.skipIf(!dockerAvailable)(
         tiene_variantes: false,
       };
     }
+
+    it('TAXONOMY-UPDATES: durable replay, ordering and current labels preserve historical identities', async () => {
+      const messages = new CatalogMessageService(database);
+      const characteristic = randomUUID(),
+        value = randomUUID();
+      const product = (
+        await database.transaction((tx) =>
+          tx
+            .insert(products)
+            .values({
+              ...productInput('tax-update-' + randomUUID()),
+              tiene_variantes: true,
+            })
+            .returning(),
+        )
+      )[0]!;
+      const variant = await database.transaction(async (tx) => {
+        const [child] = await tx
+          .insert(variants)
+          .values({
+            product_id: product.id,
+            sku: 'tax-variant-' + randomUUID(),
+            identifying_key: { [characteristic]: { valor_id: value } },
+          })
+          .returning();
+        await tx.insert(productAttributes).values({
+          product_id: product.id,
+          caracteristica_id: characteristic,
+          nombre_snapshot: 'Color',
+          valor_id: value,
+          valor: 'Azul anterior',
+        });
+        await tx.insert(variantAttributes).values({
+          variant_id: child!.id,
+          caracteristica_id: characteristic,
+          nombre_snapshot: 'Color',
+          valor_id: value,
+          valor: 'Azul anterior',
+          es_identificador: true,
+        });
+        await tx.insert(variantImages).values({
+          variant_id: child!.id,
+          url: 'https://example.test/taxonomy.jpg',
+          posicion: 0,
+        });
+        return child!;
+      });
+      const fact = (
+        name: string,
+        data: Record<string, unknown>,
+      ): CatalogEnvelope => ({
+        message_id: randomUUID(),
+        correlation_id: randomUUID(),
+        operation_id: null,
+        causation_id: null,
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        producer: 'taxonomy-svc',
+        kind: 'event',
+        name,
+        data,
+      });
+      const renamed = fact('taxonomy.characteristic-value.updated', {
+        caracteristica_id: characteristic,
+        valor_id: value,
+        nombre: 'Azul vigente',
+        change_type: 'RENAMED',
+        updated_at: '2026-11-13T10:00:00.123456Z',
+      });
+      expect(
+        (
+          await Promise.all([
+            messages.consume(renamed),
+            messages.consume(renamed),
+          ])
+        ).sort(),
+      ).toEqual(['APPLIED', 'DUPLICATE']);
+      expect(
+        await messages.consume({
+          ...renamed,
+          message_id: randomUUID(),
+          data: {
+            ...renamed.data,
+            nombre: 'Viejo',
+            updated_at: '2026-11-13T10:00:00.123455Z',
+          },
+        }),
+      ).toBe('STALE');
+      await expect(
+        messages.consume({
+          ...renamed,
+          data: { ...renamed.data, nombre: 'ID reutilizado' },
+        }),
+      ).rejects.toThrow('INVALID_CATALOG_MESSAGE');
+      await expect(
+        messages.consume({
+          ...renamed,
+          message_id: randomUUID(),
+          data: { ...renamed.data, nombre: 'Versión contradictoria' },
+        }),
+      ).rejects.toThrow('INVALID_CATALOG_MESSAGE');
+      // Actual SELECT projection under the runtime role: no mutation of historical JSON or SKU.
+      const current = await database.read((db) =>
+        db
+          .select({
+            valor: currentTaxonomyValue(productAttributes),
+          })
+          .from(productAttributes)
+          .where(eq(productAttributes.product_id, product.id)),
+      );
+      expect(current[0]!.valor).toBe('Azul vigente');
+      const currentVariant = await database.read((db) =>
+        db
+          .select({
+            valor: currentTaxonomyValue(variantAttributes),
+          })
+          .from(variantAttributes)
+          .where(eq(variantAttributes.variant_id, variant.id)),
+      );
+      expect(currentVariant[0]!.valor).toBe('Azul vigente');
+      const adminQueries = new CatalogQueryRepository(database);
+      expect(await adminQueries.findAdminProduct(product.id)).toMatchObject({
+        atributos: [
+          {
+            caracteristicaId: characteristic,
+            nombre: 'Color',
+            valorId: value,
+            valor: 'Azul vigente',
+          },
+        ],
+      });
+      expect(await adminQueries.listVariants(product.id, 1, 20)).toMatchObject({
+        items: [
+          {
+            variant_id: variant.id,
+            identifying_attributes: [
+              {
+                caracteristica_id: characteristic,
+                nombre: 'Color',
+                valor_id: value,
+                valor: 'Azul vigente',
+              },
+            ],
+          },
+        ],
+      });
+      const commercialReads = new PostgresCatalogRepository(database);
+      expect(
+        await commercialReads.findCandidateBySlug(
+          product.slug,
+          undefined,
+          true,
+        ),
+      ).toMatchObject({
+        attributes: [
+          {
+            caracteristica_id: characteristic,
+            nombre: 'Color',
+            valor_id: value,
+            valor: 'Azul vigente',
+          },
+        ],
+        variants: [
+          {
+            variant_id: variant.id,
+            identifying_attributes: [
+              {
+                caracteristica_id: characteristic,
+                nombre: 'Color',
+                valor_id: value,
+                valor: 'Azul vigente',
+              },
+            ],
+          },
+        ],
+      });
+      expect(
+        (
+          await database.read((db) =>
+            db
+              .select()
+              .from(productAttributes)
+              .where(eq(productAttributes.product_id, product.id)),
+          )
+        )[0]!.valor,
+      ).toBe('Azul anterior');
+      const persisted = (
+        await database.read((db) =>
+          db.select().from(variants).where(eq(variants.id, variant.id)),
+        )
+      )[0]!;
+      expect(persisted.identifying_key).toEqual(variant.identifying_key);
+      expect(persisted.sku).toBe(variant.sku);
+      expect(persisted.catalog_version).toBe(variant.catalog_version);
+      // Reconstructed consumer has no process-local cache; replay survives restart.
+      expect(await new CatalogMessageService(database).consume(renamed)).toBe(
+        'DUPLICATE',
+      );
+      for (const [name, identity, versionKey] of [
+        [
+          'taxonomy.category.updated',
+          { categoria_id: randomUUID() },
+          'version',
+        ],
+        [
+          'taxonomy.product-type-schema.changed',
+          {
+            tipo_producto_id: randomUUID(),
+            caracteristica_id: characteristic,
+            change_type: 'REQUIRED_CHANGED',
+            updated_at: '2026-11-13T10:00:00Z',
+          },
+          'schema_version',
+        ],
+      ] as const) {
+        const update = fact(name, { ...identity, [versionKey]: 7 });
+        expect(await messages.consume(update)).toBe('APPLIED');
+        expect(
+          await messages.consume({
+            ...update,
+            message_id: randomUUID(),
+            data: { ...update.data, [versionKey]: 6 },
+          }),
+        ).toBe('STALE');
+        expect(
+          await messages.consume({ ...update, message_id: randomUUID() }),
+        ).toBe('STALE');
+      }
+      const rolledBack = {
+        ...renamed,
+        message_id: randomUUID(),
+        data: {
+          ...renamed.data,
+          nombre: 'Tras recuperación',
+          updated_at: '2026-11-13T10:00:00.123457Z',
+        },
+      };
+      class RollbackDatabase extends Database {
+        override async transaction<T>(
+          work: (tx: CatalogTransaction) => Promise<T>,
+        ): Promise<T> {
+          return database.transaction(async (tx) => {
+            await work(tx);
+            throw new Error('INJECTED_TRANSACTION_FAILURE');
+          });
+        }
+      }
+      await expect(
+        new CatalogMessageService(new RollbackDatabase()).consume(rolledBack),
+      ).rejects.toThrow('INJECTED_TRANSACTION_FAILURE');
+      expect(
+        await database.read((db) =>
+          db
+            .select()
+            .from(inbox)
+            .where(eq(inbox.message_id, rolledBack.message_id)),
+        ),
+      ).toHaveLength(0);
+      expect(
+        (
+          await database.read((db) =>
+            db
+              .select({ valor: currentTaxonomyValue(productAttributes) })
+              .from(productAttributes)
+              .where(eq(productAttributes.product_id, product.id)),
+          )
+        )[0]!.valor,
+      ).toBe('Azul vigente');
+      expect(await messages.consume(rolledBack)).toBe('APPLIED');
+      const stored = await database.read((db) =>
+        db.select().from(inbox).where(eq(inbox.message_id, renamed.message_id)),
+      );
+      expect(stored).toHaveLength(1);
+      expect(stored[0]!.result).toBe('APPLIED');
+    });
+
+    it('TAXONOMY-UPDATES: real Rabbit deliveries ACK only after durable Inbox and survive consumer restart', async () => {
+      const messages = new CatalogMessageService(database);
+      const facts = [
+        {
+          name: 'taxonomy.category.updated',
+          data: { categoria_id: randomUUID(), version: 0 },
+        },
+        {
+          name: 'taxonomy.product-type-schema.changed',
+          data: {
+            tipo_producto_id: randomUUID(),
+            schema_version: 1,
+            change_type: 'CHARACTERISTIC_ASSOCIATED',
+            caracteristica_id: randomUUID(),
+            updated_at: new Date().toISOString(),
+          },
+        },
+        {
+          name: 'taxonomy.characteristic-value.updated',
+          data: {
+            caracteristica_id: randomUUID(),
+            valor_id: randomUUID(),
+            nombre: 'Etiqueta del broker',
+            change_type: 'RENAMED',
+            updated_at: new Date().toISOString(),
+          },
+        },
+      ].map((fact) => ({
+        message_id: randomUUID(),
+        correlation_id: randomUUID(),
+        schema_version: 1,
+        occurred_at: new Date().toISOString(),
+        producer: 'taxonomy-svc',
+        kind: 'event',
+        ...fact,
+      }));
+      jointRuntime = new CatalogAmqpRuntime(messages, jointBroker.settings);
+      jointRuntime.onModuleInit();
+      try {
+        for (const fact of facts) await jointBroker.taxonomyFact(fact);
+        const deadline = Date.now() + 15000;
+        while (Date.now() < deadline) {
+          const rows = await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(
+                inArray(
+                  inbox.message_id,
+                  facts.map((f) => f.message_id),
+                ),
+              ),
+          );
+          if (rows.length === 3) break;
+          await pause(50);
+        }
+        expect(
+          (
+            await database.read((db) =>
+              db
+                .select()
+                .from(inbox)
+                .where(
+                  inArray(
+                    inbox.message_id,
+                    facts.map((f) => f.message_id),
+                  ),
+                ),
+            )
+          ).map((row) => row.result),
+        ).toEqual(['APPLIED', 'APPLIED', 'APPLIED']);
+        expect(jointRuntime.ready).toBe(true);
+        await jointRuntime.onModuleDestroy();
+        jointRuntime = new CatalogAmqpRuntime(
+          new CatalogMessageService(database),
+          jointBroker.settings,
+        );
+        jointRuntime.onModuleInit();
+        for (const fact of facts) await jointBroker.taxonomyFact(fact);
+        await pause(1000);
+        expect(jointRuntime.ready).toBe(true);
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(
+                inArray(
+                  inbox.message_id,
+                  facts.map((f) => f.message_id),
+                ),
+              ),
+          ),
+        ).toHaveLength(3);
+        // Invalid payload stays unacknowledged and pauses, with no forged Inbox success.
+        const invalid = { ...facts[0]!, message_id: randomUUID(), data: {} };
+        await jointBroker.taxonomyFact(invalid);
+        const pauseDeadline = Date.now() + 5000;
+        while (jointRuntime.ready && Date.now() < pauseDeadline)
+          await pause(50);
+        expect(jointRuntime.ready).toBe(false);
+        expect(
+          await database.read((db) =>
+            db
+              .select()
+              .from(inbox)
+              .where(eq(inbox.message_id, invalid.message_id)),
+          ),
+        ).toHaveLength(0);
+        // Remove only this deliberately invalid fixture from the disposable broker.
+        expect(
+          (await jointBroker.next('po.catalogo.q')).properties.messageId,
+        ).toBe(invalid.message_id);
+      } finally {
+        await jointRuntime.onModuleDestroy();
+        jointRuntime = undefined;
+      }
+    }, 30000);
 
     it('BLOCK-A1: historical absence is 503 on HTTP read and 409 on retry, without manufacturing a preparation', async () => {
       const http = new CatalogGatewayHarness();
