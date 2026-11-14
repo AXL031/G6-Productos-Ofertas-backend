@@ -112,9 +112,6 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-    defaults:
-      run:
-        working-directory: backend
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
@@ -138,7 +135,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: pricing-batch-benchmark-${{ github.sha }}
-        path: backend/.ci/performance/pricing-batch-benchmark.log
+        path: .ci/performance/pricing-batch-benchmark.log
         retention-days: 7
   e2e:
     name: Ejecutar pruebas de extremo a extremo
