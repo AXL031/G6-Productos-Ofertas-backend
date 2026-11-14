@@ -50,7 +50,7 @@ describe('readiness boundary', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('uses an explicit two-second functional deadline and handles late rejection', async () => {
+  it('uses a two-second deadline and handles late rejection', async () => {
     vi.useFakeTimers();
     expect(READINESS_TIMEOUT_MS).toBe(2000);
     let reject!: (error: Error) => void;
@@ -69,7 +69,7 @@ describe('readiness boundary', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('returns ready with exit code zero from the CLI probe', async () => {
+  it('reports technical database and catalog read checks from the CLI probe', async () => {
     const output: string[] = [];
     const close = vi.fn().mockResolvedValue(undefined);
     const exitCode = await runReadinessCliProbe(
@@ -78,45 +78,19 @@ describe('readiness boundary', () => {
         progress('catalog-read');
       },
       close,
-      { marketplaceDemoPreview: false, readDemo: { enabled: true } },
       (line) => output.push(line),
     );
     expect(exitCode).toBe(0);
-    expect(JSON.parse(output[0])).toMatchObject({
+    expect(JSON.parse(output[0])).toEqual({
       service: 'catalog-svc',
       status: 'ready',
       database: 'ready',
-      eligibility: 'not_evaluated_demo',
+      catalogRead: 'ready',
     });
     expect(close).toHaveBeenCalledOnce();
   });
 
-  it('checks public read configuration without claiming commercial eligibility', async () => {
-    const output: string[] = [];
-    const exitCode = await runReadinessCliProbe(
-      async (progress) => {
-        progress('database');
-        progress('catalog-read');
-      },
-      vi.fn().mockResolvedValue(undefined),
-      {
-        marketplaceDemoPreview: false,
-        readDemo: {
-          enabled: false,
-          securityMode: 'PUBLIC_READ_ONLY',
-          publicOperations: ['listarProductos'],
-        },
-      },
-      (line) => output.push(line),
-    );
-    expect(exitCode).toBe(0);
-    expect(JSON.parse(output[0])).toMatchObject({
-      status: 'ready',
-      eligibility: 'not_evaluated_demo',
-    });
-  });
-
-  it('marks CLI readiness not_ready on timeout and drains the operation before closing', async () => {
+  it('marks CLI readiness not_ready on timeout and drains work before closing', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
     const work = new Promise<void>((resolve) => {
@@ -128,13 +102,11 @@ describe('readiness boundary', () => {
     const probe = runReadinessCliProbe(
       () => work,
       close,
-      { marketplaceDemoPreview: false, readDemo: { enabled: true } },
       (line) => output.push(line),
     ).then((code) => {
       finished = true;
       return code;
     });
-
     await vi.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS);
     expect(finished).toBe(false);
     expect(close).not.toHaveBeenCalled();
@@ -167,7 +139,7 @@ describe('readiness boundary', () => {
     expect(check).toHaveBeenCalledTimes(2);
   });
 
-  it('stays closed after timeout without queuing more slow PostgreSQL checks', async () => {
+  it('stays closed after timeout without queuing more checks', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
     const check = vi.fn().mockImplementation(
@@ -182,9 +154,8 @@ describe('readiness boundary', () => {
     );
     await vi.advanceTimersByTimeAsync(2000);
     await Promise.all(probes);
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 100; i++)
       await expect(controller.ready()).rejects.toMatchObject({ status: 503 });
-    }
     expect(check).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
     finish();

@@ -1,50 +1,26 @@
 import {
-  Inject,
   Injectable,
   HttpException,
   ForbiddenException,
   ServiceUnavailableException,
   Optional,
-  BadRequestException,
 } from '@nestjs/common';
-import { CatalogConfig } from './config.js';
 import { CatalogTelemetry } from './catalog-telemetry.js';
 import { CatalogPriceFilter } from './catalog-price-filter.js';
-import { DEMO_PRICING, type CurrentProductPrice } from './pricing.client.js';
 import type {
   ProductQuery,
   ProductDetail,
   ProductPage,
-  DemoProduct,
-  ProductSummary,
 } from './commercial.types.js';
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import { TaxonomyClient } from './taxonomy.client.js';
 import type { TaxonomyIdentity } from './taxonomy.client.js';
-import {
-  CATALOG_READ_DEMO,
-  type CatalogReadDemo,
-} from './catalog-read-demo.js';
 
 @Injectable()
 export class CommercialService {
   constructor(
     private readonly repository: PostgresCatalogRepository,
     private readonly taxonomy: TaxonomyClient,
-    @Optional()
-    @Inject(CATALOG_READ_DEMO)
-    private readonly readDemo: CatalogReadDemo = { enabled: false },
-    @Optional() private readonly config?: CatalogConfig,
-    @Optional()
-    @Inject(DEMO_PRICING)
-    private readonly pricing?: {
-      currentPrice(
-        id: string,
-        timeoutMs?: number,
-        correlationId?: string,
-        signal?: AbortSignal,
-      ): Promise<CurrentProductPrice | null>;
-    },
     @Optional() private readonly priceFilter?: CatalogPriceFilter,
     @Optional()
     private readonly telemetry: CatalogTelemetry = new CatalogTelemetry(),
@@ -58,50 +34,6 @@ export class CommercialService {
     }
   }
 
-  private demoEnabled(query: ProductQuery): boolean {
-    return (
-      this.config?.marketplaceDemoPreview === true &&
-      query.canal === 'MARKETPLACE'
-    );
-  }
-
-  private async demoPrices<T extends { product_id: string }>(
-    rows: T[],
-    correlationId?: string,
-    signal?: AbortSignal,
-  ): Promise<Array<T & CurrentProductPrice>> {
-    if (!this.pricing) throw new ServiceUnavailableException();
-    const output: Array<T & CurrentProductPrice> = [];
-    const deadline = Date.now() + 7000;
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < rows.length && !signal?.aborted) {
-        const index = cursor++;
-        const remaining = deadline - Date.now();
-        if (remaining <= 0) throw new ServiceUnavailableException();
-        const price = await this.pricing!.currentPrice(
-          rows[index].product_id,
-          Math.min(2500, remaining),
-          correlationId,
-          signal,
-        );
-        if (price === undefined) throw new ServiceUnavailableException();
-        if (price) output[index] = Object.assign(rows[index], price);
-      }
-    };
-    try {
-      await Promise.all(
-        Array.from({ length: Math.min(3, rows.length) }, worker),
-      );
-    } catch {
-      throw new ServiceUnavailableException();
-    }
-    if (signal?.aborted || Date.now() >= deadline)
-      throw new ServiceUnavailableException();
-    return output.filter(
-      (row): row is T & CurrentProductPrice => row !== undefined,
-    );
-  }
   async list(
     query: ProductQuery,
     correlationId?: string,
@@ -110,87 +42,8 @@ export class CommercialService {
   ): Promise<ProductPage> {
     const monetary =
       query.precioMin !== undefined || query.precioMax !== undefined;
-    // Administrative non-active and demo searches retain their previous scope.
-    if (
-      monetary &&
-      (this.readDemo.enabled ||
-        this.demoEnabled(query) ||
-        (query.estado !== undefined && query.estado !== 'ACTIVO'))
-    )
+    if (monetary && query.estado !== undefined && query.estado !== 'ACTIVO')
       throw new ServiceUnavailableException();
-    if (!this.readDemo.enabled && this.demoEnabled(query)) {
-      return this.telemetry.measure(
-        'DEMO_LIST_TOTAL',
-        async () => {
-          if (query.estado !== undefined)
-            throw new BadRequestException(
-              'estado no está disponible en preview',
-            );
-          const controller = new AbortController();
-          let timer: ReturnType<typeof setTimeout> | undefined;
-          const deadline = new Promise<never>((_, reject) => {
-            timer = setTimeout(() => {
-              controller.abort();
-              reject(new ServiceUnavailableException());
-            }, 7000);
-          });
-          const work = (async (): Promise<ProductPage> => {
-            if (query.categoriaId !== undefined)
-              await this.taxonomy.category(query.categoriaId, correlationId);
-            if (query.marcaId !== undefined)
-              await this.taxonomy.brand(query.marcaId, correlationId);
-            let candidates: ProductSummary[];
-            try {
-              candidates = await this.repository.listDemoCandidates(
-                query,
-                100,
-                correlationId,
-              );
-            } catch {
-              throw new ServiceUnavailableException();
-            }
-            const priced = await this.telemetry.measure(
-              'DEMO_PRICING',
-              () =>
-                this.demoPrices(candidates, correlationId, controller.signal),
-              correlationId,
-            );
-            const ordered = priced.sort((a, b) => {
-              const order = a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
-              const idOrder =
-                a.product_id < b.product_id
-                  ? -1
-                  : a.product_id > b.product_id
-                    ? 1
-                    : 0;
-              return (
-                (query.orden === 'NOMBRE_DESC' ? -order : order) || idOrder
-              );
-            });
-            const start = (query.pagina - 1) * query.tamanio;
-            return {
-              items: ordered.slice(
-                start,
-                start + query.tamanio,
-              ) as DemoProduct[],
-              pagina: query.pagina,
-              tamanio: query.tamanio,
-              total: ordered.length,
-            };
-          })();
-          try {
-            return await Promise.race([work, deadline]);
-          } catch {
-            controller.abort();
-            throw new ServiceUnavailableException();
-          } finally {
-            if (timer) clearTimeout(timer);
-            controller.abort();
-          }
-        },
-        correlationId,
-      );
-    }
     if (query.categoriaId !== undefined)
       await this.taxonomy.category(query.categoriaId, correlationId, identity);
     if (query.marcaId !== undefined)
@@ -199,8 +52,6 @@ export class CommercialService {
       query.estado !== undefined && query.estado !== 'ACTIVO';
     if (isAdministrativeState && !administrativeState)
       throw new ForbiddenException();
-    if (this.readDemo.enabled)
-      return this.repository.listCandidates(query, true);
     if (monetary)
       return this.read(async () => {
         if (!this.priceFilter) throw new ServiceUnavailableException();
@@ -224,45 +75,9 @@ export class CommercialService {
     correlationId?: string,
     identity?: TaxonomyIdentity,
   ): Promise<ProductDetail> {
-    if (!this.readDemo.enabled && this.demoEnabled(query)) {
-      let product: Awaited<
-        ReturnType<PostgresCatalogRepository['findDemoCandidateBySlug']>
-      >;
-      try {
-        product = await this.repository.findDemoCandidateBySlug(slug);
-      } catch {
-        throw new ServiceUnavailableException();
-      }
-      if (!product)
-        throw new HttpException({ code: 'PRODUCTO_NO_ENCONTRADO' }, 404);
-      if (!this.pricing) throw new ServiceUnavailableException();
-      let price: CurrentProductPrice | null;
-      try {
-        price = await this.pricing.currentPrice(
-          product.product_id,
-          undefined,
-          correlationId,
-        );
-      } catch {
-        throw new ServiceUnavailableException();
-      }
-      if (!price)
-        throw new HttpException({ code: 'PRODUCTO_NO_ENCONTRADO' }, 404);
-      try {
-        return {
-          ...product,
-          ...price,
-          marca: await this.taxonomy.brand(product.marca_id, correlationId),
-        };
-      } catch {
-        throw new ServiceUnavailableException();
-      }
-    }
-    const product = this.readDemo.enabled
-      ? await this.repository.findCandidateBySlug(slug, query.canal, true)
-      : await this.read(() =>
-          this.repository.findCandidateBySlug(slug, query.canal),
-        );
+    const product = await this.read(() =>
+      this.repository.findCandidateBySlug(slug, query.canal),
+    );
     if (!product)
       throw new HttpException({ code: 'PRODUCTO_NO_ENCONTRADO' }, 404);
     try {
@@ -286,11 +101,9 @@ export class CommercialService {
     correlationId?: string,
     identity?: TaxonomyIdentity,
   ): Promise<ProductDetail> {
-    const product = this.readDemo.enabled
-      ? await this.repository.findCandidateByProductId(productId, canal, true)
-      : await this.read(() =>
-          this.repository.findCandidateByProductId(productId, canal),
-        );
+    const product = await this.read(() =>
+      this.repository.findCandidateByProductId(productId, canal),
+    );
     if (!product)
       throw new HttpException({ code: 'PRODUCTO_NO_ENCONTRADO' }, 404);
     try {

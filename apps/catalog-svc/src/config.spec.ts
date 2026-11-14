@@ -190,7 +190,6 @@ describe('CatalogConfig PG contract', () => {
   });
 
   it('keeps demo preview disabled and rejects its legacy activation flag', () => {
-    expect(new CatalogConfig(validEnv()).marketplaceDemoPreview).toBe(false);
     expect(
       () =>
         new CatalogConfig({

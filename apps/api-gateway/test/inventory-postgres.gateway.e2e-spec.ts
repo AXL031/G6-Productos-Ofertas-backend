@@ -356,10 +356,18 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
       Object.assign(settings, { upstreams });
     }
 
-    for (const [sub, canal] of [
-      ['modulo-marketplace', 'RETAIL'],
-      ['modulo-productos', 'CHATBOT'],
-    ] as const) {
+    for (const canal of ['CHATBOT', 'RETAIL'] as const) {
+      const response = await request(gateway)
+        .get(`${commercial}?skus=${enoughSku}&canal=${canal}`)
+        .set('Authorization', `Bearer ${token('modulo-productos')}`)
+        .expect(200);
+      expect(response.body.items).toHaveLength(1);
+      expect(response.body.items[0]).toMatchObject({ sku: enoughSku });
+      expect(['DISPONIBLE', 'INDETERMINADO']).toContain(
+        response.body.items[0].status,
+      );
+    }
+    for (const [sub, canal] of [['modulo-marketplace', 'RETAIL']] as const) {
       const response = await request(gateway)
         .get(`${commercial}?skus=${enoughSku}&canal=${canal}`)
         .set('Authorization', `Bearer ${token(sub)}`)

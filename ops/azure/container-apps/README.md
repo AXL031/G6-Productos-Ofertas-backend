@@ -1,3 +1,10 @@
+> Actualización 2026-11-14: esta guía conserva el corte histórico y los scripts de
+> operación del fork. El código de aplicación está alineado con master oficial
+> cb4520daff0ccede7cbb0f860802d981d3e7a0d2. La automatización propia se documenta
+> en [AUTOMATIZACION.md](AUTOMATIZACION.md). El CD H5 oficial incorporado tiene
+> prerrequisitos independientes, descritos al final; su presencia no significa
+> que esté configurado ni autoriza su ejecución automática.
+
 # Migración Azure Container Apps — corte 2026-11-06
 
 Estado actual: nueve servicios desplegados; cinco lecturas Catalog/Taxonomy equivalentes a la VM y verificadas después de desasignarla. Certificación global parcial. Véase [informe del despliegue](DESPLIEGUE_ACA_2026-11-06.md).
@@ -183,3 +190,15 @@ PowerState/deallocated confirmado. Las cinco lecturas de ACA se revalidaron desp
 Fuentes: [limitaciones Express](https://learn.microsoft.com/en-us/azure/container-apps/express-overview),
 [modo del entorno](https://learn.microsoft.com/en-us/azure/templates/microsoft.app/2026-07-01/managedenvironments),
 [restauración del entorno](https://learn.microsoft.com/es-es/azure/container-apps/faq).
+
+---
+
+## CD H5 incorporado desde el repositorio oficial
+
+# Azure Container Apps H5
+
+El CD candidato está documentado en [CONFIGURACION_OIDC_H5.md](CONFIGURACION_OIDC_H5.md). El único trigger es manual (`workflow_dispatch`) desde `master`; exige el HEAD exacto vigente, CI exacta y auditoría de dependencias limpia antes de publicar. `prepare` valida `azure-h5` antes de GHCR y `deploy` repite la consulta justo antes de OIDC. El environment aún no está verificado: el owner debe configurar reviewers, restricción exclusiva a `master` y prevención de autoaprobación.
+
+El flujo contempla los nueve servicios. La opción `all` es manual y secuencial. Antes de actualizar comprueba el recurso ACA y conserva la configuración del resto de contenedores; Gateway conserva Caddy. Cada cambio registra recibo y el rollback supervisado comprueba que no haya drift o concurrencia. El smoke obligatorio corre en el runner privado `azure-h5-smoke` y falla si falta URL/ruta o el servicio no responde como exige el contrato.
+
+Las pruebas locales usan dobles de Azure CLI; no prueban una suscripción real. No se afirma integración autenticada, smoke funcional, homologación ni despliegue sin evidencia remota ligada al SHA/digest.
