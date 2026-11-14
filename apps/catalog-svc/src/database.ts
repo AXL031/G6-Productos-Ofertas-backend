@@ -158,6 +158,14 @@ export class Database implements OnModuleDestroy {
     if (this.closed) throw new CatalogPersistenceError('connection');
     if (!this.pool) {
       this.pool = new pg.Pool(this.getSettings().pool);
+      // A client can lose its socket while checked out (e.g. database failover).
+      // The query promise reports the failure, but pg.Client also emits `error`;
+      // keep that event observed while the pool discards and replaces the client.
+      this.pool.on('connect', (client) => {
+        client.on('error', () => {
+          this.db = undefined;
+        });
+      });
       // pg emits idle client errors outside the query promise. Never log driver details.
       this.pool.on('error', () => {
         this.db = undefined;
