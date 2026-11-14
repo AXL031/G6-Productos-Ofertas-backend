@@ -350,7 +350,7 @@ describe.skipIf(!dockerAvailable)(
           service: 'catalog-svc',
           status: 'ready',
           database: 'ready',
-          eligibility: 'not_evaluated_demo',
+          catalogRead: 'ready',
         });
 
         command(

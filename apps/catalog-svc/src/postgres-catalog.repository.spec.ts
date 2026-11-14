@@ -212,5 +212,4 @@ describe('Catalog provider SQL and projections (isolated)', () => {
       );
     expect(statements[0].values).toHaveLength(0);
   });
-
 });

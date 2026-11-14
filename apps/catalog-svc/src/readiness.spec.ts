@@ -41,7 +41,9 @@ describe('readiness boundary', () => {
 
   it('bounds a stalled dependency check', async () => {
     vi.useFakeTimers();
-    const result = new ReadinessController({ check: () => new Promise(() => {}) }).ready();
+    const result = new ReadinessController({
+      check: () => new Promise(() => {}),
+    }).ready();
     const assertion = expect(result).rejects.toMatchObject({ status: 503 });
     await vi.advanceTimersByTimeAsync(2000);
     await assertion;
@@ -57,7 +59,9 @@ describe('readiness boundary', () => {
     });
     const outcome = withReadinessDeadline(work);
     await vi.advanceTimersByTimeAsync(1999);
-    await expect(Promise.race([outcome, Promise.resolve('pending')])).resolves.toBe('pending');
+    await expect(
+      Promise.race([outcome, Promise.resolve('pending')]),
+    ).resolves.toBe('pending');
     await vi.advanceTimersByTimeAsync(1);
     await expect(outcome).resolves.toBe('timed_out');
     reject(new Error('late dependency failure'));
@@ -89,7 +93,9 @@ describe('readiness boundary', () => {
   it('marks CLI readiness not_ready on timeout and drains work before closing', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
-    const work = new Promise<void>((resolve) => { finish = resolve; });
+    const work = new Promise<void>((resolve) => {
+      finish = resolve;
+    });
     const output: string[] = [];
     const close = vi.fn().mockResolvedValue(undefined);
     let finished = false;
@@ -97,20 +103,31 @@ describe('readiness boundary', () => {
       () => work,
       close,
       (line) => output.push(line),
-    ).then((code) => { finished = true; return code; });
+    ).then((code) => {
+      finished = true;
+      return code;
+    });
     await vi.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS);
     expect(finished).toBe(false);
     expect(close).not.toHaveBeenCalled();
     finish();
     await expect(probe).resolves.toBe(1);
-    expect(JSON.parse(output[0])).toMatchObject({ service: 'catalog-svc', status: 'not_ready' });
+    expect(JSON.parse(output[0])).toMatchObject({
+      service: 'catalog-svc',
+      status: 'not_ready',
+    });
     expect(close).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('shares concurrent checks and never reuses an earlier success', async () => {
     let finish!: () => void;
-    const check = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const check = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
     const controller = new ReadinessController({ check });
     const probes = Array.from({ length: 100 }, () => controller.ready());
     await Promise.resolve();
@@ -125,12 +142,20 @@ describe('readiness boundary', () => {
   it('stays closed after timeout without queuing more checks', async () => {
     vi.useFakeTimers();
     let finish!: () => void;
-    const check = vi.fn().mockImplementation(() => new Promise<void>((resolve) => { finish = resolve; }));
+    const check = vi.fn().mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
     const controller = new ReadinessController({ check });
-    const probes = Array.from({ length: 100 }, () => expect(controller.ready()).rejects.toMatchObject({ status: 503 }));
+    const probes = Array.from({ length: 100 }, () =>
+      expect(controller.ready()).rejects.toMatchObject({ status: 503 }),
+    );
     await vi.advanceTimersByTimeAsync(2000);
     await Promise.all(probes);
-    for (let i = 0; i < 100; i++) await expect(controller.ready()).rejects.toMatchObject({ status: 503 });
+    for (let i = 0; i < 100; i++)
+      await expect(controller.ready()).rejects.toMatchObject({ status: 503 });
     expect(check).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
     finish();

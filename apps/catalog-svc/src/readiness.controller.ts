@@ -1,8 +1,4 @@
-import {
-  Controller,
-  Get,
-  ServiceUnavailableException,
-} from '@nestjs/common';
+import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { Database } from './database.js';
 import { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import { CatalogAmqpRuntime } from './catalog-amqp.js';
@@ -15,9 +11,7 @@ export class ReadinessController {
     private readonly amqp: CatalogAmqpRuntime,
   ) {}
   async checkReadiness(
-    onProgress?: (
-      stage: 'database' | 'catalog-read',
-    ) => void,
+    onProgress?: (stage: 'database' | 'catalog-read') => void,
   ): Promise<void> {
     await this.database.verifyIdentity();
     onProgress?.('database');

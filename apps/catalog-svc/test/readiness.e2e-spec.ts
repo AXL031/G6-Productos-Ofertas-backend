@@ -27,23 +27,37 @@ const validEnv = () => ({
   G6_SECURITY_MODE: 'G7_AUTHENTICATED',
 });
 
-beforeAll(() => writeFileSync(certificate, '-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----'));
-afterAll(() => { unlinkSync(certificate); rmdirSync(directory); });
+beforeAll(() =>
+  writeFileSync(
+    certificate,
+    '-----BEGIN CERTIFICATE-----\nfixture\n-----END CERTIFICATE-----',
+  ),
+);
+afterAll(() => {
+  unlinkSync(certificate);
+  rmdirSync(directory);
+});
 
 describe('Catalog readiness versus liveness', () => {
   it('keeps liveness healthy while required Catalog reads are unavailable', async () => {
     const read = vi.fn().mockRejectedValue(new Error('fixture SELECT denied'));
     const module = await Test.createTestingModule({ imports: [AppModule] })
-      .overrideProvider(Database).useValue({ verifyIdentity: async () => undefined })
-      .overrideProvider(PostgresCatalogRepository).useValue({ checkReadinessAccess: read })
+      .overrideProvider(Database)
+      .useValue({ verifyIdentity: async () => undefined })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
     try {
       await request(app.getHttpServer()).get('/health').expect(200);
-      const response = await request(app.getHttpServer()).get('/health/ready').expect(503);
+      const response = await request(app.getHttpServer())
+        .get('/health/ready')
+        .expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
-    } finally { await app.close(); }
+    } finally {
+      await app.close();
+    }
   });
 
   it('checks database identity and required Catalog read access without a commercial query', async () => {
@@ -52,16 +66,23 @@ describe('Catalog readiness versus liveness', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
-      .overrideProvider(Database).useValue({ verifyIdentity: verify })
-      .overrideProvider(PostgresCatalogRepository).useValue({ checkReadinessAccess: read })
+      .overrideProvider(Database)
+      .useValue({ verifyIdentity: verify })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
     try {
-      await request(app.getHttpServer()).get('/health/ready').expect(200).expect({ status: 'ready', service: 'catalog-svc' });
+      await request(app.getHttpServer())
+        .get('/health/ready')
+        .expect(200)
+        .expect({ status: 'ready', service: 'catalog-svc' });
       expect(verify).toHaveBeenCalledOnce();
       expect(read).toHaveBeenCalledOnce();
-    } finally { await app.close(); }
+    } finally {
+      await app.close();
+    }
   });
 
   it('fails closed when database identity verification fails', async () => {
@@ -69,16 +90,26 @@ describe('Catalog readiness versus liveness', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
-      .overrideProvider(Database).useValue({ verifyIdentity: async () => { throw new Error('fixture'); } })
-      .overrideProvider(PostgresCatalogRepository).useValue({ checkReadinessAccess: read })
+      .overrideProvider(Database)
+      .useValue({
+        verifyIdentity: async () => {
+          throw new Error('fixture');
+        },
+      })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
     try {
-      const response = await request(app.getHttpServer()).get('/health/ready').expect(503);
+      const response = await request(app.getHttpServer())
+        .get('/health/ready')
+        .expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
       expect(read).not.toHaveBeenCalled();
-    } finally { await app.close(); }
+    } finally {
+      await app.close();
+    }
   });
 
   it('fails closed when required AMQP is unavailable', async () => {
@@ -86,16 +117,23 @@ describe('Catalog readiness versus liveness', () => {
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
-      .overrideProvider(Database).useValue({ verifyIdentity: async () => undefined })
-      .overrideProvider(PostgresCatalogRepository).useValue({ checkReadinessAccess: read })
-      .overrideProvider(CatalogAmqpRuntime).useValue({ required: true, ready: false })
+      .overrideProvider(Database)
+      .useValue({ verifyIdentity: async () => undefined })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
+      .overrideProvider(CatalogAmqpRuntime)
+      .useValue({ required: true, ready: false })
       .compile();
     const app = module.createNestApplication();
     await app.init();
     try {
-      const response = await request(app.getHttpServer()).get('/health/ready').expect(503);
+      const response = await request(app.getHttpServer())
+        .get('/health/ready')
+        .expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
       expect(read).not.toHaveBeenCalled();
-    } finally { await app.close(); }
+    } finally {
+      await app.close();
+    }
   });
 });

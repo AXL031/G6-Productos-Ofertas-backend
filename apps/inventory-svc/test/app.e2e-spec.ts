@@ -827,7 +827,10 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
         expect(['DISPONIBLE', 'INDETERMINADO']).toContain(
           res.body.items[0].status,
         );
-        expect(Object.keys(res.body.items[0]).sort()).toEqual(['sku', 'status']);
+        expect(Object.keys(res.body.items[0]).sort()).toEqual([
+          'sku',
+          'status',
+        ]);
       },
     );
     it('GET: modulo-productos sin el scope requerido responde 403', async () => {

@@ -3,9 +3,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { Database } from '../src/database.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
-import {
-  CATALOG_READ_DEMO,
-} from '../src/catalog-read-demo.js';
+import { CATALOG_READ_DEMO } from '../src/catalog-read-demo.js';
 
 describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
   'Catalog global eligibility on configured PostgreSQL (read only)',

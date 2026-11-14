@@ -33,10 +33,7 @@ import {
   CatalogMasterClient,
 } from './catalog-master.client.js';
 import { CatalogTelemetry } from './catalog-telemetry.js';
-import {
-  CATALOG_READ_DEMO,
-  readCatalogReadDemo,
-} from './catalog-read-demo.js';
+import { CATALOG_READ_DEMO, readCatalogReadDemo } from './catalog-read-demo.js';
 import {
   CatalogBulkService,
   CatalogBulkIdentity,

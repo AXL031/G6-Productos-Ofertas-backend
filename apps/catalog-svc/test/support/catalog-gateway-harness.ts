@@ -17,9 +17,7 @@ import { CATALOG_TAXONOMY_CONFIG } from '../../src/taxonomy-config.js';
 import { CATALOG_TAXONOMY_IDENTITY } from '../../src/catalog-master.client.js';
 import { Database, type PostgresSettings } from '../../src/database.js';
 import { CatalogPersistenceError } from '../../src/database-errors.js';
-import {
-  CATALOG_READ_DEMO,
-} from '../../src/catalog-read-demo.js';
+import { CATALOG_READ_DEMO } from '../../src/catalog-read-demo.js';
 import { CATALOG_PREPARATION_CONFIG } from '../../src/catalog-messages.js';
 import {
   HISTORICAL_RECOVERY_CAPABILITIES,

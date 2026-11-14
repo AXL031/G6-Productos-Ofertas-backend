@@ -6,9 +6,7 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { CATALOG_SECURITY_CONFIG } from '../src/catalog-auth.js';
-import {
-  CATALOG_READ_DEMO,
-} from '../src/catalog-read-demo.js';
+import { CATALOG_READ_DEMO } from '../src/catalog-read-demo.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
 import { CommercialService } from '../src/commercial.service.js';
 import { CatalogPricingIdentityProvider } from '../src/catalog-pricing-identity.js';
