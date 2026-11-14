@@ -20,6 +20,10 @@ export interface PricingCatalogContext {
   } | null>;
 }
 export const channels = ['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'] as const;
+const MAX_CATALOG_CONTEXT_CONCURRENCY = 8;
+type CommercialCandidates = Awaited<
+  ReturnType<PricingRepository['readCandidates']>
+>;
 export function parseCommercialQuery(
   query: Record<string, unknown>,
   batch = false,
@@ -73,14 +77,11 @@ export class CommercialPrices {
     @Inject(PRICING_CATALOG_CONTEXT)
     private readonly catalog?: PricingCatalogContext,
   ) {}
-  async sku(
+
+  private async resolveContext(
     sku: string,
-    channel: (typeof channels)[number] | undefined,
-    at: Date,
-    historical = false,
     correlationId?: string,
-  ) {
-    if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
+  ): Promise<Awaited<ReturnType<PricingCatalogContext['resolve']>>> {
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
@@ -89,8 +90,7 @@ export class CommercialPrices {
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
-    if (context === null)
-      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    if (context === null) return null;
     if (
       !context ||
       context.sku !== sku ||
@@ -101,15 +101,18 @@ export class CommercialPrices {
       typeof context.eligible !== 'boolean'
     )
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
-    if (!context.active || !context.eligible)
-      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    return context;
+  }
+
+  private price(
+    sku: string,
+    context: NonNullable<Awaited<ReturnType<PricingCatalogContext['resolve']>>>,
+    definitions: CommercialCandidates,
+    channel: (typeof channels)[number] | undefined,
+    at: Date,
+    historical: boolean,
+  ) {
     const channelId = channel ?? null;
-    const definitions = await this.repository.readCandidates(
-      context.productId,
-      sku,
-      channelId,
-      at,
-    );
     const resolved = resolvePrice(definitions, context, channelId, at);
     let effectiveChannel: (typeof channels)[number] | null = null;
     if (resolved.definition.channelId !== null) {
@@ -118,8 +121,8 @@ export class CommercialPrices {
       effectiveChannel = channel;
     }
     const validity = definitions
-      .flatMap((d) => d.validities)
-      .find((v) => v === resolved.validity)!;
+      .flatMap((definition) => definition.validities)
+      .find((candidate) => candidate === resolved.validity)!;
     return {
       sku,
       precio_regular: wireMoney(validity.precioRegular),
@@ -138,6 +141,29 @@ export class CommercialPrices {
       origen: resolved.origen,
     };
   }
+
+  async sku(
+    sku: string,
+    channel: (typeof channels)[number] | undefined,
+    at: Date,
+    historical = false,
+    correlationId?: string,
+  ) {
+    if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
+    const context = await this.resolveContext(sku, correlationId);
+    if (context === null)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    if (!context.active || !context.eligible)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    const channelId = channel ?? null;
+    const definitions = await this.repository.readCandidates(
+      context.productId,
+      sku,
+      channelId,
+      at,
+    );
+    return this.price(sku, context, definitions, channel, at, historical);
+  }
   async batch(
     skus: string[],
     channel: (typeof channels)[number] | undefined,
@@ -145,12 +171,73 @@ export class CommercialPrices {
     historical = false,
     correlationId?: string,
   ) {
+    if (!skus.length) return { items: [] };
+    if (skus.some((sku) => !sku.trim()))
+      throw new PricingHttpError(400, 'VALIDACION');
+    if (!this.catalog)
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    const uniqueSkus = [...new Set(skus)];
+    const contexts = new Map<
+      string,
+      Awaited<ReturnType<PricingCatalogContext['resolve']>>
+    >();
+    let cursor = 0;
+    let failed = false;
+    let failure: unknown;
+    const worker = async () => {
+      while (!failed) {
+        const index = cursor++;
+        if (index >= uniqueSkus.length) return;
+        const sku = uniqueSkus[index]!;
+        try {
+          contexts.set(sku, await this.resolveContext(sku, correlationId));
+        } catch (error) {
+          failed = true;
+          failure = error;
+        }
+      }
+    };
+    await Promise.all(
+      Array.from(
+        {
+          length: Math.min(MAX_CATALOG_CONTEXT_CONCURRENCY, uniqueSkus.length),
+        },
+        worker,
+      ),
+    );
+    if (failed) throw failure;
+
+    const eligibleContexts = uniqueSkus.flatMap((sku) => {
+      const context = contexts.get(sku);
+      return context && context.active && context.eligible
+        ? [{ sku, productId: context.productId, context }]
+        : [];
+    });
+    const candidates = await this.repository.readCandidatesBatch(
+      eligibleContexts,
+      channel ?? null,
+      at,
+    );
+    const definitionsBySku = new Map(
+      candidates.map(({ sku, definitions }) => [sku, definitions]),
+    );
     const items: Awaited<ReturnType<CommercialPrices['sku']>>[] = [];
     for (const sku of skus) {
+      const context = contexts.get(sku);
+      if (!context || !context.active || !context.eligible) continue;
       try {
-        items.push(await this.sku(sku, channel, at, historical, correlationId));
+        items.push(
+          this.price(
+            sku,
+            context,
+            definitionsBySku.get(sku) ?? [],
+            channel,
+            at,
+            historical,
+          ),
+        );
       } catch (error) {
-        // ConsultaPrecios no tiene errores por fila: solo se omite ausencia de precio contractual.
+        // La consulta no tiene errores por fila: solo omite ausencias contractuales.
         if (
           !(
             error instanceof PricingHttpError &&

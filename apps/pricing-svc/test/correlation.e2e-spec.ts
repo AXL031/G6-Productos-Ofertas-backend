@@ -98,8 +98,10 @@ describe('Correlación Pricing -> Catalog', () => {
           const actual = response.headers['x-correlation-id'];
           expect(actual).toMatch(uuid);
           if (correlation) expect(actual).toBe(correlation);
+          // Batch resolves distinct SKU contexts with bounded parallel GETs;
+          // when one fails, the other already in flight may also complete.
           expect(received.length).toBe(
-            upstreamStatus === 503 || !path.includes('?') ? 1 : 2,
+            !path.includes('?') ? 1 : 2,
           );
           expect(received.every((entry) => entry.correlation === actual)).toBe(
             true,

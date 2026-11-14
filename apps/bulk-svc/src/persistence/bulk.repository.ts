@@ -949,6 +949,19 @@ export class BulkPersistenceRepository {
             value !== null &&
             commandRowOperations.has(Reflect.get(value, 'rowOperationId')),
         );
+        const normalizedByOperationId = new Map<
+          string,
+          Record<string, unknown>
+        >();
+        for (const candidate of normalizedRows) {
+          if (typeof candidate !== 'object' || candidate === null) continue;
+          const row = candidate as Record<string, unknown>;
+          if (
+            typeof row.rowOperationId === 'string' &&
+            !normalizedByOperationId.has(row.rowOperationId)
+          )
+            normalizedByOperationId.set(row.rowOperationId, row);
+        }
         const [existingMessage] = await tx
           .select()
           .from(inbox)
@@ -1023,12 +1036,9 @@ export class BulkPersistenceRepository {
           );
         const seen = new Set<string>();
         for (const result of results) {
-          const normalized = normalizedRows.find((candidate) => {
-            if (typeof candidate !== 'object' || candidate === null)
-              return false;
-            const row = candidate as Record<string, unknown>;
-            return row.rowOperationId === result.row_operation_id;
-          }) as Record<string, unknown> | undefined;
+          const normalized = normalizedByOperationId.get(
+            result.row_operation_id,
+          );
           if (
             !normalized ||
             seen.has(result.row_operation_id) ||

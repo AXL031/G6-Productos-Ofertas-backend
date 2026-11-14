@@ -738,6 +738,7 @@ function parseDataRows(
   const mode = operation as BulkTemplateMode;
   const parsedRows: BulkCatalogRow[] = [];
   const familySet = new Set<string>();
+  const simpleFamilies = new Set<string>();
   let activeFamily: string | null = null;
   const familyFields = new Map<string, string>();
   const duplicateSku = new Set<string>();
@@ -781,6 +782,7 @@ function parseDataRows(
         'PLANTILLA_INCOMPATIBLE',
         'tiene_variantes solo admite true o false en minúsculas.',
       );
+    if (!hasVariants) simpleFamilies.add(skuBase);
     const productId = rawProductId === '' ? null : rawProductId!;
     if (mode === 'ALTA' && productId !== null)
       fail('PLANTILLA_INCOMPATIBLE', 'producto_id debe estar vacío en ALTA.');
@@ -1061,8 +1063,7 @@ function parseDataRows(
   }
 
   for (const [skuBase, count] of familyRows) {
-    const family = parsedRows.filter((row) => row.skuBase === skuBase);
-    if (family[0]!.variant === null && count !== 1)
+    if (simpleFamilies.has(skuBase) && count !== 1)
       fail(
         'PLANTILLA_INCOMPATIBLE',
         'Un producto simple debe ocupar una sola fila.',

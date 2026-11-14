@@ -1,8 +1,7 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { DashboardService } from './dashboard.service.js';
 import { DatabaseService } from '../database/database.service.js';
 import { InMemoryDatabaseMock } from '../../test/in-memory-database.mock.js';
-import { DrizzleStockBalanceRepository } from '../repositories/drizzle/drizzle-stock-balance.repository.js';
 
 describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
   let service: DashboardService;
@@ -16,10 +15,7 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
     mockDb = new InMemoryDatabaseMock();
     const dbService = new DatabaseService();
     dbService.setCustomService(mockDb);
-    service = new DashboardService(
-      new DrizzleStockBalanceRepository(dbService),
-      dbService,
-    );
+    service = new DashboardService(dbService);
   });
 
   it('calcula totales, estados por SKU y distribución por ubicación', async () => {
@@ -44,6 +40,46 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
     )!;
     expect(miraflores.on_hand).toBe(4);
     expect(miraflores.skusStockBajo).toBe(1);
+  });
+
+  it('pide al repositorio agregado solo totales y filas por ubicación', async () => {
+    const querySpy = vi.spyOn(mockDb, 'query');
+
+    const res = await service.obtenerDashboard({});
+
+    const dashboardQueries = querySpy.mock.calls.filter(([sql]) =>
+      sql.includes('WITH filtered_balance AS MATERIALIZED'),
+    );
+    expect(dashboardQueries).toHaveLength(1);
+    expect(dashboardQueries[0]?.[0]).toContain('GROUP BY sku_id');
+    expect(dashboardQueries[0]?.[0]).toContain('GROUP BY location_id');
+    expect(res.porUbicacion).toHaveLength(2);
+  });
+
+  it('las métricas internas reutilizan el agregado sin volver a leer saldos', async () => {
+    const querySpy = vi.spyOn(mockDb, 'query');
+
+    await service.obtenerMetricasInternas();
+
+    expect(
+      querySpy.mock.calls.filter(([sql]) =>
+        sql.includes('WITH filtered_balance AS MATERIALIZED'),
+      ),
+    ).toHaveLength(1);
+    expect(
+      querySpy.mock.calls.filter(([sql]) =>
+        sql.includes('FROM inventory.traslados'),
+      ),
+    ).toHaveLength(1);
+    expect(querySpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('mantiene el filtro SKU vacío como ausencia de filtro', async () => {
+    const all = await service.obtenerDashboard({});
+    const emptySku = await service.obtenerDashboard({ sku: '' });
+
+    expect(emptySku.totalSkus).toBe(all.totalSkus);
+    expect(emptySku.totalAvailable).toBe(all.totalAvailable);
   });
 
   it('filtra por SKU', async () => {

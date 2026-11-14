@@ -91,6 +91,21 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
       );
       return (await repository.exportJob(id))!;
     };
+    const ageProcessingJob = async (id: string) => {
+      await database.admin!.query(
+        'ALTER TABLE price_audit.export_jobs DISABLE TRIGGER trg_export_jobs_updated_at',
+      );
+      try {
+        await database.admin!.query(
+          "UPDATE price_audit.export_jobs SET updated_at='2000-01-01T00:00:00Z' WHERE id=$1",
+          [id],
+        );
+      } finally {
+        await database.admin!.query(
+          'ALTER TABLE price_audit.export_jobs ENABLE TRIGGER trg_export_jobs_updated_at',
+        );
+      }
+    };
     it('genera CSV/PDF descargables, conserva cero/null, neutraliza fórmulas y no expone rutas privadas', async () => {
       for (const formato of ['CSV', 'PDF']) {
         const response = await request(app.getHttpServer())
@@ -244,12 +259,63 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
         "UPDATE price_audit.export_jobs SET status='PROCESSING' WHERE id=$1",
         [job.id],
       );
+      await ageProcessingJob(job.id);
       const completed = await finish(job.id);
       await expect(
         worker.download({ ...completed, id: '../../secret' }),
       ).rejects.toThrow();
-      await rm(join(directory, `${job.id}.csv`));
+      const artifactId = completed.downloadUrl!.slice('audit-artifact:'.length);
+      await rm(join(directory, `${job.id}.${artifactId}.csv`));
       await expect(worker.download(completed)).rejects.toThrow();
+    });
+    it('impide que un worker con lease vencido sustituya el artefacto ganador', async () => {
+      const job = await repository.createExport(
+        { sku: 'export-real' },
+        'CSV',
+        'gestor',
+      );
+      const staleArtifact = '11111111-1111-4111-8111-111111111111';
+      const winningArtifact = '22222222-2222-4222-8222-222222222222';
+      const artifacts = new Set<string>();
+      let signalStaleWriter!: () => void;
+      let releaseStaleWriter!: () => void;
+      const staleWriterStarted = new Promise<void>(
+        (resolve) => (signalStaleWriter = resolve),
+      );
+      const holdStaleWriter = new Promise<void>(
+        (resolve) => (releaseStaleWriter = resolve),
+      );
+      const staleWorker = repository.processExport(async () => {
+        artifacts.add(staleArtifact);
+        signalStaleWriter();
+        await holdStaleWriter;
+        return {
+          artifactId: staleArtifact,
+          discard: async () => {
+            artifacts.delete(staleArtifact);
+          },
+        };
+      });
+
+      await staleWriterStarted;
+      await ageProcessingJob(job.id);
+      await repository.processExport(async () => {
+        artifacts.add(winningArtifact);
+        return {
+          artifactId: winningArtifact,
+          discard: async () => {
+            artifacts.delete(winningArtifact);
+          },
+        };
+      });
+
+      releaseStaleWriter();
+      await staleWorker;
+
+      const completed = await repository.exportJob(job.id);
+      expect(completed?.status).toBe('COMPLETED');
+      expect(completed?.downloadUrl).toBe(`audit-artifact:${winningArtifact}`);
+      expect([...artifacts]).toEqual([winningArtifact]);
     });
     it('renderiza sin truncar textos extensos y rechaza límites aun sin controlador', async () => {
       const { items } = await repository.list({ sku: 'export-real' }, 1, 20);

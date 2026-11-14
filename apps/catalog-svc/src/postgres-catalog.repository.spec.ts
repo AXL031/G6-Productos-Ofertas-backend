@@ -15,6 +15,10 @@ describe('Catalog provider SQL and projections (isolated)', () => {
       const text = typeof config === 'string' ? config : config.text;
       statements.push({ text, values });
       if (text.includes('count(*)')) return { rows: [[1]] };
+      if (text.toLowerCase().includes('union all'))
+        return {
+          rows: [{ productId: 'product-fixture', sku: '0001' }],
+        };
       if (text.includes('from "catalog"."products"'))
         return {
           rows: [
@@ -162,7 +166,7 @@ describe('Catalog provider SQL and projections (isolated)', () => {
     ]);
   });
 
-  it('collects lightweight sellable candidates before hydration and applies matched IDs before count/page', async () => {
+  it('collects lightweight sellable candidates in one query before hydration and applies matched IDs before count/page', async () => {
     const query = {
       canal: 'MARKETPLACE' as const,
       pagina: 1,
@@ -170,20 +174,25 @@ describe('Catalog provider SQL and projections (isolated)', () => {
       orden: 'NOMBRE_ASC' as const,
       q: 'fixture',
     };
-    await repo.priceCandidates(query);
-    expect(statements.filter((s) => s.text.startsWith('select'))).toHaveLength(
-      2,
-    );
+    const candidates = await repo.priceCandidates(query);
+    expect(candidates).toEqual([{ productId: 'product-fixture', sku: '0001' }]);
+    expect(
+      statements.filter((s) =>
+        s.text.trimStart().toLowerCase().startsWith('select'),
+      ),
+    ).toHaveLength(1);
     expect(
       statements.every(
         (s) => !/images|attribute_values|limit|offset/.test(s.text),
       ),
     ).toBe(true);
-    expect(
-      statements.some((s) =>
-        s.text.includes('inner join "catalog"."variants"'),
-      ),
-    ).toBe(true);
+    const candidatesQuery = statements.find((statement) =>
+      statement.text.trimStart().toLowerCase().startsWith('select'),
+    )!;
+    expect(candidatesQuery.text.toLowerCase()).toContain('union all');
+    expect(candidatesQuery.text.toLowerCase()).toContain(
+      'inner join "catalog"."variants"',
+    );
     statements.length = 0;
     await repo.listCandidates(query, false, [
       '00000000-0000-4000-8000-000000000001',

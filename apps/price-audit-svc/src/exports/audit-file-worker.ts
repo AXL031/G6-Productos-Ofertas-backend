@@ -210,7 +210,8 @@ export class AuditFileExportWorker
               : await renderPdf(rows, this.config.exportFont!);
           if (data.length > maxBytes)
             throw new Error('Exportación demasiado grande.');
-          const path = this.path(job);
+          const artifactId = randomUUID();
+          const path = this.path(job, artifactId);
           const temporary = path + '.' + randomUUID() + '.tmp';
           try {
             await writeFile(temporary, data, { flag: 'wx', mode: 0o600 });
@@ -218,18 +219,41 @@ export class AuditFileExportWorker
           } finally {
             await rm(temporary, { force: true });
           }
+          return {
+            artifactId,
+            discard: () => rm(path, { force: true }),
+          };
         }))
       )
         break;
     }
   }
-  private path(job: typeof exportJobs.$inferSelect) {
+  private path(job: typeof exportJobs.$inferSelect, artifactId: string) {
     if (
+      !this.config.exportDirectory ||
+      !uuid.test(job.id) ||
+      !uuid.test(artifactId) ||
+      !['CSV', 'PDF'].includes(job.format)
+    )
+      throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    return join(
+      this.config.exportDirectory,
+      `${job.id}.${artifactId}.${job.format.toLowerCase()}`,
+    );
+  }
+  private downloadPath(job: typeof exportJobs.$inferSelect) {
+    const artifact = /^audit-artifact:([0-9a-f-]{36})$/i.exec(
+      job.downloadUrl ?? '',
+    )?.[1];
+    if (artifact && uuid.test(artifact)) return this.path(job, artifact);
+    if (
+      job.downloadUrl !== null ||
       !this.config.exportDirectory ||
       !uuid.test(job.id) ||
       !['CSV', 'PDF'].includes(job.format)
     )
       throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    // Keep compatibility with files completed before artifact references were persisted.
     return join(
       this.config.exportDirectory,
       `${job.id}.${job.format.toLowerCase()}`,
@@ -239,8 +263,9 @@ export class AuditFileExportWorker
     if (job.status !== 'COMPLETED')
       throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     try {
-      if ((await stat(this.path(job))).size > maxBytes) throw new Error();
-      const data = await readFile(this.path(job));
+      const path = this.downloadPath(job);
+      if ((await stat(path)).size > maxBytes) throw new Error();
+      const data = await readFile(path);
       if (data.length > maxBytes) throw new Error();
       return {
         data,

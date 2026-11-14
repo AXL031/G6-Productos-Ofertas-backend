@@ -567,22 +567,24 @@ export class PostgresCatalogRepository {
       db.transaction(
         async (tx) => {
           const where = this.where(query);
-          const simple = await tx
-            .select({ productId: products.id, sku: products.sku_base })
-            .from(products)
-            .where(and(where, eq(products.tiene_variantes, false)));
-          const children = await tx
-            .select({ productId: products.id, sku: variants.sku })
-            .from(products)
-            .innerJoin(variants, eq(variants.product_id, products.id))
-            .where(
-              and(
-                where,
-                eq(products.tiene_variantes, true),
-                eq(variants.estado, 'ACTIVA'),
-              ),
-            );
-          return [...simple, ...children];
+          const result = await tx.execute(sql`
+            SELECT ${products.id} AS "productId", ${products.sku_base} AS "sku"
+            FROM ${products}
+            WHERE ${and(where, eq(products.tiene_variantes, false))}
+            UNION ALL
+            SELECT ${products.id} AS "productId", ${variants.sku} AS "sku"
+            FROM ${products}
+            INNER JOIN ${variants} ON ${eq(variants.product_id, products.id)}
+            WHERE ${and(
+              where,
+              eq(products.tiene_variantes, true),
+              eq(variants.estado, 'ACTIVA'),
+            )}
+          `);
+          return result.rows.map((row) => ({
+            productId: row.productId as string,
+            sku: row.sku as string,
+          }));
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       ),
