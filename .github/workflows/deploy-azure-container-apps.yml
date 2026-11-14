@@ -25,8 +25,13 @@ on:
         required: true
         default: all
         options: [all, api-gateway, catalog-svc, taxonomy-svc, pricing-svc, price-audit-svc, inventory-svc, combos-svc, bulk-svc, promotions-svc]
+      configure_catalog_pricing:
+        description: Autorizar imagen y URL privada de Pricing de Catalog en una misma revision
+        type: boolean
+        required: true
+        default: false
       mode:
-        description: Plan no cambia Azure; deploy actualiza solo imágenes
+        description: Plan no cambia Azure; deploy aplica imagen y solo la configuracion expresamente seleccionada
         type: choice
         required: true
         default: plan
@@ -69,6 +74,7 @@ jobs:
       RELEASE_SHA: ${{ inputs.sha }}
       RELEASE_SERVICE: ${{ inputs.service }}
       RELEASE_MODE: ${{ inputs.mode }}
+      CONFIGURE_CATALOG_PRICING: ${{ inputs.configure_catalog_pricing }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -127,6 +133,7 @@ jobs:
           set -Eeuo pipefail
           args=(--release azure-evidence/release.psv --sha "$RELEASE_SHA" --out azure-evidence)
           if [[ "$RELEASE_MODE" == deploy ]]; then args+=(--apply); fi
+          if [[ "$CONFIGURE_CATALOG_PRICING" == true ]]; then args+=(--configure-catalog-pricing); fi
           node ops/azure/container-apps/deploy-release.mjs "${args[@]}"
       - name: Conservar evidencia sin configuración runtime ni tokens
         if: always()

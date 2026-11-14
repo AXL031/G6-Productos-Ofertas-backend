@@ -136,3 +136,109 @@ test('Azure target and service are constrained before a request is sent', async 
   const cloud = createAzureCloud(metadata.subscription, metadata.resourceGroup, 'fixture', () => { throw new Error('UNEXPECTED_NETWORK'); });
   await assert.rejects(cloud.read('../other-resource'), /INVALID_SERVICE/);
 });
+
+const pricingKey = 'CATALOG_PRICING_URL';
+const origin = 'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io';
+const options = { configureCatalogPricing: true };
+function configuredCloud() {
+  const cloud = cloudFixture();
+  const environmentId = '/subscriptions/11111111-1111-4111-8111-111111111111/resourceGroups/rg-test/providers/Microsoft.App/managedEnvironments/aca-test';
+  cloud.state.get('catalog-svc').properties.environmentId = environmentId;
+  const pricing = app('pricing-svc');
+  pricing.properties.environmentId = environmentId;
+  pricing.properties.configuration.ingress = { external: false, allowInsecure: false, targetPort: 3002, fqdn: new URL(origin).hostname };
+  cloud.state.set('pricing-svc', pricing);
+  return cloud;
+}
+const catalogEnv = cloud => cloud.state.get('catalog-svc').properties.template.containers[0].env;
+
+test('explicit configuration plan derives Pricing only from the private app in the same ACA environment', async () => {
+  const cloud = configuredCloud();
+  const plan = await preparePlan(release(), cloud, metadata, options);
+  assert.equal(cloud.writes.length, 0);
+  assert.deepEqual(plan.apps[0].pricingConfiguration, { previous: null, desired: { name: pricingKey, value: origin }, position: -1 });
+  for (const privateValue of ['private-runtime-fixture', 'PUBLIC_READ_ONLY', 'db-password']) assert.ok(!JSON.stringify(plan).includes(privateValue));
+  assert.equal(plan.apps[1].pricingConfiguration, undefined);
+});
+
+test('Catalog image and Pricing URL change in one PATCH, preserving sidecars, ingress and all other env', async () => {
+  const cloud = configuredCloud(), before = clone(cloud.state.get('catalog-svc'));
+  const plan = await preparePlan(release(), cloud, metadata, options);
+  const report = await applyPlan(plan, cloud, 'gh-config', async () => ({}));
+  assert.equal(report.status, 'DEPLOYED_CONTROLPLANE_AND_HTTP_SMOKE');
+  const patches = cloud.writes.filter(row => row.service === 'catalog-svc');
+  assert.equal(patches.length, 1);
+  const updated = patches[0].body.properties.template;
+  assert.equal(updated.containers[0].image, release()[0].image);
+  assert.deepEqual(updated.containers[0].env.at(-1), { name: pricingKey, value: origin });
+  updated.containers[0].env.pop();
+  updated.containers[0].image = before.properties.template.containers[0].image;
+  updated.revisionSuffix = before.properties.template.revisionSuffix;
+  assert.deepEqual(updated, before.properties.template);
+  assert.deepEqual(Object.keys(patches[0].body.properties), ['template']);
+});
+
+test('configuration-only change creates one revision even when the Catalog image is already current', async () => {
+  const cloud = configuredCloud();
+  for (const row of release()) cloud.state.get(row.service).properties.template.containers[0].image = row.image;
+  const plan = await preparePlan(release(), cloud, metadata, options);
+  assert.equal(plan.apps[0].changed, true);
+  await applyPlan(plan, cloud, 'gh-config', async () => ({}));
+  assert.deepEqual(cloud.writes.map(row => row.service), ['catalog-svc']);
+});
+
+for (const previous of [null, { name: pricingKey, value: 'http://pricing-svc:3002' }, { name: pricingKey, secretRef: 'e-catalog-pricing-url' }]) {
+  test('rollback restores the previous image AND the exact Pricing env/reference: ' + (previous?.secretRef ?? previous?.value ?? 'absent'), async () => {
+    const cloud = configuredCloud();
+    if (previous) catalogEnv(cloud).splice(1, 0, clone(previous));
+    const before = clone(cloud.state.get('catalog-svc').properties.template);
+    const plan = await preparePlan(release(), cloud, metadata, options);
+    const report = await applyPlan(plan, cloud, 'gh-config', async () => { throw new Error('GATEWAY_HTTP_SMOKE_FAILED'); });
+    assert.equal(report.status, 'FAILED_IMAGES_AND_CONFIG_RESTORED');
+    assert.equal(report.rollback.find(row => row.service === 'catalog-svc').status, 'IMAGE_AND_CONFIG_RESTORED');
+    const after = clone(cloud.state.get('catalog-svc').properties.template);
+    after.revisionSuffix = before.revisionSuffix;
+    assert.deepEqual(after, before);
+  });
+}
+
+for (const [name, change] of [
+  ['external ingress', cloud => { cloud.state.get('pricing-svc').properties.configuration.ingress.external = true; }],
+  ['insecure ingress', cloud => { cloud.state.get('pricing-svc').properties.configuration.ingress.allowInsecure = true; }],
+  ['other environment', cloud => { cloud.state.get('pricing-svc').properties.environmentId += '-other'; }],
+  ['wrong port', cloud => { cloud.state.get('pricing-svc').properties.configuration.ingress.targetPort = 80; }],
+  ['arbitrary destination', cloud => { cloud.state.get('pricing-svc').properties.configuration.ingress.fqdn = 'example.test'; }],
+  ['duplicate variable', cloud => { catalogEnv(cloud).push({ name: pricingKey, value: origin }, { name: pricingKey, value: origin }); }],
+  ['unsafe previous value', cloud => { catalogEnv(cloud).push({ name: pricingKey, value: 'private-password-fixture' }); }],
+  ['invalid secret reference type', cloud => { catalogEnv(cloud).push({ name: pricingKey, secretRef: 123, value: origin }); }],
+]) {
+  test('configuration refuses ' + name + ' without writes', async () => {
+    const cloud = configuredCloud(); change(cloud);
+    await assert.rejects(preparePlan(release(), cloud, metadata, options));
+    assert.equal(cloud.writes.length, 0);
+  });
+}
+
+test('configuration flag cannot select other services or arbitrary env changes', async () => {
+  await assert.rejects(preparePlan(release().filter(row => row.service !== 'catalog-svc'), configuredCloud(), metadata, options), /CATALOG_CONFIGURATION_SCOPE_REQUIRED/);
+  await assert.rejects(preparePlan(release(), configuredCloud(), metadata, { configureCatalogPricing: 'true' }), /CATALOG_CONFIGURATION_SCOPE_REQUIRED/);
+});
+
+test('Pricing target drift before apply prevents every write', async () => {
+  const cloud = configuredCloud(), plan = await preparePlan(release(), cloud, metadata, options);
+  cloud.state.get('pricing-svc').properties.configuration.ingress.fqdn = 'pricing-svc.internal.other.chilecentral.azurecontainerapps.io';
+  await assert.rejects(applyPlan(plan, cloud, 'gh-config', async () => ({})), /RUNTIME_CHANGED_SINCE_PLAN/);
+  assert.equal(cloud.writes.length, 0);
+});
+
+test('rollback refuses an owner change to the Pricing variable rather than overwriting it', async () => {
+  const cloud = configuredCloud(), plan = await preparePlan(release(), cloud, metadata, options);
+  const ownerValue = 'https://pricing-svc.internal.owner.chilecentral.azurecontainerapps.io';
+  const report = await applyPlan(plan, cloud, 'gh-config', async () => {
+    catalogEnv(cloud).find(row => row.name === pricingKey).value = ownerValue;
+    throw new Error('GATEWAY_HTTP_SMOKE_FAILED');
+  });
+  assert.equal(report.status, 'FAILED_ROLLBACK_INCOMPLETE');
+  assert.equal(report.rollback.find(row => row.service === 'catalog-svc').status, 'MANUAL_REVIEW_REQUIRED');
+  assert.equal(catalogEnv(cloud).find(row => row.name === pricingKey).value, ownerValue);
+});

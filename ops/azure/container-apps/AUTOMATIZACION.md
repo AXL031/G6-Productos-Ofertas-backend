@@ -77,7 +77,7 @@ de lectura GHCR de `ops/oracle/ensure-ghcr-sha-image.sh`; no invoca su despliegu
 ## Preservación, rollback y límites
 
 El plan guarda hashes y referencias de imágenes, no plantillas ni variables.
-Se conservan Caddy/sidecars, env y secretRef, probes, recursos, escalado, ingress,
+Por defecto se conservan Caddy/sidecars, env y secretRef, probes, recursos, escalado, ingress,
 identidad y listas públicas. Rechaza baselines sin revisión lista o en modo
 Multiple, que requieren otra estrategia de rollout. No modifica el modo de revisión.
 No ejecutar cambios manuales concurrentes: se comparan baselines y configuración
@@ -113,3 +113,25 @@ No se necesita duplicar la lógica de autenticación de los servicios.
 - [Azure Login mediante OIDC](https://learn.microsoft.com/en-us/azure/developer/github/connect-from-azure-openid-connect).
 - [Revisiones de Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/revisions-manage).
 - [Ejecución manual y rama predeterminada](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/manually-run-a-workflow?tool=webui).
+
+## Cambio acotado Catalog → Pricing
+
+La opción manual `configure_catalog_pricing=true` (CLI
+`--configure-catalog-pricing`) autoriza exclusivamente `CATALOG_PRICING_URL`
+junto con la imagen de Catalog. Solo es válida al seleccionar `catalog-svc` o
+`all`; su default es false y las actualizaciones ordinarias siguen cambiando
+solo imágenes.
+
+El plan obtiene la URL de `pricing-svc` existente: exige ingress HTTPS interno,
+puerto 3002, TLS sin bypass y el mismo Managed Environment que Catalog. No admite
+una URL libre ni otras variables. Plan registra únicamente esa URL no secreta y
+la referencia/valor anterior autorizado de esa variable; no guarda secretos ni
+la configuración restante. Rechaza valores anteriores que pudieran ser secretos.
+
+Imagen y variable se envían en un único PATCH de la plantilla de Catalog. Si
+falla el rollout o el smoke, el rollback restaura ambos: imagen y variable
+anterior (incluida su ausencia o secretRef), en una misma revisión de recuperación.
+El plan es necesario además de rollback-images.psv para conservar esa evidencia.
+Cambios ajenos o drift en la variable detienen la recuperación para revisión;
+no se sobrescriben. `IMAGE_AND_CONFIG_RESTORED` distingue esta recuperación de la
+restauración de una imagen. Estas pruebas aisladas no son un rollback real Azure.

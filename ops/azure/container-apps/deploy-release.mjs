@@ -44,13 +44,42 @@ export function verifyOfficialImage(row, image) {
   if (image?.Os !== 'linux' || image.Architecture !== 'amd64' || !image.RepoDigests?.includes(row.image) || labels?.['org.opencontainers.image.source']?.toLowerCase() !== 'https://github.com/' + officialRepository.toLowerCase() || labels?.['org.opencontainers.image.revision'] !== row.sha || labels?.['org.opencontainers.image.title'] !== row.service) fail('OFFICIAL_IMAGE_PROVENANCE_MISMATCH');
 }
 
-function invariant(app, service) {
+const pricingKey = 'CATALOG_PRICING_URL';
+function pricingEnv(app) {
+  const rows = app.properties.template.containers.find(c => c.name === 'catalog-svc')?.env?.filter(row => row.name === pricingKey) ?? [];
+  if (rows.length > 1) fail('DUPLICATE_CATALOG_PRICING_ENV');
+  if (!rows.length) return null;
+  const row = rows[0];
+  if ((row.secretRef !== undefined && typeof row.secretRef !== 'string') || Object.keys(row).some(key => !['name', 'value', 'secretRef'].includes(key)) ||
+      (typeof row.secretRef === 'string' ? typeof row.value !== 'undefined' || !row.secretRef :
+        typeof row.value !== 'string' || !/^(?:http:\/\/pricing-svc:3002|https:\/\/pricing-svc\.internal(?:\.[a-z0-9-]+){2,}\.azurecontainerapps\.io)\/?$/.test(row.value)))
+    fail('UNSAFE_CATALOG_PRICING_BASELINE');
+  return clone(row);
+}
+function pricingOrigin(catalog, pricing) {
+  const environment = app => app.properties.environmentId ?? app.properties.managedEnvironmentId;
+  const id = environment(catalog);
+  const ingress = pricing.properties.configuration.ingress;
+  if (typeof id !== 'string' || !/\/providers\/Microsoft.App\/managedEnvironments\/[^/]+$/i.test(id) ||
+      typeof environment(pricing) !== 'string' || environment(pricing).toLowerCase() !== id.toLowerCase() ||
+      ingress?.external !== false || ingress.allowInsecure === true || ingress.targetPort !== 3002 ||
+      !/^pricing-svc\.internal(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?){2,}\.azurecontainerapps\.io$/.test(ingress.fqdn ?? ''))
+    fail('PRIVATE_PRICING_TARGET_REQUIRED');
+  return 'https://' + ingress.fqdn;
+}
+function setPricingEnv(container, value, position) {
+  const env = (container.env ?? []).filter(row => row.name !== pricingKey);
+  if (value !== null) env.splice(position < 0 ? env.length : position, 0, clone(value));
+  if (env.length || container.env) container.env = env;
+}
+function invariant(app, service, allowPricing = false) {
   const template = clone(app.properties.template);
   delete template.revisionSuffix;
   const container = template.containers?.find(container => container.name === service);
   if (!container || template.containers.filter(container => container.name === service).length !== 1) fail('RUNTIME_CONTAINER_NOT_FOUND');
   delete container.image;
-  // No configuration/env/secret/resource/sidecar value is written to evidence.
+  if (allowPricing) container.env = (container.env ?? []).filter(row => row.name !== pricingKey);
+  // Only hashes and the explicitly selected nonsecret Pricing env/reference enter evidence.
   return hash({ template, configuration: app.properties.configuration, identity: app.identity });
 }
 
@@ -58,7 +87,9 @@ function imageOf(app, service) {
   return app.properties.template.containers.find(container => container.name === service)?.image;
 }
 
-export async function preparePlan(release, cloud, metadata) {
+export async function preparePlan(release, cloud, metadata, { configureCatalogPricing = false } = {}) {
+  if (typeof configureCatalogPricing !== 'boolean' || (configureCatalogPricing && !release.some(row => row.service === 'catalog-svc')))
+    fail('CATALOG_CONFIGURATION_SCOPE_REQUIRED');
   const plan = { format: 1, ...metadata, source: officialRepository, sha: release[0]?.sha, apps: [] };
   for (const row of release) {
     const app = await cloud.read(row.service);
@@ -66,7 +97,12 @@ export async function preparePlan(release, cloud, metadata) {
     if (!new RegExp('^' + registry.replaceAll('.', '\\.') + '/' + row.service + '@sha256:[a-f0-9]{64}$').test(image ?? '')) fail('BASELINE_NOT_AN_OFFICIAL_DIGEST');
     if ((app.properties.configuration.activeRevisionsMode ?? 'Single') !== 'Single') fail('MULTIPLE_REVISION_MODE_REQUIRES_OWN_ROLLOUT');
     if (app.properties.latestRevisionName !== app.properties.latestReadyRevisionName) fail('BASELINE_REVISION_NOT_READY');
-    plan.apps.push({ service: row.service, previousImage: image, previousRevision: app.properties.latestReadyRevisionName, image: row.image, invariant: invariant(app, row.service), changed: image !== row.image });
+    const config = configureCatalogPricing && row.service === 'catalog-svc' ? {
+      previous: pricingEnv(app),
+      desired: { name: pricingKey, value: pricingOrigin(app, await cloud.read('pricing-svc')) },
+      position: app.properties.template.containers.find(c => c.name === row.service).env?.findIndex(e => e.name === pricingKey) ?? -1,
+    } : undefined;
+    plan.apps.push({ service: row.service, previousImage: image, previousRevision: app.properties.latestReadyRevisionName, image: row.image, invariant: invariant(app, row.service, !!config), changed: image !== row.image || (!!config && stable(config.previous) !== stable(config.desired)), ...(config ? { pricingConfiguration: config } : {}) });
   }
   return plan;
 }
@@ -77,28 +113,36 @@ export async function applyPlan(plan, cloud, suffix, smoke) {
   // Check every baseline before writing the first app.
   for (const row of plan.apps) {
     const current = await cloud.read(row.service);
-    if (imageOf(current, row.service) !== row.previousImage || invariant(current, row.service) !== row.invariant) fail('RUNTIME_CHANGED_SINCE_PLAN');
+    if (imageOf(current, row.service) !== row.previousImage || invariant(current, row.service, !!row.pricingConfiguration) !== row.invariant ||
+        (row.pricingConfiguration && (stable(pricingEnv(current)) !== stable(row.pricingConfiguration.previous) ||
+          pricingOrigin(current, await cloud.read('pricing-svc')) !== row.pricingConfiguration.desired.value))) fail('RUNTIME_CHANGED_SINCE_PLAN');
   }
   const attempted = [];
-  const update = async (row, image, revisionSuffix) => {
+  const update = async (row, image, revisionSuffix, restore = false) => {
     const current = await cloud.read(row.service);
-    if (invariant(current, row.service) !== row.invariant) fail('RUNTIME_CONFIGURATION_DRIFT');
+    if (invariant(current, row.service, !!row.pricingConfiguration) !== row.invariant) fail('RUNTIME_CONFIGURATION_DRIFT');
+    const config = row.pricingConfiguration;
+    if (config && ![stable(config.previous), stable(config.desired)].includes(stable(pricingEnv(current)))) fail('CATALOG_PRICING_CONFIGURATION_DRIFT');
+    if (config && !restore && pricingOrigin(current, await cloud.read('pricing-svc')) !== config.desired.value) fail('PRIVATE_PRICING_TARGET_CHANGED');
     const actual = imageOf(current, row.service);
     if (![row.previousImage, row.image].includes(actual)) fail('FOREIGN_IMAGE_CHANGE');
     const template = clone(current.properties.template);
     template.revisionSuffix = revisionSuffix;
     template.containers.find(container => container.name === row.service).image = image;
+    const expectedEnv = config ? (restore ? config.previous : config.desired) : undefined;
+    if (config) setPricingEnv(template.containers.find(c => c.name === row.service), expectedEnv, config.position);
     // PATCH contains template only. Never includes configuration/secrets or other resources.
     await cloud.patch(row.service, { properties: { template } });
     await cloud.wait(row.service, `${row.service}--${revisionSuffix}`);
     const after = await cloud.read(row.service);
-    if (imageOf(after, row.service) !== image || invariant(after, row.service) !== row.invariant) fail('RUNTIME_CONFIGURATION_DRIFT');
+    if (imageOf(after, row.service) !== image || invariant(after, row.service, !!config) !== row.invariant ||
+        (config && stable(pricingEnv(after)) !== stable(expectedEnv))) fail('RUNTIME_CONFIGURATION_DRIFT');
   };
   try {
     for (const row of plan.apps.filter(row => row.changed)) {
       attempted.push(row); // An ambiguous PATCH may already have reached ARM.
       await update(row, row.image, suffix);
-      report.writes.push({ service: row.service, image: row.image, revision: `${row.service}--${suffix}` });
+      report.writes.push({ service: row.service, image: row.image, revision: `${row.service}--${suffix}`, ...(row.pricingConfiguration ? { pricingConfigurationApplied: true } : {}) });
     }
     report.smoke = await smoke();
     report.status = 'DEPLOYED_CONTROLPLANE_AND_HTTP_SMOKE';
@@ -106,11 +150,12 @@ export async function applyPlan(plan, cloud, suffix, smoke) {
     report.failure = safeCode(error);
     for (const row of attempted.reverse()) {
       try {
-        await update(row, row.previousImage, suffix + '-r');
-        report.rollback.push({ service: row.service, status: 'IMAGE_RESTORED' });
+        await update(row, row.previousImage, suffix + '-r', true);
+        report.rollback.push({ service: row.service, status: row.pricingConfiguration ? 'IMAGE_AND_CONFIG_RESTORED' : 'IMAGE_RESTORED' });
       } catch (rollbackError) { report.rollback.push({ service: row.service, status: 'MANUAL_REVIEW_REQUIRED', failure: safeCode(rollbackError) }); }
     }
-    report.status = report.rollback.some(row => row.status !== 'IMAGE_RESTORED') ? 'FAILED_ROLLBACK_INCOMPLETE' : 'FAILED_IMAGES_RESTORED';
+    report.status = report.rollback.some(row => !['IMAGE_RESTORED', 'IMAGE_AND_CONFIG_RESTORED'].includes(row.status)) ? 'FAILED_ROLLBACK_INCOMPLETE' :
+      report.rollback.some(row => row.status === 'IMAGE_AND_CONFIG_RESTORED') ? 'FAILED_IMAGES_AND_CONFIG_RESTORED' : 'FAILED_IMAGES_RESTORED';
   }
   return report;
 }
@@ -166,8 +211,8 @@ export async function main(args = process.argv.slice(2)) {
   const options = {};
   for (let index = 0; index < args.length; index++) {
     const key = args[index];
-    if (!['--release', '--sha', '--out', '--apply'].includes(key) || Object.hasOwn(options, key.slice(2))) fail('INVALID_ARGUMENTS');
-    const value = key === '--apply' ? true : args[++index];
+    if (!['--release', '--sha', '--out', '--apply', '--configure-catalog-pricing'].includes(key) || Object.hasOwn(options, key.slice(2))) fail('INVALID_ARGUMENTS');
+    const value = ['--apply', '--configure-catalog-pricing'].includes(key) ? true : args[++index];
     if (value !== true && (!value || value.startsWith('--'))) fail('INVALID_ARGUMENTS');
     options[key.slice(2)] = value;
   }
@@ -185,7 +230,7 @@ export async function main(args = process.argv.slice(2)) {
   createAzureCloud(subscription, group, ''); // Validate before passing IDs to a CLI.
   const token = command('az', ['account', 'get-access-token', '--subscription', subscription ?? '', '--resource', 'https://management.azure.com/', '--query', 'accessToken', '-o', 'tsv', '--only-show-errors']);
   const cloud = createAzureCloud(subscription, group, token);
-  const plan = await preparePlan(release, cloud, { subscription, resourceGroup: group, checkedAtUtc: new Date().toISOString(), officialCiRun: source.ciRun });
+  const plan = await preparePlan(release, cloud, { subscription, resourceGroup: group, checkedAtUtc: new Date().toISOString(), officialCiRun: source.ciRun }, { configureCatalogPricing: options['configure-catalog-pricing'] === true });
   writeFileSync(resolve(directory, 'plan.json'), JSON.stringify(plan, null, 2));
   writeFileSync(resolve(directory, 'rollback-images.psv'), plan.apps.map(row => `${row.service}|${row.previousImage}`).join('\n') + '\n');
   console.log(JSON.stringify({ mode: args.includes('--apply') ? 'apply' : 'plan', sha: plan.sha, apps: plan.apps.map(row => ({ service: row.service, changed: row.changed })) }));
