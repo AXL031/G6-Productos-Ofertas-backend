@@ -105,6 +105,41 @@ jobs:
       run: npm ci
     - name: Ejecutar pruebas unitarias
       run: npm test
+  pricing_batch_benchmark:
+    name: Medir lotes de Pricing con PostgreSQL desechable
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+    - name: Obtener código fuente
+      uses: actions/checkout@v4
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Verificar Docker para PostgreSQL sintético descartable
+      run: docker info
+    - name: Ejecutar comparación 1/20/100 SKU y calibrar concurrencia
+      run: |
+        set -o pipefail
+        mkdir -p .ci/performance
+        node_modules/.bin/vitest run --config apps/pricing-svc/test/commercial-batch.benchmark.config.ts \
+          --reporter=verbose 2>&1 | tee .ci/performance/pricing-batch-benchmark.log
+    - name: Publicar métricas sintéticas de Pricing
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pricing-batch-benchmark-${{ github.sha }}
+        path: backend/.ci/performance/pricing-batch-benchmark.log
+        retention-days: 7
   e2e:
     name: Ejecutar pruebas de extremo a extremo
     runs-on: ubuntu-latest
