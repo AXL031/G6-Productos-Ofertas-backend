@@ -18,6 +18,7 @@ grep -Fq 'npm audit --omit=dev --audit-level=high' "$WORKFLOW" || fail 'gate obl
 grep -Fq 'verify-environment-protection.sh' "$WORKFLOW" || fail 'preflight de protección del environment ausente'
 grep -Fq 'verify-environment-protection.test.sh' "$CI_WORKFLOW" || fail 'CI no prueba la protección real del environment'
 grep -Fq 'runs-on: [self-hosted, linux, azure-h5-smoke]' "$WORKFLOW" || fail 'smoke no se ejecuta desde runner de red autorizada'
+grep -Fq -- '- azure-h5-smoke' "$ROOT/.github/actionlint.yaml" || fail 'actionlint no conoce la etiqueta privada del runner smoke'
 deploy_gate_line="$(grep -nF 'Verificar reglas reales del environment antes de OIDC' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
 deploy_login_line="$(grep -nF 'Autenticar en Azure mediante OIDC' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
 recovery_gate_line="$(grep -nF 'Verificar reglas reales del environment antes de autenticarse' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
