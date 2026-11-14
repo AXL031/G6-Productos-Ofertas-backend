@@ -18,11 +18,10 @@ case "$requested_service" in
 esac
 
 current_master="$(gh api "repos/${repository}/commits/master" --jq .sha)" || fail 'no se pudo consultar master'
-comparison="$(gh api "repos/${repository}/compare/${sha}...master" --jq .status)" || fail 'no se pudo comprobar que el SHA pertenece al historial de master'
-[[ "$comparison" == ahead || "$comparison" == identical ]] || fail 'el SHA no es un commit alcanzable desde master'
+[[ "$sha" == "$current_master" ]] || fail "el despliegue ordinario exige el HEAD vigente de master (${current_master}); para recuperar una versión anterior se requiere el procedimiento separado aprobado"
 ci_success="$(gh api --method GET "repos/${repository}/actions/runs" -f "head_sha=${sha}" -f per_page=100 --jq \
   "any(.workflow_runs[]; .path == \".github/workflows/ci.yml\" and .head_sha == \"${sha}\" and .head_branch == \"master\" and .event == \"push\" and .conclusion == \"success\" and (.repository.full_name | ascii_downcase) == \"${repository,,}\")")" || fail 'no se pudo consultar la CI del SHA'
 [[ "$ci_success" == true ]] || fail 'no existe CI push/master exitosa para el SHA exacto'
 
 printf 'sha=%s\nservices=%s\nrepository=%s\nmaster_sha=%s\n' "$sha" "$services" "$repository" "$current_master" >> "${GITHUB_OUTPUT:?GITHUB_OUTPUT no definido}"
-printf 'Origen verificado: %s commit de master %s con CI exitosa exacta. Punta master: %s. Selección: %s\n' "$repository" "$sha" "$current_master" "$services"
+printf 'Origen verificado: HEAD vigente de master %s con CI exitosa exacta. Selección: %s\n' "$sha" "$services"

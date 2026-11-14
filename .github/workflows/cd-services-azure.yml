@@ -18,7 +18,7 @@ name: CD Azure Container Apps H5
           - bulk-svc
           - all
       sha:
-        description: SHA completo de un commit alcanzable desde master con CI exitosa para ese SHA
+        description: SHA completo que debe coincidir con el HEAD vigente de master y tener CI exitosa
         required: true
         type: string
 
@@ -46,7 +46,7 @@ jobs:
           ref: refs/heads/master
           persist-credentials: false
 
-      - name: Seleccionar SHA y modo manual protegido
+      - name: Seleccionar SHA y modo manual
         id: mode
         env:
           TRIGGER_EVENT: ${{ github.event_name }}
@@ -58,7 +58,7 @@ jobs:
           echo 'value=manual' >> "$GITHUB_OUTPUT"
           echo "sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Validar CI exitosa, historial master y allowlist de servicios
+      - name: Validar CI exitosa, HEAD vigente de master y allowlist de servicios
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -76,11 +76,55 @@ jobs:
           SERVICES: ${{ steps.source.outputs.services }}
           MODE: ${{ steps.mode.outputs.value }}
         run: |
-          printf 'Modo: `%s`\nSHA oficial con CI exacta: `%s`\nServicios: `%s`\n' "$MODE" "$SOURCE_SHA" "$SERVICES" >> "$GITHUB_STEP_SUMMARY"
+          printf 'Modo: `%s`\nHEAD vigente de master con CI exacta: `%s`\nServicios: `%s`\n' "$MODE" "$SOURCE_SHA" "$SERVICES" >> "$GITHUB_STEP_SUMMARY"
+
+  security:
+    name: Auditoría obligatoria de dependencias de producción
+    needs: prepare
+    if: needs.prepare.outputs.sha != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Obtener el SHA vigente validado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - name: Configurar Node.js fijado
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Ejecutar auditoría reproducible desde package-lock.json
+        env:
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -uo pipefail
+          mkdir -p h5-security-evidence
+          printf 'sha=%s\nnode=%s\nnpm=%s\nlock_sha256=%s\n' \
+            "$CANDIDATE_SHA" "$(node --version)" "$(npm --version)" "$(sha256sum package-lock.json | awk '{print $1}')" \
+            > h5-security-evidence/run.txt
+          set +e
+          npm audit --omit=dev --audit-level=high --json > h5-security-evidence/npm-audit.json 2> h5-security-evidence/npm-audit.stderr
+          audit_status=$?
+          set -e
+          printf 'Auditoría H5 del SHA %s: exit=%s; lockfile SHA-256 %s\n' \
+            "$CANDIDATE_SHA" "$audit_status" "$(sha256sum package-lock.json | awk '{print $1}')" >> "$GITHUB_STEP_SUMMARY"
+          cat h5-security-evidence/npm-audit.json
+          cat h5-security-evidence/npm-audit.stderr >&2
+          exit "$audit_status"
+      - name: Conservar evidencia de seguridad incluso si el gate falla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h5-security-${{ needs.prepare.outputs.sha }}
+          path: h5-security-evidence/
+          if-no-files-found: ignore
+          retention-days: 30
 
   publish:
     name: Publicar imagen oficial ${{ matrix.service }}
-    needs: prepare
+    needs: [prepare, security]
     if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
     runs-on: ubuntu-latest
     permissions:
@@ -273,6 +317,11 @@ jobs:
           [[ "$image" =~ ^ghcr\.io/taller-sw-web/g6-productos-ofertas-backend/${SERVICE}@sha256:[0-9a-f]{64}$ ]]
           echo "value=$image" >> "$GITHUB_OUTPUT"
 
+      - name: Verificar reglas reales del environment antes de OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+
       - name: Comprobar variables del entorno azure-h5
         run: |
           set -Eeuo pipefail
@@ -321,7 +370,7 @@ jobs:
     name: Smoke HTTPS posterior al despliegue
     needs: [prepare, deploy]
     if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, linux, azure-h5-smoke]
     environment: azure-h5
     permissions:
       contents: read
@@ -335,7 +384,7 @@ jobs:
         with:
           ref: refs/heads/master
           persist-credentials: false
-      - name: Verificar liveness, readiness y rechazo sin autorización
+      - name: Smoke funcional obligatorio desde la red autorizada
         env:
           SERVICE: ${{ matrix.service }}
           SMOKE_URL_API_GATEWAY: ${{ vars.AZURE_SMOKE_URL_API_GATEWAY }}
@@ -368,7 +417,7 @@ jobs:
           bash ops/azure/container-apps/smoke-service.sh "$SERVICE"
 
   recover:
-    name: Recuperación supervisada (requiere aprobación azure-h5)
+    name: Recuperación supervisada (sujeta a protección azure-h5)
     needs: [prepare, deploy, smoke]
     if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
     runs-on: ubuntu-latest
@@ -383,6 +432,10 @@ jobs:
         with:
           ref: refs/heads/master
           persist-credentials: false
+      - name: Verificar reglas reales del environment antes de autenticarse
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
       - name: Descargar recibos de servicios aplicados
         uses: actions/download-artifact@v4
         continue-on-error: true

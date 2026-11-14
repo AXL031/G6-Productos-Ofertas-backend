@@ -10,7 +10,6 @@ cat > "$TEMP/bin/gh" <<'MOCK'
 set -Eeuo pipefail
 case "$*" in
   *'/commits/master'*) printf '%s\n' "$MOCK_MASTER" ;;
-  *'/compare/'*) printf '%s\n' "$MOCK_COMPARE" ;;
   *'/actions/runs'*) printf '%s\n' "$MOCK_CI" ;;
   *) exit 41 ;;
 esac
@@ -21,8 +20,8 @@ export GITHUB_REPOSITORY='Taller-SW-Web/G6-Productos-Ofertas-backend'
 export GITHUB_REF='refs/heads/master'
 export GH_TOKEN=fixture
 export SOURCE_SHA=58b94a694fc22ad4401450feaffe8b708330518d
-export MOCK_MASTER=2a97bd91e5d9fe85e4cc67f6bc960346481ed44a
-export MOCK_COMPARE=ahead MOCK_CI=true
+export MOCK_MASTER="$SOURCE_SHA"
+export MOCK_CI=true
 export GITHUB_OUTPUT="$TEMP/output"
 
 expect_reject() {
@@ -41,7 +40,7 @@ bash "$VALIDATOR" manual catalog-svc "$SOURCE_SHA" >/dev/null
 grep -Fqx 'services=["catalog-svc"]' "$GITHUB_OUTPUT"
 grep -Fqx "sha=$SOURCE_SHA" "$GITHUB_OUTPUT"
 grep -Fqx "master_sha=$MOCK_MASTER" "$GITHUB_OUTPUT"
-echo 'PASS: SHA completo anterior alcanzable desde master con CI exacta y servicio individual'
+echo 'PASS: HEAD exacto de master con CI exacta y servicio individual'
 
 : > "$GITHUB_OUTPUT"
 bash "$VALIDATOR" manual all "$SOURCE_SHA" >/dev/null
@@ -51,7 +50,7 @@ echo 'PASS: selección manual all limitada a los nueve servicios'
 expect_reject 'SHA de formato inválido' SOURCE_SHA=not-a-sha
 expect_reject 'fork/no repositorio oficial' GITHUB_REPOSITORY=Axel/G6-Productos-Ofertas-backend
 expect_reject 'dispatch desde rama distinta a master' GITHUB_REF=refs/heads/codex/azure-h4-cd
-expect_reject 'SHA no alcanzable desde master' MOCK_COMPARE=behind
+expect_reject 'SHA anterior al HEAD actual de master con CI exitosa simulada' MOCK_MASTER=2a97bd91e5d9fe85e4cc67f6bc960346481ed44a
 expect_reject 'CI exacta no encontrada o fallida' MOCK_CI=false
 
 : > "$GITHUB_OUTPUT"

@@ -17,13 +17,16 @@ esac
 
 base="${SMOKE_URL:-}"
 if [[ -z "$base" ]]; then
-  printf 'PENDIENTE: %s sin AZURE_SMOKE_URL_%s; despliegue e infraestructura pueden verificarse, smoke funcional no ejecutado.\n' \
-    "$service" "$service_key" >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
-  echo "PENDIENTE: falta URL HTTPS configurada para $service; no se declara smoke funcional."
-  exit 0
+  printf 'BLOQUEADO: falta AZURE_SMOKE_URL_%s; no se ejecutó smoke funcional.\n' "$service_key" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" >&2
+  exit 1
 fi
 [[ "$base" =~ ^https://[^/]+/?$ ]] || { echo 'URL smoke debe ser HTTPS y no incluir una ruta.' >&2; exit 2; }
 base="${base%/}"
+[[ -n "${SMOKE_PROTECTED_PATH:-}" ]] || {
+  printf 'BLOQUEADO: falta AZURE_SMOKE_PROTECTED_%s; no se probó el rechazo sin credenciales.\n' "$service_key" | tee -a "${GITHUB_STEP_SUMMARY:-/dev/null}" >&2
+  exit 1
+}
+[[ "$SMOKE_PROTECTED_PATH" == /* && "$SMOKE_PROTECTED_PATH" != *'?'* ]] || { echo 'La ruta protegida debe ser una ruta absoluta sin query.' >&2; exit 2; }
 readonly max_attempts="${SMOKE_MAX_ATTEMPTS:-6}"
 readonly request_timeout="${SMOKE_REQUEST_TIMEOUT:-20}"
 readonly retry_delay="${SMOKE_RETRY_DELAY_SECONDS:-5}"
@@ -49,24 +52,19 @@ request_2xx '/health' || { echo "FALLO de liveness: $service" >&2; exit 1; }
 if [[ -n "$readiness_path" ]]; then
   request_2xx "$readiness_path" || { echo "FALLO de readiness: $service" >&2; exit 1; }
 else
-  echo "PENDIENTE: $service no tiene una ruta readiness HTTP pública configurada; /health solo acredita liveness."
+  echo "Nota: $service no tiene ruta HTTP readiness en este contrato; /health acredita solo liveness y la ruta protegida es obligatoria."
 fi
 
-if [[ -n "${SMOKE_PROTECTED_PATH:-}" ]]; then
-  [[ "$SMOKE_PROTECTED_PATH" == /* && "$SMOKE_PROTECTED_PATH" != *'?'* ]] || { echo 'La ruta protegida debe ser una ruta absoluta sin query.' >&2; exit 2; }
-  status="$(curl --silent --show-error --max-time "$request_timeout" --output /dev/null --write-out '%{http_code}' "${base}${SMOKE_PROTECTED_PATH}" 2>/dev/null || true)"
-  [[ "$status" == 401 || "$status" == 403 ]] || {
-    printf 'FALLO: la ruta protegida %s respondió %s sin credenciales.\n' "$SMOKE_PROTECTED_PATH" "${status:-sin-respuesta}" >&2
-    exit 1
-  }
-  printf 'PASS ruta protegida sin credenciales: HTTP %s %s\n' "$status" "$SMOKE_PROTECTED_PATH"
-else
-  echo "PENDIENTE: AZURE_SMOKE_PROTECTED_${service_key} no está configurada; no se prueban autenticación ni rutas comerciales."
-fi
+status="$(curl --silent --show-error --max-time "$request_timeout" --output /dev/null --write-out '%{http_code}' "${base}${SMOKE_PROTECTED_PATH}" 2>/dev/null || true)"
+[[ "$status" == 401 || "$status" == 403 ]] || {
+  printf 'FALLO: la ruta protegida %s respondió %s sin credenciales.\n' "$SMOKE_PROTECTED_PATH" "${status:-sin-respuesta}" >&2
+  exit 1
+}
+printf 'PASS ruta protegida sin credenciales: HTTP %s %s\n' "$status" "$SMOKE_PROTECTED_PATH"
 
 {
   printf "Infraestructura HTTP verificada para \`%s\`: liveness 200." "$service"
   [[ -z "$readiness_path" ]] || printf " Readiness \`%s\` 2xx." "$readiness_path"
-  [[ -n "${SMOKE_PROTECTED_PATH:-}" ]] && printf ' La ruta protegida respondió 401/403 sin credenciales.' || printf ' Validación funcional/auth pendiente.'
+  printf ' La ruta protegida respondió 401/403 sin credenciales.'
   printf '\n'
 } >> "${GITHUB_STEP_SUMMARY:-/dev/null}"
