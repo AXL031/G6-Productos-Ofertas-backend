@@ -10,13 +10,13 @@ El workflow se detiene si no puede comprobar el repositorio, SHA, CI, digest, va
 
 ## Arquitectura
 
-1. `workflow_dispatch` desde `master` elige un servicio o `all` y un SHA completo. El SHA debe ser exactamente el HEAD vigente de `master` en cada revalidación; un ancestro con CI exitosa ya no se acepta.
+1. `workflow_dispatch` desde `master` elige un servicio o `all` y un SHA completo. El SHA debe ser exactamente el HEAD vigente de `master` en cada revalidación; un ancestro con CI exitosa ya no se acepta. `prepare` verifica primero, en modo de solo lectura, la protección de `azure-h5`; si falta o está mal configurada, termina antes de GHCR.
 2. El validador consulta la punta actual de `master` y requiere un run de `.github/workflows/ci.yml` exitoso desde `push` de `master` para ese SHA exacto.
 3. Antes de publicar, un job con Node.js 24.15.0 ejecuta `npm audit --omit=dev --audit-level=high --json` usando el `package-lock.json` del SHA seleccionado. Si la auditoría falla, publicación y despliegue quedan bloqueados.
 4. El job de publicación verifica y reutiliza una etiqueta GHCR existente si sus etiquetas OCI y digest coinciden. Si no existe, construye una sola vez desde el checkout del SHA validado, etiqueta origen/revisión/servicio, publica y verifica el digest.
-5. Antes del login OIDC, el job consulta `azure-h5` con `actions: read` y confirma que existan required reviewers, que `prevent_self_review` esté habilitado y que la única policy de ramas sea `master`. Recuperación vuelve a comprobar esas reglas antes de autenticarse.
+5. El job de Azure repite la consulta de `azure-h5` inmediatamente antes del login OIDC, con `actions: read`, y confirma required reviewers, `prevent_self_review` y la única policy de ramas `master`. Recuperación vuelve a comprobar esas reglas antes de autenticarse.
 6. Smoke se ejecuta en un runner self-hosted etiquetado `azure-h5-smoke`, desde la red autorizada. Requiere URL HTTPS y ruta contractual protegida; ausencia de cualquiera o fallo de liveness/readiness/autorización falla el job.
-7. Si fallan el despliegue o los smoke tests, recuperación supervisada conserva el recibo de rollback y también comprueba la atestación de protección antes de autenticarse. Solo restaura cuando imagen y configuración siguen iguales al recibo; ante drift o evidencia incompleta deja el estado como desconocido para atención manual.
+7. Si fallan el despliegue o los smoke tests, recuperación supervisada conserva el recibo de rollback y vuelve a comprobar las reglas reales del environment inmediatamente antes de autenticarse. Solo restaura cuando imagen y configuración siguen iguales al recibo; ante drift o evidencia incompleta deja el estado como desconocido para atención manual.
 
 El selector soporta `api-gateway`, `bulk-svc`, `catalog-svc`, `combos-svc`, `inventory-svc`, `price-audit-svc`, `pricing-svc`, `promotions-svc` y `taxonomy-svc`. `all` ejecuta en serie, con recibos por servicio y reconciliación del conjunto ante fallo. Una ejecución parcial nunca se informa como despliegue/recuperación completa.
 

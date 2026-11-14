@@ -19,12 +19,20 @@ grep -Fq 'verify-environment-protection.sh' "$WORKFLOW" || fail 'preflight de pr
 grep -Fq 'verify-environment-protection.test.sh' "$CI_WORKFLOW" || fail 'CI no prueba la protección real del environment'
 grep -Fq 'runs-on: [self-hosted, linux, azure-h5-smoke]' "$WORKFLOW" || fail 'smoke no se ejecuta desde runner de red autorizada'
 grep -Fq -- '- azure-h5-smoke' "$ROOT/.github/actionlint.yaml" || fail 'actionlint no conoce la etiqueta privada del runner smoke'
-deploy_gate_line="$(grep -nF 'Verificar reglas reales del environment antes de OIDC' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
+prepare_gate_line="$(grep -nF 'Preflight read-only de protección azure-h5 antes de publicar' "$WORKFLOW" | cut -d: -f1)"
+security_job_line="$(grep -n '^  security:' "$WORKFLOW" | cut -d: -f1)"
+publish_job_line="$(grep -n '^  publish:' "$WORKFLOW" | cut -d: -f1)"
+[[ -n "$prepare_gate_line" && -n "$security_job_line" && -n "$publish_job_line" && "$prepare_gate_line" -lt "$security_job_line" && "$security_job_line" -lt "$publish_job_line" ]] || fail 'preflight del environment no bloquea antes de GHCR'
+deploy_gate_line="$(grep -nF 'Revalidar reglas reales del environment inmediatamente antes de OIDC' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
 deploy_login_line="$(grep -nF 'Autenticar en Azure mediante OIDC' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
-recovery_gate_line="$(grep -nF 'Verificar reglas reales del environment antes de autenticarse' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
+recovery_gate_line="$(grep -nF 'Revalidar reglas reales del environment inmediatamente antes de OIDC para recuperación' "$WORKFLOW" | cut -d: -f1)"
 recovery_login_line="$(grep -nF 'Autenticar en Azure mediante OIDC para recuperación' "$WORKFLOW" | head -n 1 | cut -d: -f1)"
-[[ -n "$deploy_gate_line" && -n "$deploy_login_line" && "$deploy_gate_line" -lt "$deploy_login_line" ]] || fail 'el deploy autentica antes de verificar protección'
+[[ -n "$deploy_gate_line" && -n "$deploy_login_line" && "$deploy_gate_line" -lt "$deploy_login_line" ]] || fail 'el deploy autentica antes de revalidar protección'
+next_step_after_deploy_gate="$(awk -v gate="$deploy_gate_line" 'NR > gate && /- name: / { print NR; exit }' "$WORKFLOW")"
+[[ "$next_step_after_deploy_gate" == "$deploy_login_line" ]] || fail 'la revalidación de protección no es el paso inmediatamente anterior a OIDC'
 [[ -n "$recovery_gate_line" && -n "$recovery_login_line" && "$recovery_gate_line" -lt "$recovery_login_line" ]] || fail 'la recuperación autentica antes de verificar protección'
+next_step_after_recovery_gate="$(awk -v gate="$recovery_gate_line" 'NR > gate && /- name: / { print NR; exit }' "$WORKFLOW")"
+[[ "$next_step_after_recovery_gate" == "$recovery_login_line" ]] || fail 'la revalidación de recuperación no es inmediatamente anterior a OIDC'
 for forbidden in 'AZURE_CLIENT_SECRET' 'AZURE_PASSWORD' 'ARM_CLIENT_SECRET' ':latest' 'az containerapp create' 'az containerapp delete'; do
   if grep -Fq "$forbidden" "$WORKFLOW"; then fail "capacidad/credencial prohibida: $forbidden"; fi
 done

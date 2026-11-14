@@ -70,6 +70,11 @@ jobs:
           REQUESTED_SERVICE: ${{ inputs.service }}
         run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "${REQUESTED_SERVICE:-automatic}" "$SOURCE_SHA"
 
+      - name: Preflight read-only de protección azure-h5 antes de publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+
       - name: Registrar origen y selección
         env:
           SOURCE_SHA: ${{ steps.source.outputs.sha }}
@@ -317,11 +322,6 @@ jobs:
           [[ "$image" =~ ^ghcr\.io/taller-sw-web/g6-productos-ofertas-backend/${SERVICE}@sha256:[0-9a-f]{64}$ ]]
           echo "value=$image" >> "$GITHUB_OUTPUT"
 
-      - name: Verificar reglas reales del environment antes de OIDC
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
-
       - name: Comprobar variables del entorno azure-h5
         run: |
           set -Eeuo pipefail
@@ -332,6 +332,11 @@ jobs:
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
           AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
           AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Revalidar reglas reales del environment inmediatamente antes de OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
 
       - name: Autenticar en Azure mediante OIDC
         uses: azure/login@v2
@@ -432,10 +437,6 @@ jobs:
         with:
           ref: refs/heads/master
           persist-credentials: false
-      - name: Verificar reglas reales del environment antes de autenticarse
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
       - name: Descargar recibos de servicios aplicados
         uses: actions/download-artifact@v4
         continue-on-error: true
@@ -443,6 +444,10 @@ jobs:
           pattern: azure-*
           path: receipts
           merge-multiple: true
+      - name: Revalidar reglas reales del environment inmediatamente antes de OIDC para recuperación
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
       - name: Autenticar en Azure mediante OIDC para recuperación
         uses: azure/login@v2
         with:
