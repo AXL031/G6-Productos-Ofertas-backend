@@ -5,7 +5,6 @@ import { Database } from '../src/database.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
 import {
   CATALOG_READ_DEMO,
-  CATALOG_MARKETPLACE_PREVIEW,
 } from '../src/catalog-read-demo.js';
 
 describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
@@ -15,8 +14,6 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
       const app = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(CATALOG_READ_DEMO)
         .useValue({ enabled: false })
-        .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
-        .useValue(false)
         .compile()
         .then((module) => module.createNestApplication());
       try {

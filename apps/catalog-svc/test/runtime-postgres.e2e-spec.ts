@@ -208,7 +208,6 @@ describe.skipIf(!dockerAvailable)(
         CATALOG_SVC_PORT: String(port),
         CATALOG_SVC_HOST: '127.0.0.1',
         CATALOG_AMQP_ENABLED: 'false',
-        CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED: 'false',
         G6_SECURITY_MODE: readDemo ? 'PUBLIC_READ_ONLY' : 'G7_AUTHENTICATED',
         CATALOG_PUBLIC_OPERATION_IDS: readDemo ? 'listarProductos' : '',
         PGHOST: 'localhost',

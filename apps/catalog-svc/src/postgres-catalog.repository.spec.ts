@@ -195,8 +195,8 @@ describe('Catalog provider SQL and projections (isolated)', () => {
     ]);
   });
 
-  it('checks every demo listing relation with one bounded SELECT-only statement', async () => {
-    await repo.checkDemoReadAccess();
+  it('checks every Catalog relation required for readiness with one bounded SELECT-only statement', async () => {
+    await repo.checkReadinessAccess();
     expect(statements).toHaveLength(1);
     expect(statements[0].text).toContain(
       '(SELECT 1 FROM catalog.products LIMIT 0)',
@@ -213,32 +213,4 @@ describe('Catalog provider SQL and projections (isolated)', () => {
     expect(statements[0].values).toHaveLength(0);
   });
 
-  it('falls back from placeholder product images to valid variant images', async () => {
-    productImageUrls = ['https://placehold.co/800x800/png?text=placeholder'];
-    const page = await repo.listDemoCandidates(
-      {
-        canal: 'MARKETPLACE',
-        pagina: 1,
-        tamanio: 20,
-        orden: 'NOMBRE_ASC',
-      },
-      100,
-    );
-    expect(page[0].images).toEqual(['https://example.test/variant.webp']);
-  });
-
-  it('excludes candidates with only placeholder images', async () => {
-    productImageUrls = ['https://placehold.co/800x800/png?text=placeholder'];
-    variantImageUrls = ['https://placehold.co/800x800/png?text=placeholder'];
-    const page = await repo.listDemoCandidates(
-      {
-        canal: 'MARKETPLACE',
-        pagina: 1,
-        tamanio: 20,
-        orden: 'NOMBRE_ASC',
-      },
-      100,
-    );
-    expect(page).toEqual([]);
-  });
 });

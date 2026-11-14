@@ -28,33 +28,6 @@ export type CatalogSignal =
 @Injectable()
 export class CatalogTelemetry {
   private readonly counts = new Map<string, number>();
-  async measure<T>(
-    stage:
-      | 'DEMO_CANDIDATES_SQL'
-      | 'DEMO_ENRICHMENT_SQL'
-      | 'DEMO_PRICING'
-      | 'DEMO_LIST_TOTAL',
-    work: () => Promise<T>,
-    correlationId?: string,
-  ): Promise<T> {
-    const started = performance.now();
-    let success = false;
-    try {
-      const result = await work();
-      success = true;
-      return result;
-    } finally {
-      new SanitizedLogger('runtime').log({
-        code: 'CATALOG_LIST_STAGE',
-        stage,
-        success,
-        durationMs: Math.max(0, Math.round(performance.now() - started)),
-        correlationId: isCorrelationId(correlationId)
-          ? correlationId
-          : undefined,
-      });
-    }
-  }
   record(
     code: CatalogSignal,
     ids: {

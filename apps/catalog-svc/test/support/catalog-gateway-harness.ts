@@ -19,7 +19,6 @@ import { Database, type PostgresSettings } from '../../src/database.js';
 import { CatalogPersistenceError } from '../../src/database-errors.js';
 import {
   CATALOG_READ_DEMO,
-  CATALOG_MARKETPLACE_PREVIEW,
 } from '../../src/catalog-read-demo.js';
 import { CATALOG_PREPARATION_CONFIG } from '../../src/catalog-messages.js';
 import {
@@ -243,8 +242,6 @@ export class CatalogGatewayHarness {
           restricted: restrictedDemo,
           gatewayIps: ['127.0.0.1'],
         })
-        .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
-        .useValue(false)
         .overrideProvider(CATALOG_PREPARATION_CONFIG)
         .useValue(preparation)
         .compile();
