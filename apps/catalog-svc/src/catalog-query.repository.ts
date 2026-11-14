@@ -1,3 +1,4 @@
+import { currentTaxonomyValue } from './catalog-taxonomy-update.js';
 import {
   Inject,
   HttpException,
@@ -291,7 +292,7 @@ export class CatalogQueryRepository {
               caracteristicaId: productAttributes.caracteristica_id,
               nombre: productAttributes.nombre_snapshot,
               valorId: productAttributes.valor_id,
-              valor: productAttributes.valor,
+              valor: currentTaxonomyValue(productAttributes),
             })
             .from(productAttributes)
             .where(eq(productAttributes.product_id, product.id))
@@ -435,7 +436,7 @@ export class CatalogQueryRepository {
         caracteristica_id: variantAttributes.caracteristica_id,
         nombre: variantAttributes.nombre_snapshot,
         valor_id: variantAttributes.valor_id,
-        valor: variantAttributes.valor,
+        valor: currentTaxonomyValue(variantAttributes),
         identifying: variantAttributes.es_identificador,
       })
       .from(variantAttributes)

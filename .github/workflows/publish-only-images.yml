@@ -38,7 +38,7 @@ jobs:
       contents: read
       packages: write
     concurrency:
-      group: deploy-g6-services-oracle-${{ github.repository }}-${{ inputs.service }}
+      group: publish-g6-ghcr-${{ github.repository }}-${{ inputs.service }}
       cancel-in-progress: false
     steps:
       - name: Checkout del SHA que disparó el workflow

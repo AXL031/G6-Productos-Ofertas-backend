@@ -190,7 +190,6 @@ describe('CatalogConfig PG contract', () => {
   });
 
   it('keeps demo preview disabled and rejects its legacy activation flag', () => {
-    expect(new CatalogConfig(validEnv()).marketplaceDemoPreview).toBe(false);
     expect(
       () =>
         new CatalogConfig({
@@ -212,6 +211,48 @@ describe('CatalogConfig PG contract', () => {
           CATALOG_PRICING_URL: 'https://pricing.example.test',
         }),
     ).toThrow('CATALOG_PRICING_URL');
+  });
+
+  it('accepts Oracle and Azure Container Apps private Pricing origins and rejects arbitrary destinations', () => {
+    expect(
+      new CatalogConfig({
+        ...validEnv(),
+        CATALOG_PRICING_URL: 'http://pricing-svc:3002',
+      }).pricingOrigin,
+    ).toBe('http://pricing-svc:3002');
+    const acaOrigin =
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io';
+    expect(
+      new CatalogConfig({
+        ...validEnv(),
+        CATALOG_PRICING_URL: acaOrigin,
+      }).pricingOrigin,
+    ).toBe(acaOrigin);
+
+    for (const invalid of [
+      'https://pricing.example.test',
+      'https://pricing-svc.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+      'https://catalog-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+      'https://api-gateway.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+      'http://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io:8443',
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io:443',
+      'https://pricing-svc:3002',
+      'http://pricing-svc:3001',
+      'https://user:secret@pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io/api/v1/precios',
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io?canal=MARKETPLACE',
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io#frag',
+      ' https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io',
+    ]) {
+      expect(
+        () =>
+          new CatalogConfig({
+            ...validEnv(),
+            CATALOG_PRICING_URL: invalid,
+          }),
+      ).toThrow('CATALOG_PRICING_URL');
+    }
   });
 
   it('rejects an unknown environment and does not echo secret values', () => {

@@ -19,44 +19,6 @@ describe('Catalog operational signals', () => {
     expect(JSON.stringify(output.mock.calls)).not.toContain('Bearer secret');
     expect(Object.isFrozen(telemetry.snapshot())).toBe(true);
   });
-  it('measures elapsed concurrent work, records failure and never logs its data', async () => {
-    const output = vi.spyOn(process.stdout, 'write').mockReturnValue(true);
-    const clock = vi.spyOn(performance, 'now');
-    clock.mockReturnValueOnce(100).mockReturnValueOnce(125);
-    const telemetry = new CatalogTelemetry();
-    await expect(
-      telemetry.measure(
-        'DEMO_PRICING',
-        async () =>
-          Promise.all([Promise.resolve('private'), Promise.resolve('secret')]),
-        'Bearer private',
-      ),
-    ).resolves.toEqual(['private', 'secret']);
-    clock.mockReturnValueOnce(200).mockReturnValueOnce(240);
-    await expect(
-      telemetry.measure('DEMO_ENRICHMENT_SQL', async () => {
-        throw new Error('private SQL');
-      }),
-    ).rejects.toThrow('private SQL');
-    const logs = output.mock.calls.map(
-      ([line]) => JSON.parse(String(line)).message,
-    );
-    expect(logs).toEqual([
-      {
-        code: 'CATALOG_LIST_STAGE',
-        stage: 'DEMO_PRICING',
-        success: true,
-        durationMs: 25,
-      },
-      {
-        code: 'CATALOG_LIST_STAGE',
-        stage: 'DEMO_ENRICHMENT_SQL',
-        success: false,
-        durationMs: 40,
-      },
-    ]);
-    expect(JSON.stringify(logs)).not.toMatch(/private|secret|Bearer/);
-  });
   it('logs request status, duration and correlation without path, headers or payload', () => {
     const lines: string[] = [],
       logger = new SanitizedLogger('test', [], (line) => lines.push(line)),

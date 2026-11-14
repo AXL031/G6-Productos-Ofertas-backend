@@ -57,21 +57,21 @@ export class CatalogPriceFilter {
     correlation: string,
     signal: AbortSignal,
   ): Promise<Array<{ sku: string; effective: string; currency: string }>> {
-    if (
-      !this.config?.pricingOrigin ||
-      (!this.config.readDemo?.restricted && !this.identity)
-    )
+    const publicRead =
+      Boolean(this.config?.readDemo?.restricted) ||
+      this.config?.readDemo?.securityMode === 'PUBLIC_READ_ONLY';
+    if (!this.config?.pricingOrigin || (!publicRead && !this.identity))
       throw new Error();
     // A comma cannot be represented unambiguously by the batch CSV contract.
     const individual = skus.length === 1 && skus[0].includes(',');
     if (skus.some((sku) => !sku || (!individual && sku.includes(','))))
       throw new Error();
-    const authorization = this.config.readDemo?.restricted
+    const authorization = publicRead
       ? undefined
       : await this.identity!.authorization(signal);
     signal.throwIfAborted();
     if (
-      !this.config.readDemo?.restricted &&
+      !publicRead &&
       (typeof authorization !== 'string' ||
         !/^Bearer [^\s]+$/i.test(authorization))
     )

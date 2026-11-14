@@ -1,0 +1,469 @@
+name: CD Azure Container Apps H5
+'on':
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Servicio a publicar y desplegar (o all para los nueve)
+        required: true
+        type: choice
+        options:
+          - api-gateway
+          - catalog-svc
+          - taxonomy-svc
+          - inventory-svc
+          - combos-svc
+          - promotions-svc
+          - pricing-svc
+          - price-audit-svc
+          - bulk-svc
+          - all
+      sha:
+        description: SHA completo que debe coincidir con el HEAD vigente de master y tener CI exitosa
+        required: true
+        type: string
+
+permissions: {}
+concurrency:
+  group: g6-azure-h5-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    name: Validar procedencia y servicios
+    if: github.repository == 'Taller-SW-Web/G6-Productos-Ofertas-backend' && github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+      services: ${{ steps.source.outputs.services }}
+      mode: ${{ steps.mode.outputs.value }}
+    steps:
+      - name: Obtener validadores oficiales de master
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+
+      - name: Seleccionar SHA y modo manual
+        id: mode
+        env:
+          TRIGGER_EVENT: ${{ github.event_name }}
+          DISPATCH_SERVICE: ${{ inputs.service }}
+          DISPATCH_SHA: ${{ inputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          [[ "$TRIGGER_EVENT" == workflow_dispatch && "$DISPATCH_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo 'value=manual' >> "$GITHUB_OUTPUT"
+          echo "sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Validar CI exitosa, HEAD vigente de master y allowlist de servicios
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ steps.mode.outputs.sha }}
+          SOURCE_MODE: ${{ steps.mode.outputs.value }}
+          REQUESTED_SERVICE: ${{ inputs.service }}
+        run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "${REQUESTED_SERVICE:-automatic}" "$SOURCE_SHA"
+
+      - name: Preflight read-only de protección azure-h5 antes de publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+
+      - name: Registrar origen y selección
+        env:
+          SOURCE_SHA: ${{ steps.source.outputs.sha }}
+          SERVICES: ${{ steps.source.outputs.services }}
+          MODE: ${{ steps.mode.outputs.value }}
+        run: |
+          printf 'Modo: `%s`\nHEAD vigente de master con CI exacta: `%s`\nServicios: `%s`\n' "$MODE" "$SOURCE_SHA" "$SERVICES" >> "$GITHUB_STEP_SUMMARY"
+
+  security:
+    name: Auditoría obligatoria de dependencias de producción
+    needs: prepare
+    if: needs.prepare.outputs.sha != ''
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Obtener el SHA vigente validado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          persist-credentials: false
+      - name: Configurar Node.js fijado
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+      - name: Ejecutar auditoría reproducible desde package-lock.json
+        env:
+          CANDIDATE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -uo pipefail
+          mkdir -p h5-security-evidence
+          printf 'sha=%s\nnode=%s\nnpm=%s\nlock_sha256=%s\n' \
+            "$CANDIDATE_SHA" "$(node --version)" "$(npm --version)" "$(sha256sum package-lock.json | awk '{print $1}')" \
+            > h5-security-evidence/run.txt
+          set +e
+          npm audit --omit=dev --audit-level=high --json > h5-security-evidence/npm-audit.json 2> h5-security-evidence/npm-audit.stderr
+          audit_status=$?
+          set -e
+          printf 'Auditoría H5 del SHA %s: exit=%s; lockfile SHA-256 %s\n' \
+            "$CANDIDATE_SHA" "$audit_status" "$(sha256sum package-lock.json | awk '{print $1}')" >> "$GITHUB_STEP_SUMMARY"
+          cat h5-security-evidence/npm-audit.json
+          cat h5-security-evidence/npm-audit.stderr >&2
+          exit "$audit_status"
+      - name: Conservar evidencia de seguridad incluso si el gate falla
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: h5-security-${{ needs.prepare.outputs.sha }}
+          path: h5-security-evidence/
+          if-no-files-found: ignore
+          retention-days: 30
+
+  publish:
+    name: Publicar imagen oficial ${{ matrix.service }}
+    needs: [prepare, security]
+    if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      packages: write
+    concurrency:
+      group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.services) }}
+    steps:
+      - name: Obtener validadores de master vigente
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+
+      - name: Obtener el SHA validado
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+          path: source
+          persist-credentials: false
+
+      - name: Revalidar SHA y CI antes de construir
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+          SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
+          REQUESTED_SERVICE: ${{ matrix.service }}
+        run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$REQUESTED_SERVICE" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Configurar Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesión en GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comprobar etiqueta por SHA sin sobrescribir imágenes existentes
+        id: existing
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$GITHUB_OUTPUT"
+
+      - name: Construir imagen local por SHA
+        id: build
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: source
+          file: source/Dockerfile.service
+          build-args: SERVICE_NAME=${{ matrix.service }}
+          load: true
+          tags: ${{ steps.existing.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ needs.prepare.outputs.sha }}
+            org.opencontainers.image.title=${{ matrix.service }}
+
+      - name: Revalidar origen y evitar sobrescribir etiqueta antes de publicar
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+          SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
+          REQUESTED_SERVICE: ${{ matrix.service }}
+          SERVICE: ${{ matrix.service }}
+          IMAGE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$SERVICE" "$SOURCE_SHA" > /dev/null
+          check="$(mktemp)"
+          trap 'rm -f "$check"' EXIT
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$check"
+          [[ "$(sed -n 's/^exists=//p' "$check")" == false ]] || { echo 'La etiqueta SHA apareció durante la construcción; se prohíbe sobrescribirla.' >&2; exit 1; }
+
+      - name: Publicar la imagen OCI construida en GHCR
+        id: publication
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          IMAGE: ${{ steps.existing.outputs.image }}
+        run: |
+          set -Eeuo pipefail
+          push_log="$(mktemp)"
+          trap 'rm -f "$push_log"' EXIT
+          docker push "$IMAGE" 2>&1 | tee "$push_log"
+          digest="$(sed -nE 's/.*digest: (sha256:[0-9a-f]{64}).*/\1/p' "$push_log" | tail -n 1)"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo 'GHCR no devolvió digest verificable.' >&2; exit 1; }
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Revalidar procedencia y verificar digest efectivo
+        id: image
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+          SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
+          REQUESTED_SERVICE: ${{ matrix.service }}
+          EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
+          PUBLISHED_DIGEST: ${{ steps.publication.outputs.digest }}
+          WAS_EXISTING: ${{ steps.existing.outputs.exists }}
+          SERVICE: ${{ matrix.service }}
+        run: |
+          set -Eeuo pipefail
+          bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$SERVICE" "$SOURCE_SHA" > /dev/null
+          check="$(mktemp)"
+          trap 'rm -f "$check"' EXIT
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$check"
+          image="$(sed -n 's/^image=//p' "$check")"
+          digest="$(sed -n 's/^digest=//p' "$check")"
+          expected="${PUBLISHED_DIGEST:-$EXISTING_DIGEST}"
+          [[ "$image" == "ghcr.io/${GITHUB_REPOSITORY,,}/${SERVICE}:${SOURCE_SHA}" ]]
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ && "$digest" == "$expected" ]]
+          labels="$(docker image inspect "$image" --format '{{json .Config.Labels}}')"
+          jq -e --arg service "$SERVICE" --arg source "https://github.com/${GITHUB_REPOSITORY,,}" --arg revision "$SOURCE_SHA" \
+            '((."org.opencontainers.image.source" | ascii_downcase) == ($source | ascii_downcase)) and ."org.opencontainers.image.revision" == $revision and ."org.opencontainers.image.title" == $service' \
+            <<< "$labels" > /dev/null || { echo 'Las etiquetas OCI no acreditan origen, revisión y servicio esperados.' >&2; exit 1; }
+          printf 'Imagen oficial: `%s@%s`\nSHA CI: `%s`\n' "${image%:*}" "$digest" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'image=%s@%s\n' "${image%:*}" "$digest" >> "$GITHUB_OUTPUT"
+          if [[ "$WAS_EXISTING" == true ]]; then echo 'La imagen existente se reutilizó después de verificar origen, revisión y digest.'; else echo 'Imagen del SHA oficial publicada y verificada por digest.'; fi
+
+      - name: Guardar referencia inmutable para el despliegue
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        run: printf '%s\n' "$IMAGE" > "image-${SERVICE}.txt"
+
+      - name: Transferir referencia digest a Azure job
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-image-${{ matrix.service }}
+          path: image-${{ matrix.service }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  deploy:
+    name: Desplegar ${{ matrix.service }} en Azure
+    needs: [prepare, publish]
+    if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
+    runs-on: ubuntu-latest
+    environment: azure-h5
+    concurrency:
+      group: g6-azure-h5-${{ github.repository }}-azure-h5-${{ matrix.service }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.services) }}
+    steps:
+      - name: Obtener ejecutor validado de master
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+
+      - name: Descargar solo la referencia digest del servicio
+        uses: actions/download-artifact@v4
+        with:
+          name: azure-image-${{ matrix.service }}
+
+      - name: Validar imagen y digest publicado
+        id: image
+        env:
+          SERVICE: ${{ matrix.service }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+        run: |
+          set -Eeuo pipefail
+          image="$(cat "image-${SERVICE}.txt")"
+          [[ "$image" =~ ^ghcr\.io/taller-sw-web/g6-productos-ofertas-backend/${SERVICE}@sha256:[0-9a-f]{64}$ ]]
+          echo "value=$image" >> "$GITHUB_OUTPUT"
+
+      - name: Comprobar variables del entorno azure-h5
+        run: |
+          set -Eeuo pipefail
+          for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
+            [[ -n "${!name:-}" ]] || { echo "Falta la variable ${name} en el environment azure-h5." >&2; exit 1; }
+          done
+        env:
+          AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
+          AZURE_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+          AZURE_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Revalidar reglas reales del environment inmediatamente antes de OIDC
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+
+      - name: Autenticar en Azure mediante OIDC
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Revalidar SHA y CI inmediatamente antes del despliegue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF: ${{ github.ref }}
+          GITHUB_SHA: ${{ github.sha }}
+          SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
+          SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
+          REQUESTED_SERVICE: ${{ matrix.service }}
+        run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$REQUESTED_SERVICE" "$SOURCE_SHA" > /dev/null
+
+      - name: Actualizar solo la imagen y verificar revisión/rollback
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE: ${{ steps.image.outputs.value }}
+          DEPLOY_RECEIPT: ${{ matrix.service }}.receipt
+        run: bash ops/azure/container-apps/deploy.sh "$SERVICE" "$IMAGE"
+      - name: Guardar recibo de recuperación coordinada
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: azure-receipt-${{ matrix.service }}
+          path: ${{ matrix.service }}.receipt
+          if-no-files-found: ignore
+          retention-days: 1
+
+  smoke:
+    name: Smoke HTTPS posterior al despliegue
+    needs: [prepare, deploy]
+    if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
+    runs-on: [self-hosted, linux, azure-h5-smoke]
+    environment: azure-h5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.services) }}
+    steps:
+      - name: Obtener smoke de master
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+      - name: Smoke funcional obligatorio desde la red autorizada
+        env:
+          SERVICE: ${{ matrix.service }}
+          SMOKE_URL_API_GATEWAY: ${{ vars.AZURE_SMOKE_URL_API_GATEWAY }}
+          SMOKE_URL_BULK_SVC: ${{ vars.AZURE_SMOKE_URL_BULK_SVC }}
+          SMOKE_URL_CATALOG_SVC: ${{ vars.AZURE_SMOKE_URL_CATALOG_SVC }}
+          SMOKE_URL_COMBOS_SVC: ${{ vars.AZURE_SMOKE_URL_COMBOS_SVC }}
+          SMOKE_URL_INVENTORY_SVC: ${{ vars.AZURE_SMOKE_URL_INVENTORY_SVC }}
+          SMOKE_URL_PRICE_AUDIT_SVC: ${{ vars.AZURE_SMOKE_URL_PRICE_AUDIT_SVC }}
+          SMOKE_URL_PRICING_SVC: ${{ vars.AZURE_SMOKE_URL_PRICING_SVC }}
+          SMOKE_URL_PROMOTIONS_SVC: ${{ vars.AZURE_SMOKE_URL_PROMOTIONS_SVC }}
+          SMOKE_URL_TAXONOMY_SVC: ${{ vars.AZURE_SMOKE_URL_TAXONOMY_SVC }}
+          SMOKE_PROTECTED_API_GATEWAY: ${{ vars.AZURE_SMOKE_PROTECTED_API_GATEWAY }}
+          SMOKE_PROTECTED_BULK_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_BULK_SVC }}
+          SMOKE_PROTECTED_CATALOG_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_CATALOG_SVC }}
+          SMOKE_PROTECTED_COMBOS_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_COMBOS_SVC }}
+          SMOKE_PROTECTED_INVENTORY_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_INVENTORY_SVC }}
+          SMOKE_PROTECTED_PRICE_AUDIT_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PRICE_AUDIT_SVC }}
+          SMOKE_PROTECTED_PRICING_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PRICING_SVC }}
+          SMOKE_PROTECTED_PROMOTIONS_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PROMOTIONS_SVC }}
+          SMOKE_PROTECTED_TAXONOMY_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_TAXONOMY_SVC }}
+        run: |
+          set -Eeuo pipefail
+          service_key="${SERVICE^^}"
+          service_key="${service_key//-/_}"
+          url_var="SMOKE_URL_${service_key}"
+          protected_var="SMOKE_PROTECTED_${service_key}"
+          url="${!url_var:-}"
+          protected="${!protected_var:-}"
+          export SMOKE_URL="$url" SMOKE_PROTECTED_PATH="$protected"
+          bash ops/azure/container-apps/smoke-service.sh "$SERVICE"
+
+  recover:
+    name: Recuperación supervisada (sujeta a protección azure-h5)
+    needs: [prepare, deploy, smoke]
+    if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
+    runs-on: ubuntu-latest
+    environment: azure-h5
+    permissions:
+      actions: read
+      contents: read
+      id-token: write
+    steps:
+      - name: Obtener ejecutor validado de master
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+      - name: Descargar recibos de servicios aplicados
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: azure-*
+          path: receipts
+          merge-multiple: true
+      - name: Revalidar reglas reales del environment inmediatamente antes de OIDC para recuperación
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+      - name: Autenticar en Azure mediante OIDC para recuperación
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Restaurar servicios sin cambios concurrentes
+        run: |
+          set -Eeuo pipefail
+          if ! gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > "$RUNNER_TEMP/jobs.json"; then
+            echo '{"jobs":[]}' > "$RUNNER_TEMP/jobs.json"
+            echo 'No se pudo recuperar la evidencia de pasos GitHub; servicios sin recibo quedarán como desconocidos.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+          bash ops/azure/container-apps/reconcile-recovery.sh "$SELECTED_SERVICES" receipts "$RUNNER_TEMP/jobs.json"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_RUN_ID: ${{ github.run_id }}
+          SELECTED_SERVICES: ${{ needs.prepare.outputs.services }}
