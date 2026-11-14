@@ -6,10 +6,7 @@ import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { CATALOG_SECURITY_CONFIG } from '../src/catalog-auth.js';
-import {
-  CATALOG_MARKETPLACE_PREVIEW,
-  CATALOG_READ_DEMO,
-} from '../src/catalog-read-demo.js';
+import { CATALOG_READ_DEMO } from '../src/catalog-read-demo.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
 import { CommercialService } from '../src/commercial.service.js';
 import { CatalogPricingIdentityProvider } from '../src/catalog-pricing-identity.js';
@@ -92,11 +89,9 @@ describe('Private Pricing SKU context HTTP contract (local signed RS256/JWKS, is
         discoveryUrl: origin + '/discovery',
         jwksUrl: origin + '/keys',
       })
-      // Restricted administrative demo and preview never bypass this technical operation.
+      // Restricted administrative reads never bypass this technical operation.
       .overrideProvider(CATALOG_READ_DEMO)
       .useValue({ enabled: false, restricted: true, gatewayIps: ['127.0.0.1'] })
-      .overrideProvider(CATALOG_MARKETPLACE_PREVIEW)
-      .useValue(true)
       .compile();
     app = module.createNestApplication();
     await app.init();

@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import { createHash } from 'node:crypto';
 import {
   Inject,
@@ -238,7 +239,7 @@ export class CatalogBulkResultConsumer
     if (!this.amqpUrl || this.stopping || this.paused || this.channel) return;
     this.state = 'CONNECTING';
     try {
-      const connection = await amqp.connect(this.amqpUrl);
+      const connection = await connectPrivateAmqps(amqp.connect, this.amqpUrl);
       this.connection = connection;
       connection.on('error', () => undefined);
       connection.on('close', () => {

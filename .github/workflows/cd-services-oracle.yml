@@ -306,7 +306,7 @@ jobs:
         service: ${{ fromJSON(needs.prepare.outputs.services) }}
     runs-on: ubuntu-latest
     concurrency:
-      group: deploy-g6-services-oracle-${{ github.repository }}-${{ matrix.service }}
+      group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
       cancel-in-progress: false
     permissions:
       contents: read

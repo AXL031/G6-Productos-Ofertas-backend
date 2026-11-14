@@ -66,9 +66,6 @@ describe('CommercialService', () => {
     const priced = new CommercialService(
       repository as never,
       taxonomy as never,
-      { enabled: false },
-      undefined,
-      undefined,
       filter as never,
     );
     const request = {

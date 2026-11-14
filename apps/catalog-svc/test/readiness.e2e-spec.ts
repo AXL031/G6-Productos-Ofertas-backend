@@ -3,8 +3,7 @@ import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
 import { Database } from '../src/database.js';
 import { CatalogConfig } from '../src/config.js';
-import { CommercialService } from '../src/commercial.service.js';
-import { PricingClient } from '../src/pricing.client.js';
+import { CatalogAmqpRuntime } from '../src/catalog-amqp.js';
 import { PostgresCatalogRepository } from '../src/postgres-catalog.repository.js';
 import { mkdtempSync, writeFileSync, unlinkSync, rmdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -26,7 +25,6 @@ const validEnv = () => ({
   G6_DATABASE_SCHEMA: 'catalog',
   G6_EXPECTED_ROLE: 'catalog_app',
   G6_SECURITY_MODE: 'G7_AUTHENTICATED',
-  CATALOG_PRICING_URL: 'http://pricing-svc:3002',
 });
 
 beforeAll(() =>
@@ -41,10 +39,13 @@ afterAll(() => {
 });
 
 describe('Catalog readiness versus liveness', () => {
-  it('keeps commercial readiness closed with reachable PostgreSQL but no eligibility source', async () => {
+  it('keeps liveness healthy while required Catalog reads are unavailable', async () => {
+    const read = vi.fn().mockRejectedValue(new Error('fixture SELECT denied'));
     const module = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(Database)
       .useValue({ verifyIdentity: async () => undefined })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
@@ -59,20 +60,16 @@ describe('Catalog readiness versus liveness', () => {
     }
   });
 
-  it('checks the catalog commercial service under explicit G7 mode', async () => {
-    const list = vi.fn();
-    const pricing = vi.fn().mockResolvedValue(undefined);
+  it('checks database identity and required Catalog read access without a commercial query', async () => {
+    const verify = vi.fn().mockResolvedValue(undefined);
+    const read = vi.fn().mockResolvedValue(undefined);
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
       .overrideProvider(Database)
-      .useValue({ verifyIdentity: async () => undefined })
-      .overrideProvider(CommercialService)
-      .useValue({ list: async () => list() })
-      .overrideProvider(PricingClient)
-      .useValue({ checkReady: pricing })
+      .useValue({ verifyIdentity: verify })
       .overrideProvider(PostgresCatalogRepository)
-      .useValue({ checkDemoReadAccess: vi.fn().mockResolvedValue(undefined) })
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
@@ -81,25 +78,26 @@ describe('Catalog readiness versus liveness', () => {
         .get('/health/ready')
         .expect(200)
         .expect({ status: 'ready', service: 'catalog-svc' });
-      expect(list).toHaveBeenCalledOnce();
-      expect(pricing).not.toHaveBeenCalled();
+      expect(verify).toHaveBeenCalledOnce();
+      expect(read).toHaveBeenCalledOnce();
     } finally {
       await app.close();
     }
   });
 
-  it('keeps readiness closed when the catalog commercial service fails', async () => {
+  it('fails closed when database identity verification fails', async () => {
+    const read = vi.fn();
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
       .overrideProvider(Database)
-      .useValue({ verifyIdentity: async () => undefined })
-      .overrideProvider(CommercialService)
       .useValue({
-        list: async () => {
+        verifyIdentity: async () => {
           throw new Error('fixture');
         },
       })
+      .overrideProvider(PostgresCatalogRepository)
+      .useValue({ checkReadinessAccess: read })
       .compile();
     const app = module.createNestApplication();
     await app.init();
@@ -108,26 +106,23 @@ describe('Catalog readiness versus liveness', () => {
         .get('/health/ready')
         .expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(read).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
   });
 
-  it('keeps demo readiness closed when a Catalog table SELECT fails', async () => {
-    const pricing = vi.fn();
+  it('fails closed when required AMQP is unavailable', async () => {
+    const read = vi.fn();
     const module = await Test.createTestingModule({
       imports: [AppModule.forRoot(new CatalogConfig(validEnv()))],
     })
       .overrideProvider(Database)
       .useValue({ verifyIdentity: async () => undefined })
-      .overrideProvider(PricingClient)
-      .useValue({ checkReady: pricing })
       .overrideProvider(PostgresCatalogRepository)
-      .useValue({
-        checkDemoReadAccess: async () => {
-          throw new Error('fixture SELECT denied');
-        },
-      })
+      .useValue({ checkReadinessAccess: read })
+      .overrideProvider(CatalogAmqpRuntime)
+      .useValue({ required: true, ready: false })
       .compile();
     const app = module.createNestApplication();
     await app.init();
@@ -136,7 +131,7 @@ describe('Catalog readiness versus liveness', () => {
         .get('/health/ready')
         .expect(503);
       expect(response.body.code).toBe('SERVICIO_NO_DISPONIBLE');
-      expect(pricing).not.toHaveBeenCalled();
+      expect(read).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

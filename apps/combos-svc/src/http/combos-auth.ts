@@ -338,6 +338,8 @@ export class SimulatedComboTokenVerifier extends ComboTokenVerifier {
   }
 }
 
+export type ComboActorRequest = Request & { comboActor?: string };
+
 @Injectable()
 export class CombosAuthGuard implements CanActivate {
   constructor(
@@ -352,7 +354,7 @@ export class CombosAuthGuard implements CanActivate {
       context.getHandler(),
     );
     if (!policy) return true;
-    const request = context.switchToHttp().getRequest<Request>();
+    const request = context.switchToHttp().getRequest<ComboActorRequest>();
     const mode = process.env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
     const configuredPublicReads = new Set(
       (process.env.COMBOS_PUBLIC_READ_OPERATIONS ?? '')
@@ -420,6 +422,7 @@ export class CombosAuthGuard implements CanActivate {
     )
       throw new ForbiddenException({ code: 'SCOPE_INSUFICIENTE' });
     if (principal.kind === 'user') {
+      request.comboActor = principal.subject;
       const roleKey = `COMBOS_ALLOWED_ROLES_${policy.operationId
         .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
         .toUpperCase()}`;

@@ -5,6 +5,10 @@ import { App } from 'supertest/types.js';
 import { PricingSvcModule } from './../src/pricing-svc.module.js';
 import { PricingReadiness } from '../src/health/pricing-readiness.js';
 import { SignedUser } from './signed-user.js';
+import {
+  PricingRepository,
+  type PriceLookupTarget,
+} from '../src/persistence/pricing.repository.js';
 
 describe('PricingSvcController (e2e)', () => {
   let app: INestApplication<App>;
@@ -105,6 +109,118 @@ describe('PricingSvcController (e2e)', () => {
       );
     } finally {
       await failedDbApp.close();
+      await identity.stop();
+    }
+  });
+
+  it('reads only the requested editable definition using a signed manager JWT', async () => {
+    const identity = new SignedUser();
+    await identity.start();
+    const readDefinition = vi.fn(
+      async (target: PriceLookupTarget, channel: string | null) =>
+        channel === 'MARKETPLACE'
+          ? undefined
+          : {
+              definition: {
+                productId: target.productId ?? null,
+                sku: target.sku ?? null,
+                channelId: channel,
+                priceVersion: channel === null ? 3n : 7n,
+              },
+              validities: [
+                {
+                  precioRegular: '79.50',
+                  precioOferta: null,
+                  currency: 'PEN',
+                  validFrom: new Date('2020-01-01T00:00:00Z'),
+                  validUntil: null,
+                },
+              ],
+            },
+    );
+    const module = await Test.createTestingModule({
+      imports: [
+        PricingSvcModule.forRoot({
+          ...env,
+          AUTH_ISSUER: identity.issuer,
+          AUTH_JWKS_URL: identity.issuer + '/jwks',
+        }),
+      ],
+    })
+      .overrideProvider(PricingRepository)
+      .useValue({ readDefinition })
+      .compile();
+    const adminApp = module.createNestApplication();
+    try {
+      await adminApp.init();
+      const http = request(adminApp.getHttpServer());
+      const bearer = 'Bearer ' + identity.token();
+      const id = '11111111-1111-4111-8111-111111111111';
+      const product = '/api/v1/precios/administracion/productos/' + id;
+      const sku = '/api/v1/precios/administracion/skus/SKU-1';
+      await http.get(product).expect(401);
+      await http
+        .get(product)
+        .set('Authorization', 'Bearer ' + identity.token({ roles: [] }))
+        .expect(403);
+      await http
+        .get(sku)
+        .set(
+          'Authorization',
+          'Bearer ' +
+            identity.token({
+              tipo: 'servicio',
+              sub: 'modulo-marketplace',
+              aud: 'api-productos',
+              scope: 'precios:leer',
+            }),
+        )
+        .expect(401);
+      await http
+        .get(product + '?channelId=retail')
+        .set('Authorization', bearer)
+        .expect(400);
+      expect(readDefinition).not.toHaveBeenCalled();
+      const global = await http
+        .get(product)
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(global.body).toMatchObject({
+        productId: id,
+        sku: null,
+        channelId: null,
+        priceVersion: 3,
+        vigenciaActual: {
+          precioRegular: 79.5,
+          precioOferta: null,
+          currency: 'PEN',
+        },
+      });
+      const retail = await http
+        .get(sku + '?channelId=RETAIL')
+        .set('Authorization', bearer)
+        .expect(200);
+      expect(retail.body).toMatchObject({
+        productId: null,
+        sku: 'SKU-1',
+        channelId: 'RETAIL',
+        priceVersion: 7,
+      });
+      expect(readDefinition).toHaveBeenLastCalledWith(
+        { sku: 'SKU-1' },
+        'RETAIL',
+      );
+      const inherited = await http
+        .get(product + '?channelId=MARKETPLACE')
+        .set('Authorization', bearer)
+        .expect(404);
+      expect(inherited.body.code).toBe('PRECIO_NO_ENCONTRADO');
+      expect(readDefinition).toHaveBeenLastCalledWith(
+        { productId: id },
+        'MARKETPLACE',
+      );
+    } finally {
+      await adminApp.close();
       await identity.stop();
     }
   });

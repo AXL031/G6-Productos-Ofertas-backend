@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Inject,
   Injectable,
@@ -13,6 +14,7 @@ import {
 } from 'amqplib';
 import { and, eq, sql } from 'drizzle-orm';
 import { PricingRepository } from '../persistence/pricing.repository.js';
+import { PricingPersistenceError } from '../persistence/persistence.error.js';
 import { inbox } from '../persistence/pricing.schema.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { CatalogSkuDeactivated } from './catalog-sku-deactivated.js';
@@ -96,7 +98,7 @@ export class PricingInboxConsumer
     let connection: ChannelModel | undefined;
     let channel: Channel | undefined;
     try {
-      connection = await connect(url, { timeout: 2500 });
+      connection = await connectPrivateAmqps(connect, url, { timeout: 2500 });
       this.connection = connection;
       connection.on('error', () => {
         if (this.connection === connection) this.available = false;
@@ -229,6 +231,15 @@ export class PricingInboxConsumer
             setTimeout(resolve, 100 * (attempt + 1)),
           );
         else {
+          if (
+            error instanceof PricingPersistenceError &&
+            (error.sqlState === '57014' || error.clientTimeout)
+          ) {
+            this.available = false;
+            await owner.close().catch(() => undefined);
+            this.scheduleReconnect();
+            return;
+          }
           const rawCode = error instanceof Error ? error.message : '';
           const code = /^[A-Z0-9_]{1,64}$/.test(rawCode)
             ? rawCode

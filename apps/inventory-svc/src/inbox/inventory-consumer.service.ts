@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Injectable,
   Logger,
@@ -67,7 +68,9 @@ export class InventoryConsumerService implements OnModuleInit, OnModuleDestroy {
       return;
     this.connecting = true;
     try {
-      this.connection = await amqp.connect(rabbitMqUrl, { timeout: 5000 });
+      this.connection = await connectPrivateAmqps(amqp.connect, rabbitMqUrl, {
+        timeout: 5000,
+      });
       const connection = this.connection;
       connection.on('error', (error: Error) =>
         this.logger.error({

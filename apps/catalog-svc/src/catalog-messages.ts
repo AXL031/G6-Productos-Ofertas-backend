@@ -1,3 +1,4 @@
+import { taxonomyUpdate, taxonomyUpdates } from './catalog-taxonomy-update.js';
 import { randomUUID } from 'node:crypto';
 import { object } from './catalog-mutation.input.js';
 import {
@@ -305,6 +306,11 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     )
       throw new InvalidCatalogMessage();
   }
+  if (
+    (taxonomyUpdates as readonly string[]).includes(value.name) &&
+    !taxonomyUpdate(value.name, value.data)
+  )
+    throw new InvalidCatalogMessage();
   if (result) {
     const d = value.data;
     const completed = value.name.endsWith('.completed');

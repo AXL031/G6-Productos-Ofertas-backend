@@ -60,11 +60,12 @@ $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..')).Path
 $docsCandidate = if ($env:COMBOS_TEST_DOCS_ROOT) { $env:COMBOS_TEST_DOCS_ROOT } else { Join-Path $repoRoot '..\docs' }
 $docsRoot = (Resolve-Path $docsCandidate).Path
 $migration = Join-Path $docsRoot 'datos\combos\migrations\0001_create_combos_persistence.sql'
+$receiptMigration = Join-Path $repoRoot 'apps\combos-svc\migrations\0002_create_combo_creation_receipts.sql'
 $catalogMigration = Join-Path $docsRoot 'datos\catalog-svc\migrations\0001_create_catalog.sql'
 $pricingMigration = Join-Path $repoRoot 'apps\pricing-svc\test\fixtures\pricing.sql'
 $pricingOfficialMigration = Join-Path $docsRoot 'datos\pricing\migrations\0001_create_pricing.sql'
 $pricingContextMigration = Join-Path $repoRoot 'apps\pricing-svc\migrations\0002_schedule_effective_events.sql'
-foreach ($requiredMigration in @($migration, $catalogMigration, $pricingMigration, $pricingOfficialMigration, $pricingContextMigration)) {
+foreach ($requiredMigration in @($migration, $receiptMigration, $catalogMigration, $pricingMigration, $pricingOfficialMigration, $pricingContextMigration)) {
   if (-not (Test-Path -LiteralPath $requiredMigration)) { throw "No se encontró la migración oficial: $requiredMigration" }
 }
 $pricingFixtureText = ([IO.File]::ReadAllText($pricingMigration) -replace "`r`n", "`n")
@@ -142,6 +143,7 @@ try {
   foreach ($migrationSpec in @(
     @{ Path = $catalogMigration; Owner = 'po_catalog_owner'; Name = 'catalog' },
     @{ Path = $migration; Owner = 'po_combos_owner'; Name = 'combos' },
+    @{ Path = $receiptMigration; Owner = 'po_combos_owner'; Name = 'combos-receipts' },
     @{ Path = $pricingMigration; Owner = 'po_pricing_owner'; Name = 'pricing' },
     @{ Path = $pricingContextMigration; Owner = 'po_pricing_owner'; Name = 'pricing-context' }
   )) {

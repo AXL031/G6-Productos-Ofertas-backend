@@ -74,7 +74,7 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
       });
     }, 30000);
     it('checks the four demo read grants against the real Catalog schema', async () => {
-      await expect(repo.checkDemoReadAccess()).resolves.toBeUndefined();
+      await expect(repo.checkReadinessAccess()).resolves.toBeUndefined();
     }, 30000);
     it('executes read-only paged queries, detail and own-schema composition', async () => {
       const page = await repo.listCandidates(query);
@@ -128,47 +128,6 @@ describe.skipIf(process.env.G6_READONLY_INTEGRATION !== 'catalog')(
       expect(
         (await repo.findCandidateBySlug('missing-' + randomUUID())) === null,
       ).toBe(true);
-    }, 30000);
-    it('observes real demo candidates and images without changing draft state', async () => {
-      const demoRows = await repo.listDemoCandidates(query, 100);
-      const counts = await db.read((d) =>
-        d.execute(sql`SELECT
-        count(*)::integer AS products,
-        count(*) FILTER (WHERE estado = ${'BORRADOR'})::integer AS drafts,
-        (SELECT count(DISTINCT p.id)::integer FROM catalog.products p
-          WHERE EXISTS (SELECT 1 FROM catalog.product_images pi
-            WHERE pi.product_id = p.id AND pi.url LIKE 'https://%'
-              AND pi.url NOT LIKE 'https://placehold.co/%'
-              AND pi.url NOT LIKE 'https://%.placehold.co/%')
-          OR EXISTS (SELECT 1 FROM catalog.variants v
-            JOIN catalog.variant_images vi ON vi.variant_id = v.id
-            WHERE v.product_id = p.id AND vi.url LIKE 'https://%'
-              AND vi.url NOT LIKE 'https://placehold.co/%'
-              AND vi.url NOT LIKE 'https://%.placehold.co/%')) AS products_with_valid_images
-        FROM catalog.products`),
-      );
-      const observed = counts.rows[0];
-      expect(
-        demoRows.every((row) =>
-          row.images.some((url) => url.trim().length > 0),
-        ),
-      ).toBe(true);
-      expect(demoRows.length).toBe(Number(observed.products_with_valid_images));
-      process.stdout.write(
-        JSON.stringify({
-          evidence: 'catalog-demo-readonly-observation',
-          products: observed.products,
-          drafts: observed.drafts,
-          productsWithValidImages: observed.products_with_valid_images,
-          demoRowsWithValidImages: demoRows.length,
-          pricing: 'not queried; requires Pricing HTTP operation',
-          writes: 0,
-        }) + '\n',
-      );
-      if (demoRows.length) {
-        const detail = await repo.findDemoCandidateBySlug(demoRows[0].slug);
-        expect(detail?.product_id).toBe(demoRows[0].product_id);
-      }
     }, 30000);
     it('parameterizes search/filter input and applies eligibility before total/paging', async () => {
       const noMatches = await repo.listCandidates({

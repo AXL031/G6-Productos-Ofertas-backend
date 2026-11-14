@@ -22,6 +22,7 @@ export interface GatewaySettings {
   /** Compatibility with PR #125; this flag grants only its approved GET subset. */
   readonly readOnlyDemoEnabled?: boolean;
   readonly securityMode?: GatewaySecurityMode;
+  readonly inventoryLocalGrantsEnabled?: boolean;
 }
 
 export function readGatewayPort(env: Readonly<NodeJS.ProcessEnv>): number {
@@ -121,6 +122,9 @@ export function readGatewaySettings(
     // exclusive. Ambiguous configuration must never widen the read-only cap.
     if (demoNoAuthEnabled === 'true' && readOnlyDemoEnabled === 'true')
       throw new Error();
+    const inventoryLocalGrants =
+      env.GATEWAY_INVENTORY_LOCAL_GRANTS_ENABLED ?? 'false';
+    if (!['true', 'false'].includes(inventoryLocalGrants)) throw new Error();
     const simulated = securityMode === 'SIMULATED_AUTH';
     const issuer = simulated ? env.SIMULATED_AUTH_ISSUER : env.AUTH_ISSUER;
     const jwksUrl = simulated ? env.SIMULATED_AUTH_JWKS_URL : env.AUTH_JWKS_URL;
@@ -180,6 +184,7 @@ export function readGatewaySettings(
       demoNoAuthEnabled: demoNoAuthEnabled === 'true',
       readOnlyDemoEnabled: readOnlyDemoEnabled === 'true',
       securityMode,
+      inventoryLocalGrantsEnabled: inventoryLocalGrants === 'true',
     });
   } catch {
     throw new Error(

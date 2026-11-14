@@ -11,8 +11,7 @@ export const CATALOG_DATABASE = Symbol('CATALOG_DATABASE');
 export const READINESS_TIMEOUT_MS = 2000;
 
 export type ReadinessCheckOutcome = 'ready' | 'not_ready' | 'timed_out';
-export type ReadinessStage =
-  'database' | 'catalog-read' | 'pricing' | 'commercial';
+export type ReadinessStage = 'database' | 'catalog-read';
 
 export function withReadinessDeadline(
   work: Promise<void>,
@@ -29,80 +28,43 @@ export function withReadinessDeadline(
   return Promise.race([completed, deadline]).finally(() => clearTimeout(timer));
 }
 
-export interface CliReadinessConfig {
-  readonly marketplaceDemoPreview: boolean;
-  readonly readDemo: {
-    readonly enabled: boolean;
-    readonly securityMode?: string;
-    readonly publicOperations?: readonly string[];
-  };
-}
-
 export async function runReadinessCliProbe(
   check: (onProgress: (stage: ReadinessStage) => void) => Promise<void>,
   close: () => Promise<void>,
-  config: CliReadinessConfig,
   write: (line: string) => void = (line) => process.stdout.write(line + '\n'),
 ): Promise<number> {
   let database = 'not_ready';
-  let status = 'not_ready';
-  let eligibilityStatus = 'unverified';
-  let pricingStatus = 'not_checked';
+  let catalogRead = 'not_checked';
   const work = Promise.resolve().then(() =>
     check((stage) => {
       if (stage === 'database') database = 'ready';
-      if (stage === 'catalog-read') {
-        if (
-          config.readDemo.enabled ||
-          (config.readDemo.securityMode === 'PUBLIC_READ_ONLY' &&
-            (config.readDemo.publicOperations?.length ?? 0) > 0)
-        )
-          eligibilityStatus = 'not_evaluated_demo';
-        else eligibilityStatus = 'not_required_demo';
-      }
-      if (stage === 'pricing') pricingStatus = 'ready';
-      if (stage === 'commercial') eligibilityStatus = 'ready';
+      if (stage === 'catalog-read') catalogRead = 'ready';
     }),
   );
 
   let outcome = await withReadinessDeadline(work);
   if (outcome === 'timed_out') {
-    // Drain the in-flight DB/HTTP operation before closing Nest and its pool.
-    // The functional deadline is 2 s; safe shutdown can take longer.
     await work.then(
       () => undefined,
       () => undefined,
     );
   }
-  if (outcome === 'ready') status = 'ready';
-  else if (
-    config.marketplaceDemoPreview &&
-    database === 'ready' &&
-    eligibilityStatus === 'not_required_demo'
-  )
-    pricingStatus = 'unavailable';
-
+  const status = outcome === 'ready' ? 'ready' : 'not_ready';
   try {
     await close();
   } catch {
     outcome = 'not_ready';
-    status = 'not_ready';
   }
-
   write(
     JSON.stringify({
       service: 'catalog-svc',
-      status,
+      status: outcome === 'ready' ? status : 'not_ready',
       database,
-      eligibility: eligibilityStatus,
-      ...(config.marketplaceDemoPreview && !config.readDemo.enabled
-        ? { pricing: pricingStatus }
-        : {}),
+      catalogRead,
     }),
   );
-  return outcome === 'ready' && status === 'ready' ? 0 : 1;
+  return outcome === 'ready' ? 0 : 1;
 }
-
 /** The persistence adapter must execute an authenticated, read-only DB query. */
 export interface CatalogDatabase {
   check(): Promise<void>;
@@ -173,7 +135,6 @@ async function runReadinessProbe(): Promise<void> {
     (onProgress) =>
       app.get(CommercialReadinessController).checkReadiness(onProgress),
     () => app.close(),
-    config,
   );
 }
 

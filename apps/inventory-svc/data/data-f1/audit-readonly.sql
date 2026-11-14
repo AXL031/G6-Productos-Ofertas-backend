@@ -33,7 +33,7 @@ SELECT jsonb_build_object(
     SELECT count(*) FROM inventory.stock_threshold_override
   ),
   'operations_count', (
-    SELECT count(*) FROM inventory.operations
+    SELECT count(*) FROM inventory.inventory_operations
   ),
   'kardex_count', (
     SELECT count(*) FROM inventory.kardex

@@ -12,7 +12,6 @@ import {
 import { Reflector } from '@nestjs/core';
 import {
   CATALOG_READ_DEMO,
-  CATALOG_MARKETPLACE_PREVIEW,
   type CatalogReadDemo,
 } from './catalog-read-demo.js';
 import { createPublicKey, verify as verifySignature } from 'node:crypto';
@@ -111,7 +110,6 @@ export type CatalogPrincipal =
     };
 
 export interface CatalogAuthPolicy {
-  marketplacePreviewRead?: boolean;
   demoRead?: boolean;
   restrictedDemo?: boolean;
   identity: 'user' | 'service' | 'either';
@@ -446,9 +444,6 @@ export class CatalogAuthGuard implements CanActivate {
     @Optional()
     @Inject(CATALOG_READ_DEMO)
     private readonly readDemo: CatalogReadDemo = { enabled: false },
-    @Optional()
-    @Inject(CATALOG_MARKETPLACE_PREVIEW)
-    private readonly marketplacePreview = false,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -461,7 +456,6 @@ export class CatalogAuthGuard implements CanActivate {
       Request & {
         catalogPrincipal?: CatalogPrincipal;
         catalogDemoRead?: boolean;
-        catalogDemoPreview?: boolean;
       }
     >();
     const handlerOp =

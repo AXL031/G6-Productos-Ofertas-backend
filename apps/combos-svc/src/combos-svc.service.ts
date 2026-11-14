@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   CatalogSkuContextClient,
   IntegrationFailure,
@@ -11,6 +11,7 @@ import {
   CatalogComponentDeactivatedError,
   CombosRepository,
   type ComboAggregate,
+  type ComboCreationIntent,
   type ComboComponentRecord,
 } from './persistence/combos.repository.js';
 
@@ -319,10 +320,31 @@ export class CombosSvcService {
     }
   }
 
-  async create(input: ComboInput, correlationId?: string) {
+  async create(
+    input: ComboInput,
+    correlationId?: string,
+    attempt?: Omit<ComboCreationIntent, 'fingerprint'>,
+  ) {
     this.validateCreate(input);
     const components = input.componentes!;
     const price = decimal(input.precioCombo!);
+    const intent = attempt && {
+      ...attempt,
+      fingerprint: createHash('sha256')
+        .update(
+          JSON.stringify({
+            name: input.nombre,
+            description: input.descripcion ?? null,
+            price: priceString(price),
+            components: components.map(({ sku, cantidad }) => [sku, cantidad]),
+          }),
+        )
+        .digest('hex'),
+    };
+    if (intent) {
+      const prior = await this.repository.findCreation(intent);
+      if (prior) return this.get(prior);
+    }
     const references = await this.validateReferences(
       components,
       price,
@@ -330,18 +352,21 @@ export class CombosSvcService {
     );
     let id: string;
     try {
-      id = await this.repository.create({
-        name: input.nombre!,
-        description: input.descripcion ?? null,
-        price: priceString(price),
-        currency: references.currency,
-        components: components.map((item) => ({
-          sku: item.sku,
-          quantity: item.cantidad,
-          productId: references.productIds.get(item.sku)!,
-          catalogObservedAt: references.catalogObservedAt.get(item.sku)!,
-        })),
-      });
+      id = await this.repository.create(
+        {
+          name: input.nombre!,
+          description: input.descripcion ?? null,
+          price: priceString(price),
+          currency: references.currency,
+          components: components.map((item) => ({
+            sku: item.sku,
+            quantity: item.cantidad,
+            productId: references.productIds.get(item.sku)!,
+            catalogObservedAt: references.catalogObservedAt.get(item.sku)!,
+          })),
+        },
+        intent,
+      );
     } catch (error) {
       if (error instanceof CatalogComponentDeactivatedError)
         throw new ComboError(404, 'SKU_NO_ENCONTRADO', 'SKU inactivo');

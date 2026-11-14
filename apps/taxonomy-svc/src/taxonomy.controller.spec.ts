@@ -441,6 +441,10 @@ import { CategoryReactivationService } from './domain/category-reactivation.serv
 import { CategoryCreateService } from './domain/category-create.service.js';
 import { CategoryUpdateService } from './domain/category-update.service.js';
 import { BrandWriteService } from './domain/brand-write.service.js';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, unlinkSync, rmdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { TaxonomyWriteController } from './taxonomy-write.controller.js';
 
 // Verifies actual Nest guard, JWT signature, JWKS and problem responses.
@@ -729,15 +733,33 @@ describe('listarCategorias y listarMarcas: seguridad HTTP contractual', () => {
       .field('nombre', 'Marca')
       .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
       .expect(401);
-    await request(app.getHttpServer())
-      .post('/api/v1/marcas')
-      .set('Authorization', human)
-      .field('nombre', 'Marca')
-      .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
-      .expect(201);
-    expect(brandWrite.crear).toHaveBeenCalledWith(
-      expect.objectContaining({ nombre: 'Marca', logoUrl: null }),
-    );
+    const directory = mkdtempSync(join(tmpdir(), 'taxonomy-logo-h4-'));
+    const publicBase = 'https://assets.example.test/brands/';
+    vi.stubEnv('TAXONOMY_LOGO_DIRECTORY', directory);
+    vi.stubEnv('TAXONOMY_LOGO_PUBLIC_BASE_URL', publicBase);
+    try {
+      await request(app.getHttpServer())
+        .post('/api/v1/marcas')
+        .set('Authorization', human)
+        .field('nombre', 'Marca')
+        .attach('logo', png, { filename: 'logo.png', contentType: 'image/png' })
+        .expect(201);
+      expect(brandWrite.crear).toHaveBeenCalledWith(
+        expect.objectContaining({
+          nombre: 'Marca',
+          logoUrl: expect.stringMatching(
+            /^https:\/\/assets\.example\.test\/brands\/[a-f0-9]{64}\.png$/,
+          ),
+        }),
+      );
+      const name = createHash('sha256').update(png).digest('hex') + '.png';
+      const stored = join(directory, name);
+      expect(readFileSync(stored)).toEqual(png);
+      unlinkSync(stored);
+    } finally {
+      vi.unstubAllEnvs();
+      rmdirSync(directory);
+    }
     await request(app.getHttpServer())
       .post('/api/v1/marcas')
       .set('Authorization', human)

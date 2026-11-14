@@ -10,6 +10,7 @@ import { CommercialService } from './commercial.service.js';
 import type { Canal } from './commercial.types.js';
 import type { TaxonomyIdentity } from './taxonomy.client.js';
 import { BarcodeService } from './barcode.service.js';
+import { parseProductQuery } from './catalog-query.js';
 
 const channels: readonly Canal[] = [
   'MARKETPLACE',
@@ -90,6 +91,29 @@ export class CatalogQueryService {
       correlationId,
       identity,
     );
+  }
+
+  listAdminProducts(input: Record<string, unknown>) {
+    const keys = ['pagina', 'tamanio', 'estado', 'q', 'categoriaId', 'marcaId'];
+    if (Object.keys(input).some((key) => !keys.includes(key)))
+      throw new BadRequestException();
+    const query = parseProductQuery(input, false, false);
+    if (
+      (query.q !== undefined &&
+        (!query.q.trim() || query.q.length > 200 || query.q.includes('\0'))) ||
+      [query.categoriaId, query.marcaId].some(
+        (id) => id !== undefined && (!id.trim() || id.includes('\0')),
+      )
+    )
+      throw new BadRequestException();
+    return this.repository.listAdminProducts(query);
+  }
+
+  async adminProduct(productId: string) {
+    const product = await this.repository.findAdminProduct(productId);
+    if (!product)
+      throw new HttpException({ code: 'PRODUCTO_NO_ENCONTRADO' }, 404);
+    return product;
   }
 
   async physicalData(body: unknown) {

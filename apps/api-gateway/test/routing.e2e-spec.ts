@@ -5,6 +5,7 @@ import type { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { ApiGatewayModule } from '../src/api-gateway.module.js';
 import { CONTRACT_ROUTES } from '../src/routing/contract-routes.js';
+import { configureGatewayCors } from '../src/routing/gateway-cors.js';
 import { GatewayIdentity } from '../src/routing/gateway-identity.js';
 import {
   GATEWAY_SETTINGS,
@@ -104,6 +105,7 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
       .useValue(signed.identity)
       .compile();
     app = module.createNestApplication({ bodyParser: false });
+    configureGatewayCors(app, 'https://admin.example.test');
     await app.listen(0, '127.0.0.1');
   });
   beforeEach(() => {
@@ -122,6 +124,94 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     provider?.closeAllConnections();
     if (provider)
       await new Promise<void>((done) => provider.close(() => done()));
+  });
+
+  it('allows the configured browser preflight and keeps actual reads authenticated', async () => {
+    const path = '/api/v1/productos/administracion';
+    const headers =
+      'authorization,content-type,x-correlation-id,idempotency-key';
+    const allowed = await request(app.getHttpServer())
+      .options(path)
+      .set('Origin', 'https://admin.example.test')
+      .set('Access-Control-Request-Method', 'GET')
+      .set('Access-Control-Request-Headers', headers)
+      .expect(204)
+      .expect('Access-Control-Allow-Origin', 'https://admin.example.test');
+    for (const name of headers.split(','))
+      expect(
+        allowed.headers['access-control-allow-headers'].split(','),
+      ).toContain(name);
+    expect(allowed.headers.vary).toContain('Origin');
+    expect(allowed.headers['access-control-allow-credentials']).toBeUndefined();
+    const denied = await request(app.getHttpServer())
+      .options(path)
+      .set('Origin', 'https://admin.example.test.attacker.test')
+      .set('Access-Control-Request-Method', 'GET');
+    expect(denied.headers['access-control-allow-origin']).toBeUndefined();
+    await request(app.getHttpServer())
+      .get(path)
+      .set('Origin', 'https://admin.example.test')
+      .expect(401)
+      .expect('Access-Control-Allow-Origin', 'https://admin.example.test')
+      .expect('Access-Control-Expose-Headers', /Content-Disposition/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it.each([
+    '/api/v1/productos/administracion',
+    '/api/v1/productos/administracion/11111111-1111-4111-8111-111111111111',
+  ])(
+    'denies signed service JWTs and human JWTs without the manager role on %s',
+    async (path) => {
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', `Bearer ${signed.token()}`)
+        .expect(403);
+      await request(app.getHttpServer())
+        .get(path)
+        .set(
+          'Authorization',
+          `Bearer ${signed.token({
+            tipo: 'acceso',
+            sub: '11111111-1111-4111-8111-111111111111',
+            roles: ['CLIENTE'],
+          })}`,
+        )
+        .expect(403);
+      expect(calls).toHaveLength(0);
+    },
+  );
+
+  it('keeps G7 transfers closed until local Inventory authorization is enabled', async () => {
+    const path = '/api/v1/inventario/traslados';
+    const token = signed.token({
+      tipo: 'acceso',
+      sub: '11111111-1111-4111-8111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+    });
+    const previous = {
+      securityMode: settings.securityMode,
+      inventoryLocalGrantsEnabled: settings.inventoryLocalGrantsEnabled,
+    };
+    try {
+      Object.assign(settings, {
+        securityMode: 'G7_AUTHENTICATED',
+        inventoryLocalGrantsEnabled: false,
+      });
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(403);
+      expect(calls).toHaveLength(0);
+      Object.assign(settings, { inventoryLocalGrantsEnabled: true });
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Authorization', 'Bearer ' + token)
+        .expect(200);
+      expect(calls).toHaveLength(1);
+    } finally {
+      Object.assign(settings, previous);
+    }
   });
 
   it.each(CONTRACT_ROUTES)(

@@ -7216,4 +7216,434 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       },
     },
   },
+  {
+    method: 'GET',
+    path: '/api/v1/productos/administracion',
+    operationId: 'listarProductosAdministracion',
+    service: 'catalog-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: ['x-correlation-id'],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: ['x-correlation-id'],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: ['x-correlation-id'],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: ['x-correlation-id'],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: ['x-correlation-id'],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: ['x-correlation-id'],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/productos/administracion/{productoId}',
+    operationId: 'obtenerProductoAdministracion',
+    service: 'catalog-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: ['x-correlation-id'],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: ['x-correlation-id'],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: ['x-correlation-id'],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: ['x-correlation-id'],
+      },
+      '404': {
+        types: ['application/problem+json'],
+        codes: ['PRODUCTO_NO_ENCONTRADO'],
+        headers: ['x-correlation-id'],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: ['x-correlation-id'],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: ['x-correlation-id'],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/precios/administracion/productos/{productoId}',
+    operationId: 'obtenerDefinicionPrecioProductoAdministracion',
+    service: 'pricing-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: ['x-correlation-id'],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: ['x-correlation-id'],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: ['x-correlation-id'],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: ['x-correlation-id'],
+      },
+      '404': {
+        types: ['application/problem+json'],
+        codes: ['PRECIO_NO_ENCONTRADO'],
+        headers: ['x-correlation-id'],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: ['x-correlation-id'],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: ['x-correlation-id'],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/precios/administracion/skus/{sku}',
+    operationId: 'obtenerDefinicionPrecioSkuAdministracion',
+    service: 'pricing-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: ['x-correlation-id'],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: ['x-correlation-id'],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: ['x-correlation-id'],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: ['x-correlation-id'],
+      },
+      '404': {
+        types: ['application/problem+json'],
+        codes: ['PRECIO_NO_ENCONTRADO'],
+        headers: ['x-correlation-id'],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: ['x-correlation-id'],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: ['x-correlation-id'],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/inventario/administracion/saldos',
+    operationId: 'listarSaldosFisicosAdministracion',
+    service: 'inventory-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: ['x-correlation-id'],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: ['x-correlation-id'],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: ['x-correlation-id'],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: ['x-correlation-id'],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: ['x-correlation-id'],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: ['x-correlation-id'],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/auditoria-precios/administracion',
+    operationId: 'listarAuditoriaPreciosAdministracion',
+    service: 'price-audit-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: [],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: [],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: [],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: [],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: [],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: [],
+      },
+    },
+  },
+  {
+    method: 'GET',
+    path: '/api/v1/auditoria-precios/administracion/{auditId}',
+    operationId: 'obtenerAuditoriaPrecioAdministracion',
+    service: 'price-audit-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: [],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: [],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: [],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: [],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: [],
+      },
+      '404': {
+        types: ['application/problem+json'],
+        codes: ['AUDITORIA_PRECIO_NO_ENCONTRADA'],
+        headers: [],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: [],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: [],
+      },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/combos/administracion',
+    operationId: 'crearComboAdministracion',
+    service: 'combos-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+      {
+        name: 'idempotency-key',
+        required: true,
+        minLength: 1,
+        maxLength: 128,
+      },
+    ],
+    requestTypes: ['application/json'],
+    responses: {
+      '201': {
+        types: ['application/json'],
+        codes: [],
+        headers: [],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: [],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: [],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
+        headers: [],
+      },
+      '404': {
+        types: ['application/problem+json'],
+        codes: ['SKU_NO_ENCONTRADO'],
+        headers: [],
+      },
+      '409': {
+        types: ['application/problem+json'],
+        codes: ['IDEMPOTENCY_CONFLICT'],
+        headers: [],
+      },
+      '422': {
+        types: ['application/problem+json'],
+        codes: [
+          'COMBO_ANIDADO_NO_PERMITIDO',
+          'COMBO_COMPONENTES_INSUFICIENTES',
+          'COMBO_COMPONENTE_DUPLICADO',
+          'COMBO_PRECIO_INVALIDO',
+        ],
+        headers: [],
+      },
+      '500': {
+        types: ['application/problem+json'],
+        codes: ['ERROR_INTERNO'],
+        headers: [],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: [],
+      },
+    },
+  },
 ];

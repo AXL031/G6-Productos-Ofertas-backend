@@ -1,0 +1,84 @@
+--- a/contratos/eventos/asyncapi.yaml
++++ b/contratos/eventos/asyncapi.yaml
+@@ -1585,0 +1586,4 @@
++        modalidad:
++          type: string
++          enum: [ALTA_PRODUCTO, RECUPERACION_HISTORICA]
++          default: ALTA_PRODUCTO
+@@ -1587,0 +1592 @@
++          minLength: 1
+@@ -1589,0 +1595 @@
++          minLength: 1
+@@ -1592,0 +1599,2 @@
++          maximum: 9999999999.99
++          multipleOf: 0.01
+@@ -1596,0 +1605 @@
++          pattern: '^\S[\s\S]\S$'
+@@ -1605 +1613,0 @@
+-      - precio_regular
+@@ -1608,0 +1617,23 @@
++      allOf:
++      - if:
++          properties:
++            modalidad: {const: RECUPERACION_HISTORICA}
++          required: [modalidad]
++        then: {}
++        else:
++          required: [precio_regular]
++      description: >-
++        modalidad ausente equivale a ALTA_PRODUCTO; recuperación exclusivamente explícita.
++        precio_regular es obligatorio en alta y opcional solo en RECUPERACION_HISTORICA;
++        si se proporciona se compara como decimal exacto. moneda es obligatoria en ambas.
++        Recuperación adopta solo una vigencia no cancelada global del product_id exacto
++        (sku/channel_id null) aplicable al primer procesamiento efectivo, no al occurred_at
++        del emisor. Pricing obtiene el precio de sus datos y persiste transaccionalmente
++        corte, vigencia y decisión por operation_id. No modifica precios/versiones/vigencias
++        ni emite pricing.price.changed. Replays reutilizan decisión y corte sin reselección.
++        Resultado completed READY con price_version de la vigencia y vigencia_id reales,
++        o rejected HISTORICAL_PRICE_CONFLICT sin inicialización artificial. Intención
++        incompatible para operation_id produce OPERATION_ID_CONFLICT. Se conservan
++        envelope, identidad, correlación, causalidad y DTO de resultados existentes.
++        motivo_cambio conserva ALTA_PRODUCTO como metadata del comando existente;
++        no identifica modalidad ni modifica el motivo de la vigencia adoptada.
+--- a/requisitos/specs/SPEC-013-gestion-precios-individuales-masivos.md
++++ b/requisitos/specs/SPEC-013-gestion-precios-individuales-masivos.md
+@@ -74,0 +75,39 @@
++### 3.1. Recuperación histórica explícita
++
++Se reutiliza `pricing.product.initialization.requested`, sin segundo comando.
++`data.modalidad` es opcional: ausente o `ALTA_PRODUCTO` conserva íntegramente el
++flujo ordinario anterior; `RECUPERACION_HISTORICA` debe enviarse explícitamente.
++`precio_regular` sigue siendo number positivo obligatorio en alta; solo en
++recuperación puede omitirse. Si se proporciona, Pricing valida el importe decimal
++exacto, sin tolerancias ni redondeo. `moneda` es obligatoria en ambas modalidades.
++Los demás campos y los DTO completed/rejected permanecen iguales. El campo
++`motivo_cambio=ALTA_PRODUCTO` se conserva por compatibilidad del comando: no se
++infiere modalidad por ese motivo ni por encontrar datos previos.
++
++En recuperación, Pricing selecciona de sus propios datos exactamente una vigencia
++no cancelada del precio global del `product_id` exacto (`sku IS NULL`,
++`channel_id IS NULL`). Debe cumplirse `valid_from <= corte < valid_until` (o fin
++abierto), precio y moneda válidos; no usa overrides ni precios de otro canal.
++El corte se obtiene al primer procesamiento efectivo, después de adquirir los
++locks; no se toma de `occurred_at`, del arranque de una transacción en espera
++ni del reloj de Catalog. Corte, intención y decisión (incluida vigencia/versión)
++se persisten en la misma transacción por `operation_id`, con resultado Outbox.
++
++Si es compatible emite `pricing.product.initialization.completed`, `status=READY`,
++`price_version` de la vigencia adoptada y `vigencia_id` reales. Si no lo es
++(cero/múltiples elegibles, importe/moneda inválidos o incompatibles), emite
++`pricing.product.initialization.rejected`, `code=HISTORICAL_PRICE_CONFLICT`,
++`status=REJECTED`, sin vigencia/versión ficticias. Ambas decisiones son durables.
++Misma intención y operation_id reproducen la decisión sin reloj ni selección;
++intención distinta produce `OPERATION_ID_CONFLICT`. Omitir precio y enviar una
++aserción de importe son intenciones distintas. ALTA implícita/explícita son iguales.
++
++La concurrencia se serializa por operación y definición de precio. Inbox y Outbox
++se comprometen juntos; ACK solo después del commit. Se conservan identidad,
++correlación y causalidad de cada entrega. Recuperación no crea/modifica precios,
++vigencias, ofertas, versiones, fechas, motivos ni historial, y no produce
++`pricing.price.changed` ni otro hecho monetario. El resultado original y el corte
++persistido permanecen iguales en replay, aunque ya cambie la vigencia aplicable.
++Publicación de contratos, rollout compatible y E2E Catalog son evidencias separadas;
++esta definición no autoriza escribir Supabase compartida.
++

@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Injectable,
   Inject,
@@ -300,7 +301,7 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
     try {
       for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
         try {
-          this.connection = await amqp.connect(url, {
+          this.connection = await connectPrivateAmqps(amqp.connect, url, {
             timeout: 2000,
             rejectUnauthorized: true,
           });

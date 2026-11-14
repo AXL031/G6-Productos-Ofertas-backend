@@ -276,6 +276,11 @@ export const inbox = pricing.table(
   (t) => [
     primaryKey({ name: 'pk_inbox', columns: [t.id] }),
     unique('uq_inbox_message_handler').on(t.messageId, t.handler),
+    index('ix_inbox_initialization_operation')
+      .on(sql`lower(${t.payload}->>'operation_id')`, t.createdAt, t.id)
+      .where(
+        sql`${t.handler} = 'pricing.product.initialization.v1' AND ${t.result} <> 'OPERATION_ID_CONFLICT' AND ${t.result} <> 'REJECTED_INVALID_ENVELOPE'`,
+      ),
   ],
 );
 

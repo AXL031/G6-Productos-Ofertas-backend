@@ -4,9 +4,6 @@ import { PHASE1_PUBLIC_OPERATION_IDS } from './phase1-public-reads.js';
  * Neither policy grants commercial eligibility or fabricates a G7 principal.
  */
 export const CATALOG_READ_DEMO = Symbol('CATALOG_READ_DEMO');
-export const CATALOG_MARKETPLACE_PREVIEW = Symbol(
-  'CATALOG_MARKETPLACE_PREVIEW',
-);
 export type CatalogSecurityMode =
   'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
 export interface CatalogReadDemo {

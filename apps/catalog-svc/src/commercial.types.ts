@@ -54,14 +54,3 @@ export interface ProductPage {
   tamanio: number;
   total: number;
 }
-
-// Demo-only extension; canonical HTTP/OpenAPI price fields remain unchanged.
-export interface DemoProduct extends ProductSummary {
-  precio_regular: number;
-  precio_oferta: number | null;
-  currency: string;
-}
-
-export interface DemoProductDetail extends DemoProduct {
-  variants: CommercialVariant[];
-}

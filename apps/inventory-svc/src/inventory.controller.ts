@@ -79,7 +79,7 @@ function assertCanalDelCliente(
   clientId: string | undefined,
   correlationId?: string,
   commercialDemo = false,
-  allowProductsMarketplace = false,
+  allowProductsCommercialGet = false,
   publicRead = false,
 ): void {
   const expectedClient =
@@ -94,13 +94,9 @@ function assertCanalDelCliente(
   }
   if (publicRead) return;
   if (clientId === KNOWN_CLIENTS.PRODUCTOS) {
-    if (
-      !allowProductsMarketplace ||
-      canal !== 'MARKETPLACE' ||
-      commercialDemo
-    ) {
+    if (!allowProductsCommercialGet || commercialDemo) {
       throw ProblemDetailsException.scopeInsuficiente(
-        'modulo-productos solo puede consultar el GET comercial para MARKETPLACE',
+        'modulo-productos solo puede consultar el GET de disponibilidad comercial interno',
         correlationId,
       );
     }

@@ -1,0 +1,919 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Auditoría de precios administrativa · PROPUESTA_H4",
+    "version": "0.6.0-h4-price-audit-admin"
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/auditoria-precios/administracion": {
+      "get": {
+        "operationId": "listarAuditoriaPreciosAdministracion",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sku",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "desde",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "hasta",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "usuarioId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "canal",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "batchId",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Pagina"
+          },
+          {
+            "$ref": "#/components/parameters/Tamanio"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginaAuditoriaPreciosAdministracion"
+                }
+              }
+            },
+            "description": "Lectura administrativa de auditoría."
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "VALIDACION"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 400,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "VALIDACION"
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "TOKEN_INVALIDO"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 401,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "TOKEN_INVALIDO"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SCOPE_INSUFICIENTE"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 403,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "SCOPE_INSUFICIENTE"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "ERROR_INTERNO"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 500,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "ERROR_INTERNO"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SERVICIO_NO_DISPONIBLE"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 503,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "SERVICIO_NO_DISPONIBLE"
+          }
+        },
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "tags": [
+          "Auditoría de precios"
+        ],
+        "x-error-codes": {
+          "400": [
+            "VALIDACION"
+          ],
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ]
+        },
+        "x-route-basis": "source-defined-resource",
+        "x-source-spec": [
+          "SPEC-014"
+        ],
+        "x-status": "candidate",
+        "x-required-role": "GESTOR_COMERCIAL"
+      }
+    },
+    "/auditoria-precios/administracion/{auditId}": {
+      "get": {
+        "operationId": "obtenerAuditoriaPrecioAdministracion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/AuditId"
+          },
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistroAuditoriaPrecioAdministracion"
+                }
+              }
+            },
+            "description": "Lectura administrativa de auditoría."
+          },
+          "401": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "TOKEN_INVALIDO"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 401,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "TOKEN_INVALIDO"
+          },
+          "403": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SCOPE_INSUFICIENTE"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 403,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "SCOPE_INSUFICIENTE"
+          },
+          "404": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "AUDITORIA_PRECIO_NO_ENCONTRADA"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 404,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "AUDITORIA_PRECIO_NO_ENCONTRADA"
+          },
+          "500": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "ERROR_INTERNO"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 500,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "ERROR_INTERNO"
+          },
+          "503": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "SERVICIO_NO_DISPONIBLE"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 503,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "SERVICIO_NO_DISPONIBLE"
+          },
+          "400": {
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "allOf": [
+                    {
+                      "$ref": "#/components/schemas/Problem"
+                    },
+                    {
+                      "properties": {
+                        "code": {
+                          "enum": [
+                            "VALIDACION"
+                          ],
+                          "type": "string"
+                        },
+                        "status": {
+                          "const": 400,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "status",
+                        "code"
+                      ],
+                      "type": "object"
+                    }
+                  ]
+                }
+              }
+            },
+            "description": "VALIDACION"
+          }
+        },
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "tags": [
+          "Auditoría de precios"
+        ],
+        "x-error-codes": {
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "404": [
+            "AUDITORIA_PRECIO_NO_ENCONTRADA"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ],
+          "400": [
+            "VALIDACION"
+          ]
+        },
+        "x-route-basis": "source-defined-resource",
+        "x-source-spec": [
+          "SPEC-014"
+        ],
+        "x-status": "candidate",
+        "x-required-role": "GESTOR_COMERCIAL"
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Problem": {
+        "properties": {
+          "code": {
+            "$ref": "#/components/schemas/ErrorCode"
+          },
+          "correlationId": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "details": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "instance": {
+            "format": "uri-reference",
+            "type": "string"
+          },
+          "status": {
+            "maximum": 599,
+            "minimum": 100,
+            "type": "integer"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "format": "uri-reference",
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "status",
+          "code"
+        ],
+        "type": "object",
+        "x-error-catalog": "api/catalogo-errores.md"
+      },
+      "PageMeta": {
+        "additionalProperties": true,
+        "properties": {
+          "pagina": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tamanio": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "total": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "totalPaginas": {
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "pagina",
+          "tamanio",
+          "total",
+          "totalPaginas"
+        ],
+        "type": "object"
+      },
+      "RegistroAuditoriaPrecioAdministracion": {
+        "additionalProperties": true,
+        "properties": {
+          "batch_id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "canal_origen": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id_auditoria": {
+            "type": "string"
+          },
+          "ip_origen": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motivo_cambio": {
+            "type": "string"
+          },
+          "precio_anterior": {
+            "oneOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "precio_nuevo": {
+            "oneOf": [
+              {
+                "minimum": 0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "product_id": {
+            "type": "string"
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string"
+          },
+          "tipo_operacion": {
+            "enum": [
+              "CREACION",
+              "MODIFICACION",
+              "RETIRO_OFERTA"
+            ],
+            "type": "string"
+          },
+          "tipo_precio": {
+            "enum": [
+              "REGULAR",
+              "OFERTA"
+            ],
+            "type": "string"
+          },
+          "usuario_email": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "usuario_id": {
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "variacion_porcentual": {
+            "oneOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_type": {
+            "enum": [
+              "SKU",
+              "PRODUCTO"
+            ]
+          }
+        },
+        "required": [
+          "id_auditoria",
+          "sku",
+          "product_id",
+          "tipo_precio",
+          "precio_anterior",
+          "precio_nuevo",
+          "variacion_porcentual",
+          "tipo_operacion",
+          "canal_origen",
+          "motivo_cambio",
+          "timestamp",
+          "target_type"
+        ],
+        "type": "object"
+      },
+      "PaginaAuditoriaPreciosAdministracion": {
+        "additionalProperties": true,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RegistroAuditoriaPrecioAdministracion"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PageMeta"
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "ErrorCode": {
+        "enum": [
+          "VALIDACION",
+          "TOKEN_INVALIDO",
+          "SCOPE_INSUFICIENTE",
+          "VERSION_CONFLICT",
+          "IDEMPOTENCY_CONFLICT",
+          "ERROR_INTERNO",
+          "SERVICIO_NO_DISPONIBLE",
+          "OPERACION_MAESTRA_NO_ENCONTRADA",
+          "AUDITORIA_PRECIO_NO_ENCONTRADA",
+          "LIMITE_EXPORTACION_AUDITORIA_EXCEDIDO",
+          "PRODUCTO_NO_ENCONTRADO",
+          "SKU_DUPLICADO",
+          "CATEGORIA_INVALIDA",
+          "TIPO_PRODUCTO_INVALIDO",
+          "TIPO_PRODUCTO_NO_ENCONTRADO",
+          "MARCA_INVALIDA",
+          "DATOS_INCOMPLETOS",
+          "CAMBIO_ESTRUCTURAL_NO_PERMITIDO",
+          "PERFIL_FISICO_INVALIDO",
+          "DATOS_FISICOS_INCOMPLETOS",
+          "VARIANTE_NO_ENCONTRADA",
+          "PRODUCTO_NO_ADMITE_VARIANTES",
+          "COMBINACION_DUPLICADA",
+          "SKU_INVALIDO",
+          "ATRIBUTO_IDENTIFICADOR_INVALIDO",
+          "IMAGEN_INVALIDA",
+          "SKU_NO_ENCONTRADO",
+          "UBICACION_NO_ENCONTRADA",
+          "CANTIDAD_INVALIDA",
+          "SKU_INACTIVO",
+          "STOCK_INSUFICIENTE",
+          "RESERVA_NO_ENCONTRADA",
+          "OPERACION_INVENTARIO_NO_ENCONTRADA",
+          "CONTEXTO_ABASTECIMIENTO_INVALIDO",
+          "RESERVA_NO_ACTIVA",
+          "RESERVA_EXPIRADA",
+          "PRECIO_NO_ENCONTRADO",
+          "PRECIO_INVALIDO",
+          "OFERTA_INVALIDA",
+          "MOTIVO_CAMBIO_REQUERIDO",
+          "VIGENCIA_SUPERPUESTA",
+          "ACCION_OFERTA_INVALIDA",
+          "SCOPE_PRECIO_INVALIDO",
+          "PROMOCION_NO_ENCONTRADA",
+          "PROMOCION_INVALIDA",
+          "PROMOCION_INACTIVA",
+          "ALCANCE_PROMOCION_INVALIDO",
+          "CUSTOMER_REF_REQUERIDO",
+          "LIMITE_CUPON_INVALIDO",
+          "CUPON_DUPLICADO",
+          "COMBO_NO_ENCONTRADO",
+          "COMBO_ANIDADO_NO_PERMITIDO",
+          "COMBO_COMPONENTES_INSUFICIENTES",
+          "COMBO_COMPONENTE_DUPLICADO",
+          "COMBO_PRECIO_INVALIDO",
+          "REGLA_RECOMENDACION_NO_ENCONTRADA",
+          "REGLA_RECOMENDACION_INVALIDA",
+          "PRODUCTO_RECOMENDADO_INVALIDO",
+          "CATEGORIA_NO_ENCONTRADA",
+          "CATEGORIA_DUPLICADA",
+          "PROFUNDIDAD_CATEGORIA_EXCEDIDA",
+          "CICLO_CATEGORIA",
+          "CATEGORIA_PADRE_INACTIVA",
+          "CATEGORIA_CON_SUBCATEGORIAS_ACTIVAS",
+          "ENTIDAD_MAESTRA_CON_PRODUCTOS_ACTIVOS",
+          "BAJA_MAESTRA_EN_PROCESO",
+          "MARCA_NO_ENCONTRADA",
+          "MARCA_DUPLICADA",
+          "LOGO_INVALIDO",
+          "LOGO_EXCEDE_LIMITE",
+          "CARACTERISTICA_NO_ENCONTRADA",
+          "TIPO_CARACTERISTICA_INMUTABLE",
+          "VALOR_LISTA_LIMITE_EXCEDIDO",
+          "TEXTO_ATRIBUTO_EXCEDE_LIMITE",
+          "VALOR_NUMERICO_INVALIDO",
+          "VALOR_LISTA_EN_USO",
+          "ASOCIACION_NO_ENCONTRADA",
+          "ASOCIACION_DUPLICADA",
+          "LIMITE_CARACTERISTICAS_EXCEDIDO",
+          "ASOCIACION_EN_USO",
+          "SLUG_NO_ENCONTRADO",
+          "SLUG_DUPLICADO",
+          "METADATOS_SEO_INVALIDOS",
+          "ARCHIVO_INVALIDO",
+          "ARCHIVO_EXCEDE_LIMITE",
+          "PLANTILLA_INCOMPATIBLE",
+          "CONTENIDO_ACTIVO_NO_PERMITIDO",
+          "LOTE_NO_ENCONTRADO",
+          "CUPON_NO_ENCONTRADO",
+          "INCIDENCIA_NO_ENCONTRADA",
+          "INCIDENCIA_NO_ACTIVA",
+          "RESOLUCION_INCIDENCIA_INVALIDA",
+          "REINTEGRO_NO_APLICABLE",
+          "TRASLADO_NO_ENCONTRADO",
+          "TRASLADO_NO_RECIBIBLE",
+          "CANTIDAD_RECIBIDA_EXCEDE_TRASLADO",
+          "DISPOSICION_RECEPCION_INVALIDA",
+          "CODIGO_BARRAS_NO_ENCONTRADO",
+          "RATE_LIMIT_EXCEDIDO",
+          "PREPARACION_NO_REINTENTABLE"
+        ],
+        "type": "string"
+      }
+    },
+    "parameters": {
+      "Pagina": {
+        "in": "query",
+        "name": "pagina",
+        "schema": {
+          "default": 1,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "Tamanio": {
+        "in": "query",
+        "name": "tamanio",
+        "schema": {
+          "default": 20,
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        }
+      },
+      "CorrelationId": {
+        "in": "header",
+        "name": "X-Correlation-Id",
+        "required": false,
+        "schema": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "AuditId": {
+        "in": "path",
+        "name": "auditId",
+        "required": true,
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "securitySchemes": {
+      "userBearer": {
+        "bearerFormat": "JWT",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  }
+}

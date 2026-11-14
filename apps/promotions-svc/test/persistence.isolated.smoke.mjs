@@ -3,9 +3,17 @@
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import {
+  chmodSync,
+  copyFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, relative, resolve } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { getTableConfig } from 'drizzle-orm/pg-core';
@@ -38,6 +46,7 @@ const created = [];
 const checks = [];
 let admin;
 let resources;
+let nativePostgres;
 let stage = 'normative SQL';
 function docker(args, environment = {}) {
   return execFileSync('docker', args, {
@@ -47,6 +56,59 @@ function docker(args, environment = {}) {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...environment },
   }).trim();
+}
+async function startNativePostgres(bin, certificate) {
+  const listener = createServer();
+  await new Promise((done, reject) => {
+    listener.once('error', reject);
+    listener.listen(0, '127.0.0.1', done);
+  });
+  const port = listener.address().port;
+  await new Promise((done, reject) =>
+    listener.close((error) => (error ? reject(error) : done())),
+  );
+  const data = join(directory, 'native-postgres');
+  const passwordFile = join(directory, 'bootstrap-password');
+  const binary = (name) =>
+    join(resolve(bin), name + (process.platform === 'win32' ? '.exe' : ''));
+  const command = (name, args) =>
+    execFileSync(binary(name), args, {
+      stdio: 'ignore',
+      windowsHide: true,
+      timeout: 90000,
+    });
+  writeFileSync(passwordFile, password, { mode: 0o600 });
+  try {
+    command('initdb', [
+      '-D',
+      data,
+      '-U',
+      'postgres',
+      '--encoding=UTF8',
+      '--no-locale',
+      '-A',
+      'scram-sha-256',
+      '--pwfile=' + passwordFile,
+    ]);
+  } finally {
+    rmSync(passwordFile, { force: true });
+  }
+  copyFileSync(certificate, join(data, 'server.crt'));
+  copyFileSync(join(directory, 'server.key'), join(data, 'server.key'));
+  if (process.platform !== 'win32') chmodSync(join(data, 'server.key'), 0o600);
+  nativePostgres = () =>
+    command('pg_ctl', ['-D', data, '-m', 'fast', '-w', 'stop']);
+  command('pg_ctl', [
+    '-D',
+    data,
+    '-l',
+    join(directory, 'postgres.log'),
+    '-o',
+    '-p ' + port + ' -h 127.0.0.1 -c ssl=on',
+    '-w',
+    'start',
+  ]);
+  return port;
 }
 async function ready(operation) {
   for (let attempt = 0; attempt < 90; attempt++) {
@@ -124,32 +186,40 @@ try {
     );
   const certificate = join(directory, 'server.crt');
   stage = 'disposable PostgreSQL';
-  const id = docker(
-    [
-      'run',
-      '--detach',
-      '--rm',
-      '--name',
-      'g6-cueva-persistence-' + randomUUID(),
-      '--publish',
-      '127.0.0.1::5432',
-      '--env',
-      'POSTGRES_PASSWORD',
-      '--mount',
-      `type=bind,source=${directory},target=/test-tls,readonly`,
-      'postgres:17-alpine',
-      'sh',
-      '-c',
-      'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key',
-    ],
-    { POSTGRES_PASSWORD: password },
-  );
-  created.push(id);
-  const port = Number(
-    JSON.parse(
-      docker(['inspect', id, '--format', '{{json .NetworkSettings.Ports}}']),
-    )['5432/tcp'][0].HostPort,
-  );
+  let port;
+  if (process.env.G6_PROMOTIONS_TEST_PG_BIN) {
+    port = await startNativePostgres(
+      process.env.G6_PROMOTIONS_TEST_PG_BIN,
+      certificate,
+    );
+  } else {
+    const id = docker(
+      [
+        'run',
+        '--detach',
+        '--rm',
+        '--name',
+        'g6-cueva-persistence-' + randomUUID(),
+        '--publish',
+        '127.0.0.1::5432',
+        '--env',
+        'POSTGRES_PASSWORD',
+        '--mount',
+        `type=bind,source=${directory},target=/test-tls,readonly`,
+        'postgres:17-alpine',
+        'sh',
+        '-c',
+        'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key',
+      ],
+      { POSTGRES_PASSWORD: password },
+    );
+    created.push(id);
+    port = Number(
+      JSON.parse(
+        docker(['inspect', id, '--format', '{{json .NetworkSettings.Ports}}']),
+      )['5432/tcp'][0].HostPort,
+    );
+  }
   admin = new Pool({
     host: '127.0.0.1',
     port,
@@ -647,7 +717,13 @@ try {
   checks.push(...(await verifyHttpWrites(resources, runtimeConfig, admin)));
   checks.push(...(await verifyHttpUpstreams(resources, runtimeConfig)));
   stage = 'authenticated Nest service-token wiring';
-  checks.push(...(await verifyServiceTokenWiring(resources, runtimeConfig)));
+  checks.push(
+    ...(await verifyServiceTokenWiring(
+      resources,
+      runtimeConfig,
+      join(directory, 'marketplace-native.json'),
+    )),
+  );
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
   checks.push(...(await verifyHttpReadQueries(resources, runtimeConfig)));
   if (process.env.G6_PROMOTIONS_GATEWAY_E2E === 'true') {
@@ -712,5 +788,26 @@ try {
       /* already removed */
     }
   }
-  rmSync(directory, { recursive: true, force: true });
+  if (nativePostgres) {
+    try {
+      nativePostgres();
+    } catch {
+      console.error('ISOLATED_POSTGRES_STOP_FAILED');
+      process.exitCode = 1;
+      nativePostgres = undefined;
+    }
+  }
+  if (
+    !/^g6-promotions-persistence-[A-Za-z0-9]+$/.test(
+      relative(tmpdir(), resolve(directory)),
+    )
+  ) {
+    throw new Error('INVALID_TEST_CLEANUP_PATH');
+  }
+  if (
+    process.exitCode !== 1 ||
+    !process.env.G6_PROMOTIONS_TEST_PG_BIN ||
+    nativePostgres
+  )
+    rmSync(directory, { recursive: true, force: true });
 }

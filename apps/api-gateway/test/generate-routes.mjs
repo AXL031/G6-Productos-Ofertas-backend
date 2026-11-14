@@ -2,17 +2,44 @@
 // For one route, pass its operationId as the third argument; its contract-derived
 // security metadata and error codes are refreshed without touching other routes.
 import { readFileSync, writeFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const operationId = process.argv[3];
+const add = process.argv[4] === '--add';
 if (!operationId)
   throw new Error(
     'An operationId is required; full contract route regeneration is disabled.',
   );
 
 const spec = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+const adminCandidates = {
+  '0.6.0-h4-combos-admin': {
+    method: 'POST',
+    service: 'combos-svc',
+    path: /^\/api\/v1\/combos\/administracion$/,
+  },
+  '0.6.0-h4-price-audit-admin': {
+    service: 'price-audit-svc',
+    path: /^\/api\/v1\/auditoria-precios\/administracion(?:\/\{auditId\})?$/,
+  },
+  '0.6.0-h4-inventory-admin': {
+    service: 'inventory-svc',
+    path: /^\/api\/v1\/inventario\/administracion\/saldos$/,
+  },
+  '0.6.0-h4-catalog-admin': {
+    service: 'catalog-svc',
+    path: /^\/api\/v1\/productos\/administracion(?:\/\{productoId\})?$/,
+  },
+  '0.6.0-h4-pricing-admin': {
+    service: 'pricing-svc',
+    path: /^\/api\/v1\/precios\/administracion\/(?:productos\/\{productoId\}|skus\/\{sku\})$/,
+  },
+};
+const candidate = adminCandidates[spec.info.version];
 if (
-  !['0.6.0-rc.2', '0.6.0-rc.3'].includes(spec.info.version) ||
+  (add
+    ? !candidate
+    : !['0.6.0-rc.2', '0.6.0-rc.3'].includes(spec.info.version)) ||
   spec.servers[0].url !== '/api/v1'
 ) {
   throw new Error('Unexpected contract version or base path');
@@ -162,6 +189,40 @@ const output = fileURLToPath(
 );
 const existing = readFileSync(output, 'utf8');
 const replacement = routes[0];
+if (add) {
+  const { CONTRACT_ROUTES } = await import(pathToFileURL(output).href);
+  const shape = (path) => path.replace(/\{[^}]+\}/g, '{}');
+  if (
+    replacement.method !== (candidate.method ?? 'GET') ||
+    replacement.service !== candidate.service ||
+    replacement.security.length !== 1 ||
+    replacement.security[0] !== 'userBearer' ||
+    replacement.role !== 'GESTOR_COMERCIAL' ||
+    !candidate.path.test(replacement.path) ||
+    CONTRACT_ROUTES.some(
+      (route) =>
+        route.operationId === operationId ||
+        (route.method === replacement.method &&
+          shape(route.path) === shape(replacement.path)),
+    )
+  )
+    throw new Error(`Cannot add candidate operation ${operationId}`);
+  const end = existing.lastIndexOf('\n];');
+  if (end < 0) throw new Error('Could not locate route registry terminator');
+  writeFileSync(
+    output,
+    existing.slice(0, end) +
+      '\n' +
+      JSON.stringify(replacement, null, 2)
+        .split('\n')
+        .map((line) => '  ' + line)
+        .join('\n') +
+      ',' +
+      existing.slice(end),
+  );
+  console.log(`Added ${operationId} from candidate OpenAPI.`);
+  process.exit(0);
+}
 const marker = `operationId: '${operationId}'`;
 const operationPosition = existing.indexOf(marker);
 if (operationPosition < 0) throw new Error(`Unknown operation ${operationId}`);

@@ -1,7 +1,15 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { drizzle } from 'drizzle-orm/node-postgres';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+} from 'vitest';
 import { BulkOutboxRelay } from '../src/messaging/bulk-outbox-relay.js';
 import { BulkImportService } from '../src/bulk-import.service.js';
 import { BULK_TEMPLATE_HEADERS } from '../src/domain/bulk-template-v2.js';
@@ -22,6 +30,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   let repository: BulkPersistenceRepository;
   let broker: IsolatedBulkRabbitmq;
   let consumer: CatalogBulkResultConsumer;
+  const replayInFlight = new Set<Promise<void>>();
 
   beforeAll(async () => {
     if (!databaseUrl) throw new Error('BULK_TEST_DATABASE_URL required');
@@ -49,18 +58,29 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
     );
     broker = new IsolatedBulkRabbitmq();
     await broker.start();
-    consumer = new CatalogBulkResultConsumer(repository, broker.url);
-    await consumer.onModuleInit();
   }, 90000);
 
   beforeEach(async () => {
     await pool.query(
       'TRUNCATE bulk.inbox, bulk.outbox, bulk.row_domain_steps, bulk.batch_rows, bulk.export_jobs, bulk.batch_jobs, bulk.file_manifests CASCADE',
     );
+    consumer = new CatalogBulkResultConsumer(repository, broker.url);
+    const replay = consumer.replayPendingContractResults.bind(consumer);
+    consumer.replayPendingContractResults = () => {
+      const task = replay();
+      replayInFlight.add(task);
+      void task.finally(() => replayInFlight.delete(task));
+      return task;
+    };
+    await consumer.onModuleInit();
+  });
+
+  afterEach(async () => {
+    await consumer.onModuleDestroy();
+    await Promise.allSettled([...replayInFlight]);
   });
 
   afterAll(async () => {
-    await consumer?.onModuleDestroy();
     await broker?.stop();
     await pool?.end();
   });

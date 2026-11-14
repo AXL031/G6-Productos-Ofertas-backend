@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import { validAuditTimestamp } from '../domain/audit-timestamp.js';
 import {
   Inject,
@@ -133,10 +134,14 @@ export class AuditConsumer
     this.delay = Math.min(this.delay * 2, 5000);
   }
   private async open() {
-    const connection = await connect(this.config.amqpUrl!, {
-      timeout: 2000,
-      rejectUnauthorized: true,
-    });
+    const connection = await connectPrivateAmqps(
+      connect,
+      this.config.amqpUrl!,
+      {
+        timeout: 2000,
+        rejectUnauthorized: true,
+      },
+    );
     this.connection = connection;
     connection.on('error', () => {
       this.available = false;

@@ -25,6 +25,26 @@ jobs:
       uses: actions/checkout@v4
     - name: Validar flujos de automatización con actionlint
       run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+  azure_cd_h5:
+    name: Probar el ejecutor de CD Azure H5 sin credenciales
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código fuente
+      uses: actions/checkout@v4
+    - name: Probar procedencia, imágenes y ejecutor con simulaciones
+      run: |
+        set -Eeuo pipefail
+        bash ops/azure/container-apps/tests/validate-source.test.sh
+        bash ops/azure/container-apps/tests/deploy.test.sh
+        bash ops/azure/container-apps/tests/smoke.test.sh
+        bash ops/azure/container-apps/tests/verify-environment-protection.test.sh
+        bash ops/azure/container-apps/tests/reconcile-recovery.test.sh
+        bash ops/azure/container-apps/tests/workflow.test.sh
+        bash ops/shared/tests/ensure-ghcr-sha-image.test.sh
+        for file in ops/shared/ensure-ghcr-sha-image.sh ops/shared/tests/ensure-ghcr-sha-image.test.sh ops/oracle/ensure-ghcr-sha-image.sh ops/azure/container-apps/validate-source.sh ops/azure/container-apps/verify-environment-protection.sh ops/azure/container-apps/deploy.sh ops/azure/container-apps/reconcile-recovery.sh ops/azure/container-apps/smoke-service.sh ops/azure/container-apps/tests/validate-source.test.sh ops/azure/container-apps/tests/verify-environment-protection.test.sh ops/azure/container-apps/tests/deploy.test.sh ops/azure/container-apps/tests/smoke.test.sh ops/azure/container-apps/tests/reconcile-recovery.test.sh ops/azure/container-apps/tests/workflow.test.sh; do bash -n "$file"; done
+        shellcheck ops/shared/ensure-ghcr-sha-image.sh ops/shared/tests/ensure-ghcr-sha-image.test.sh ops/oracle/ensure-ghcr-sha-image.sh ops/azure/container-apps/validate-source.sh ops/azure/container-apps/verify-environment-protection.sh ops/azure/container-apps/deploy.sh ops/azure/container-apps/reconcile-recovery.sh ops/azure/container-apps/smoke-service.sh ops/azure/container-apps/tests/validate-source.test.sh ops/azure/container-apps/tests/verify-environment-protection.test.sh ops/azure/container-apps/tests/deploy.test.sh ops/azure/container-apps/tests/smoke.test.sh ops/azure/container-apps/tests/reconcile-recovery.test.sh ops/azure/container-apps/tests/workflow.test.sh
   tipos:
     name: Comprobar tipos TypeScript
     runs-on: ubuntu-latest

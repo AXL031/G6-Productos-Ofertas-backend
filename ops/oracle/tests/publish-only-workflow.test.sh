@@ -125,7 +125,7 @@ for service in api-gateway bulk-svc catalog-svc combos-svc inventory-svc price-a
   grep -Fq -- "- $service" "$WORKFLOW" || fail "missing service $service"
 done
 [[ "$(grep -Ec '^          - [a-z-]+$' "$WORKFLOW")" == 9 ]] || fail 'publisher must have exactly nine service choices'
-grep -Fq 'deploy-g6-services-oracle-${{ github.repository }}-${{ inputs.service }}' "$WORKFLOW" || fail 'publisher and CD do not share concurrency group'
+grep -Fq 'publish-g6-ghcr-${{ github.repository }}-${{ inputs.service }}' "$WORKFLOW" || fail 'GHCR publication is not serialized with CD'
 grep -Fq 'packages: write' "$WORKFLOW" || fail 'GHCR package permission missing'
 grep -Fq 'actions: read' "$WORKFLOW" || fail 'CI verification permission missing'
 grep -Fq 'docker/login-action@v3' "$WORKFLOW" || fail 'GHCR login for private/existing tags is missing'

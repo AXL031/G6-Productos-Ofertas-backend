@@ -1,3 +1,5 @@
+import { connectPrivateAmqps } from './private-amqps.js';
+import { translatePostgresFailure } from './database-errors.js';
 import {
   Inject,
   Injectable,
@@ -18,7 +20,6 @@ import {
   type CatalogPublisher,
 } from './catalog-message.service.js';
 import {
-  BlockedCatalogHandler,
   InvalidCatalogMessage,
   catalogProduced,
   assertCatalogPublication,
@@ -36,8 +37,6 @@ export interface CatalogAmqpConfig {
 export const CATALOG_AMQP_SETTINGS = Symbol('CATALOG_AMQP_SETTINGS');
 export interface CatalogAmqpSettings {
   connection?: CatalogAmqpConfig;
-  /** Explicit dependency injection for disposable tests only; never read from env. */
-  isolatedTestRecovery?: true;
 }
 export function readCatalogAmqpConfig(
   env: Record<string, string | undefined> = process.env,
@@ -192,6 +191,15 @@ export class ConfirmedCatalogPublisher implements CatalogPublisher {
   }
 }
 
+function isTransientPersistenceFailure(error: unknown): boolean {
+  const failure = translatePostgresFailure(error)?.failure;
+  return (
+    failure === 'connection' ||
+    failure === 'serialization' ||
+    failure === 'deadlock'
+  );
+}
+
 @Injectable()
 export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   private get config() {
@@ -204,7 +212,7 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   private timer?: ReturnType<typeof setInterval>;
   private busy = false;
   private stopped = false;
-  private recoveryBlocked = false;
+  private paused = false;
   private subscribed = false;
   private deliveries = new Set<Promise<void>>();
   constructor(
@@ -220,24 +228,10 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     return this.config !== undefined;
   }
   get ready(): boolean {
-    return (
-      !this.required ||
-      (!this.stopped && !this.recoveryBlocked && this.subscribed)
-    );
+    return !this.required || (!this.stopped && !this.paused && this.subscribed);
   }
   onModuleInit(): void {
     if (!this.config) return;
-    // AsyncAPI rc.3 does not approve/provision retry/DLX. Do not acquire any
-    // delivery or publish incompatible pending payloads until recovery is agreed.
-    // HTTP and local transactional Outbox remain available independently.
-    if (
-      !this.settings.isolatedTestRecovery ||
-      process.env.NODE_ENV !== 'test'
-    ) {
-      this.recoveryBlocked = true;
-      this.log('AMQP_RECOVERY_BLOCKED');
-      return;
-    }
     this.timer = setInterval(() => {
       void this.tick();
     }, 2000);
@@ -245,11 +239,13 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
     void this.tick();
   }
   private async tick(): Promise<void> {
-    if (this.busy || this.stopped || !this.config) return;
+    if (this.busy || this.stopped || this.paused || !this.config) return;
     this.busy = true;
     try {
       if (!this.connection) {
-        const connection = await connect(this.config.url, { timeout: 5000 });
+        const connection = await connectPrivateAmqps(connect, this.config.url, {
+          timeout: 5000,
+        });
         if (this.stopped) {
           await connection.close();
           return;
@@ -289,9 +285,8 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
           this.consumer.on('close', () => {
             void this.reset(connection);
           });
-          await this.consumer.prefetch(20);
-          const consumer = this.consumer,
-            publisher = this.publisher;
+          await this.consumer.prefetch(1);
+          const consumer = this.consumer;
           // Infrastructure owns topology. No assert, bind, purge or declare against shared brokers.
           const subscription = await consumer.consume(
             'po.catalogo.q',
@@ -305,22 +300,26 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
               const processing = this.handle(
                 delivery,
                 consumer,
-                publisher,
-              ).catch(() => this.reset(connection));
+                connection,
+              ).catch(() => this.pause(connection));
               this.deliveries.add(processing);
               void processing.finally(() => this.deliveries.delete(processing));
             },
             { noAck: false },
           );
           this.consumerTag = subscription.consumerTag;
-          this.subscribed = true;
+          this.subscribed = !this.paused;
           this.log('AMQP_CONNECTED');
         } catch (error) {
           await this.reset(connection);
           throw error;
         }
       }
-      for (let i = 0; i < 20 && !this.stopped && this.publisher; i++) {
+      for (
+        let i = 0;
+        i < 20 && !this.stopped && !this.paused && this.publisher;
+        i++
+      ) {
         if ((await this.messages.relayOne(this.publisher)) !== 'PUBLISHED')
           break;
       }
@@ -333,74 +332,76 @@ export class CatalogAmqpRuntime implements OnModuleInit, OnModuleDestroy {
   private async handle(
     delivery: ConsumeMessage,
     consumer: Channel,
-    publisher: ConfirmedCatalogPublisher,
+    connection: ChannelModel,
   ): Promise<void> {
-    let malformed = false;
-    const count: unknown = delivery.properties.headers?.['x-retry-count'] ?? 0;
-    let attempt =
-      typeof count === 'number' &&
-      Number.isInteger(count) &&
-      count >= 0 &&
-      count <= 3
-        ? count
-        : 3;
-    let origin = delivery.properties.userId;
+    let message: ReturnType<typeof parseCatalogMessage>;
     try {
       if (
         delivery.content.length > 1024 * 1024 ||
         delivery.properties.contentType !== 'application/json'
-      )
+      ) {
         throw new InvalidCatalogMessage();
-      const message = parseCatalogMessage(
+      }
+      message = parseCatalogMessage(
         JSON.parse(delivery.content.toString('utf8')) as unknown,
       );
-      if (attempt > 0) {
-        if (origin !== this.config!.user) throw new InvalidCatalogMessage();
-        origin = delivery.properties.headers?.['x-original-producer-user'];
-      }
       if (
-        origin !== this.config!.producerUsers[message.producer] ||
+        delivery.properties.userId !==
+          this.config!.producerUsers[message.producer] ||
         delivery.properties.messageId !== message.message_id ||
         delivery.properties.correlationId !== message.correlation_id
-      )
+      ) {
         throw new InvalidCatalogMessage();
-      await this.messages.consume(message);
-      consumer.ack(delivery);
+      }
+    } catch {
+      await this.pause(connection);
       return;
-    } catch (error) {
-      malformed =
-        error instanceof InvalidCatalogMessage ||
-        error instanceof SyntaxError ||
-        error instanceof BlockedCatalogHandler;
-      if (malformed) attempt = 3;
     }
-    const retry = attempt < 3;
-    await publisher.raw(
-      retry ? 'po.retry.x' : 'po.dlx.x',
-      'po.catalogo.q',
-      delivery.content,
-      {
-        messageId: delivery.properties.messageId,
-        correlationId: delivery.properties.correlationId,
-        type: delivery.properties.type,
-        headers: {
-          'x-retry-count': retry ? attempt + 1 : attempt,
-          'x-original-producer-user': typeof origin === 'string' ? origin : '',
-          'x-catalog-failure': malformed
-            ? 'INVALID_OR_BLOCKED_CONTRACT'
-            : 'TECHNICAL_FAILURE',
-        },
-      },
-    );
-    this.telemetry.record(
-      retry ? 'AMQP_RETRY_CONFIRMED' : 'AMQP_DLQ_CONFIRMED',
-      {
-        correlationId: delivery.properties.correlationId,
-        messageId: delivery.properties.messageId,
-      },
-    );
-    // Only after the business transaction or the confirmed retry/DLQ publish.
-    consumer.ack(delivery);
+
+    for (let attempt = 0; attempt <= 3; attempt++) {
+      if (this.stopped || this.paused || this.connection !== connection) return;
+      try {
+        await this.messages.consume(message);
+      } catch (error) {
+        if (attempt === 3 || !isTransientPersistenceFailure(error)) {
+          await this.pause(connection);
+          return;
+        }
+        this.log('AMQP_LOCAL_RETRY');
+        await new Promise<void>((resolve) =>
+          setTimeout(resolve, 100 * (attempt + 1)),
+        );
+        continue;
+      }
+      // The use case resolves only after committing Inbox and business state.
+      if (!this.stopped && !this.paused && this.connection === connection)
+        consumer.ack(delivery);
+      return;
+    }
+  }
+
+  private async pause(connection: ChannelModel): Promise<void> {
+    this.paused = true;
+    this.subscribed = false;
+    this.log('AMQP_CONSUMER_PAUSED');
+    // Closing the channel/connection returns unacked deliveries to RabbitMQ.
+    // A normal network reconnect cannot clear this process-level pause.
+    const consumer = this.consumer;
+    const tag = this.consumerTag;
+    if (this.connection === connection && consumer && tag) {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([
+          consumer.cancel(tag).catch(() => undefined),
+          new Promise<void>((resolve) => {
+            timer = setTimeout(resolve, 1000);
+          }),
+        ]);
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    }
+    await this.reset(connection);
   }
   private async reset(connection: ChannelModel): Promise<void> {
     if (this.connection === connection) {

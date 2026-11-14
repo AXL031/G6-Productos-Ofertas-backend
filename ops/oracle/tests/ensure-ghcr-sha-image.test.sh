@@ -17,11 +17,11 @@ case "$1 $2" in
     ;;
   'pull ghcr.io/'*'/inventory-svc:'*) printf 'pull %s\n' "$2" >> "$MOCK_DOCKER_LOG" ;;
   'image inspect')
-    if [[ "${5:-}" == *RepoDigests* ]]; then printf 'ghcr.io/example/backend/inventory-svc:%s@sha256:%064d\n' "$MOCK_SHA" 1; exit 0; fi
+    if [[ "${5:-}" == *RepoDigests* ]]; then printf '["ghcr.io/%s/inventory-svc@sha256:%064d"]\n' "$MOCK_REPOSITORY" 0; exit 0; fi
     case "$MOCK_LABELS" in
-      valid) printf '{"org.opencontainers.image.source":"%s","org.opencontainers.image.revision":"%s"}\n' "$MOCK_SOURCE_URL" "$MOCK_SHA" ;;
-      wrong-source) printf '{"org.opencontainers.image.source":"https://github.com/other/repo","org.opencontainers.image.revision":"%s"}\n' "$MOCK_SHA" ;;
-      wrong-revision) printf '{"org.opencontainers.image.source":"https://github.com/example/backend","org.opencontainers.image.revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}\n' ;;
+      valid) printf '{"org.opencontainers.image.source":"%s","org.opencontainers.image.revision":"%s","org.opencontainers.image.title":"inventory-svc"}\n' "$MOCK_SOURCE_URL" "$MOCK_SHA" ;;
+      wrong-source) printf '{"org.opencontainers.image.source":"https://github.com/other/repo","org.opencontainers.image.revision":"%s","org.opencontainers.image.title":"inventory-svc"}\n' "$MOCK_SHA" ;;
+      wrong-revision) printf '{"org.opencontainers.image.source":"https://github.com/example/backend","org.opencontainers.image.revision":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","org.opencontainers.image.title":"inventory-svc"}\n' ;;
     esac
     ;;
   *) echo 'unexpected docker command' >&2; exit 2 ;;
@@ -31,15 +31,21 @@ chmod +x "$TEMP_ROOT/bin/docker"
 cat > "$TEMP_ROOT/bin/jq" <<'MOCK_JQ'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-[[ "$1" == -e && "$2" == --arg && "$3" == source && "$5" == --arg && "$6" == revision ]] || exit 2
 payload="$(cat)"
-actual_source="$(grep -o '"org.opencontainers.image.source":"[^"]*"' <<< "$payload" | cut -d'"' -f4)"
-[[ "${actual_source,,}" == "$4" ]] &&
-  grep -Fq "\"org.opencontainers.image.revision\":\"$7\"" <<< "$payload"
+if [[ "$1" == -e && "$2" == --arg && "$3" == source && "$5" == --arg && "$6" == revision && "$8" == --arg && "$9" == service ]]; then
+  actual_source="$(grep -o '"org.opencontainers.image.source":"[^"]*"' <<< "$payload" | cut -d'"' -f4)"
+  [[ "${actual_source,,}" == "$4" ]] &&
+    grep -Fq "\"org.opencontainers.image.revision\":\"$7\"" <<< "$payload" &&
+    grep -Fq "\"org.opencontainers.image.title\":\"${10}\"" <<< "$payload"
+elif [[ "$1" == -er && "$2" == --arg && "$3" == prefix ]]; then
+  grep -Fq "$4" <<< "$payload" && printf 'sha256:%064d\n' 0
+else
+  exit 2
+fi
 MOCK_JQ
 chmod +x "$TEMP_ROOT/bin/jq"
 readonly SHA=0123456789012345678901234567890123456789
-run_helper() { local repo="${3:-example/backend}"; env PATH="$TEMP_ROOT/bin:$PATH" MOCK_IMAGE_STATE="$1" MOCK_LABELS="${2:-valid}" MOCK_SHA="$SHA" MOCK_SOURCE_URL="https://github.com/${repo}" MOCK_DOCKER_LOG="$TEMP_ROOT/docker.log" bash "$HELPER" "$repo" inventory-svc "$SHA" "$TEMP_ROOT/output"; }
+run_helper() { local repo="${3:-example/backend}"; env PATH="$TEMP_ROOT/bin:$PATH" MOCK_IMAGE_STATE="$1" MOCK_LABELS="${2:-valid}" MOCK_SHA="$SHA" MOCK_REPOSITORY="${repo,,}" MOCK_SOURCE_URL="https://github.com/${repo}" MOCK_DOCKER_LOG="$TEMP_ROOT/docker.log" bash "$HELPER" "$repo" inventory-svc "$SHA" "$TEMP_ROOT/output"; }
 
 : > "$TEMP_ROOT/output"
 run_helper missing

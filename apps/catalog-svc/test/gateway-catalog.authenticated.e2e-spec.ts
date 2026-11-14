@@ -3,6 +3,12 @@ import { CatalogGatewayHarness } from './support/catalog-gateway-harness.js';
 const product = '00000000-0000-4000-8000-000000000050';
 const variant = '00000000-0000-4000-8000-000000000051';
 const administrativeOperations = [
+  ['listarProductosAdministracion', 'GET', '/productos/administracion'],
+  [
+    'obtenerProductoAdministracion',
+    'GET',
+    `/productos/administracion/${product}`,
+  ],
   ['listarProductos', 'GET', '/productos'],
   ['obtenerProducto', 'GET', `/productos/${product}`],
   ['obtenerProductoPorSlug', 'GET', '/productos/por-slug/fixture'],

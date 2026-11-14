@@ -1,0 +1,68 @@
+{
+  "type": "object",
+  "properties": {
+    "modalidad": {
+      "type": "string",
+      "enum": [
+        "ALTA_PRODUCTO",
+        "RECUPERACION_HISTORICA"
+      ],
+      "default": "ALTA_PRODUCTO"
+    },
+    "product_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sku_base": {
+      "type": "string",
+      "minLength": 1
+    },
+    "precio_regular": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 9999999999.99,
+      "multipleOf": 0.01
+    },
+    "moneda": {
+      "type": "string",
+      "minLength": 3,
+      "maxLength": 3,
+      "pattern": "^\\S[\\s\\S]\\S$"
+    },
+    "channel_id": {
+      "type": "null"
+    },
+    "motivo_cambio": {
+      "type": "string",
+      "const": "ALTA_PRODUCTO"
+    }
+  },
+  "required": [
+    "product_id",
+    "sku_base",
+    "moneda",
+    "channel_id",
+    "motivo_cambio"
+  ],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "modalidad": {
+            "const": "RECUPERACION_HISTORICA"
+          }
+        },
+        "required": [
+          "modalidad"
+        ]
+      },
+      "then": {},
+      "else": {
+        "required": [
+          "precio_regular"
+        ]
+      }
+    }
+  ],
+  "description": "modalidad ausente equivale a ALTA_PRODUCTO; recuperación exclusivamente explícita. precio_regular es obligatorio en alta y opcional solo en RECUPERACION_HISTORICA; si se proporciona se compara como decimal exacto. moneda es obligatoria en ambas. Recuperación adopta solo una vigencia no cancelada global del product_id exacto (sku/channel_id null) aplicable al primer procesamiento efectivo, no al occurred_at del emisor. Pricing obtiene el precio de sus datos y persiste transaccionalmente corte, vigencia y decisión por operation_id. No modifica precios/versiones/vigencias ni emite pricing.price.changed. Replays reutilizan decisión y corte sin reselección. Resultado completed READY con price_version de la vigencia y vigencia_id reales, o rejected HISTORICAL_PRICE_CONFLICT sin inicialización artificial. Intención incompatible para operation_id produce OPERATION_ID_CONFLICT. Se conservan envelope, identidad, correlación, causalidad y DTO de resultados existentes. motivo_cambio conserva ALTA_PRODUCTO como metadata del comando existente; no identifica modalidad ni modifica el motivo de la vigencia adoptada."
+}

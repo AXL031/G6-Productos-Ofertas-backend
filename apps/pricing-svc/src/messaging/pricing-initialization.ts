@@ -1,8 +1,23 @@
+import { selectHistoricalValidity } from '../domain/historical-price.js';
 import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { and, asc, eq, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  eq,
+  inArray,
+  ne,
+  lte,
+  gt,
+  or,
+  isNull,
+  sql,
+} from 'drizzle-orm';
 import { initializeProduct, PriceRuleError } from '../domain/price.js';
-import { PricingRepository } from '../persistence/pricing.repository.js';
+import {
+  PricingRepository,
+  lockGlobalProduct,
+} from '../persistence/pricing.repository.js';
 import {
   inbox,
   outbox,
@@ -68,25 +83,8 @@ function parseEnvelope(value: unknown): Envelope {
   return value as unknown as Envelope;
 }
 
-function amountFromRawJson(raw: string, parsed: unknown): string {
-  const matches = [
-    ...raw.matchAll(
-      /"precio_regular"\s*:\s*(-?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)/g,
-    ),
-  ];
-  if (
-    matches.length !== 1 ||
-    !object(parsed) ||
-    !object(parsed.data) ||
-    typeof parsed.data.precio_regular !== 'number' ||
-    !Number.isFinite(parsed.data.precio_regular)
-  )
-    throw new PriceRuleError('PRECIO_INVALIDO');
-  const token = matches[0][1];
-  if (
-    Number(token) !== parsed.data.precio_regular ||
-    !/^\d{1,10}(?:\.\d{1,2})?$/.test(token)
-  )
+function amountFromRawJson(token: string | undefined): string {
+  if (token === undefined || !/^\d{1,10}(?:\.\d{1,2})?$/.test(token))
     throw new PriceRuleError('PRECIO_INVALIDO');
   const [whole, fraction = ''] = token.split('.');
   return `${whole}.${fraction.padEnd(2, '0')}`;
@@ -94,12 +92,34 @@ function amountFromRawJson(raw: string, parsed: unknown): string {
 
 function semanticInput(data: Record<string, unknown>, rawAmount?: string) {
   return {
+    modalidad: data.modalidad === undefined ? 'ALTA_PRODUCTO' : data.modalidad,
     product_id: typeof data.product_id === 'string' ? data.product_id : '',
     sku_base: typeof data.sku_base === 'string' ? data.sku_base : '',
-    precio_regular: rawAmount ?? null,
+    precio_regular:
+      rawAmount ??
+      (Object.hasOwn(data, 'precio_regular')
+        ? { invalid: data.precio_regular }
+        : null),
     moneda: typeof data.moneda === 'string' ? data.moneda : '',
-    channel_id: data.channel_id ?? 'INVALID',
-    motivo_cambio: data.motivo_cambio ?? 'INVALID',
+    channel_id: Object.hasOwn(data, 'channel_id')
+      ? { present: true, value: data.channel_id }
+      : { present: false },
+    motivo_cambio: Object.hasOwn(data, 'motivo_cambio')
+      ? { present: true, value: data.motivo_cambio }
+      : { present: false },
+  };
+}
+
+function semanticIntent(data: Record<string, unknown>, rawAmount?: string) {
+  const field = (key: string) =>
+    Object.hasOwn(data, key)
+      ? { present: true, value: data[key] }
+      : { present: false };
+  return {
+    ...semanticInput(data, rawAmount),
+    product_id: field('product_id'),
+    sku_base: field('sku_base'),
+    moneda: field('moneda'),
   };
 }
 
@@ -110,23 +130,61 @@ export class PricingProductInitialization {
   async consume(raw: Buffer): Promise<'APPLIED' | 'DUPLICATE' | 'REJECTED'> {
     const rawText = raw.toString('utf8');
     let parsed: unknown;
+    const sources = new WeakMap<object, string>();
     try {
-      parsed = JSON.parse(rawText) as unknown;
+      parsed = JSON.parse(
+        rawText,
+        function (key: string, value: unknown, context?: { source?: string }) {
+          if (
+            key === 'precio_regular' &&
+            typeof value === 'number' &&
+            context?.source
+          )
+            sources.set(this as object, context.source);
+          return value;
+        },
+      ) as unknown;
     } catch {
       throw new Error('PRICING_INVALID_MESSAGE_JSON');
     }
     const message = parseEnvelope(parsed);
+    const operationId = message.operation_id.toLowerCase();
     const input = semanticInput(message.data);
+    const token = sources.get(message.data);
+    if (typeof message.data.precio_regular === 'number' && token === undefined)
+      throw new Error('PRICING_JSON_SOURCE_UNAVAILABLE');
     let amount: string | undefined;
     let domainCode: string | undefined;
     try {
-      amount = amountFromRawJson(rawText, parsed);
+      if (
+        message.data.modalidad !== 'RECUPERACION_HISTORICA' ||
+        Object.hasOwn(message.data, 'precio_regular')
+      )
+        amount = amountFromRawJson(token);
     } catch (error) {
       domainCode =
         error instanceof PriceRuleError ? error.code : 'PRECIO_INVALIDO';
     }
     const normalized = semanticInput(message.data, amount);
+    const intent = semanticIntent(message.data, amount);
+    if (token !== undefined && amount === undefined)
+      intent.precio_regular = { invalid: { numericSource: token } };
+    const savedPayload = {
+      ...message,
+      _pricing_initialization: {
+        version: 1,
+        intent,
+        token: token ?? null,
+        ...(object(parsed) && Object.hasOwn(parsed, '_pricing_initialization')
+          ? { original: parsed._pricing_initialization }
+          : {}),
+      },
+    };
+    const historical = message.data.modalidad === 'RECUPERACION_HISTORICA';
     const validFields =
+      (message.data.modalidad === undefined ||
+        message.data.modalidad === 'ALTA_PRODUCTO' ||
+        historical) &&
       typeof message.data.product_id === 'string' &&
       message.data.product_id.length > 0 &&
       typeof message.data.sku_base === 'string' &&
@@ -136,10 +194,11 @@ export class PricingProductInitialization {
       message.data.channel_id === null &&
       message.data.motivo_cambio === 'ALTA_PRODUCTO';
     if (!validFields && !domainCode) domainCode = 'VALIDACION';
+    if (historical && domainCode) domainCode = 'HISTORICAL_PRICE_CONFLICT';
 
     return this.repository.transaction(async (tx) => {
       await tx.execute(
-        sql`SELECT pg_advisory_xact_lock(hashtextextended(${message.operation_id}, 0))`,
+        sql`SELECT pg_advisory_xact_lock(hashtextextended(${operationId}, 0))`,
       );
       const [sameMessage] = await tx
         .select()
@@ -152,7 +211,35 @@ export class PricingProductInitialization {
         )
         .limit(1);
       if (sameMessage) {
-        if (canonical(sameMessage.payload) !== canonical(parsed))
+        const previous = sameMessage.payload;
+        const metadata = object(previous._pricing_initialization)
+          ? previous._pricing_initialization
+          : undefined;
+        const { _pricing_initialization: _internal, ...withoutInternal } =
+          previous;
+        const originalPrevious =
+          metadata?.version === 1
+            ? {
+                ...withoutInternal,
+                ...(Object.hasOwn(metadata, 'original')
+                  ? { _pricing_initialization: metadata.original }
+                  : {}),
+              }
+            : previous;
+        const normalizedPrevious = object(previous)
+          ? {
+              ...originalPrevious,
+              operation_id:
+                typeof previous.operation_id === 'string'
+                  ? previous.operation_id.toLowerCase()
+                  : previous.operation_id,
+            }
+          : previous;
+        if (
+          canonical(normalizedPrevious) !==
+            canonical({ ...message, operation_id: operationId }) ||
+          (metadata?.version === 1 && metadata.token !== (token ?? null))
+        )
           throw new Error('PRICING_MESSAGE_ID_CONFLICT');
         return sameMessage.result === 'APPLIED' ? 'APPLIED' : 'DUPLICATE';
       }
@@ -163,25 +250,35 @@ export class PricingProductInitialization {
         .where(
           and(
             eq(inbox.handler, HANDLER),
-            sql`${inbox.payload}->>'operation_id' = ${message.operation_id}`,
+            ne(inbox.result, 'OPERATION_ID_CONFLICT'),
+            ne(inbox.result, 'REJECTED_INVALID_ENVELOPE'),
+            sql`lower(${inbox.payload}->>'operation_id') = ${operationId}`,
           ),
         )
+        .orderBy(asc(inbox.createdAt), asc(inbox.id))
         .limit(1);
       if (priorOperation.length) {
         const prior = priorOperation[0].payload;
         const priorData = object(prior) && object(prior.data) ? prior.data : {};
-        const sameIntent =
-          JSON.stringify(
-            semanticInput(priorData, amountFromPrior(priorData) ?? undefined),
-          ) === JSON.stringify(normalized);
+        const metadata = object(prior._pricing_initialization)
+          ? prior._pricing_initialization
+          : undefined;
+        const priorIntent =
+          metadata?.version === 1 && object(metadata.intent)
+            ? metadata.intent
+            : semanticIntent(
+                priorData,
+                amountFromPrior(priorData) ?? undefined,
+              );
+        const sameIntent = canonical(priorIntent) === canonical(intent);
         if (sameIntent) {
-          await this.insertInbox(tx, message, parsed, 'DUPLICATE');
           const [priorResult] = await tx
             .select()
             .from(outbox)
             .where(
               and(
                 eq(outbox.operationId, message.operation_id),
+                eq(outbox.causationId, priorOperation[0].messageId),
                 eq(outbox.kind, 'result'),
                 inArray(outbox.eventName, [
                   'pricing.product.initialization.completed',
@@ -194,6 +291,17 @@ export class PricingProductInitialization {
           if (!priorResult)
             throw new Error('PRICING_INITIALIZATION_RESULT_MISSING');
           const priorPayload = priorResult.payload;
+          const decisionAt =
+            historical && typeof priorPayload.completed_at === 'string'
+              ? priorPayload.completed_at
+              : undefined;
+          await this.insertInbox(
+            tx,
+            message,
+            savedPayload,
+            'DUPLICATE',
+            decisionAt,
+          );
           await this.insertResult(
             tx,
             message,
@@ -206,10 +314,16 @@ export class PricingProductInitialization {
             typeof priorPayload.vigencia_id === 'string'
               ? priorPayload.vigencia_id
               : null,
+            decisionAt,
           );
           return 'DUPLICATE';
         }
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(
+          tx,
+          message,
+          savedPayload,
+          'OPERATION_ID_CONFLICT',
+        );
         await this.insertResult(
           tx,
           message,
@@ -220,8 +334,20 @@ export class PricingProductInitialization {
         return 'REJECTED';
       }
 
+      await lockGlobalProduct(tx, normalized.product_id);
+      if (historical) {
+        return this.adoptHistorical(
+          tx,
+          message,
+          savedPayload,
+          normalized,
+          amount,
+          domainCode !== undefined,
+        );
+      }
+
       if (domainCode) {
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(tx, message, savedPayload, 'REJECTED');
         await this.insertResult(tx, message, input, 'REJECTED', domainCode);
         return 'REJECTED';
       }
@@ -251,7 +377,7 @@ export class PricingProductInitialization {
           initial[0].precioRegular === amount &&
           initial[0].currency.trim() === message.data.moneda
         ) {
-          await this.insertInbox(tx, message, parsed, 'DUPLICATE');
+          await this.insertInbox(tx, message, savedPayload, 'DUPLICATE');
           await this.insertResult(
             tx,
             message,
@@ -263,7 +389,7 @@ export class PricingProductInitialization {
           );
           return 'DUPLICATE';
         }
-        await this.insertInbox(tx, message, parsed, 'REJECTED');
+        await this.insertInbox(tx, message, savedPayload, 'REJECTED');
         await this.insertResult(
           tx,
           message,
@@ -296,7 +422,7 @@ export class PricingProductInitialization {
           .onConflictDoNothing()
           .returning();
         if (!definition) {
-          await this.insertInbox(tx, message, parsed, 'REJECTED');
+          await this.insertInbox(tx, message, savedPayload, 'REJECTED');
           await this.insertResult(
             tx,
             message,
@@ -343,7 +469,7 @@ export class PricingProductInitialization {
             occurredAt: new Date(message.occurred_at),
           })),
         );
-        await this.insertInbox(tx, message, parsed, 'APPLIED');
+        await this.insertInbox(tx, message, savedPayload, 'APPLIED');
         await this.insertResult(
           tx,
           message,
@@ -356,13 +482,85 @@ export class PricingProductInitialization {
         return 'APPLIED';
       } catch (error) {
         if (error instanceof PriceRuleError) {
-          await this.insertInbox(tx, message, parsed, 'REJECTED');
+          await this.insertInbox(tx, message, savedPayload, 'REJECTED');
           await this.insertResult(tx, message, input, 'REJECTED', error.code);
           return 'REJECTED';
         }
         throw error;
       }
     });
+  }
+
+  private async adoptHistorical(
+    tx: Parameters<PricingRepository['transaction']>[0] extends (
+      tx: infer T,
+    ) => Promise<unknown>
+      ? T
+      : never,
+    message: Envelope,
+    parsed: unknown,
+    input: ReturnType<typeof semanticInput>,
+    expectedAmount: string | undefined,
+    invalid: boolean,
+  ): Promise<'APPLIED' | 'REJECTED'> {
+    // Mismo lock de definición que las mutaciones; la operación ya está serializada.
+    const definitions = await tx
+      .select()
+      .from(prices)
+      .where(
+        and(
+          eq(prices.productId, input.product_id),
+          sql`${prices.sku} IS NULL`,
+          sql`${prices.channelId} IS NULL`,
+        ),
+      )
+      .for('update');
+    // Después de adquirir locks: ni occurred_at del emisor ni transaction_timestamp.
+    const clock = await tx.execute<{ cutoff: string }>(
+      sql`SELECT to_char(clock_timestamp() AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS cutoff`,
+    );
+    const cutoff = clock.rows[0].cutoff;
+    const validities =
+      definitions.length === 1
+        ? await tx
+            .select()
+            .from(priceValidities)
+            .where(
+              and(
+                eq(priceValidities.priceId, definitions[0].id),
+                eq(priceValidities.isCancelled, false),
+                lte(priceValidities.validFrom, sql`${cutoff}::timestamptz`),
+                or(
+                  isNull(priceValidities.validUntil),
+                  gt(priceValidities.validUntil, sql`${cutoff}::timestamptz`),
+                ),
+              ),
+            )
+            .for('share')
+        : [];
+    const chosen = invalid
+      ? undefined
+      : selectHistoricalValidity(validities, input.moneda, expectedAmount);
+    const compatible = chosen !== undefined;
+    const status = compatible ? 'READY' : 'REJECTED';
+    await this.insertInbox(
+      tx,
+      message,
+      parsed,
+      compatible ? 'APPLIED' : 'REJECTED',
+      cutoff,
+    );
+    await this.insertResult(
+      tx,
+      message,
+      input,
+      status,
+      compatible ? null : 'HISTORICAL_PRICE_CONFLICT',
+      compatible ? Number(chosen!.priceVersion) : null,
+      compatible ? chosen!.id : null,
+      cutoff,
+    );
+    return compatible ? 'APPLIED' : 'REJECTED';
   }
 
   private insertInbox(
@@ -374,6 +572,7 @@ export class PricingProductInitialization {
     message: Envelope,
     payload: unknown,
     result: string,
+    processedAt?: Date | string,
   ) {
     return tx.insert(inbox).values({
       messageId: message.message_id,
@@ -382,6 +581,14 @@ export class PricingProductInitialization {
       correlationId: message.correlation_id,
       payload: payload as Record<string, unknown>,
       result,
+      ...(processedAt
+        ? {
+            processedAt:
+              typeof processedAt === 'string'
+                ? sql`${processedAt}::timestamptz`
+                : processedAt,
+          }
+        : {}),
     });
   }
 
@@ -397,6 +604,7 @@ export class PricingProductInitialization {
     code: string | null,
     priceVersion: number | null = null,
     validityId: string | null = null,
+    at: Date | string = new Date(),
   ) {
     const payload = {
       product_id: input.product_id,
@@ -405,7 +613,7 @@ export class PricingProductInitialization {
       price_version: priceVersion,
       vigencia_id: validityId,
       code,
-      completed_at: new Date().toISOString(),
+      completed_at: typeof at === 'string' ? at : at.toISOString(),
     };
     return tx.insert(outbox).values({
       messageId: deterministicUuid(
@@ -417,7 +625,7 @@ export class PricingProductInitialization {
       correlationId: message.correlation_id,
       causationId: message.message_id,
       operationId: message.operation_id,
-      occurredAt: new Date(),
+      occurredAt: typeof at === 'string' ? sql`${at}::timestamptz` : at,
       payload,
     });
   }

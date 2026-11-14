@@ -282,6 +282,7 @@ describe.skipIf(!isolatedHarnessEnabled)(
         ),
       );
       expect(tables.rows.map((row) => row.table_name)).toEqual([
+        'combo_creation_receipts',
         'combo_items',
         'combos',
         'component_projection',
@@ -297,6 +298,38 @@ describe.skipIf(!isolatedHarnessEnabled)(
       ).rejects.toMatchObject({ status: 503 });
       await disconnected.onModuleDestroy();
       process.env.PGPORT = savedPort;
+    });
+
+    it('recovers one created combo across concurrent requests and rejects a different intent', async () => {
+      const http = request(app.getHttpServer());
+      const path = '/api/v1/combos/administracion';
+      const actor =
+        'Bearer ' + makeToken('acceso', '', { roles: ['GESTOR_COMERCIAL'] });
+      const key = randomUUID();
+      const body = {
+        nombre: 'Recoverable combo',
+        componentes: [
+          { sku: '000001', cantidad: 2 },
+          { sku: '000002', cantidad: 1 },
+        ],
+        precioCombo: 17,
+      };
+      const send = (payload: typeof body) =>
+        http
+          .post(path)
+          .set('Authorization', actor)
+          .set('Idempotency-Key', key)
+          .send(payload);
+      const [first, replay] = await Promise.all([
+        send(body).expect(201),
+        send(body).expect(201),
+      ]);
+      created.push(first.body.combo_id);
+      expect(replay.body.combo_id).toBe(first.body.combo_id);
+      const conflict = await send({ ...body, nombre: 'Other intent' }).expect(
+        409,
+      );
+      expect(conflict.body.code).toBe('IDEMPOTENCY_CONFLICT');
     });
 
     it('creates, reads, paginates, updates with optimistic version, and deactivates persistently', async () => {

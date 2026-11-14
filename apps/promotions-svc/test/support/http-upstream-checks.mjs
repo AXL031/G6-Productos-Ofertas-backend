@@ -50,6 +50,12 @@ export async function verifyHttpUpstreams(resources, baseConfig) {
       res.end('{}');
       return;
     }
+    const requested = new URL(req.url, 'http://fixture');
+    if (requested.pathname === '/api/v1/productos/UPSTREAM-P' && requested.searchParams.get('canal') !== 'MARKETPLACE') {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ status: 400, code: 'VALIDACION' }));
+      return;
+    }
     const body =
       req.url.includes('/skus/') && req.url.includes('/contexto')
         ? {
@@ -170,7 +176,8 @@ export async function verifyHttpUpstreams(resources, baseConfig) {
     const before = await count();
     const saved = await call('/api/v1/promociones', promotion, 201);
     assert.equal(await count(), before + 1);
-    assert.ok(calls.includes('/api/v1/productos/UPSTREAM-P'));
+    assert.ok(calls.includes('/api/v1/productos/UPSTREAM-P?canal=MARKETPLACE'));
+    assert.equal(calls.includes('/api/v1/productos/UPSTREAM-P'), false);
     assert.ok(calls.includes('/api/v1/productos/skus/0001/contexto'));
     const rule = {
       nombre: 'UPSTREAM-RULE',

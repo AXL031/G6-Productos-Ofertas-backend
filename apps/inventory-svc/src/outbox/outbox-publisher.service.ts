@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import { Injectable, Logger, Inject } from '@nestjs/common';
 import amqp from 'amqplib';
 import { deadline } from '../workers/deadline.js';
@@ -89,7 +90,7 @@ export class OutboxPublisherService {
 
     try {
       if (!this.customPublisher && config.rabbitMqUrl) {
-        amqpConn = await amqp.connect(config.rabbitMqUrl, {
+        amqpConn = await connectPrivateAmqps(amqp.connect, config.rabbitMqUrl, {
           timeout: BROKER_CONNECT_TIMEOUT_MS,
         });
         // Extraer userId del RABBITMQ_URL: es el username con que inventory-svc

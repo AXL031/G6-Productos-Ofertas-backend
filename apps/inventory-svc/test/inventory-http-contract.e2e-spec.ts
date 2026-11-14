@@ -71,6 +71,79 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
     await app.close();
   });
 
+  it('lista saldos físicos y ubicaciones reales para el gestor, con 503 ante fallo de persistencia', async () => {
+    const path = '/api/v1/inventario/administracion/saldos';
+    const http = request(app.getHttpServer());
+    const manager = 'Bearer ' + human();
+    const transaction = vi.spyOn(db, 'transaction');
+    await http.get(path).expect(401);
+    await http
+      .get(path)
+      .set('Authorization', 'Bearer ' + human({ roles: [] }))
+      .expect(403);
+    await http
+      .get(path)
+      .set('Authorization', 'Bearer ' + service())
+      .expect(401);
+    await http
+      .get(path + '?locationId=incorrecta')
+      .set('Authorization', manager)
+      .expect(400);
+    await http
+      .get(path + '?tamanio=101')
+      .set('Authorization', manager)
+      .expect(400);
+    expect(transaction).not.toHaveBeenCalled();
+    transaction.mockResolvedValueOnce({
+      total: 1,
+      rows: [
+        {
+          sku,
+          locationId,
+          locationCode: 'ALM-01',
+          locationName: 'Almacén central',
+          locationType: 'ALMACEN',
+          locationActive: false,
+          skuActivo: null,
+          onHand: 9,
+          reserved: 2,
+          blocked: 3,
+          available: 4,
+          stockVersion: '6',
+          updatedAt: new Date('2026-11-07T00:00:00Z'),
+          umbralEfectivo: 4,
+          estado: 'STOCK_BAJO',
+        },
+      ],
+    });
+    const found = await http
+      .get(path + '?tamanio=1&estado=STOCK_BAJO')
+      .set('Authorization', manager)
+      .expect(200);
+    expect(found.body).toMatchObject({
+      items: [
+        {
+          sku,
+          ubicacion: { locationId, nombre: 'Almacén central', activa: false },
+          skuActivo: null,
+          onHand: 9,
+          reserved: 2,
+          blocked: 3,
+          available: 4,
+          stockVersion: 6,
+          estado: 'STOCK_BAJO',
+        },
+      ],
+      meta: { pagina: 1, tamanio: 1, total: 1, totalPaginas: 1 },
+    });
+    transaction.mockRejectedValueOnce(new Error('postgres unavailable'));
+    const outage = await http
+      .get(path)
+      .set('Authorization', manager)
+      .expect(503);
+    expect(outage.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+  });
+
   it.each([
     detailPath,
     '/api/v1/inventario/umbrales',

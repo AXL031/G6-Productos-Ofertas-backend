@@ -9,7 +9,7 @@ trap 'rm -f "$LOG"' EXIT
 grep -Eq '^  release:$' "$WORKFLOW"
 grep -Eq '^      fail-fast: false$' "$WORKFLOW"
 grep -Fq '        service: ${{ fromJSON(needs.prepare.outputs.services) }}' "$WORKFLOW"
-grep -Fq '      group: deploy-g6-services-oracle-${{ github.repository }}-${{ matrix.service }}' "$WORKFLOW"
+grep -Fq '      group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}' "$WORKFLOW"
 grep -Fq '      cancel-in-progress: false' "$WORKFLOW"
 grep -Fq 'Verificar o reservar imagen inmutable por SHA' "$WORKFLOW"
 grep -Fq 'ensure-ghcr-sha-image.sh' "$WORKFLOW"

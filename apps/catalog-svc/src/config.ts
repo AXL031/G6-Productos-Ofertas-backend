@@ -40,7 +40,6 @@ export class CatalogConfig {
   readonly amqp: CatalogAmqpSettings;
   readonly preparation: CatalogPreparationConfig;
   readonly readDemo: CatalogReadDemo;
-  readonly marketplaceDemoPreview: boolean;
   readonly historicalRecoveryCapabilities: HistoricalRecoveryCapabilities;
   readonly historicalPricingContract: HistoricalPricingContract | null;
   readonly pricingOrigin?: string;
@@ -115,16 +114,25 @@ export class CatalogConfig {
         'CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED debe ser true o false.',
       );
     }
-    if (this.readDemo.restricted && preview === 'true')
-      errors.push('No combinar preview Marketplace y demo restringida.');
     let pricingOrigin: string | undefined;
     if (env.CATALOG_PRICING_URL !== undefined) {
       try {
+        if (env.CATALOG_PRICING_URL !== env.CATALOG_PRICING_URL.trim())
+          throw new Error();
         const url = new URL(env.CATALOG_PRICING_URL);
+        const oracleOrigin =
+          url.protocol === 'http:' &&
+          url.hostname === 'pricing-svc' &&
+          url.port === '3002';
+        const azureOrigin =
+          url.protocol === 'https:' &&
+          url.port === '' &&
+          /^pricing-svc\.internal(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?){2,}\.azurecontainerapps\.io$/.test(
+            url.hostname,
+          );
         if (
-          url.protocol !== 'http:' ||
-          url.hostname !== 'pricing-svc' ||
-          url.port !== '3002' ||
+          (!oracleOrigin && !azureOrigin) ||
+          env.CATALOG_PRICING_URL.replace(/\/$/, '') !== url.origin ||
           url.username ||
           url.password ||
           url.pathname !== '/' ||
@@ -135,7 +143,7 @@ export class CatalogConfig {
         pricingOrigin = url.origin;
       } catch {
         errors.push(
-          'CATALOG_PRICING_URL debe usar el origen privado pricing-svc:3002.',
+          'CATALOG_PRICING_URL debe usar el origen privado pricing-svc:3002 o https://pricing-svc.internal.<entorno>.<region>.azurecontainerapps.io.',
         );
       }
     }
@@ -145,9 +153,6 @@ export class CatalogConfig {
       new URL(taxonomy.origin).hostname !== 'taxonomy-svc'
     )
       errors.push('Demo restringida requiere Taxonomy privado taxonomy-svc.');
-    if (preview === 'true' && !pricingOrigin) {
-      errors.push('CATALOG_PRICING_URL es obligatorio para la demo.');
-    }
     if (errors.length || !http || !database || !taxonomy) {
       throw new Error(
         'Configuracion de catalog-svc invalida: ' + errors.join(' '),
@@ -161,7 +166,6 @@ export class CatalogConfig {
     this.security = security;
     this.amqp = Object.freeze(amqp);
     this.preparation = Object.freeze(preparation);
-    this.marketplaceDemoPreview = preview === 'true';
     this.pricingOrigin = pricingOrigin;
     this.serviceCredentials = serviceCredentials;
     Object.freeze(this);

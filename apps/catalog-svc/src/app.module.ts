@@ -1,3 +1,4 @@
+import { H4SkuListener } from './h4-sku-listener.js';
 import { ReadinessController as CommercialReadinessController } from './readiness.controller.js';
 import { DynamicModule, Module } from '@nestjs/common';
 import { AppController } from './app.controller.js';
@@ -32,11 +33,7 @@ import {
   CatalogMasterClient,
 } from './catalog-master.client.js';
 import { CatalogTelemetry } from './catalog-telemetry.js';
-import {
-  CATALOG_READ_DEMO,
-  CATALOG_MARKETPLACE_PREVIEW,
-  readCatalogReadDemo,
-} from './catalog-read-demo.js';
+import { CATALOG_READ_DEMO, readCatalogReadDemo } from './catalog-read-demo.js';
 import {
   CatalogBulkService,
   CatalogBulkIdentity,
@@ -60,7 +57,6 @@ import {
   CatalogTokenVerifier,
   readCatalogSecurityConfig,
 } from './catalog-auth.js';
-import { DEMO_PRICING, PricingClient } from './pricing.client.js';
 import {
   CatalogPriceFilter,
   CATALOG_PRICING_IDENTITY,
@@ -89,6 +85,7 @@ import { readHistoricalPricingContract } from './historical-pricing.contract.js'
     ReadinessController,
   ],
   providers: [
+    H4SkuListener,
     AppService,
     Database,
     CatalogTransactionManager,
@@ -140,11 +137,6 @@ import { readHistoricalPricingContract } from './historical-pricing.contract.js'
     CatalogAuthGuard,
     { provide: CATALOG_READ_DEMO, useFactory: () => readCatalogReadDemo() },
     {
-      provide: CATALOG_MARKETPLACE_PREVIEW,
-      useFactory: () =>
-        process.env.CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED === 'true',
-    },
-    {
       provide: CATALOG_SECURITY_CONFIG,
       useFactory: () => readCatalogSecurityConfig(process.env),
     },
@@ -185,12 +177,6 @@ export class AppModule {
           provide: HISTORICAL_RECOVERY_CAPABILITIES,
           useValue: config.historicalRecoveryCapabilities,
         },
-        {
-          provide: CATALOG_MARKETPLACE_PREVIEW,
-          useValue: config.marketplaceDemoPreview,
-        },
-        PricingClient,
-        { provide: DEMO_PRICING, useExisting: PricingClient },
       ],
     };
   }

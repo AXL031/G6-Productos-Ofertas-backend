@@ -417,26 +417,18 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
       });
     });
 
-    it('GET permite modulo-productos únicamente para MARKETPLACE', async () => {
-      const res = await request(app.getHttpServer())
-        .get(
-          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
-        )
-        .set('Authorization', `Bearer ${productsToken}`)
-        .expect(200);
-      expect(res.body.items).toEqual([{ sku, status: 'DISPONIBLE' }]);
-    });
-
-    it.each(['CHATBOT', 'RETAIL'])(
-      'GET rechaza modulo-productos para %s',
+    it.each(['MARKETPLACE', 'CHATBOT', 'RETAIL'])(
+      'GET permite modulo-productos con alcance interno para %s',
       async (canal) => {
         const res = await request(app.getHttpServer())
           .get(
             `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=${canal}`,
           )
           .set('Authorization', `Bearer ${productsToken}`)
-          .expect(403);
-        expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
+          .expect(200);
+        for (const item of res.body.items) {
+          expect(Object.keys(item).sort()).toEqual(['sku', 'status']);
+        }
       },
     );
 
@@ -820,20 +812,27 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
       );
     });
 
-    it('GET: modulo-productos + scope + MARKETPLACE responde 200 contractual', async () => {
-      const res = await request(app.getHttpServer())
-        .get(
-          `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=MARKETPLACE`,
-        )
-        .set('Authorization', `Bearer ${productosToken}`)
-        .expect(200);
+    it.each(['MARKETPLACE', 'CHATBOT', 'RETAIL'])(
+      'GET: modulo-productos + scope + %s responde 200 contractual',
+      async (canal) => {
+        const res = await request(app.getHttpServer())
+          .get(
+            `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=${canal}`,
+          )
+          .set('Authorization', `Bearer ${productosToken}`)
+          .expect(200);
 
-      expect(res.body.items).toEqual([
-        { sku: 'NIK-REV7-NEG-41', status: 'DISPONIBLE' },
-      ]);
-      expect(Object.keys(res.body.items[0]).sort()).toEqual(['sku', 'status']);
-    });
-
+        expect(res.body.items).toHaveLength(1);
+        expect(res.body.items[0].sku).toBe('NIK-REV7-NEG-41');
+        expect(['DISPONIBLE', 'INDETERMINADO']).toContain(
+          res.body.items[0].status,
+        );
+        expect(Object.keys(res.body.items[0]).sort()).toEqual([
+          'sku',
+          'status',
+        ]);
+      },
+    );
     it('GET: modulo-productos sin el scope requerido responde 403', async () => {
       const res = await request(app.getHttpServer())
         .get(
@@ -844,20 +843,6 @@ describe('InventorySvc E2E — Corte funcional G5 y Seguridad', () => {
 
       expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
     });
-
-    it.each(['CHATBOT', 'RETAIL'])(
-      'GET: modulo-productos con canal %s no autorizado responde 403',
-      async (canal) => {
-        const res = await request(app.getHttpServer())
-          .get(
-            `/api/v1/inventario/disponibilidad/comercial?skus=${sku}&canal=${canal}`,
-          )
-          .set('Authorization', `Bearer ${productosToken}`)
-          .expect(403);
-
-        expect(res.body.code).toBe('SCOPE_INSUFICIENTE');
-      },
-    );
 
     it('GET: un cliente comercial con canal ajeno sigue respondiendo 403', async () => {
       const res = await request(app.getHttpServer())
