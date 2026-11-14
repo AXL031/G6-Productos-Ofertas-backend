@@ -39,6 +39,21 @@ const page = (f: PageFilter) => ({
   limit: f.tamanio,
   offset: (f.pagina - 1) * f.tamanio,
 });
+function safeCount(value: unknown): number {
+  const countValue =
+    typeof value === 'bigint'
+      ? Number(value)
+      : typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)
+        ? Number(value)
+        : value;
+  if (
+    typeof countValue !== 'number' ||
+    !Number.isSafeInteger(countValue) ||
+    countValue < 0
+  )
+    throw new Error('PROMOTIONS_COUNT_OUT_OF_RANGE');
+  return countValue;
+}
 export class PromotionsQueryRepository {
   constructor(private readonly db: Database) {}
   async summaries(
@@ -196,16 +211,16 @@ export class PromotionsQueryRepository {
   async couponUsage(id: string, customerRef: string | null) {
     const [usage] = await this.db
       .select({
-        used: count(),
-        customerUsed: sql<number>`count(*) FILTER (WHERE ${s.couponUses.customerRef} = ${customerRef})`,
+        used: sql<unknown>`count(*)`,
+        customerUsed: sql<unknown>`count(*) FILTER (WHERE ${s.couponUses.customerRef} = ${customerRef})`,
       })
       .from(s.couponUses)
       .where(
         and(eq(s.couponUses.couponId, id), isNull(s.couponUses.restoredAt)),
       );
     return {
-      used: usage?.used ?? 0,
-      customerUsed: customerRef ? (usage?.customerUsed ?? 0) : 0,
+      used: safeCount(usage?.used ?? 0),
+      customerUsed: customerRef ? safeCount(usage?.customerUsed ?? 0) : 0,
     };
   }
   async rules(filter: PageFilter) {

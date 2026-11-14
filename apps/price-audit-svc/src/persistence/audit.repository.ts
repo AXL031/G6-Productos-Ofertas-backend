@@ -1,5 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, lte, lt, or, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { AuditDatabase, type AuditTransaction } from './audit.database.js';
 import { auditLog, exportJobs, inbox } from './audit.schema.js';
 import {
@@ -134,6 +145,22 @@ export class AuditRepository {
     return this.transaction(
       async (tx) =>
         (await tx.select().from(exportJobs).where(eq(exportJobs.id, id)))[0],
+      true,
+    );
+  }
+  exportArtifactJobs(ids: readonly string[]) {
+    const unique = [...new Set(ids)].filter((id) => uuid.test(id));
+    if (!unique.length) return Promise.resolve([]);
+    return this.transaction(
+      (tx) =>
+        tx
+          .select({
+            id: exportJobs.id,
+            status: exportJobs.status,
+            downloadUrl: exportJobs.downloadUrl,
+          })
+          .from(exportJobs)
+          .where(inArray(exportJobs.id, unique)),
       true,
     );
   }

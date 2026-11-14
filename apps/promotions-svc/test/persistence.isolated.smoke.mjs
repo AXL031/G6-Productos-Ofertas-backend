@@ -653,6 +653,7 @@ try {
       order_id: 'ISOLATED-' + randomUUID(),
       coupon_code: 'DEMO_REPO',
       channel_id: 'MARKETPLACE',
+      customer_ref: randomUUID(),
       reservation_id: randomUUID(),
       commercial_snapshot_ref: 'isolated-snapshot',
       effective_at: '2026-10-16T12:00:00Z',
@@ -679,6 +680,19 @@ try {
       )
     ).length,
     1,
+  );
+  const coupon = await persistence.read((repos) =>
+    repos.coupons.findByCode(command.data.coupon_code),
+  );
+  assert.deepEqual(
+    await persistence.read((repos) =>
+      repos.queries.couponUsage(coupon.id, command.data.customer_ref),
+    ),
+    { used: 1, customerUsed: 1 },
+  );
+  assert.deepEqual(
+    await persistence.read((repos) => repos.queries.couponUsage(coupon.id, null)),
+    { used: 1, customerUsed: 0 },
   );
   assert.equal(
     (await persistence.read((repos) => repos.receipt(command.operation_id)))
@@ -709,7 +723,7 @@ try {
     { code: '42501' },
   );
   checks.push(
-    'existing coupon command replays once; Drizzle reads use/receipt/inbox/outbox on the same pool; history and fingerprint remain protected',
+    'existing coupon command replays once; PostgreSQL coupon usage counts convert safely with and without customer_ref; Drizzle reads use/receipt/inbox/outbox on the same pool; history and fingerprint remain protected',
   );
 
   stage = 'HTTP queries and signed JWT with real PostgreSQL';

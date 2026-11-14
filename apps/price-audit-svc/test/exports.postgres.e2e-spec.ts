@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -261,12 +261,60 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
       );
       await ageProcessingJob(job.id);
       const completed = await finish(job.id);
+      const artifactId = completed.downloadUrl!.slice('audit-artifact:'.length);
+      const retainedPath = join(directory, `${job.id}.${artifactId}.csv`);
+      const old = new Date(Date.now() - 16 * 60 * 1000);
+      await utimes(retainedPath, old, old);
+      expect(await worker.cleanupOrphanedArtifacts()).toBe(0);
+      await expect(worker.download(completed)).resolves.toMatchObject({
+        contentType: 'text/csv',
+      });
       await expect(
         worker.download({ ...completed, id: '../../secret' }),
       ).rejects.toThrow();
-      const artifactId = completed.downloadUrl!.slice('audit-artifact:'.length);
-      await rm(join(directory, `${job.id}.${artifactId}.csv`));
+      await rm(retainedPath);
       await expect(worker.download(completed)).rejects.toThrow();
+    });
+    it('recupera un trabajo tras caída después de escribir el archivo y detecta el artefacto huérfano', async () => {
+      const job = await repository.createExport(
+        { sku: 'export-real' },
+        'CSV',
+        'gestor',
+      );
+      await database.admin!.query(
+        "UPDATE price_audit.export_jobs SET status='PROCESSING' WHERE id=$1",
+        [job.id],
+      );
+
+      // Snapshot del límite de caída del proceso: el archivo se ha confirmado
+      // en disco, pero el worker no alcanzó el UPDATE transaccional final.
+      const orphanId = randomUUID();
+      const orphanPath = join(directory, `${job.id}.${orphanId}.csv`);
+      const rows = await repository.list({ sku: 'export-real' }, 1, 20);
+      await writeFile(orphanPath, renderCsv(rows.items), {
+        flag: 'wx',
+        mode: 0o600,
+      });
+      const old = new Date(Date.now() - 16 * 60 * 1000);
+      await utimes(orphanPath, old, old);
+      await ageProcessingJob(job.id);
+
+      const recovered = await finish(job.id);
+      expect(recovered.status).toBe('COMPLETED');
+      expect(recovered.downloadUrl).not.toBe(`audit-artifact:${orphanId}`);
+      const completedPath = join(
+        directory,
+        `${job.id}.${recovered.downloadUrl!.slice('audit-artifact:'.length)}.csv`,
+      );
+      await utimes(completedPath, old, old);
+      expect(await worker.cleanupOrphanedArtifacts()).toBe(1);
+      await expect(readFile(orphanPath)).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+      await expect(readFile(completedPath)).resolves.toBeInstanceOf(Buffer);
+      await expect(worker.download(recovered)).resolves.toMatchObject({
+        contentType: 'text/csv',
+      });
     });
     it('impide que un worker con lease vencido sustituya el artefacto ganador', async () => {
       const job = await repository.createExport(
@@ -336,10 +384,7 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
       try {
         await repository.processExport(async (claimedJob, rows) => {
           const artifactId = randomUUID();
-          const path = join(
-            directory,
-            `${claimedJob.id}.${artifactId}.csv`,
-          );
+          const path = join(directory, `${claimedJob.id}.${artifactId}.csv`);
           await writeFile(path, renderCsv(rows), { flag: 'wx', mode: 0o600 });
           return { artifactId, discard: () => rm(path, { force: true }) };
         });

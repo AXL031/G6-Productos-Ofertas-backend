@@ -170,12 +170,18 @@ export class CommercialPrices {
     at: Date,
     historical = false,
     correlationId?: string,
+    // Interno para calibración; no forma parte de los parámetros HTTP.
+    contextConcurrency = MAX_CATALOG_CONTEXT_CONCURRENCY,
   ) {
     if (!skus.length) return { items: [] };
     if (skus.some((sku) => !sku.trim()))
       throw new PricingHttpError(400, 'VALIDACION');
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    const concurrency =
+      Number.isSafeInteger(contextConcurrency) && contextConcurrency > 0
+        ? Math.min(contextConcurrency, 16)
+        : MAX_CATALOG_CONTEXT_CONCURRENCY;
     const uniqueSkus = [...new Set(skus)];
     const contexts = new Map<
       string,
@@ -200,7 +206,7 @@ export class CommercialPrices {
     await Promise.all(
       Array.from(
         {
-          length: Math.min(MAX_CATALOG_CONTEXT_CONCURRENCY, uniqueSkus.length),
+          length: Math.min(concurrency, uniqueSkus.length),
         },
         worker,
       ),

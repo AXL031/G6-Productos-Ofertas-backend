@@ -44,10 +44,14 @@ export class CommercialService {
       query.precioMin !== undefined || query.precioMax !== undefined;
     if (monetary && query.estado !== undefined && query.estado !== 'ACTIVO')
       throw new ServiceUnavailableException();
-    if (query.categoriaId !== undefined)
-      await this.taxonomy.category(query.categoriaId, correlationId, identity);
-    if (query.marcaId !== undefined)
-      await this.taxonomy.brand(query.marcaId, correlationId, identity);
+    await Promise.all([
+      ...(query.categoriaId !== undefined
+        ? [this.taxonomy.category(query.categoriaId, correlationId, identity)]
+        : []),
+      ...(query.marcaId !== undefined
+        ? [this.taxonomy.brand(query.marcaId, correlationId, identity)]
+        : []),
+    ]);
     const isAdministrativeState =
       query.estado !== undefined && query.estado !== 'ACTIVO';
     if (isAdministrativeState && !administrativeState)

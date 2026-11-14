@@ -52,6 +52,44 @@ describe('CommercialService', () => {
     expect(repository.listCandidates).toHaveBeenCalledWith(query);
   });
 
+  it('resolves independent category and brand checks concurrently before listing', async () => {
+    let resolveCategory!: (value: unknown) => void;
+    let resolveBrand!: (value: unknown) => void;
+    taxonomy.category.mockReturnValue(
+      new Promise((resolve) => (resolveCategory = resolve)),
+    );
+    taxonomy.brand.mockReturnValue(
+      new Promise((resolve) => (resolveBrand = resolve)),
+    );
+    repository.listCandidates.mockResolvedValue({ items: [], total: 0 });
+
+    const pending = service.list({
+      ...query,
+      categoriaId: 'category-1',
+      marcaId: 'brand-1',
+    });
+
+    expect(taxonomy.category).toHaveBeenCalledWith(
+      'category-1',
+      undefined,
+      undefined,
+    );
+    expect(taxonomy.brand).toHaveBeenCalledWith(
+      'brand-1',
+      undefined,
+      undefined,
+    );
+    expect(repository.listCandidates).not.toHaveBeenCalled();
+    resolveCategory({ categoria_id: 'category-1' });
+    resolveBrand({ marca_id: 'brand-1' });
+    await expect(pending).resolves.toEqual({ items: [], total: 0 });
+    expect(repository.listCandidates).toHaveBeenCalledWith({
+      ...query,
+      categoriaId: 'category-1',
+      marcaId: 'brand-1',
+    });
+  });
+
   it('evaluates the complete lightweight candidate set before the SQL product count/page', async () => {
     const candidates = Array.from({ length: 250 }, (_, i) => ({
       productId: 'p' + i,
