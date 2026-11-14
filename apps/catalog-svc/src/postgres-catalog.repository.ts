@@ -1,3 +1,4 @@
+import { currentTaxonomyValue } from './catalog-taxonomy-update.js';
 import {
   Injectable,
   Optional,
@@ -52,7 +53,7 @@ const attributeProjection = {
   caracteristica_id: productAttributes.caracteristica_id,
   nombre: productAttributes.nombre_snapshot,
   valor_id: productAttributes.valor_id,
-  valor: productAttributes.valor,
+  valor: currentTaxonomyValue(productAttributes),
 };
 
 function isDemoImageUrl(value: unknown): value is string {
@@ -245,7 +246,7 @@ export class PostgresCatalogRepository {
         caracteristica_id: variantAttributes.caracteristica_id,
         nombre: variantAttributes.nombre_snapshot,
         valor_id: variantAttributes.valor_id,
-        valor: variantAttributes.valor,
+        valor: currentTaxonomyValue(variantAttributes),
         identifying: variantAttributes.es_identificador,
       })
       .from(variantAttributes)

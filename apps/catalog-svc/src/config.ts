@@ -120,11 +120,22 @@ export class CatalogConfig {
     let pricingOrigin: string | undefined;
     if (env.CATALOG_PRICING_URL !== undefined) {
       try {
+        if (env.CATALOG_PRICING_URL !== env.CATALOG_PRICING_URL.trim())
+          throw new Error();
         const url = new URL(env.CATALOG_PRICING_URL);
+        const oracleOrigin =
+          url.protocol === 'http:' &&
+          url.hostname === 'pricing-svc' &&
+          url.port === '3002';
+        const azureOrigin =
+          url.protocol === 'https:' &&
+          url.port === '' &&
+          /^pricing-svc\.internal(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?){2,}\.azurecontainerapps\.io$/.test(
+            url.hostname,
+          );
         if (
-          url.protocol !== 'http:' ||
-          url.hostname !== 'pricing-svc' ||
-          url.port !== '3002' ||
+          (!oracleOrigin && !azureOrigin) ||
+          env.CATALOG_PRICING_URL.replace(/\/$/, '') !== url.origin ||
           url.username ||
           url.password ||
           url.pathname !== '/' ||
@@ -135,7 +146,7 @@ export class CatalogConfig {
         pricingOrigin = url.origin;
       } catch {
         errors.push(
-          'CATALOG_PRICING_URL debe usar el origen privado pricing-svc:3002.',
+          'CATALOG_PRICING_URL debe usar el origen privado pricing-svc:3002 o https://pricing-svc.internal.<entorno>.<region>.azurecontainerapps.io.',
         );
       }
     }

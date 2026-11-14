@@ -223,7 +223,7 @@ describe('Candidate commercial HTTP client #72/#73', () => {
       }),
     );
   });
-  it('resolves missing product_id through the newly authorized skuContext and preserves VENTAS rejection', async () => {
+  it('resolves missing product_id through the newly authorized skuContext and supports VENTAS in basket and origin while keeping inventory availability limited to CanalComercial', async () => {
     await fixture(async (client, calls) => {
       const resolved = await client.basket(
         { ...basket, lines: [{ sku: 'S-P', quantity: 1 }] },
@@ -231,10 +231,28 @@ describe('Candidate commercial HTTP client #72/#73', () => {
       );
       expect(resolved.lines[0].productId).toBe('P');
       expect(calls[0].pathname).toBe('/api/v1/productos/skus/S-P/contexto');
+      const ventas = await client.basket(
+        { ...basket, channel_id: 'VENTAS' },
+        at,
+      );
+      expect(ventas.lines[0].productId).toBe('P');
+      expect(calls[3].searchParams.get('canal')).toBe('VENTAS');
+      expect(calls[4].searchParams.get('canal')).toBe('VENTAS');
+      expect(await client.recommendationOrigin('P', 'VENTAS')).toEqual({
+        active: true,
+        channelEligible: true,
+        categoryId: 'CAT',
+      });
+      expect(await client.recommendationProducts([], 'VENTAS')).toEqual(
+        new Map(),
+      );
       await expect(
-        client.basket({ ...basket, channel_id: 'VENTAS' }, at),
+        client.recommendationProducts(['P'], 'VENTAS'),
       ).rejects.toBeInstanceOf(CommercialDependencyError);
-      expect(calls).toHaveLength(3);
+      await expect(
+        client.basket({ ...basket, channel_id: 'OTRO' }, at),
+      ).rejects.toBeInstanceOf(CommercialDependencyError);
+      expect(calls).toHaveLength(7);
     });
   });
   it('maps simple-product recommendation facts from independent price and commercial availability calls', async () => {

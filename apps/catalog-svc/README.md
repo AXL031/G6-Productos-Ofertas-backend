@@ -280,3 +280,44 @@ no se cambia la aserción 400 y no se inventa una política de confianza demo.
 ### Cierre de integración
 
 Leer [paquete operativo H4](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/blob/castilla/integraciones/g1-marketplace/README.md), [matriz](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/blob/castilla/integraciones/g1-marketplace/MATRIZ_OPERACIONES_H4.md), [Acuerdo G1–G6](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/docs/g1-marketplace-homologacion-lote03/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md) y operationId OpenAPI. M-01–M-09 están `ACEPTADO_G6_COMUNICADO_G1`; esto permite implementar reglas Catalog propias. La elegibilidad comercial requiere prueba provider con datos identificados; no confundir fixtures contractuales, base PostgreSQL aislada, Supabase o Oracle. Cierre mínimo: provider de listado vacío/elegible/no elegible, slug simple con SKU base, variantes con SKU distinto de `variant_id`, campos comerciales y JWT/scopes; ligar resultados al SHA exacto.
+
+## Recepción de cambios Taxonomy — Backend #48
+
+El consumidor procesa `taxonomy.category.updated`,
+`taxonomy.product-type-schema.changed` y `taxonomy.characteristic-value.updated`
+con Inbox transaccional. Valida el productor/envelope y los datos publicados por
+Taxonomy; una identidad de mensaje reutilizada con otro payload se rechaza. Una
+revisión obsoleta se registra como `STALE`; no sustituye el hecho vigente.
+Categorías usan `data.version`, esquemas usan `data.schema_version` y los
+renombrados LISTA usan `data.updated_at` con precisión de microsegundos. El
+`schema_version=1` del envelope es una dimensión distinta.
+
+Catalog no mantiene caché local de categorías/esquemas: sus clientes HTTP siguen
+consultando la autoridad Taxonomy para lecturas/validaciones aplicables. Los
+avisos se conservan durablemente sin alterar productos, preparaciones ni barreras
+de baja. Para LISTA, las consultas actuales de productos/variantes proyectan
+`valor` desde la última etiqueta confirmada en Inbox para el par
+`(caracteristica_id, valor_id)`; no actualizan los atributos históricos,
+`nombre_snapshot`, `identifying_key`, SKU o versiones de producto/variante.
+Sin un aviso aplicable se conserva el valor persistido.
+
+**Fuentes:** AsyncAPI 0.6.0-rc.4 y SPEC-008/009/010 de Docs
+[`aba8d1ca998cfcd2db1c4fa87654036a5a4c1ac1`](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/tree/aba8d1ca998cfcd2db1c4fa87654036a5a4c1ac1).
+No se agregan mensajes ni se amplía el protocolo DEC-G6-INT-05 de bajas seguras.
+
+El ACK del transporte permanece después del commit. Payload inválido/conflictivo
+o fallo de persistencia conserva el comportamiento de pausa/reentrega; no se
+purga una cola para simular readiness. No hay migración ni SQL sobre Supabase en
+esta corrección. Inbox es también la fuente de la proyección actual: no eliminar
+sus últimos hechos `APPLIED` sin una compactación/proyección durable sustitutiva.
+Las búsquedas por payload en Inbox no tienen índice de proyección dedicado;
+medir/optimizar ese acceso antes de aumentar sustancialmente la carga.
+
+Pruebas: `npm test -- apps/catalog-svc` y
+`npm run test:e2e -- apps/catalog-svc/test/postgres.persistence.e2e-spec.ts` con
+Docker/OpenSSL. Los casos `TAXONOMY-UPDATES` prueban PostgreSQL TLS real, permisos
+del rol runtime, orden, duplicados concurrentes, rollback, proyección actual,
+snapshots intactos y RabbitMQ aislado con una fixture de wire Taxonomy. Esa
+fixture no acredita un productor Taxonomy real ni integración Azure/Oracle;
+ambas deben verificarse sobre los artefactos oficiales antes de activar el flujo.
+Los logos quedan fuera del alcance.
