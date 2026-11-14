@@ -89,6 +89,98 @@ describe('D-CAT price filtering (isolated HTTP fixtures, no external grant claim
     expect(identity.authorization).not.toHaveBeenCalled();
   });
 
+  it('filters monetary bounds over the Azure Container Apps private HTTPS Pricing origin for all four allowed channels in PUBLIC_READ_ONLY and G7_AUTHENTICATED', async () => {
+    const acaOrigin =
+      'https://pricing-svc.internal.calmgrass-aec0b33c.chilecentral.azurecontainerapps.io';
+    const channels = ['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'] as const;
+
+    const publicFilter = new CatalogPriceFilter(
+      {
+        pricingOrigin: acaOrigin,
+        readDemo: {
+          enabled: false,
+          restricted: false,
+          securityMode: 'PUBLIC_READ_ONLY',
+        },
+      } as CatalogConfig,
+      identity,
+    );
+    for (const canal of channels) {
+      fetchMock.mockResolvedValueOnce(
+        response([
+          { ...row('sku-in', 95), channel_id: canal },
+          {
+            ...row('sku-offer', 130),
+            precio_oferta: 85,
+            channel_id: canal,
+          },
+          { ...row('sku-out', 150), channel_id: canal },
+        ]),
+      );
+      expect(
+        await publicFilter.matchingProducts(
+          [
+            { productId: 'prod-in', sku: 'sku-in' },
+            { productId: 'prod-offer', sku: 'sku-offer' },
+            { productId: 'prod-out', sku: 'sku-out' },
+          ],
+          { ...query, canal },
+          `corr-public-${canal}`,
+        ),
+      ).toEqual(['prod-in', 'prod-offer']);
+      const [calledUrl, calledInit] = fetchMock.mock.calls.at(-1)!;
+      const parsed = new URL(String(calledUrl));
+      expect(parsed.origin).toBe(acaOrigin);
+      expect(parsed.pathname).toBe('/api/v1/precios');
+      expect(parsed.searchParams.get('canal')).toBe(canal);
+      const headers = new Headers(calledInit?.headers);
+      expect(headers.has('authorization')).toBe(false);
+      expect(headers.get('x-correlation-id')).toBe(`corr-public-${canal}`);
+    }
+    expect(identity.authorization).not.toHaveBeenCalled();
+
+    const g7Filter = new CatalogPriceFilter(
+      {
+        pricingOrigin: acaOrigin,
+        readDemo: {
+          enabled: false,
+          restricted: false,
+          securityMode: 'G7_AUTHENTICATED',
+        },
+      } as CatalogConfig,
+      identity,
+    );
+    for (const canal of channels) {
+      fetchMock.mockResolvedValueOnce(
+        response([
+          { ...row('sku-in', 90), channel_id: canal },
+          { ...row('sku-low', 70), channel_id: canal },
+        ]),
+      );
+      expect(
+        await g7Filter.matchingProducts(
+          [
+            { productId: 'prod-in', sku: 'sku-in' },
+            { productId: 'prod-low', sku: 'sku-low' },
+          ],
+          { ...query, canal },
+          `corr-g7-${canal}`,
+        ),
+      ).toEqual(['prod-in']);
+      const [calledUrl, calledInit] = fetchMock.mock.calls.at(-1)!;
+      const parsed = new URL(String(calledUrl));
+      expect(parsed.origin).toBe(acaOrigin);
+      expect(parsed.pathname).toBe('/api/v1/precios');
+      expect(parsed.searchParams.get('canal')).toBe(canal);
+      const headers = new Headers(calledInit?.headers);
+      expect(headers.get('authorization')).toBe(
+        'Bearer catalog-technical-fixture',
+      );
+      expect(headers.get('x-correlation-id')).toBe(`corr-g7-${canal}`);
+    }
+    expect(identity.authorization).toHaveBeenCalledTimes(channels.length);
+  });
+
   it('preserves decimal bounds and wire numbers without binary rounding or exponent expansion', () => {
     expect(
       parseProductQuery({ canal: 'RETAIL', precioMin: '9007199254740992.01' })
