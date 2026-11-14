@@ -76,6 +76,6 @@ done < <(jq -r '.[]' <<< "$selected_json")
 if (( failed == 0 )); then
   echo 'RECUPERACIÓN COMPLETA: cada servicio seleccionado tiene evidencia de recuperación verificada o evidencia GitHub de que no se desplegó.' | tee -a "$summary_file"
 else
-  echo 'RECUPERACIÓN PARCIAL/DESCONOCIDA: no declarar el conjunto recuperado. Revisar los servicios marcados y continuar manualmente bajo aprobación del environment azure-h4.' | tee -a "$summary_file"
+  echo 'RECUPERACIÓN PARCIAL/DESCONOCIDA: no declarar el conjunto recuperado. Revisar los servicios marcados y continuar manualmente bajo aprobación del environment azure-h5.' | tee -a "$summary_file"
   exit 1
 fi

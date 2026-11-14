@@ -1,9 +1,5 @@
-name: CD Azure Container Apps H4
+name: CD Azure Container Apps H5
 'on':
-  workflow_run:
-    workflows: [Integración continua (CI)]
-    branches: [master]
-    types: [completed]
   workflow_dispatch:
     inputs:
       service:
@@ -22,19 +18,19 @@ name: CD Azure Container Apps H4
           - bulk-svc
           - all
       sha:
-        description: SHA de 40 caracteres; debe ser la punta vigente de master con CI exitosa
+        description: SHA completo de un commit alcanzable desde master con CI exitosa para ese SHA
         required: true
         type: string
 
 permissions: {}
 concurrency:
-  group: g6-azure-h4-production-${{ github.repository }}
+  group: g6-azure-h5-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
   prepare:
     name: Validar procedencia y servicios
-    if: github.repository == 'Taller-SW-Web/G6-Productos-Ofertas-backend' && (github.event_name == 'workflow_run' || github.event_name == 'workflow_dispatch')
+    if: github.repository == 'Taller-SW-Web/G6-Productos-Ofertas-backend' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -50,24 +46,19 @@ jobs:
           ref: refs/heads/master
           persist-credentials: false
 
-      - name: Determinar modo y SHA candidato
+      - name: Seleccionar SHA y modo manual protegido
         id: mode
         env:
           TRIGGER_EVENT: ${{ github.event_name }}
           DISPATCH_SERVICE: ${{ inputs.service }}
           DISPATCH_SHA: ${{ inputs.sha }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -Eeuo pipefail
-          if [[ "$TRIGGER_EVENT" == workflow_run ]]; then
-            echo 'value=auto' >> "$GITHUB_OUTPUT"
-            echo "sha=$CI_SHA" >> "$GITHUB_OUTPUT"
-          else
-            echo 'value=manual' >> "$GITHUB_OUTPUT"
-            echo "sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
-          fi
+          [[ "$TRIGGER_EVENT" == workflow_dispatch && "$DISPATCH_SHA" =~ ^[0-9a-f]{40}$ ]]
+          echo 'value=manual' >> "$GITHUB_OUTPUT"
+          echo "sha=$DISPATCH_SHA" >> "$GITHUB_OUTPUT"
 
-      - name: Validar CI exitosa, repositorio oficial, SHA vigente y allowlist
+      - name: Validar CI exitosa, historial master y allowlist de servicios
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -77,11 +68,6 @@ jobs:
           SOURCE_SHA: ${{ steps.mode.outputs.sha }}
           SOURCE_MODE: ${{ steps.mode.outputs.value }}
           REQUESTED_SERVICE: ${{ inputs.service }}
-          CI_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CI_EVENT: ${{ github.event.workflow_run.event }}
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "${REQUESTED_SERVICE:-automatic}" "$SOURCE_SHA"
 
       - name: Registrar origen y selección
@@ -102,17 +88,24 @@ jobs:
       contents: read
       packages: write
     concurrency:
-      group: deploy-g6-services-oracle-${{ github.repository }}-${{ matrix.service }}
+      group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
       matrix:
         service: ${{ fromJSON(needs.prepare.outputs.services) }}
     steps:
+      - name: Obtener validadores de master vigente
+        uses: actions/checkout@v4
+        with:
+          ref: refs/heads/master
+          persist-credentials: false
+
       - name: Obtener el SHA validado
         uses: actions/checkout@v4
         with:
           ref: ${{ needs.prepare.outputs.sha }}
+          path: source
           persist-credentials: false
 
       - name: Revalidar SHA y CI antes de construir
@@ -124,11 +117,6 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
           REQUESTED_SERVICE: ${{ matrix.service }}
-          CI_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CI_EVENT: ${{ github.event.workflow_run.event }}
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$REQUESTED_SERVICE" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Configurar Buildx
@@ -146,15 +134,15 @@ jobs:
         env:
           SERVICE: ${{ matrix.service }}
           IMAGE_SHA: ${{ needs.prepare.outputs.sha }}
-        run: bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$GITHUB_OUTPUT"
+        run: bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$GITHUB_OUTPUT"
 
       - name: Construir imagen local por SHA
         id: build
         if: steps.existing.outputs.exists == 'false'
         uses: docker/build-push-action@v6
         with:
-          context: .
-          file: Dockerfile.service
+          context: source
+          file: source/Dockerfile.service
           build-args: SERVICE_NAME=${{ matrix.service }}
           load: true
           tags: ${{ steps.existing.outputs.image }}
@@ -173,11 +161,6 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
           REQUESTED_SERVICE: ${{ matrix.service }}
-          CI_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CI_EVENT: ${{ github.event.workflow_run.event }}
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
           SERVICE: ${{ matrix.service }}
           IMAGE_SHA: ${{ needs.prepare.outputs.sha }}
         run: |
@@ -185,7 +168,7 @@ jobs:
           bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$SERVICE" "$SOURCE_SHA" > /dev/null
           check="$(mktemp)"
           trap 'rm -f "$check"' EXIT
-          bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$check"
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$IMAGE_SHA" "$check"
           [[ "$(sed -n 's/^exists=//p' "$check")" == false ]] || { echo 'La etiqueta SHA apareció durante la construcción; se prohíbe sobrescribirla.' >&2; exit 1; }
 
       - name: Publicar la imagen OCI construida en GHCR
@@ -212,11 +195,6 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
           REQUESTED_SERVICE: ${{ matrix.service }}
-          CI_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CI_EVENT: ${{ github.event.workflow_run.event }}
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
           EXISTING_DIGEST: ${{ steps.existing.outputs.digest }}
           PUBLISHED_DIGEST: ${{ steps.publication.outputs.digest }}
           WAS_EXISTING: ${{ steps.existing.outputs.exists }}
@@ -226,7 +204,7 @@ jobs:
           bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$SERVICE" "$SOURCE_SHA" > /dev/null
           check="$(mktemp)"
           trap 'rm -f "$check"' EXIT
-          bash ops/oracle/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$check"
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$check"
           image="$(sed -n 's/^image=//p' "$check")"
           digest="$(sed -n 's/^digest=//p' "$check")"
           expected="${PUBLISHED_DIGEST:-$EXISTING_DIGEST}"
@@ -259,7 +237,10 @@ jobs:
     needs: [prepare, publish]
     if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
     runs-on: ubuntu-latest
-    environment: azure-h4
+    environment: azure-h5
+    concurrency:
+      group: g6-azure-h5-${{ github.repository }}-azure-h5-${{ matrix.service }}
+      cancel-in-progress: false
     permissions:
       actions: read
       contents: read
@@ -292,11 +273,11 @@ jobs:
           [[ "$image" =~ ^ghcr\.io/taller-sw-web/g6-productos-ofertas-backend/${SERVICE}@sha256:[0-9a-f]{64}$ ]]
           echo "value=$image" >> "$GITHUB_OUTPUT"
 
-      - name: Comprobar variables del entorno azure-h4
+      - name: Comprobar variables del entorno azure-h5
         run: |
           set -Eeuo pipefail
           for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID; do
-            [[ -n "${!name:-}" ]] || { echo "Falta la variable ${name} en el environment azure-h4." >&2; exit 1; }
+            [[ -n "${!name:-}" ]] || { echo "Falta la variable ${name} en el environment azure-h5." >&2; exit 1; }
           done
         env:
           AZURE_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID }}
@@ -319,11 +300,6 @@ jobs:
           SOURCE_SHA: ${{ needs.prepare.outputs.sha }}
           SOURCE_MODE: ${{ needs.prepare.outputs.mode }}
           REQUESTED_SERVICE: ${{ matrix.service }}
-          CI_REPOSITORY: ${{ github.event.workflow_run.head_repository.full_name }}
-          CI_BRANCH: ${{ github.event.workflow_run.head_branch }}
-          CI_EVENT: ${{ github.event.workflow_run.event }}
-          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
-          CI_SHA: ${{ github.event.workflow_run.head_sha }}
         run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "$REQUESTED_SERVICE" "$SOURCE_SHA" > /dev/null
 
       - name: Actualizar solo la imagen y verificar revisión/rollback
@@ -342,27 +318,61 @@ jobs:
           retention-days: 1
 
   smoke:
-    name: Smoke HTTPS Marketplace posterior al despliegue
+    name: Smoke HTTPS posterior al despliegue
     needs: [prepare, deploy]
-    if: needs.prepare.outputs.sha != '' && contains(fromJSON(needs.prepare.outputs.services), 'api-gateway')
+    if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
     runs-on: ubuntu-latest
+    environment: azure-h5
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJSON(needs.prepare.outputs.services) }}
     steps:
-      - name: Obtener smoke desde master
+      - name: Obtener smoke de master
         uses: actions/checkout@v4
         with:
-          ref: ${{ needs.prepare.outputs.sha }}
+          ref: refs/heads/master
           persist-credentials: false
-      - name: Comprobar cinco lecturas HTTPS con reintentos acotados
-        run: bash ops/azure/container-apps/smoke-marketplace.sh
+      - name: Verificar liveness, readiness y rechazo sin autorización
+        env:
+          SERVICE: ${{ matrix.service }}
+          SMOKE_URL_API_GATEWAY: ${{ vars.AZURE_SMOKE_URL_API_GATEWAY }}
+          SMOKE_URL_BULK_SVC: ${{ vars.AZURE_SMOKE_URL_BULK_SVC }}
+          SMOKE_URL_CATALOG_SVC: ${{ vars.AZURE_SMOKE_URL_CATALOG_SVC }}
+          SMOKE_URL_COMBOS_SVC: ${{ vars.AZURE_SMOKE_URL_COMBOS_SVC }}
+          SMOKE_URL_INVENTORY_SVC: ${{ vars.AZURE_SMOKE_URL_INVENTORY_SVC }}
+          SMOKE_URL_PRICE_AUDIT_SVC: ${{ vars.AZURE_SMOKE_URL_PRICE_AUDIT_SVC }}
+          SMOKE_URL_PRICING_SVC: ${{ vars.AZURE_SMOKE_URL_PRICING_SVC }}
+          SMOKE_URL_PROMOTIONS_SVC: ${{ vars.AZURE_SMOKE_URL_PROMOTIONS_SVC }}
+          SMOKE_URL_TAXONOMY_SVC: ${{ vars.AZURE_SMOKE_URL_TAXONOMY_SVC }}
+          SMOKE_PROTECTED_API_GATEWAY: ${{ vars.AZURE_SMOKE_PROTECTED_API_GATEWAY }}
+          SMOKE_PROTECTED_BULK_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_BULK_SVC }}
+          SMOKE_PROTECTED_CATALOG_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_CATALOG_SVC }}
+          SMOKE_PROTECTED_COMBOS_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_COMBOS_SVC }}
+          SMOKE_PROTECTED_INVENTORY_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_INVENTORY_SVC }}
+          SMOKE_PROTECTED_PRICE_AUDIT_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PRICE_AUDIT_SVC }}
+          SMOKE_PROTECTED_PRICING_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PRICING_SVC }}
+          SMOKE_PROTECTED_PROMOTIONS_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_PROMOTIONS_SVC }}
+          SMOKE_PROTECTED_TAXONOMY_SVC: ${{ vars.AZURE_SMOKE_PROTECTED_TAXONOMY_SVC }}
+        run: |
+          set -Eeuo pipefail
+          service_key="${SERVICE^^}"
+          service_key="${service_key//-/_}"
+          url_var="SMOKE_URL_${service_key}"
+          protected_var="SMOKE_PROTECTED_${service_key}"
+          url="${!url_var:-}"
+          protected="${!protected_var:-}"
+          export SMOKE_URL="$url" SMOKE_PROTECTED_PATH="$protected"
+          bash ops/azure/container-apps/smoke-service.sh "$SERVICE"
 
   recover:
-    name: Recuperación supervisada (requiere aprobación azure-h4)
+    name: Recuperación supervisada (requiere aprobación azure-h5)
     needs: [prepare, deploy, smoke]
     if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
     runs-on: ubuntu-latest
-    environment: azure-h4
+    environment: azure-h5
     permissions:
       actions: read
       contents: read
