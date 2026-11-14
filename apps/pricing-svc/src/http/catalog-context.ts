@@ -98,4 +98,85 @@ export class CatalogContextHttp implements PricingCatalogContext {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
   }
+
+  async resolveBatch(skus: readonly string[], correlationId = randomUUID()) {
+    try {
+      if (
+        !this.config.catalogUrl ||
+        this.h4 ||
+        !uuid.test(correlationId) ||
+        skus.length < 1 ||
+        skus.length > 100 ||
+        skus.some((sku) => typeof sku !== 'string' || !sku || sku.length > 256)
+      )
+        throw new Error();
+      // Este endpoint es privado: exige siempre identidad técnica propia, aun
+      // en modos legacy de lecturas públicas. Nunca recibe el bearer humano.
+      const authorization = await this.token?.();
+      if (!authorization) throw new Error();
+      const response = await fetch(
+        this.config.catalogUrl + '/api/v1/productos/skus/contexto/lote',
+        {
+          method: 'POST',
+          redirect: 'error',
+          signal: AbortSignal.timeout(2500),
+          headers: {
+            Accept: 'application/json, application/problem+json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${authorization}`,
+            'X-Correlation-Id': correlationId,
+          },
+          body: JSON.stringify({ skus }),
+        },
+      );
+      if (!response.body) throw new Error();
+      const reader = response.body.getReader();
+      const chunks: Uint8Array[] = [];
+      let length = 0;
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          length += value.byteLength;
+          if (length > 1024 * 1024) throw new Error();
+          chunks.push(value);
+        }
+      } finally {
+        await reader.cancel();
+      }
+      const contentType = response.headers.get('content-type')?.split(';')[0];
+      if (response.status !== 200 || contentType !== 'application/json')
+        throw new Error();
+      const body: unknown = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      if (!record(body) || !Array.isArray(body.items)) throw new Error();
+      if (body.items.length !== skus.length) throw new Error();
+      return body.items.map((item: unknown, index: number) => {
+        const expectedSku = skus[index]!;
+        if (!record(item) || item.sku !== expectedSku) throw new Error();
+        if (item.status === 'SKU_NO_ENCONTRADO' && item.context === null)
+          return null;
+        if (item.status !== 'FOUND' || !record(item.context)) throw new Error();
+        const context = item.context;
+        if (
+          context.sku !== expectedSku ||
+          typeof context.productId !== 'string' ||
+          !context.productId ||
+          typeof context.isVariant !== 'boolean' ||
+          typeof context.active !== 'boolean' ||
+          typeof context.eligible !== 'boolean'
+        )
+          throw new Error();
+        return {
+          sku: expectedSku,
+          productId: context.productId,
+          isVariant: context.isVariant,
+          active: context.active,
+          eligible: context.eligible,
+        };
+      });
+    } catch {
+      // No retry: una sola consulta privada y cualquier frontera inválida falla cerrada.
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    }
+  }
 }

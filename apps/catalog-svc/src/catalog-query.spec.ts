@@ -16,6 +16,30 @@ describe('Commercial query contract', () => {
       categoriaId: 'CAT-01',
     });
   });
+  it('accepts repeated inclusion and exclusion type filters without collapsing the set', () => {
+    expect(
+      parseProductQuery({
+        canal: 'RETAIL',
+        q: 'ropa',
+        estado: 'ACTIVO',
+        categoriaId: 'cat',
+        marcaId: 'brand',
+        tipoProductoIdsIncluidos: ['type-one', 'type/opaque'],
+        tipoProductoIdsExcluidos: ['combo-a', 'combo-b'],
+      }),
+    ).toMatchObject({
+      tipoProductoIdsIncluidos: ['type-one', 'type/opaque'],
+      tipoProductoIdsExcluidos: ['combo-a', 'combo-b'],
+      q: 'ropa',
+      estado: 'ACTIVO',
+    });
+    expect(
+      parseProductQuery({
+        canal: 'MARKETPLACE',
+        tipoProductoIdsExcluidos: 'combo',
+      }).tipoProductoIdsExcluidos,
+    ).toEqual(['combo']);
+  });
   it.each([
     {},
     { canal: 'unknown' },
@@ -32,6 +56,12 @@ describe('Commercial query contract', () => {
     { precioMin: '3', precioMax: '2' },
     { estado: 'ACTIVA' },
     { admin: 'true' },
+    { tipoProductoIdsIncluidos: [] },
+    { tipoProductoIdsIncluidos: ['type', 'type'] },
+    { tipoProductoIdsExcluidos: [''] },
+    { tipoProductoIdsExcluidos: ['x'.repeat(257)] },
+    { tipoProductoIdsExcluidos: ['type\0id'] },
+    { tipoProductoIdsIncluidos: Array(101).fill('type') },
   ])('rejects malformed parameters %j', (input) => {
     const query = Object.keys(input).length
       ? { canal: 'MARKETPLACE', ...input }

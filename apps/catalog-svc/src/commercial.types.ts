@@ -7,6 +7,8 @@ export interface ProductQuery {
   pagina: number;
   tamanio: number;
   estado?: 'BORRADOR' | 'ACTIVO' | 'INACTIVO';
+  tipoProductoIdsIncluidos?: readonly string[];
+  tipoProductoIdsExcluidos?: readonly string[];
   precioMin?: string | number;
   precioMax?: string | number;
   orden: 'NOMBRE_ASC' | 'NOMBRE_DESC';

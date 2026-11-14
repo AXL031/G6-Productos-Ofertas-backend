@@ -18,6 +18,18 @@ export interface PricingCatalogContext {
     active: boolean;
     eligible: boolean;
   } | null>;
+  resolveBatch?(
+    skus: readonly string[],
+    correlationId?: string,
+  ): Promise<
+    Array<{
+      sku: string;
+      productId: string;
+      isVariant: boolean;
+      active: boolean;
+      eligible: boolean;
+    } | null>
+  >;
 }
 export const channels = ['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'] as const;
 const MAX_CATALOG_CONTEXT_CONCURRENCY = 8;
@@ -187,31 +199,59 @@ export class CommercialPrices {
       string,
       Awaited<ReturnType<PricingCatalogContext['resolve']>>
     >();
-    let cursor = 0;
-    let failed = false;
-    let failure: unknown;
-    const worker = async () => {
-      while (!failed) {
-        const index = cursor++;
-        if (index >= uniqueSkus.length) return;
-        const sku = uniqueSkus[index]!;
-        try {
-          contexts.set(sku, await this.resolveContext(sku, correlationId));
-        } catch (error) {
-          failed = true;
-          failure = error;
-        }
+    if (this.catalog.resolveBatch) {
+      let resolved: NonNullable<
+        Awaited<ReturnType<NonNullable<PricingCatalogContext['resolveBatch']>>>
+      >;
+      try {
+        resolved = await this.catalog.resolveBatch(uniqueSkus, correlationId);
+      } catch {
+        throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
       }
-    };
-    await Promise.all(
-      Array.from(
-        {
-          length: Math.min(concurrency, uniqueSkus.length),
-        },
-        worker,
-      ),
-    );
-    if (failed) throw failure;
+      if (
+        !Array.isArray(resolved) ||
+        resolved.length !== uniqueSkus.length ||
+        resolved.some(
+          (context, index) =>
+            context !== null &&
+            (!context ||
+              context.sku !== uniqueSkus[index] ||
+              typeof context.productId !== 'string' ||
+              !context.productId.trim() ||
+              typeof context.isVariant !== 'boolean' ||
+              typeof context.active !== 'boolean' ||
+              typeof context.eligible !== 'boolean'),
+        )
+      )
+        throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+      uniqueSkus.forEach((sku, index) => contexts.set(sku, resolved[index]!));
+    } else {
+      let cursor = 0;
+      let failed = false;
+      let failure: unknown;
+      const worker = async () => {
+        while (!failed) {
+          const index = cursor++;
+          if (index >= uniqueSkus.length) return;
+          const sku = uniqueSkus[index]!;
+          try {
+            contexts.set(sku, await this.resolveContext(sku, correlationId));
+          } catch (error) {
+            failed = true;
+            failure = error;
+          }
+        }
+      };
+      await Promise.all(
+        Array.from(
+          {
+            length: Math.min(concurrency, uniqueSkus.length),
+          },
+          worker,
+        ),
+      );
+      if (failed) throw failure;
+    }
 
     const eligibleContexts = uniqueSkus.flatMap((sku) => {
       const context = contexts.get(sku);

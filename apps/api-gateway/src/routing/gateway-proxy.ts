@@ -4,7 +4,6 @@ import { finished } from 'node:stream/promises';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { CONTRACT_ROUTES } from './contract-routes.js';
-import { PHASE1_INTERNAL_READ_ROUTES } from './phase1-internal-read-routes.js';
 import {
   GatewayFailure,
   GatewayIdentity,
@@ -26,7 +25,6 @@ const routes = [...CONTRACT_ROUTES].sort(
 export function matchContractRoute(
   method: string,
   path: string,
-  includePhase1Internal = false,
 ): ContractRoute | undefined {
   if (/\\|%00/i.test(path)) return undefined;
   const actual = path.split('/');
@@ -36,10 +34,7 @@ export function matchContractRoute(
   } catch {
     return undefined;
   }
-  return [
-    ...routes,
-    ...(includePhase1Internal ? PHASE1_INTERNAL_READ_ROUTES : []),
-  ].find(
+  return routes.find(
     (route) =>
       route.method === method &&
       route.path.split('/').length === actual.length &&
@@ -133,12 +128,7 @@ export class GatewayProxy {
 
   async forward(req: Request, res: Response): Promise<void> {
     const path = req.originalUrl.split('?')[0];
-    const route = matchContractRoute(
-      req.method,
-      path,
-      this.settings.securityMode === 'PUBLIC_READ_ONLY' &&
-        this.settings.publicOperations.includes('obtenerContextoSku'),
-    );
+    const route = matchContractRoute(req.method, path);
     if (!route) {
       res.status(404).end();
       return;

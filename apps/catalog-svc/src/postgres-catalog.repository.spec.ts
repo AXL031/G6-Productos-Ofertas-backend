@@ -98,10 +98,41 @@ describe('Catalog provider SQL and projections (isolated)', () => {
   it('looks up an opaque context SKU as a SQL parameter within Catalog only', async () => {
     const sku = " 000-' OR true -- ";
     expect(await repo.skuContext(sku)).toBeNull();
-    expect(statements).toHaveLength(1);
-    expect(statements[0].values).toEqual([sku]);
-    expect(statements[0].text).not.toContain(sku);
-    expect(statements[0].text).not.toMatch(/taxonomy\.|pricing\./);
+    const lookup = statements.find((statement) =>
+      statement.text.includes('"catalog"."sku_identity"'),
+    );
+    expect(lookup).toBeDefined();
+    expect(lookup?.values).toEqual([sku]);
+    expect(lookup?.text).not.toContain(sku);
+    expect(lookup?.text).not.toMatch(/taxonomy\.|pricing\./);
+    expect(statements[0]?.text).toMatch(/begin/i);
+    expect(statements.at(-1)?.text).toMatch(/commit/i);
+  });
+  it('deduplicates a private context batch in one SQL lookup and restores request order for misses', async () => {
+    const skus = ['000-base', 'A/B+ñ', '000-base'];
+    expect(await repo.skuContexts(skus)).toEqual(
+      skus.map((sku) => ({
+        sku,
+        status: 'SKU_NO_ENCONTRADO',
+        context: null,
+      })),
+    );
+    const lookups = statements.filter((statement) =>
+      statement.text.includes('"catalog"."sku_identity"'),
+    );
+    expect(lookups).toHaveLength(1);
+    expect(lookups[0]?.values).toEqual(['000-base', 'A/B+ñ']);
+  });
+  it('sanitizes private context batch storage failures as 503', async () => {
+    const broken = new PostgresCatalogRepository({
+      read: async () => {
+        throw new Error('private database diagnostic');
+      },
+    } as unknown as Database);
+    await expect(broken.skuContexts(['000'])).rejects.toMatchObject({
+      status: 503,
+      response: { code: 'SERVICIO_NO_DISPONIBLE' },
+    });
   });
   it('parameterizes literal text and filters eligibility in COUNT before LIMIT/OFFSET', async () => {
     await repo.listCandidates({

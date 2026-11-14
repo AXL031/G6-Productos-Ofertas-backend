@@ -14,7 +14,9 @@ import { IsolatedPostgres } from './isolated-postgres.js';
 
 const CURRENT = new Date('2030-06-01T00:00:00Z');
 const HISTORICAL = new Date('2029-06-01T00:00:00Z');
-const SAMPLE_COUNT = 5;
+// 100 observations make the reported p99 an order statistic rather than the
+// maximum of a five-request smoke sample.
+const SAMPLE_COUNT = 100;
 const CONTEXT_DELAY_MS = 4;
 const BATCH_SIZES = [1, 20, 100] as const;
 const CONCURRENCY_LEVELS = [1, 2, 4, 8, 16] as const;
@@ -233,6 +235,7 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
   let database: PricingDatabase;
   let repository: PricingRepository;
   let service: CommercialPrices;
+  let individualContextService: CommercialPrices;
   let server: Server;
   let serverOrigin: string;
   let contexts: Map<string, CatalogFixtureContext>;
@@ -260,17 +263,55 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
       activeRequests += 1;
       maximumRequests = Math.max(maximumRequests, activeRequests);
       try {
+        const chunks: Buffer[] = [];
+        for await (const chunk of request) chunks.push(Buffer.from(chunk));
+        const batch = request.method === 'POST';
+        const requestedSkus = batch
+          ? (
+              JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+                skus: string[];
+              }
+            ).skus
+          : [];
         await delay(CONTEXT_DELAY_MS);
         const encodedSku = request.url?.match(
           /^\/api\/v1\/productos\/skus\/([^/]+)\/contexto$/,
         )?.[1];
         const sku = encodedSku ? decodeURIComponent(encodedSku) : undefined;
-        if (sku === 'SKU-503') {
+        if (sku === 'SKU-503' || requestedSkus.includes('SKU-503')) {
           response.writeHead(503, {
             'content-type': 'application/problem+json',
           });
           response.end(
             JSON.stringify({ status: 503, code: 'SERVICIO_NO_DISPONIBLE' }),
+          );
+          return;
+        }
+        if (batch) {
+          response.writeHead(200, { 'content-type': 'application/json' });
+          response.end(
+            JSON.stringify({
+              items: requestedSkus.map((requestedSku) => {
+                const context = contexts.get(requestedSku);
+                return context
+                  ? {
+                      sku: requestedSku,
+                      status: 'FOUND',
+                      context: {
+                        sku: context.sku,
+                        productId: context.productId,
+                        isVariant: context.isVariant,
+                        active: context.active,
+                        eligible: context.eligible,
+                      },
+                    }
+                  : {
+                      sku: requestedSku,
+                      status: 'SKU_NO_ENCONTRADO',
+                      context: null,
+                    };
+              }),
+            }),
           );
           return;
         }
@@ -323,6 +364,9 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
       async () => 'benchmark-fixture-token',
     );
     service = new CommercialPrices(repository, catalog);
+    individualContextService = new CommercialPrices(repository, {
+      resolve: catalog.resolve.bind(catalog),
+    });
     querySpy = vi.spyOn(Client.prototype, 'query');
   }, 120_000);
 
@@ -492,7 +536,7 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
           cases,
         }),
     );
-  }, 180_000);
+  }, 900_000);
 
   it('calibra contexto Catálogo con concurrencias 1/2/4/8/16 y registra el p95', async () => {
     const skus = Array.from({ length: 100 }, (_, index) => fixtureSku(index));
@@ -503,7 +547,7 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
       for (let round = 0; round < SAMPLE_COUNT; round++) {
         maximumRequests = 0;
         const started = performance.now();
-        const result = await service.batch(
+        const result = await individualContextService.batch(
           skus,
           'RETAIL',
           CURRENT,
@@ -534,7 +578,7 @@ describe('C3 Pricing: benchmark aislado de consulta comercial por lotes', () => 
           measurements,
         }),
     );
-  }, 180_000);
+  }, 900_000);
 
   it('conserva duplicados, variantes, herencia global, vigencia histórica, ausencias y error 503', async () => {
     const duplicated = ['SKU-001', 'SKU-001', 'SKU-002'];

@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
 import { CatalogContextHttp } from './catalog-context.js';
 import { validateEnvironment } from '../config/environment.js';
 
@@ -10,7 +11,12 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   let body: unknown;
   let raw: string | undefined;
   let delay = 0;
-  let received: { url?: string; authorization?: string }[];
+  let received: {
+    url?: string;
+    authorization?: string;
+    method?: string;
+    body?: string;
+  }[];
   const sku = '0001 /á,?';
   const config = () => ({
     nodeEnv: 'test' as const,
@@ -21,16 +27,25 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   });
   beforeAll(async () => {
     server = createServer((req, res) => {
-      received.push({ url: req.url, authorization: req.headers.authorization });
-      const respond = () => {
-        res.writeHead(status, {
-          'content-type': type,
-          location: origin + '/redirect',
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      req.on('end', () => {
+        received.push({
+          url: req.url,
+          method: req.method,
+          authorization: req.headers.authorization,
+          body: Buffer.concat(chunks).toString('utf8'),
         });
-        res.end(raw ?? JSON.stringify(body));
-      };
-      if (delay) setTimeout(respond, delay);
-      else respond();
+        const respond = () => {
+          res.writeHead(status, {
+            'content-type': type,
+            location: origin + '/redirect',
+          });
+          res.end(raw ?? JSON.stringify(body));
+        };
+        if (delay) setTimeout(respond, delay);
+        else respond();
+      });
     });
     await new Promise<void>((resolve) =>
       server.listen(0, '127.0.0.1', resolve),
@@ -74,12 +89,12 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
           async () => 'fixture-service-token',
         ).resolve(sku),
       ).toEqual(body);
-      expect(received).toEqual([
-        {
-          url: `/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
-          authorization: 'Bearer fixture-service-token',
-        },
-      ]);
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        method: 'GET',
+        url: `/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
+        authorization: 'Bearer fixture-service-token',
+      });
     },
   );
   it.each([
@@ -187,6 +202,61 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
         async () => 'fixture-service-token',
       ).resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
+  });
+  it('resuelve un lote privado con identidades opacas, duplicados y ausencias por fila', async () => {
+    const missing = 'SKU sin, coma / á?';
+    const skus = [sku, missing, sku];
+    const context = {
+      sku,
+      productId: 'product',
+      isVariant: true,
+      active: true,
+      eligible: true,
+    };
+    body = {
+      items: [
+        { sku, status: 'FOUND', context },
+        { sku: missing, status: 'SKU_NO_ENCONTRADO', context: null },
+        { sku, status: 'FOUND', context },
+      ],
+    };
+    const result = await new CatalogContextHttp(
+      config(),
+      async () => 'fixture-service-token',
+    ).resolveBatch(skus, randomUUID());
+    expect(result).toEqual([context, null, context]);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      method: 'POST',
+      url: '/api/v1/productos/skus/contexto/lote',
+      authorization: 'Bearer fixture-service-token',
+      body: JSON.stringify({ skus }),
+    });
+  });
+  it.each([401, 403, 503])(
+    'falla cerrado para rechazo del contexto batch HTTP %s sin retry',
+    async (code) => {
+      status = code;
+      type = 'application/problem+json';
+      body = { status: code, code: 'SERVICIO_NO_DISPONIBLE' };
+      await expect(
+        new CatalogContextHttp(
+          config(),
+          async () => 'fixture-service-token',
+        ).resolveBatch([sku]),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(received).toHaveLength(1);
+    },
+  );
+  it('no utiliza una lectura pública ni una credencial humana para el contexto batch privado', async () => {
+    await expect(
+      new CatalogContextHttp({
+        ...config(),
+        securityMode: 'PUBLIC_READ_ONLY',
+        publicOperations: ['consultarProducto'],
+      }).resolveBatch([sku]),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(received).toEqual([]);
   });
   it('valida el origen configurado y permite solo HTTP loopback de pruebas', () => {
     const env = {

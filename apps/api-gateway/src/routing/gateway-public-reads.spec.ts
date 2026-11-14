@@ -21,23 +21,27 @@ describe('Phase 1 exact operation policy and JWT coexistence', () => {
       .slice(1)
       .map((line) => /^"[^"]+","([^"]+)"/.exec(line)?.[1])
       .filter(
-        (id): id is string => !!id && id !== 'prevalidarImportacionPrecios',
+        (id): id is string =>
+          !!id &&
+          id !== 'prevalidarImportacionPrecios' &&
+          id !== 'obtenerContextoSku',
       )
       .sort();
-    expect(expected).toHaveLength(65);
+    expect(expected).toHaveLength(64);
     expect(
-      [...CONTRACT_ROUTES, ...PHASE1_INTERNAL_READ_ROUTES]
-        .filter(isEligiblePublicRead)
+      CONTRACT_ROUTES.filter(isEligiblePublicRead)
         .map((route) => route.operationId)
         .sort(),
     ).toEqual(expected);
+    expect(PHASE1_INTERNAL_READ_ROUTES).toEqual([]);
     expect(
       matchContractRoute('GET', '/api/v1/productos/skus/TEST/contexto'),
     ).toBeUndefined();
     expect(
-      matchContractRoute('GET', '/api/v1/productos/skus/TEST/contexto', true)
-        ?.operationId,
-    ).toBe('obtenerContextoSku');
+      CONTRACT_ROUTES.some(
+        (route) => route.operationId === 'obtenerContextosSku',
+      ),
+    ).toBe(false);
     const route = CONTRACT_ROUTES[0];
     for (const changed of [
       { ...route, method: 'POST' },
@@ -49,6 +53,7 @@ describe('Phase 1 exact operation policy and JWT coexistence', () => {
       'crearProducto',
       'prevalidarImportacionPrecios',
       'activarProducto',
+      'obtenerContextoSku',
     ])
       expect(() =>
         readGatewaySettings({

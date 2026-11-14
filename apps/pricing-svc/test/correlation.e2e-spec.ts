@@ -17,34 +17,69 @@ describe('Correlación Pricing -> Catalog', () => {
   const identity = new SignedUser();
   beforeAll(async () => {
     await identity.start(true);
-    server = createServer((req, res) => {
+    server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
       received.push({
         correlation: String(req.headers['x-correlation-id']),
         authorization: req.headers.authorization,
       });
+      const isBatch = req.method === 'POST';
+      const responseStatus = isBatch && status === 404 ? 200 : status;
       res.setHeader(
         'content-type',
-        status === 200 ? 'application/json' : 'application/problem+json',
+        responseStatus === 200
+          ? 'application/json'
+          : 'application/problem+json',
       );
-      res.statusCode = status;
-      const sku = decodeURIComponent(req.url!.split('/').at(-2)!);
+      res.statusCode = responseStatus;
+      const batchBody = isBatch
+        ? (JSON.parse(Buffer.concat(chunks).toString('utf8')) as {
+            skus: string[];
+          })
+        : undefined;
+      const sku = isBatch
+        ? undefined
+        : decodeURIComponent(req.url!.split('/').at(-2)!);
       res.end(
         JSON.stringify(
-          status === 200
+          status === 200 && isBatch
             ? {
-                sku,
-                productId: 'fixture',
-                isVariant: false,
-                active: false,
-                eligible: false,
+                items: batchBody!.skus.map((requestedSku) => ({
+                  sku: requestedSku,
+                  status: 'FOUND',
+                  context: {
+                    sku: requestedSku,
+                    productId: 'fixture',
+                    isVariant: false,
+                    active: false,
+                    eligible: false,
+                  },
+                })),
               }
-            : {
-                status,
-                code:
-                  status === 404
-                    ? 'SKU_NO_ENCONTRADO'
-                    : 'SERVICIO_NO_DISPONIBLE',
-              },
+            : status === 404 && isBatch
+              ? {
+                  items: batchBody!.skus.map((requestedSku) => ({
+                    sku: requestedSku,
+                    status: 'SKU_NO_ENCONTRADO',
+                    context: null,
+                  })),
+                }
+              : status === 200
+                ? {
+                    sku,
+                    productId: 'fixture',
+                    isVariant: false,
+                    active: false,
+                    eligible: false,
+                  }
+                : {
+                    status,
+                    code:
+                      status === 404
+                        ? 'SKU_NO_ENCONTRADO'
+                        : 'SERVICIO_NO_DISPONIBLE',
+                  },
         ),
       );
     });
@@ -100,7 +135,7 @@ describe('Correlación Pricing -> Catalog', () => {
           if (correlation) expect(actual).toBe(correlation);
           // Batch resolves distinct SKU contexts with bounded parallel GETs;
           // when one fails, the other already in flight may also complete.
-          expect(received.length).toBe(!path.includes('?') ? 1 : 2);
+          expect(received.length).toBe(1);
           expect(received.every((entry) => entry.correlation === actual)).toBe(
             true,
           );

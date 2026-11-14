@@ -125,6 +125,65 @@ describe('Serialización del canal efectivo comercial', () => {
 });
 describe('Consulta comercial por lotes', () => {
   const at = new Date('2030-06-01T00:00:00Z');
+  it('usa una sola consulta privada batch para contextos únicos y conserva duplicados', async () => {
+    const validity = {
+      id: randomUUID(),
+      precioRegular: '12.50',
+      precioOferta: null,
+      currency: 'PEN',
+      motivoCambio: 'fixture',
+      usuarioId: null,
+      validFrom: new Date('2030-01-01T00:00:00Z'),
+      validUntil: null,
+      priceVersion: 1n,
+      isCancelled: false,
+    };
+    const definition = {
+      target: { productId: 'product', sku: null },
+      channelId: null,
+      priceVersion: 1n,
+      validities: [validity],
+    };
+    const resolve = vi.fn();
+    const resolveBatch = vi.fn(async (skus: readonly string[]) =>
+      skus.map((sku) =>
+        sku === 'missing'
+          ? null
+          : {
+              sku,
+              productId: 'product',
+              isVariant: sku === 'variant',
+              active: true,
+              eligible: sku !== 'inactive',
+            },
+      ),
+    );
+    const readCandidatesBatch = vi
+      .fn()
+      .mockImplementation(async (contexts: readonly { sku: string }[]) =>
+        contexts.map(({ sku }) => ({ sku, definitions: [definition] })),
+      );
+    const service = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      { resolve, resolveBatch },
+    );
+    const result = await service.batch(
+      ['variant', 'variant', 'inactive', 'missing'],
+      undefined,
+      at,
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    expect(resolveBatch).toHaveBeenCalledOnce();
+    expect(resolveBatch).toHaveBeenCalledWith(
+      ['variant', 'inactive', 'missing'],
+      undefined,
+    );
+    expect(result.items.map((item) => item.sku)).toEqual([
+      'variant',
+      'variant',
+    ]);
+  });
+
   it('limita la concurrencia de contexto Catálogo', async () => {
     let active = 0;
     let maximum = 0;

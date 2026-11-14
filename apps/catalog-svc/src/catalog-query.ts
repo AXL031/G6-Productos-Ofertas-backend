@@ -20,11 +20,46 @@ export function parseProductQuery(
         'precioMin',
         'precioMax',
         'orden',
+        'tipoProductoIdsIncluidos',
+        'tipoProductoIdsExcluidos',
       ];
+  const typeFilterKeys = new Set([
+    'tipoProductoIdsIncluidos',
+    'tipoProductoIdsExcluidos',
+  ]);
   for (const [key, value] of Object.entries(input)) {
-    if (!keys.includes(key) || typeof value !== 'string')
+    if (
+      !keys.includes(key) ||
+      (typeFilterKeys.has(key)
+        ? !(
+            typeof value === 'string' ||
+            (Array.isArray(value) &&
+              value.every((item) => typeof item === 'string'))
+          )
+        : typeof value !== 'string')
+    )
       throw new BadRequestException();
   }
+  const typeIds = (key: string): string[] | undefined => {
+    const raw = input[key];
+    if (raw === undefined) return undefined;
+    const values = Array.isArray(raw) ? raw : [raw];
+    if (
+      values.length < 1 ||
+      values.length > 100 ||
+      !values.every(
+        (value) =>
+          typeof value === 'string' &&
+          value.length > 0 &&
+          value.length <= 256 &&
+          value.trim().length > 0 &&
+          !value.includes('\0'),
+      ) ||
+      new Set(values).size !== values.length
+    )
+      throw new BadRequestException();
+    return values as string[];
+  };
   const canal = input.canal;
   if (
     (canal === undefined && requireChannel) ||
@@ -92,5 +127,7 @@ export function parseProductQuery(
     precioMin,
     precioMax,
     orden: (input.orden ?? 'NOMBRE_ASC') as ProductQuery['orden'],
+    tipoProductoIdsIncluidos: typeIds('tipoProductoIdsIncluidos'),
+    tipoProductoIdsExcluidos: typeIds('tipoProductoIdsExcluidos'),
   };
 }
