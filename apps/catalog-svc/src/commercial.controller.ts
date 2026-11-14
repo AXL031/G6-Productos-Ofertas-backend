@@ -29,7 +29,6 @@ export class CommercialController {
   }
   @Get()
   @RequireCatalogIdentity({
-    marketplacePreviewRead: true,
     demoRead: true,
     restrictedDemo: true,
     identity: 'either',
@@ -45,7 +44,6 @@ export class CommercialController {
       catalogPrincipal?: CatalogPrincipal;
       catalogRestrictedDemo?: boolean;
       catalogDemoRead?: boolean;
-      catalogDemoPreview?: boolean;
     },
   ) {
     this.validateCorrelation(correlationId);
@@ -53,7 +51,6 @@ export class CommercialController {
       query.estado !== undefined &&
       !request?.catalogDemoRead &&
       !request?.catalogRestrictedDemo &&
-      !request?.catalogDemoPreview &&
       (request?.catalogPrincipal?.kind !== 'user' ||
         !request.catalogPrincipal.roles.includes('GESTOR_COMERCIAL'))
     )
@@ -83,7 +80,6 @@ export class CommercialController {
   }
   @Get('por-slug/:slug')
   @RequireCatalogIdentity({
-    marketplacePreviewRead: true,
     demoRead: true,
     restrictedDemo: true,
     identity: 'either',

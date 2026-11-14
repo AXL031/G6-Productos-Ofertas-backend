@@ -40,7 +40,6 @@ export class CatalogConfig {
   readonly amqp: CatalogAmqpSettings;
   readonly preparation: CatalogPreparationConfig;
   readonly readDemo: CatalogReadDemo;
-  readonly marketplaceDemoPreview: boolean;
   readonly historicalRecoveryCapabilities: HistoricalRecoveryCapabilities;
   readonly historicalPricingContract: HistoricalPricingContract | null;
   readonly pricingOrigin?: string;
@@ -115,8 +114,6 @@ export class CatalogConfig {
         'CATALOG_MARKETPLACE_DEMO_PREVIEW_ENABLED debe ser true o false.',
       );
     }
-    if (this.readDemo.restricted && preview === 'true')
-      errors.push('No combinar preview Marketplace y demo restringida.');
     let pricingOrigin: string | undefined;
     if (env.CATALOG_PRICING_URL !== undefined) {
       try {
@@ -156,9 +153,6 @@ export class CatalogConfig {
       new URL(taxonomy.origin).hostname !== 'taxonomy-svc'
     )
       errors.push('Demo restringida requiere Taxonomy privado taxonomy-svc.');
-    if (preview === 'true' && !pricingOrigin) {
-      errors.push('CATALOG_PRICING_URL es obligatorio para la demo.');
-    }
     if (errors.length || !http || !database || !taxonomy) {
       throw new Error(
         'Configuracion de catalog-svc invalida: ' + errors.join(' '),
@@ -172,7 +166,6 @@ export class CatalogConfig {
     this.security = security;
     this.amqp = Object.freeze(amqp);
     this.preparation = Object.freeze(preparation);
-    this.marketplaceDemoPreview = preview === 'true';
     this.pricingOrigin = pricingOrigin;
     this.serviceCredentials = serviceCredentials;
     Object.freeze(this);
