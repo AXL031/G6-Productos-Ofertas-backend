@@ -130,6 +130,17 @@ test('ARM contains no private credentials and isolates eight internal HTTPS apps
     (s) => s.name === 'e-gateway-catalog-svc-url',
   ).value;
   assert.match(catalogUrl, /https:\/\/catalog-svc\.internal\./);
+  const catalogApp = apps.find((a) => a.name === 'catalog-svc');
+  const catalogPricingUrl = catalogApp.properties.configuration.secrets.find(
+    (s) => s.name === 'e-catalog-pricing-url',
+  ).value;
+  assert.match(catalogPricingUrl, /https:\/\/pricing-svc\.internal\./);
+  assert.deepEqual(
+    catalogApp.properties.template.containers[0].env.find(
+      (e) => e.name === 'CATALOG_PRICING_URL',
+    ),
+    { name: 'CATALOG_PRICING_URL', secretRef: 'e-catalog-pricing-url' },
+  );
   assert.equal(
     plan.parameters.parameters.runtime.value['api-gateway'].GATEWAY_TIMEOUT_MS,
     '30000',
@@ -172,6 +183,15 @@ test('G7 deployment renders with nine aligned trust configurations and no anonym
   }
   const plan = makeDeployment(input);
   assert.equal(plan.template.resources.slice(1).length, 9);
+  const g7CatalogApp = plan.template.resources
+    .slice(1)
+    .find((a) => a.name === 'catalog-svc');
+  assert.match(
+    g7CatalogApp.properties.configuration.secrets.find(
+      (s) => s.name === 'e-catalog-pricing-url',
+    ).value,
+    /https:\/\/pricing-svc\.internal\./,
+  );
   assert.ok(!JSON.stringify(plan.template).includes('isolated-g7-secret'));
   const deployedRuntime = plan.parameters.parameters.runtime.value;
   for (const env of Object.values(deployedRuntime)) {

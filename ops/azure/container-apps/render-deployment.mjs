@@ -214,8 +214,10 @@ export function makeDeployment({
           'GATEWAY_' + target.replaceAll('-', '_').toUpperCase() + '_URL'
         ] = upstream(target);
     }
-    if (service === 'catalog-svc')
+    if (service === 'catalog-svc') {
       overrides.CATALOG_TAXONOMY_URL = upstream('taxonomy-svc');
+      overrides.CATALOG_PRICING_URL = upstream('pricing-svc');
+    }
     if (service === 'pricing-svc')
       overrides.PRICING_CATALOG_URL = upstream('catalog-svc');
     if (service === 'combos-svc') {
