@@ -116,7 +116,7 @@ export class CatalogMessageService {
       const result =
         message.causation_id !== active.message_id
           ? 'STALE'
-          : check.state === 'COMPLETED'
+          : check.state === 'COMPLETED' || check.state === 'REJECTED'
             ? 'TERMINAL'
             : 'APPLIED';
       const handler = 'catalog.preparation-results.v1';

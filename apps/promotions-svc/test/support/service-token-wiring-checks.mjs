@@ -2,8 +2,7 @@
 // business facts are explicit fixtures; token/identity/commercial providers stay real.
 import assert from 'node:assert/strict';
 import { createHash, generateKeyPairSync, randomUUID, sign } from 'node:crypto';
-import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { Test } from '@nestjs/testing';
@@ -15,7 +14,11 @@ import { PROMOTIONS_CLOCK } from '../../../../dist/apps/promotions-svc/domain/cl
 import { httpContracts } from '../../../../dist/apps/promotions-svc/http/http-contract.generated.js';
 import { valid } from '../../../../dist/apps/promotions-svc/http/http-validation.js';
 
-export async function verifyServiceTokenWiring(resources, baseConfig) {
+export async function verifyServiceTokenWiring(
+  resources,
+  baseConfig,
+  evidencePath,
+) {
   const issuer = 'https://g7.module.fixture/api/v1/auth';
   const pair = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const jwk = {
@@ -507,13 +510,8 @@ export async function verifyServiceTokenWiring(resources, baseConfig) {
       savedRows,
       'all persisted Promotions rows must be unchanged, including coupon quotas, uses, receipts, Inbox and Outbox',
     );
-    mkdirSync(resolve('apps/promotions-svc/test/evidence'), {
-      recursive: true,
-    });
     writeFileSync(
-      resolve(
-        'apps/promotions-svc/test/evidence/marketplace-native-2026-11-04.json',
-      ),
+      evidencePath,
       JSON.stringify(
         {
           status: 'PASS',

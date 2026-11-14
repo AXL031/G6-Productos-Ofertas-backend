@@ -25,6 +25,31 @@ describe('ProblemFilter persistence status mapping', () => {
     return response;
   }
 
+  it('preserves the real JSON-body limit as 413 and never leaks its input', () => {
+    const error = Object.assign(new Error('private body'), {
+      status: 413,
+      type: 'entity.too.large',
+      body: 'private-input',
+      limit: 102400,
+    });
+    const response = responseFor(error);
+    expect(response.status).toHaveBeenCalledWith(413);
+    expect(response.json.mock.calls[0][0]).toMatchObject({
+      status: 413,
+      code: 'VALIDACION',
+    });
+    expect(JSON.stringify(response.json.mock.calls[0][0])).not.toMatch(
+      /private|102400/,
+    );
+  });
+  it('does not trust an arbitrary error status or a plain user object', () => {
+    for (const error of [
+      Object.assign(new Error('private'), { status: 413 }),
+      { status: 413, type: 'entity.too.large' },
+    ]) {
+      expect(responseFor(error).status).toHaveBeenCalledWith(500);
+    }
+  });
   it.each(['SKU_INVALIDO', 'DATOS_FISICOS_INCOMPLETOS'])(
     'preserves only unique affected SKUs for %s',
     (code) => {

@@ -17,6 +17,7 @@ export class SignedUser {
   async start(withServiceToken = false): Promise<void> {
     this.server = createServer(async (request, response) => {
       response.setHeader('Content-Type', 'application/json');
+      response.setHeader('Cache-Control', 'public, max-age=60');
       if (withServiceToken && request.url === '/api/v1/auth/token') {
         const chunks: Buffer[] = [];
         for await (const chunk of request) chunks.push(Buffer.from(chunk));

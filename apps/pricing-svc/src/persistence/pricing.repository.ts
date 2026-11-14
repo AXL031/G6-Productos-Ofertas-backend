@@ -1,10 +1,30 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, asc, count, eq, isNull, or, lte, gt, inArray } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  count,
+  eq,
+  isNull,
+  or,
+  lte,
+  gt,
+  inArray,
+  sql,
+} from 'drizzle-orm';
 import type { PriceDefinition } from '../domain/price.js';
 import {
   PricingDatabase,
   type PricingTransaction,
 } from './pricing.database.js';
+
+export async function lockGlobalProduct(
+  tx: PricingTransaction,
+  productId: string,
+) {
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtextextended(${'pricing-global-product:' + productId}, 0))`,
+  );
+}
 import {
   prices,
   priceValidities,
@@ -13,6 +33,20 @@ import {
   bulkPriceRows,
 } from './pricing.schema.js';
 import { rethrowPersistenceError } from './persistence.error.js';
+
+export type PriceLookupTarget =
+  { productId: string; sku?: never } | { sku: string; productId?: never };
+
+function definitionWhere(target: PriceLookupTarget, channelId: string | null) {
+  return and(
+    target.productId !== undefined
+      ? eq(prices.productId, target.productId)
+      : eq(prices.sku, target.sku),
+    channelId === null
+      ? isNull(prices.channelId)
+      : eq(prices.channelId, channelId),
+  );
+}
 
 // rows es opcional en EstadoImportacionPrecio; nunca devolver detalle truncado.
 export const MAX_INLINE_IMPORT_ROWS = 1000;
@@ -98,25 +132,12 @@ export class PricingRepository {
     }
   }
 
-  async findDefinition(
-    target:
-      { productId: string; sku?: never } | { sku: string; productId?: never },
-    channelId: string | null,
-  ) {
+  async findDefinition(target: PriceLookupTarget, channelId: string | null) {
     const [price] = await this.execute(() =>
       this.database.db
         .select()
         .from(prices)
-        .where(
-          and(
-            target.productId !== undefined
-              ? eq(prices.productId, target.productId)
-              : eq(prices.sku, target.sku),
-            channelId === null
-              ? isNull(prices.channelId)
-              : eq(prices.channelId, channelId),
-          ),
-        ),
+        .where(definitionWhere(target, channelId)),
     );
     return price;
   }
@@ -133,14 +154,16 @@ export class PricingRepository {
 
   // Una fotografía consistente para que el resolver no mezcle dos commits.
   readProduct(productId: string) {
+    return this.readDefinition({ productId }, null);
+  }
+
+  readDefinition(target: PriceLookupTarget, channelId: string | null) {
     return this.transaction(
       async (tx) => {
         const [definition] = await tx
           .select()
           .from(prices)
-          .where(
-            and(eq(prices.productId, productId), isNull(prices.channelId)),
-          );
+          .where(definitionWhere(target, channelId));
         if (!definition) return undefined;
         const validities = await tx
           .select()

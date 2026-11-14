@@ -1,0 +1,48 @@
+name: Bulk PostgreSQL y RabbitMQ desechables
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  bulk_mensajeria:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_PASSWORD: bulk-fixture-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - name: Preparar esquema desechable
+        env:
+          POSTGRES_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          docker exec "$POSTGRES_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 -c 'CREATE SCHEMA bulk'
+          for file in apps/bulk-svc/test/fixtures/0001_create_bulk_persistence.sql apps/bulk-svc/migrations/0002_export_source_snapshot.sql apps/bulk-svc/migrations/0003_export_claim_lease.sql; do
+            docker exec -i "$POSTGRES_CONTAINER" psql -U postgres -v ON_ERROR_STOP=1 < "$file"
+          done
+      - name: Ejecutar mensajería Bulk real
+        env:
+          NODE_ENV: test
+          BULK_TEST_DATABASE_URL: postgresql://postgres:bulk-fixture-only@127.0.0.1:5432/postgres?sslmode=disable
+        run: npm run test:e2e -- apps/bulk-svc/test/bulk-messaging.e2e-spec.ts

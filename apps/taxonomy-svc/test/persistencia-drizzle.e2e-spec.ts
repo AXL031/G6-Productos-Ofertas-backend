@@ -1,6 +1,8 @@
 import { HttpStatus, Logger } from '@nestjs/common';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { createServer } from 'node:http';
 import { once } from 'node:events';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
@@ -1879,6 +1881,7 @@ describeIntegracion(
       let tipoCreado: string | undefined;
       let caracteristicaCreada: string | undefined;
       let caracteristicaHttpCreada: string | undefined;
+      let directorioLogos: string | undefined;
       try {
         await admin.query(
           "INSERT INTO taxonomy.brands (id, nombre, estado) VALUES ($1, $2, 'INACTIVO')",
@@ -2005,10 +2008,24 @@ describeIntegracion(
             `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
           )
           .expect(403);
-        await request(nest.getHttpServer())
-          .get('/api/v1/categorias')
-          .set('Authorization', `Bearer ${token('catalogo:leer')}`)
-          .expect(403);
+        // DEC-G6-INT-01/04: own G6 identity can read these reference collections.
+        for (const collection of ['/api/v1/categorias', '/api/v1/marcas']) {
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set('Authorization', `Bearer ${token('catalogo:leer')}`)
+            .expect(200);
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set(
+              'Authorization',
+              `Bearer ${token('catalogo:leer', false, [], 'otro-cliente')}`,
+            )
+            .expect(403);
+          await request(nest.getHttpServer())
+            .get(collection)
+            .set('Authorization', `Bearer ${token('otro:leer')}`)
+            .expect(403);
+        }
         await request(nest.getHttpServer())
           .post('/api/v1/categorias')
           .set('Authorization', `Bearer ${token('catalogo:leer')}`)
@@ -2190,10 +2207,11 @@ describeIntegracion(
               `Bearer ${token('catalogo:leer', false, [], 'modulo-marketplace')}`,
             )
             .expect(200);
-          await request(nest.getHttpServer())
+          const ownResult = await request(nest.getHttpServer())
             .get(`/api/v1/${path}`)
             .set('Authorization', `Bearer ${token('catalogo:leer')}`)
-            .expect(403);
+            .expect(200);
+          expect(ownResult.body).toEqual(result.body);
           expect(result.body[key].length).toBeGreaterThan(0);
           expect(
             result.body[key].every(
@@ -2283,9 +2301,33 @@ describeIntegracion(
           { event_name: 'taxonomy.category.updated' },
           { event_name: 'taxonomy.category.updated' },
         ]);
+        directorioLogos = await mkdtemp(join(tmpdir(), 'taxonomy-logos-'));
+        const baseLogos = 'https://assets.example.test/logos/';
+        vi.stubEnv('TAXONOMY_LOGO_DIRECTORY', directorioLogos);
+        vi.stubEnv('TAXONOMY_LOGO_PUBLIC_BASE_URL', baseLogos);
         const logo = readFileSync(
           resolve('apps/taxonomy-svc/test/fixtures/logo.png'),
         );
+        const logoExterno = 'https://example.org/logo.png';
+        const conUrl = await request(nest.getHttpServer())
+          .post('/api/v1/marcas')
+          .set('Authorization', `Bearer ${token('', true)}`)
+          .field('nombre', `Logo explícito ${brandId}`)
+          .field('logoUrl', logoExterno)
+          .attach('logo', logo, {
+            filename: 'logo.png',
+            contentType: 'image/png',
+          })
+          .expect(201);
+        marcaConUrl = conUrl.body.marcaId;
+        expect(conUrl.body.logoUrl).toBe(logoExterno);
+        const referenciaExterna = await admin.query(
+          'SELECT logo_url FROM taxonomy.brands WHERE id = $1',
+          [marcaConUrl],
+        );
+        expect(referenciaExterna.rows).toEqual([{ logo_url: logoExterno }]);
+        expect(await readdir(directorioLogos)).toEqual([]);
+
         const nueva = await request(nest.getHttpServer())
           .post('/api/v1/marcas')
           .set('Authorization', `Bearer ${token('', true)}`)
@@ -2296,23 +2338,19 @@ describeIntegracion(
           })
           .expect(201);
         nuevaMarca = nueva.body.marcaId;
-        expect(nueva.body.logoUrl).toBeNull();
-        const conUrl = await request(nest.getHttpServer())
-          .post('/api/v1/marcas')
-          .set('Authorization', `Bearer ${token('', true)}`)
-          .field('nombre', `Logo explícito ${brandId}`)
-          .field('logoUrl', 'https://example.org/logo.png')
-          .attach('logo', logo, {
-            filename: 'logo.png',
-            contentType: 'image/png',
-          })
-          .expect(201);
-        marcaConUrl = conUrl.body.marcaId;
-        const persisted = await admin.query(
-          'SELECT logo_url FROM taxonomy.brands WHERE id = $1',
-          [marcaConUrl],
+        const archivosLogo = await readdir(directorioLogos);
+        expect(archivosLogo).toHaveLength(1);
+        const [archivoLogo] = archivosLogo;
+        const urlLogo = new URL(archivoLogo, baseLogos).href;
+        expect(nueva.body.logoUrl).toBe(urlLogo);
+        expect(await readFile(join(directorioLogos, archivoLogo))).toEqual(
+          logo,
         );
-        expect(persisted.rows[0].logo_url).toBe('https://example.org/logo.png');
+        const logoPersistido = await admin.query(
+          'SELECT logo_url FROM taxonomy.brands WHERE id = $1',
+          [nuevaMarca],
+        );
+        expect(logoPersistido.rows).toEqual([{ logo_url: urlLogo }]);
         await admin.query(
           "UPDATE taxonomy.brands SET descripcion = 'texto', pais_origen_iso = 'PE', logo_url = 'https://example.org/logo.png' WHERE id = $1",
           [brandId],
@@ -2579,6 +2617,10 @@ describeIntegracion(
           .get(`/api/v1/seo/categoria-seo-${brandId}`)
           .expect(401);
       } finally {
+        vi.unstubAllEnvs();
+        if (directorioLogos) {
+          await rm(directorioLogos, { recursive: true, force: true });
+        }
         await nest?.close();
         if (tipoCreado) {
           await admin.query(

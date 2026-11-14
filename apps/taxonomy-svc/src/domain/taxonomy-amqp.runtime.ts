@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Injectable,
   Logger,
@@ -91,7 +92,9 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
   }
   private async ejecutar(): Promise<void> {
     if (!this.connection) {
-      const connection = await connect(this.config!.url, { timeout: 5000 });
+      const connection = await connectPrivateAmqps(connect, this.config!.url, {
+        timeout: 5000,
+      });
       connection.on('error', () => undefined);
       connection.on('close', () => {
         if (this.connection === connection) {

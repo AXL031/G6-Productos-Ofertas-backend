@@ -217,6 +217,8 @@ describe('Promotions signed identity', () => {
       reason: { status: 503, code: 'SERVICIO_NO_DISPONIBLE' },
     });
     expect(remote).toHaveBeenCalledTimes(2);
+    now += 3600000;
+    await expect(keys('isolated-key')).rejects.toMatchObject({ status: 503 });
     expect(remote.mock.calls[0][0]).toBe(config.settings.auth!.jwksUrl);
     expect(remote.mock.calls[0][1]).toMatchObject({ redirect: 'error' });
   });

@@ -51,6 +51,8 @@ G6_CONNECTION_MODE=direct
 EOF
 done
 cat >> "$scratch/catalog.env" <<EOF
+CATALOG_SERVICE_TOKEN_URL=https://issuer:3443/api/v1/auth/token
+CATALOG_SERVICE_CLIENT_SECRET=ci-only-technical-secret
 SECURITY_ISSUER=https://issuer:3443
 SECURITY_DISCOVERY_URL=https://issuer:3443/.well-known/openid-configuration
 SECURITY_JWKS_URL=https://issuer:3443/keys
@@ -118,6 +120,9 @@ import assert from 'node:assert/strict';
 import { Database } from './dist/apps/catalog-svc/database.js';
 import { PostgresCatalogRepository } from './dist/apps/catalog-svc/postgres-catalog.repository.js';
 import { TaxonomyClient } from './dist/apps/catalog-svc/taxonomy.client.js';
+import { CatalogConfig } from './dist/apps/catalog-svc/config.js';
+import { CatalogTokenVerifier } from './dist/apps/catalog-svc/catalog-auth.js';
+import { CatalogBulkIdentity } from './dist/apps/catalog-svc/catalog-bulk.service.js';
 const db = new Database();
 try {
   await db.verifyIdentity();
@@ -125,8 +130,10 @@ try {
   const page = await repo.listCandidates({canal:'MARKETPLACE',pagina:1,tamanio:20,orden:'NOMBRE_ASC'});
   assert.equal(page.total, 0);
   assert.equal(await repo.findCandidateBySlug('inexistente'), null);
-  const credential = await (await fetch('https://issuer:3443/valid')).json();
-  await assert.rejects(new TaxonomyClient().category('inexistente', undefined, { authorization: 'Bearer ' + credential.token, user: false }), e => e.getStatus() === 422);
+  const config = new CatalogConfig(process.env);
+  const ownIdentity = new CatalogBulkIdentity(config, new CatalogTokenVerifier(config.security));
+  const client = new TaxonomyClient(config.taxonomy, ownIdentity, config.readDemo);
+  await assert.rejects(client.category('inexistente'), e => e.getStatus() === 422);
 } finally { await db.onModuleDestroy(); }
 console.log('PASS: Catalog Drizzle PostgreSQL y Catalog -> Taxonomy HTTP');"
 docker stop "$pg_name" >/dev/null

@@ -55,6 +55,37 @@ describe('CombosSvcController', () => {
       return response;
     }
 
+    async function responseForGatewayReadiness() {
+      const response = {
+        status: vi.fn().mockReturnThis(),
+        json: vi.fn(),
+      };
+      await controller.gatewayReadiness(response as unknown as Response);
+      return response;
+    }
+
+    it('exposes the Gateway readiness contract while AMQP is disabled', async () => {
+      amqpStatus = 'disabled';
+      const response = await responseForGatewayReadiness();
+      expect(response.status).toHaveBeenCalledWith(200);
+      expect(response.json).toHaveBeenCalledWith({
+        status: 'ready',
+        service: 'combos-svc',
+        dependencies: { postgres: 'ok' },
+      });
+    });
+
+    it('reports a failed Gateway readiness probe without masking AMQP failure', async () => {
+      amqpStatus = 'not_ready';
+      const response = await responseForGatewayReadiness();
+      expect(response.status).toHaveBeenCalledWith(503);
+      expect(response.json).toHaveBeenCalledWith({
+        status: 'not_ready',
+        service: 'combos-svc',
+        dependencies: { postgres: 'ok', rabbitmq: 'error' },
+      });
+    });
+
     it('preserves HTTP readiness when AMQP is explicitly disabled', async () => {
       amqpStatus = 'disabled';
       const response = await responseForReadiness();

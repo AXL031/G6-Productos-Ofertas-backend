@@ -2,7 +2,10 @@ import { DrizzleQueryError } from 'drizzle-orm';
 import { DatabaseError } from 'pg';
 
 export class PricingPersistenceError extends Error {
-  constructor(readonly sqlState?: string) {
+  constructor(
+    readonly sqlState?: string,
+    readonly clientTimeout = false,
+  ) {
     super('Persistencia de Pricing no disponible o restricción rechazada.');
     this.name = 'PricingPersistenceError';
   }
@@ -17,7 +20,10 @@ export function rethrowPersistenceError(
     throw new PricingPersistenceError(cause.code);
   }
   if (error instanceof DrizzleQueryError || !fromCallback) {
-    throw new PricingPersistenceError();
+    throw new PricingPersistenceError(
+      undefined,
+      cause instanceof Error && cause.message === 'Query read timeout',
+    );
   }
   // Los errores del caso de uso conservan su identidad tras el rollback.
   throw error;

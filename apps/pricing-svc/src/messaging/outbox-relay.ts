@@ -1,3 +1,4 @@
+import { connectPrivateAmqps } from '../private-amqps.js';
 import {
   Inject,
   Injectable,
@@ -191,7 +192,7 @@ export class PricingOutboxRelay
     let channel: ConfirmChannel | undefined;
     try {
       const producerUser = decodeURIComponent(new URL(url).username);
-      connection = await connect(url, {
+      connection = await connectPrivateAmqps(connect, url, {
         timeout: 2000,
         rejectUnauthorized: true,
       });

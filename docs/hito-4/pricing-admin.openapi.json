@@ -1,0 +1,550 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Pricing administrativo G6 · PROPUESTA_H4",
+    "version": "0.6.0-h4-pricing-admin"
+  },
+  "servers": [
+    {
+      "url": "/api/v1"
+    }
+  ],
+  "paths": {
+    "/precios/administracion/productos/{productoId}": {
+      "get": {
+        "operationId": "obtenerDefinicionPrecioProductoAdministracion",
+        "summary": "Obtener definición editable exacta de Pricing",
+        "description": "Devuelve la definición del objetivo y canal solicitados. Si solo existe un precio heredado, la definición exacta devuelve 404. No se usa una versión heredada para escribir.",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "x-required-role": "GESTOR_COMERCIAL",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "name": "productoId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "query",
+            "description": "Omitir para el precio global.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "MARKETPLACE",
+                "CHATBOT",
+                "RETAIL",
+                "VENTAS"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Definición exacta.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinicionPrecioAdministracion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDACION",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "TOKEN_INVALIDO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_INSUFICIENTE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PRECIO_NO_ENCONTRADO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "ERROR_INTERNO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICIO_NO_DISPONIBLE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDACION"
+          ],
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "404": [
+            "PRECIO_NO_ENCONTRADO"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ]
+        }
+      }
+    },
+    "/precios/administracion/skus/{sku}": {
+      "get": {
+        "operationId": "obtenerDefinicionPrecioSkuAdministracion",
+        "summary": "Obtener definición editable exacta de Pricing",
+        "description": "Devuelve la definición del objetivo y canal solicitados. Si solo existe un precio heredado, la definición exacta devuelve 404. No se usa una versión heredada para escribir.",
+        "security": [
+          {
+            "userBearer": []
+          }
+        ],
+        "x-required-role": "GESTOR_COMERCIAL",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/CorrelationId"
+          },
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          {
+            "name": "channelId",
+            "in": "query",
+            "description": "Omitir para el precio global.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "MARKETPLACE",
+                "CHATBOT",
+                "RETAIL",
+                "VENTAS"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Definición exacta.",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DefinicionPrecioAdministracion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "VALIDACION",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "TOKEN_INVALIDO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "SCOPE_INSUFICIENTE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "PRECIO_NO_ENCONTRADO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "ERROR_INTERNO",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "SERVICIO_NO_DISPONIBLE",
+            "headers": {
+              "X-Correlation-Id": {
+                "schema": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            },
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "x-error-codes": {
+          "400": [
+            "VALIDACION"
+          ],
+          "401": [
+            "TOKEN_INVALIDO"
+          ],
+          "403": [
+            "SCOPE_INSUFICIENTE"
+          ],
+          "404": [
+            "PRECIO_NO_ENCONTRADO"
+          ],
+          "500": [
+            "ERROR_INTERNO"
+          ],
+          "503": [
+            "SERVICIO_NO_DISPONIBLE"
+          ]
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "userBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    },
+    "parameters": {
+      "CorrelationId": {
+        "name": "X-Correlation-Id",
+        "in": "header",
+        "required": false,
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        }
+      }
+    },
+    "schemas": {
+      "Problem": {
+        "type": "object",
+        "required": [
+          "title",
+          "status",
+          "code",
+          "correlationId"
+        ],
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri-reference"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "correlationId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "DefinicionPrecioAdministracion": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "productId",
+          "sku",
+          "channelId",
+          "priceVersion",
+          "vigenciaActual"
+        ],
+        "properties": {
+          "productId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "channelId": {
+            "enum": [
+              "MARKETPLACE",
+              "CHATBOT",
+              "RETAIL",
+              "VENTAS",
+              null
+            ]
+          },
+          "priceVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "vigenciaActual": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": false,
+            "required": [
+              "precioRegular",
+              "precioOferta",
+              "currency",
+              "validFrom",
+              "validUntil"
+            ],
+            "properties": {
+              "precioRegular": {
+                "type": "number"
+              },
+              "precioOferta": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "currency": {
+                "type": "string",
+                "minLength": 3,
+                "maxLength": 3
+              },
+              "validFrom": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "validUntil": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "oneOf": [
+          {
+            "properties": {
+              "productId": {
+                "type": "string",
+                "minLength": 1
+              },
+              "sku": {
+                "type": "null"
+              }
+            }
+          },
+          {
+            "properties": {
+              "productId": {
+                "type": "null"
+              },
+              "sku": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

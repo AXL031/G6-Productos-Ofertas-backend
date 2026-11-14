@@ -17,12 +17,20 @@ export class ProblemFilter implements ExceptionFilter {
     const databaseUnavailable =
       error instanceof CatalogPersistenceError &&
       error.failure === 'connection';
+    const oversizedJson =
+      error instanceof Error &&
+      'type' in error &&
+      error.type === 'entity.too.large' &&
+      'status' in error &&
+      error.status === 413;
     const status =
       error instanceof HttpException
         ? error.getStatus()
-        : databaseUnavailable
-          ? 503
-          : 500;
+        : oversizedJson
+          ? 413
+          : databaseUnavailable
+            ? 503
+            : 500;
     const body =
       error instanceof HttpException ? error.getResponse() : undefined;
     const supplied =
@@ -67,7 +75,7 @@ export class ProblemFilter implements ExceptionFilter {
                     'IMAGEN_INVALIDA',
                   ].includes(String(supplied))
                 ? String(supplied)
-                : status === 400
+                : status === 400 || status === 413
                   ? 'VALIDACION'
                   : status === 503
                     ? 'SERVICIO_NO_DISPONIBLE'

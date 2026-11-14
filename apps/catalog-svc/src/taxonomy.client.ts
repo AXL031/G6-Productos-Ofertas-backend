@@ -2,6 +2,7 @@ import {
   HttpException,
   Injectable,
   Inject,
+  Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import {
@@ -10,6 +11,15 @@ import {
   type TaxonomyConfig,
 } from './taxonomy-config.js';
 import type { CommercialBrand } from './commercial.types.js';
+import {
+  CATALOG_TAXONOMY_IDENTITY,
+  type CatalogTaxonomyIdentity,
+} from './catalog-master.client.js';
+import {
+  CATALOG_READ_DEMO,
+  readCatalogReadDemo,
+  type CatalogReadDemo,
+} from './catalog-read-demo.js';
 
 function object(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -29,6 +39,12 @@ export class TaxonomyClient {
   constructor(
     @Inject(CATALOG_TAXONOMY_CONFIG)
     private readonly config: TaxonomyConfig = readTaxonomyConfig(),
+    @Optional()
+    @Inject(CATALOG_TAXONOMY_IDENTITY)
+    private readonly serviceIdentity?: CatalogTaxonomyIdentity,
+    @Optional()
+    @Inject(CATALOG_READ_DEMO)
+    private readonly security: CatalogReadDemo = readCatalogReadDemo(),
   ) {}
 
   private async get(
@@ -41,14 +57,27 @@ export class TaxonomyClient {
     try {
       if (!this.config.origin) throw new Error();
       const url = new URL(this.config.origin);
+      const signal = AbortSignal.timeout(5000);
+      let authorization: string | undefined;
+      if (
+        (this.security.securityMode ?? 'G7_AUTHENTICATED') ===
+        'G7_AUTHENTICATED'
+      ) {
+        // DEC-G6-INT-01/04: authenticate this internal hop as modulo-productos.
+        // Incoming human/consumer tokens never become Catalog's service identity.
+        if (!this.serviceIdentity) throw new Error();
+        authorization = await this.serviceIdentity.authorization(signal);
+        if (!/^Bearer [^\s]+$/i.test(authorization)) throw new Error();
+      } else if (identity?.authorization && !identity.restrictedDemo) {
+        authorization = identity.authorization;
+      }
+      signal.throwIfAborted();
       const response = await fetch(new URL(path, url), {
         redirect: 'error',
-        signal: AbortSignal.timeout(5000),
+        signal,
         headers: {
           ...(correlationId ? { 'x-correlation-id': correlationId } : {}),
-          ...(identity?.authorization && !identity.restrictedDemo
-            ? { authorization: identity.authorization }
-            : {}),
+          ...(authorization ? { authorization } : {}),
         },
       });
       if (key === undefined && response.status === 404) {
