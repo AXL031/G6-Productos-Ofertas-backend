@@ -433,8 +433,7 @@ export class InMemoryDatabaseMock implements IDatabaseService {
       const globalThreshold = this.thresholdOverrides.find(
         (override) =>
           (override.sku_id === null || override.sku_id === undefined) &&
-          (override.location_id === null ||
-            override.location_id === undefined),
+          (override.location_id === null || override.location_id === undefined),
       )?.umbral_efectivo;
       const skuThresholds = new Map(
         this.thresholdOverrides

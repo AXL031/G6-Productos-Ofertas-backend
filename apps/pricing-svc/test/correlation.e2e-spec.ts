@@ -100,9 +100,7 @@ describe('Correlación Pricing -> Catalog', () => {
           if (correlation) expect(actual).toBe(correlation);
           // Batch resolves distinct SKU contexts with bounded parallel GETs;
           // when one fails, the other already in flight may also complete.
-          expect(received.length).toBe(
-            !path.includes('?') ? 1 : 2,
-          );
+          expect(received.length).toBe(!path.includes('?') ? 1 : 2);
           expect(received.every((entry) => entry.correlation === actual)).toBe(
             true,
           );
