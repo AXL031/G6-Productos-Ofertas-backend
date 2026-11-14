@@ -179,6 +179,7 @@ export class AuditRepository {
       if (claim === false) return false;
       const { job, leaseTimestamp } = claim;
       let artifact: ExportArtifact | undefined;
+      let completionAttempted = false;
 
       try {
         // Capture count and rows from one consistent snapshot, then release the
@@ -210,6 +211,7 @@ export class AuditRepository {
         artifact = await write(job, rows);
         if (!uuid.test(artifact.artifactId))
           throw new Error('Identidad de archivo inválida.');
+        completionAttempted = true;
         const completed = await this.transaction(async (tx) => {
           const [updated] = await tx
             .update(exportJobs)
@@ -232,7 +234,11 @@ export class AuditRepository {
         });
         if (!completed) await artifact.discard();
       } catch {
-        if (artifact) await artifact.discard().catch(() => undefined);
+        // Once COMMIT is attempted, the connection may fail after PostgreSQL
+        // committed. Keep the immutable artifact in that ambiguous case so a
+        // completed job can never point to a file that was deleted by cleanup.
+        if (artifact && !completionAttempted)
+          await artifact.discard().catch(() => undefined);
         await this.transaction(async (tx) => {
           await tx
             .update(exportJobs)

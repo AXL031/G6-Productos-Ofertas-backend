@@ -44,7 +44,15 @@ interface DashboardAggregateRow {
 }
 
 const DASHBOARD_AGGREGATE_SQL = `
-  WITH filtered_balance AS MATERIALIZED (
+  WITH sku_threshold AS MATERIALIZED (
+    SELECT DISTINCT ON (sku_id)
+      sku_id,
+      umbral_efectivo
+    FROM inventory.stock_threshold_override
+    WHERE sku_id IS NOT NULL AND location_id IS NULL
+    ORDER BY sku_id, updated_at DESC, created_at DESC, id DESC
+  ),
+  filtered_balance AS MATERIALIZED (
     SELECT
       balance.sku_id,
       balance.location_id,
@@ -54,9 +62,8 @@ const DASHBOARD_AGGREGATE_SQL = `
       balance.available,
       COALESCE(sku_threshold.umbral_efectivo, global_threshold.umbral_efectivo, $3)::integer AS threshold
     FROM inventory.stock_balance AS balance
-    LEFT JOIN inventory.stock_threshold_override AS sku_threshold
+    LEFT JOIN sku_threshold
       ON sku_threshold.sku_id = balance.sku_id
-     AND sku_threshold.location_id IS NULL
     LEFT JOIN inventory.stock_threshold_override AS global_threshold
       ON global_threshold.sku_id IS NULL
      AND global_threshold.location_id IS NULL

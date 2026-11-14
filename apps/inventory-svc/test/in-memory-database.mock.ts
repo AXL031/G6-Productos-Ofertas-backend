@@ -423,7 +423,7 @@ export class InMemoryDatabaseMock implements IDatabaseService {
   ): QueryResult<T> {
     const s = sql.trim().toUpperCase();
 
-    if (s.startsWith('WITH FILTERED_BALANCE AS MATERIALIZED')) {
+    if (s.includes('FILTERED_BALANCE AS MATERIALIZED')) {
       const [skuFilter, locationFilter, defaultThreshold] = params ?? [];
       const rows = this.stockBalance.filter(
         (row) =>

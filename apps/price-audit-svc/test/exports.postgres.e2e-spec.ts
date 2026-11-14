@@ -317,6 +317,43 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_POSTGRES !== '1')(
       expect(completed?.downloadUrl).toBe(`audit-artifact:${winningArtifact}`);
       expect([...artifacts]).toEqual([winningArtifact]);
     });
+    it('conserva el archivo si se pierde la respuesta después del commit de finalización', async () => {
+      const job = await repository.createExport(
+        { sku: 'export-real' },
+        'CSV',
+        'gestor',
+      );
+      const originalTransaction = repository.transaction.bind(repository);
+      const transactionSpy = vi.spyOn(repository, 'transaction');
+      let transactionCount = 0;
+      transactionSpy.mockImplementation(async (operation, readOnly) => {
+        const result = await originalTransaction(operation, readOnly);
+        transactionCount += 1;
+        if (transactionCount === 3)
+          throw new Error('respuesta de COMMIT perdida después de confirmar');
+        return result;
+      });
+      try {
+        await repository.processExport(async (claimedJob, rows) => {
+          const artifactId = randomUUID();
+          const path = join(
+            directory,
+            `${claimedJob.id}.${artifactId}.csv`,
+          );
+          await writeFile(path, renderCsv(rows), { flag: 'wx', mode: 0o600 });
+          return { artifactId, discard: () => rm(path, { force: true }) };
+        });
+      } finally {
+        transactionSpy.mockRestore();
+      }
+
+      const completed = await repository.exportJob(job.id);
+      expect(completed?.status).toBe('COMPLETED');
+      expect(completed?.downloadUrl).toMatch(/^audit-artifact:/);
+      await expect(worker.download(completed!)).resolves.toMatchObject({
+        contentType: 'text/csv',
+      });
+    });
     it('renderiza sin truncar textos extensos y rechaza límites aun sin controlador', async () => {
       const { items } = await repository.list({ sku: 'export-real' }, 1, 20);
       const rows = Array.from({ length: 8 }, (_, i) => ({

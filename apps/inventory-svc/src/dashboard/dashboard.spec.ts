@@ -48,11 +48,15 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
     const res = await service.obtenerDashboard({});
 
     const dashboardQueries = querySpy.mock.calls.filter(([sql]) =>
-      sql.includes('WITH filtered_balance AS MATERIALIZED'),
+      sql.includes('filtered_balance AS MATERIALIZED'),
     );
     expect(dashboardQueries).toHaveLength(1);
     expect(dashboardQueries[0]?.[0]).toContain('GROUP BY sku_id');
     expect(dashboardQueries[0]?.[0]).toContain('GROUP BY location_id');
+    expect(dashboardQueries[0]?.[0]).toContain('SELECT DISTINCT ON (sku_id)');
+    expect(dashboardQueries[0]?.[0]).toContain(
+      'ORDER BY sku_id, updated_at DESC, created_at DESC, id DESC',
+    );
     expect(res.porUbicacion).toHaveLength(2);
   });
 
@@ -63,7 +67,7 @@ describe('DashboardService — indicadores y distribución (SPEC-016)', () => {
 
     expect(
       querySpy.mock.calls.filter(([sql]) =>
-        sql.includes('WITH filtered_balance AS MATERIALIZED'),
+        sql.includes('filtered_balance AS MATERIALIZED'),
       ),
     ).toHaveLength(1);
     expect(
