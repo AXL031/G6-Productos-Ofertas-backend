@@ -25,6 +25,11 @@ assert.match(ci, /^  automatizacion:/m, 'normal CI jobs remain present');
 assert.match(ci, /mode:[\s\S]*?options: \[ci, benchmark\]/);
 assert.match(
   ci,
+  /component:[\s\S]*?options: \[catalog, pricing, combos, promotions, price-audit, bulk\]/,
+  'the existing manual entry point exposes the requested component benchmarks',
+);
+assert.match(
+  ci,
   /benchmark_focalizado:[\s\S]*?uses: \.\/\.github\/workflows\/performance-g6\.yml/,
 );
 assert.match(ci, /inputs\.mode != 'benchmark'/);

@@ -22,7 +22,7 @@ name: Integración continua (CI)
         description: Componente del benchmark
         required: false
         type: choice
-        options: [catalog, pricing, combos]
+        options: [catalog, pricing, combos, promotions, price-audit, bulk]
       baseline_sha:
         description: SHA completo de master u otra revisión base aprobada
         required: false
