@@ -164,12 +164,32 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
           return;
         }
         if (
+          request.method === 'GET' &&
+          url.pathname.startsWith(`/storage/v1/object/${bucket}/`)
+        ) {
+          const object = objects.get(url.pathname);
+          if (object) {
+            response
+              .writeHead(200, { 'content-type': 'application/octet-stream' })
+              .end(object);
+          } else response.writeHead(404).end();
+          return;
+        }
+        if (
           request.method === 'POST' &&
           url.pathname.startsWith(`/storage/v1/object/${bucket}/`)
         ) {
           const chunks: Buffer[] = [];
           for await (const chunk of request) chunks.push(Buffer.from(chunk));
           objects.set(url.pathname, Buffer.concat(chunks));
+          response.writeHead(200).end();
+          return;
+        }
+        if (
+          request.method === 'DELETE' &&
+          url.pathname.startsWith(`/storage/v1/object/${bucket}/`)
+        ) {
+          objects.delete(url.pathname);
           response.writeHead(200).end();
           return;
         }
