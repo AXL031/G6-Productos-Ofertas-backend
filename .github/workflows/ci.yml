@@ -718,7 +718,7 @@ jobs:
           const passed = tests.filter((test) => test.status === "passed").length;
           const skipped = tests.filter((test) => ["pending", "skipped", "todo"].includes(test.status)).length;
           console.log(`Pruebas E2E: ${passed} aprobadas, ${skipped} omitidas, ${tests.length} totales`);
-          if (files.length !== 1 || passed !== 7 || skipped !== 0 || tests.length !== 7 || report.numTotalTests !== 7 || report.numPendingTests !== 0 || report.numTodoTests !== 0 || report.numFailedTests !== 0) process.exit(1);
+          if (files.length !== 1 || passed !== 7 || skipped !== 1 || tests.length !== 8 || report.numTotalTests !== 8 || report.numPendingTests !== 1 || report.numTodoTests !== 0 || report.numFailedTests !== 0) process.exit(1);
         '
     - name: Verificar limpieza de recursos Docker desechables
       if: always()
@@ -952,14 +952,78 @@ jobs:
           .ci/evidence/combos/
         if-no-files-found: warn
         retention-days: 14
+  taxonomy_http_performance:
+    name: Medir HTTP Taxonomy/PostgreSQL/RabbitMQ (${{ matrix.variant }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ inputs.baseline_ref }}
+        - variant: candidate
+          ref: ${{ github.sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código del backend
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness de medición de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: .ci/benchmark-harness
+    - name: Obtener migraciones oficiales fijadas
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de la revisión medida
+      run: npm ci
+    - name: Ejecutar carga HTTP autenticada con PostgreSQL 17 y RabbitMQ
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        G6_E2E_DOCS_PATH: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        G6_E2E_EVIDENCE_PATH: .ci/performance/taxonomy-integration-${{ matrix.variant }}.json
+      run: |
+        set -o pipefail
+        mkdir -p .ci/performance
+        cp .ci/benchmark-harness/apps/taxonomy-svc/test/e2e-catalog/run.mjs apps/taxonomy-svc/test/e2e-catalog/run.mjs
+        node apps/taxonomy-svc/test/e2e-catalog/run.mjs 2>&1 | tee .ci/performance/taxonomy-http-${{ matrix.variant }}.log
+    - name: Publicar medición HTTP Taxonomy
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: taxonomy-http-${{ matrix.variant }}-${{ matrix.ref }}
+        path: |
+          .ci/performance/taxonomy-http-${{ matrix.variant }}.json
+          .ci/performance/taxonomy-http-${{ matrix.variant }}.csv
+          .ci/performance/taxonomy-integration-${{ matrix.variant }}.json
+          .ci/performance/taxonomy-http-${{ matrix.variant }}.log
+        if-no-files-found: warn
+        retention-days: 14
   summarize_http_performance:
     name: Consolidar comparativa HTTP baseline/candidato
-    if: github.event_name == 'workflow_dispatch' && needs.catalog_http_performance.result == 'success' && needs.gateway_inventory_http_performance.result == 'success' && needs.combos_pricing_http_performance.result == 'success'
+    if: github.event_name == 'workflow_dispatch' && needs.catalog_http_performance.result == 'success' && needs.gateway_inventory_http_performance.result == 'success' && needs.combos_pricing_http_performance.result == 'success' && needs.taxonomy_http_performance.result == 'success'
     runs-on: ubuntu-latest
     needs:
     - catalog_http_performance
     - gateway_inventory_http_performance
     - combos_pricing_http_performance
+    - taxonomy_http_performance
     permissions:
       contents: read
     steps:
@@ -982,6 +1046,12 @@ jobs:
       with:
         pattern: combos-pricing-http-*
         path: .ci/performance/artifacts/combos-pricing
+        merge-multiple: true
+    - name: Descargar mediciones de Taxonomy
+      uses: actions/download-artifact@v4
+      with:
+        pattern: taxonomy-http-*
+        path: .ci/performance/artifacts/taxonomy
         merge-multiple: true
     - name: Consolidar filas equivalentes y calcular deltas
       run: node scripts/performance/summarize-http-benchmarks.mjs .ci/performance/artifacts .ci/performance/summary

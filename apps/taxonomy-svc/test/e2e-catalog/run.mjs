@@ -1,10 +1,17 @@
 import 'reflect-metadata';
 import { spawnSync } from 'node:child_process';
-import { randomBytes, randomUUID, createHash } from 'node:crypto';
+import {
+  randomBytes,
+  randomUUID,
+  createHash,
+  generateKeyPairSync,
+  sign,
+} from 'node:crypto';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   writeFileSync,
@@ -14,6 +21,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createServer } from 'node:net';
+import { createServer as createHttpServer } from 'node:http';
+import { performance } from 'node:perf_hooks';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { connect } from 'amqplib';
@@ -82,7 +91,12 @@ let pgCreated = false,
   admin,
   rabbit,
   catalogApp,
-  taxonomyApp;
+  taxonomyApp,
+  taxonomyAuthServer;
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
+const performanceOutput = resolve(
+  process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+);
 let stage = 'inicialización';
 const docker = (...args) => {
   const r = spawnSync('docker', args, {
@@ -147,12 +161,7 @@ try {
       'Falta un checkout Git de Docs con las migraciones normativas de Taxonomy y Catalog',
     );
   const docs = join(docsRoot, 'datos');
-  report.docsSha = git(
-    '-C',
-    docsRoot,
-    'rev-parse',
-    'HEAD',
-  );
+  report.docsSha = git('-C', docsRoot, 'rev-parse', 'HEAD');
   if (
     git(
       '-C',
@@ -241,11 +250,11 @@ try {
   const openssl =
     process.env.TAXONOMY_TEST_OPENSSL_BIN ??
     (process.platform === 'win32'
-      ? [
+      ? ([
           'C:/Program Files/Git/ucrt64/bin/openssl.exe',
           'C:/Program Files/Git/mingw64/bin/openssl.exe',
           'C:/Program Files/Git/usr/bin/openssl.exe',
-        ].find((candidate) => existsSync(candidate)) ?? 'openssl'
+        ].find((candidate) => existsSync(candidate)) ?? 'openssl')
       : 'openssl');
   const certRun = spawnSync(
     openssl,
@@ -507,13 +516,60 @@ try {
     PGSSLROOTCERT: cert,
     G6_CONNECTION_MODE: 'direct',
   };
+  const taxonomySigningKey = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+  });
+  const taxonomyJwk = {
+    ...taxonomySigningKey.publicKey.export({ format: 'jwk' }),
+    kid: `taxonomy-perf-${token}`,
+    alg: 'RS256',
+    use: 'sig',
+  };
+  taxonomyAuthServer = createHttpServer((_request, response) => {
+    response.writeHead(200, {
+      'content-type': 'application/json',
+      'cache-control': 'public, max-age=60',
+    });
+    response.end(JSON.stringify({ keys: [taxonomyJwk] }));
+  });
+  await new Promise((resolveListen, reject) => {
+    taxonomyAuthServer.once('error', reject);
+    taxonomyAuthServer.listen(0, '127.0.0.1', resolveListen);
+  });
+  const taxonomyIssuerPort = taxonomyAuthServer.address().port;
+  const taxonomyIssuer = `http://127.0.0.1:${taxonomyIssuerPort}/issuer`;
+  const taxonomyAuthUrl = `http://127.0.0.1:${taxonomyIssuerPort}/jwks`;
+  const taxonomyServiceToken = () => {
+    const now = Math.floor(Date.now() / 1000);
+    const header = Buffer.from(
+      JSON.stringify({ alg: 'RS256', kid: taxonomyJwk.kid }),
+    ).toString('base64url');
+    const payload = Buffer.from(
+      JSON.stringify({
+        iss: taxonomyIssuer,
+        aud: 'api-productos',
+        sub: 'modulo-productos',
+        tipo: 'servicio',
+        scope: 'catalogo:leer',
+        iat: now,
+        exp: now + 300,
+        jti: randomUUID(),
+      }),
+    ).toString('base64url');
+    const body = `${header}.${payload}`;
+    return `${body}.${sign('RSA-SHA256', Buffer.from(body), taxonomySigningKey.privateKey).toString('base64url')}`;
+  };
+  const taxonomyPort = await freePort();
   const taxEnv = {
     ...common,
     PGUSER: 'taxonomy_app',
     PGPASSWORD: password,
     G6_EXPECTED_ROLE: 'taxonomy_app',
     G6_DATABASE_SCHEMA: 'taxonomy',
-    PORT: String(await freePort()),
+    PORT: String(taxonomyPort),
+    G6_SECURITY_MODE: 'SIMULATED_AUTH',
+    SIMULATED_AUTH_ISSUER: taxonomyIssuer,
+    SIMULATED_AUTH_JWKS_URL: taxonomyAuthUrl,
     RABBITMQ_URL: taxonomyUrl,
     TAXONOMY_CATALOG_AMQP_USER: 'catalog_test',
   };
@@ -577,6 +633,147 @@ try {
       'INSERT INTO taxonomy.categories(id,nombre,nivel) VALUES ($1,$2,1)',
       [ids[name], `E2E ${name} ${token}`],
     );
+  if (performanceEnabled) {
+    await admin.query(
+      `INSERT INTO taxonomy.brands(id,nombre)
+       SELECT gen_random_uuid(), 'G6 performance brand ' || lpad(i::text, 4, '0')
+       FROM generate_series(1, 1000) AS i`,
+    );
+    const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
+    const endpoint = `http://127.0.0.1:${taxonomyPort}/api/v1/marcas`;
+    const authorization = `Bearer ${taxonomyServiceToken()}`;
+    const datasetRows = Number(
+      (await admin.query('SELECT count(*)::int AS total FROM taxonomy.brands'))
+        .rows[0]?.total ?? 0,
+    );
+    const rows = [];
+    let failures = 0;
+    let timeouts = 0;
+    for (const concurrency of [1, 8, 32]) {
+      const warmupRequests = 10;
+      const samples = 120;
+      for (let index = 0; index < warmupRequests; index += 1) {
+        const response = await fetch(endpoint, {
+          headers: { authorization },
+          signal: AbortSignal.timeout(5000),
+        });
+        await response.arrayBuffer();
+        assert.equal(
+          response.status,
+          200,
+          `Taxonomy warmup HTTP ${response.status}`,
+        );
+      }
+      const latencies = [];
+      let responseBodyBytes = 0;
+      let levelFailures = 0;
+      let levelTimeouts = 0;
+      const started = performance.now();
+      for (let offset = 0; offset < samples; offset += concurrency) {
+        await Promise.all(
+          Array.from(
+            { length: Math.min(concurrency, samples - offset) },
+            async () => {
+              const requestStarted = performance.now();
+              try {
+                const response = await fetch(endpoint, {
+                  headers: { authorization },
+                  signal: AbortSignal.timeout(5000),
+                });
+                const body = await response.arrayBuffer();
+                responseBodyBytes += body.byteLength;
+                if (!response.ok) {
+                  failures += 1;
+                  levelFailures += 1;
+                }
+              } catch (error) {
+                failures += 1;
+                levelFailures += 1;
+                if (error?.name === 'TimeoutError') {
+                  timeouts += 1;
+                  levelTimeouts += 1;
+                }
+              } finally {
+                latencies.push(performance.now() - requestStarted);
+              }
+            },
+          ),
+        );
+      }
+      const durationMs = performance.now() - started;
+      const sorted = [...latencies].sort((left, right) => left - right);
+      const p = (ratio) =>
+        sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+      rows.push({
+        service: 'Taxonomy',
+        endpoint: 'GET /api/v1/marcas',
+        evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+        variant,
+        concurrency,
+        warmupRequests,
+        samples,
+        datasetRows,
+        p50Ms: Number(p(0.5).toFixed(3)),
+        p95Ms: Number(p(0.95).toFixed(3)),
+        p99Ms: Number(p(0.99).toFixed(3)),
+        throughputRequestsPerSecond: Number(
+          ((samples * 1000) / durationMs).toFixed(2),
+        ),
+        durationMs: Number(durationMs.toFixed(3)),
+        requestUrlBytes:
+          Buffer.byteLength(new URL(endpoint).pathname) * samples,
+        requestBodyBytes: 0,
+        responseBodyBytes,
+        failures: levelFailures,
+        timeouts: levelTimeouts,
+        sqlAndPoolMetrics: 'NOT_COLLECTED by the existing Taxonomy runner',
+      });
+    }
+    const healthResponse = await fetch(
+      `http://127.0.0.1:${taxonomyPort}/health/ready`,
+    );
+    assert.equal(healthResponse.status, 200);
+    mkdirSync(performanceOutput, { recursive: true });
+    const perfReport = {
+      schemaVersion: 1,
+      benchmark: 'taxonomy-brands-http',
+      sha: git('rev-parse', 'HEAD'),
+      variant,
+      processTopology: {
+        taxonomy:
+          'actual Nest HTTP app started by iniciarTaxonomySvc in the E2E process',
+        database: 'PostgreSQL 17 TLS disposable Docker container',
+        rabbitMq: 'RabbitMQ 4.2.9 TLS disposable Docker container',
+        identity: 'RS256 local test issuer with simulated-auth service token',
+      },
+      dataset: `1000 synthetic brands plus deterministic E2E brands (${datasetRows} total)`,
+      measurement: {
+        requestBytes: 'request-target path bytes only; headers excluded',
+        responseBytes: 'response body bytes',
+        sqlQueryCountBuffersExplainPool: 'not instrumented in this harness',
+        recovery:
+          'health/readiness verified after load; dependency outage not injected in performance window',
+      },
+      healthReadyAfterLoad: healthResponse.status === 200,
+      totals: { failures, timeouts },
+      results: rows,
+    };
+    writeFileSync(
+      join(performanceOutput, `taxonomy-http-${variant}.json`),
+      JSON.stringify(perfReport, null, 2),
+    );
+    const csvCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    writeFileSync(
+      join(performanceOutput, `taxonomy-http-${variant}.csv`),
+      [
+        Object.keys(rows[0]).map(csvCell).join(','),
+        ...rows.map((row) => Object.values(row).map(csvCell).join(',')),
+      ].join('\n') + '\n',
+    );
+    assert.equal(failures, 0);
+    assert.equal(timeouts, 0);
+    report.performance = perfReport;
+  }
   const c = await admin.connect();
   try {
     await c.query('BEGIN');
@@ -1328,6 +1525,10 @@ try {
       .catch(() => undefined);
   await taxonomyApp?.close().catch(() => undefined);
   await catalogApp?.close().catch(() => undefined);
+  if (taxonomyAuthServer?.listening)
+    await new Promise((resolveClose) =>
+      taxonomyAuthServer.close(() => resolveClose()),
+    );
   await rabbit?.close().catch(() => undefined);
   await admin?.end().catch(() => undefined);
   if (rabbitCreated)

@@ -164,12 +164,20 @@ await writeFile(
               'Pricing Nest HTTP child process + PostgreSQL 17 TLS and RabbitMQ containers',
             dataset: 'isolated Pricing fixtures',
           },
+          {
+            service: 'Taxonomy',
+            endpoint: 'GET /api/v1/marcas',
+            runtime:
+              'iniciarTaxonomySvc Nest HTTP app + PostgreSQL 17 TLS and RabbitMQ 4.2.9 containers',
+            dataset: '1000 synthetic brands plus E2E fixtures',
+            authorization:
+              'RS256 local simulated-auth service token in isolated runner',
+          },
         ],
         notMeasured: [
           'Promotions HTTP',
           'Price Audit HTTP',
           'Bulk HTTP',
-          'Taxonomy HTTP',
           'Inventory direct HTTP',
           'Gateway other administrative screens',
         ],

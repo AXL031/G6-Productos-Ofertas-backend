@@ -46,6 +46,39 @@ function command(executable: string, args: string[], input?: string): string {
   return result.stdout.trim();
 }
 
+function sanitizeDiagnostic(value: string): string {
+  return value
+    .replaceAll('ci-runtime-admin', '[redacted]')
+    .replaceAll('ci-runtime-password', '[redacted]')
+    .replace(/Bearer\s+[^\s"']+/gi, 'Bearer [redacted]')
+    .replace(/(postgres(?:ql)?:\/\/)[^\s/@]+@/gi, '$1[redacted]@')
+    .replace(/((?:password|secret|token)\s*[=:]\s*)[^\s,;]+/gi, '$1[redacted]')
+    .slice(-12000);
+}
+
+function startupDiagnostics(container: string, childOutput = ''): string {
+  const state = spawnSync(
+    'docker',
+    [
+      'inspect',
+      '--format',
+      '{{.State.Status}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}',
+      container,
+    ],
+    { encoding: 'utf8', timeout: 5000, windowsHide: true },
+  );
+  const logs = spawnSync('docker', ['logs', '--tail', '80', container], {
+    encoding: 'utf8',
+    timeout: 5000,
+    windowsHide: true,
+  });
+  return [
+    `postgres=${sanitizeDiagnostic(state.stdout || state.stderr || 'inspect unavailable')}`,
+    `postgres_tail=${sanitizeDiagnostic(`${logs.stdout ?? ''}${logs.stderr ?? ''}`)}`,
+    `catalog_child_tail=${sanitizeDiagnostic(childOutput)}`,
+  ].join('\n');
+}
+
 function percentile(values: number[], ratio: number): number {
   const sorted = [...values].sort((left, right) => left - right);
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
@@ -164,7 +197,13 @@ describe.skipIf(!dockerAvailable)(
         '-c',
         `cp /certs/server.key /tmp/server.key; chown postgres:postgres /tmp/server.key; chmod 600 /tmp/server.key; exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/certs/server.crt -c ssl_key_file=/tmp/server.key${performanceEnabled ? ' -c shared_preload_libraries=pg_stat_statements' : ''}`,
       ]);
-      await until(ready);
+      try {
+        await until(ready);
+      } catch (error) {
+        throw new Error(
+          `Disposable PostgreSQL did not become ready: ${String(error)}\n${startupDiagnostics(container)}`,
+        );
+      }
       command(
         'docker',
         [
@@ -562,6 +601,7 @@ describe.skipIf(!dockerAvailable)(
         let failures = 0;
         let timeouts = 0;
         let recovery: Record<string, number | boolean> = {};
+        let recoveryChild: ChildProcess | undefined;
         const pgStats = (query: string) =>
           command(
             'docker',
@@ -590,13 +630,19 @@ describe.skipIf(!dockerAvailable)(
         };
 
         try {
-          await until(() => {
-            if (child.exitCode !== null)
-              throw new Error(
-                'Catalog benchmark process exited before readiness',
-              );
-            return logs.includes('APPLICATION_STARTED');
-          });
+          try {
+            await until(() => {
+              if (child.exitCode !== null)
+                throw new Error(
+                  'Catalog benchmark process exited before readiness',
+                );
+              return logs.includes('APPLICATION_STARTED');
+            });
+          } catch (error) {
+            throw new Error(
+              `Catalog process did not become ready: ${String(error)}\n${startupDiagnostics(container, logs)}`,
+            );
+          }
           const warmup = await fetch(url, {
             headers: { authorization: `Bearer ${token}` },
             signal: AbortSignal.timeout(5000),
@@ -716,19 +762,81 @@ describe.skipIf(!dockerAvailable)(
           await unavailable.arrayBuffer();
           expect(unavailable.status).toBe(503);
           command('docker', ['start', container]);
-          await until(async () => {
+          await until(ready, 30000);
+          const postgresReadyAfterRestart = ready();
+          expect(postgresReadyAfterRestart).toBe(true);
+          const previousDatabasePort = databasePort;
+          databasePort = command('docker', ['port', container, '5432/tcp'])
+            .split(':')
+            .at(-1)!;
+          const healthUrl = `http://127.0.0.1:${port}/health/ready`;
+          let healthBeforeProcessRestart = -1;
+          try {
+            const healthResponse = await fetch(healthUrl, {
+              signal: AbortSignal.timeout(5000),
+            });
+            healthBeforeProcessRestart = healthResponse.status;
+            await healthResponse.arrayBuffer();
+          } catch {
+            // The mapped host port can change across a Docker stop/start.
+          }
+          let automaticRecovery = healthBeforeProcessRestart === 200;
+          if (!automaticRecovery && databasePort === previousDatabasePort) {
             try {
-              return (
-                (
-                  await fetch(`http://127.0.0.1:${port}/health/ready`, {
-                    signal: AbortSignal.timeout(500),
-                  })
-                ).status === 200
-              );
+              await until(async () => {
+                try {
+                  return (
+                    (
+                      await fetch(healthUrl, {
+                        signal: AbortSignal.timeout(500),
+                      })
+                    ).status === 200
+                  );
+                } catch {
+                  return false;
+                }
+              }, 10000);
+              automaticRecovery = true;
             } catch {
-              return false;
+              automaticRecovery = false;
             }
-          }, 30000);
+          }
+          const processRestarted = !automaticRecovery;
+          if (processRestarted) {
+            await stop(child);
+            recoveryChild = spawn(process.execPath, [main], {
+              cwd: directory,
+              env: {
+                ...environment('session', port),
+                G6_SECURITY_MODE: 'SIMULATED_AUTH',
+                SIMULATED_AUTH_ISSUER: identity.issuer,
+                SIMULATED_AUTH_JWKS_URL: identity.jwksUrl,
+              },
+              windowsHide: true,
+            });
+            let recoveryLogs = '';
+            recoveryChild.stdout?.on(
+              'data',
+              (data) => (recoveryLogs += String(data)),
+            );
+            recoveryChild.stderr?.on(
+              'data',
+              (data) => (recoveryLogs += String(data)),
+            );
+            try {
+              await until(() => {
+                if (recoveryChild?.exitCode !== null)
+                  throw new Error(
+                    'Catalog recovery child exited before readiness',
+                  );
+                return recoveryLogs.includes('APPLICATION_STARTED');
+              }, 30000);
+            } catch (error) {
+              throw new Error(
+                `Catalog failed to recover after PG was ready; child restart failed: ${String(error)}\n${startupDiagnostics(container, recoveryLogs)}`,
+              );
+            }
+          }
           const restored = await fetch(url, {
             headers: { authorization: `Bearer ${token}` },
             signal: AbortSignal.timeout(5000),
@@ -738,6 +846,11 @@ describe.skipIf(!dockerAvailable)(
           expect(restoredBody.meta.total).toBe(productCount);
           recovery = {
             databaseDownHttpStatus: unavailable.status,
+            postgresReadyAfterRestart,
+            databasePortChanged: databasePort !== previousDatabasePort,
+            catalogHealthBeforeProcessRestart: healthBeforeProcessRestart,
+            automaticPoolRecovery: automaticRecovery,
+            catalogProcessRestarted: processRestarted,
             healthReadyAfterRestart: true,
             requestRecoveredAfterRestart: true,
           };
@@ -796,6 +909,7 @@ describe.skipIf(!dockerAvailable)(
           expect(failures).toBe(0);
           expect(timeouts).toBe(0);
         } finally {
+          await stop(recoveryChild);
           await stop(child);
           await identity.close();
         }

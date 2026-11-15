@@ -1100,6 +1100,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     const created = await create('E2E Pricing real', 40).expect(201);
     const comboId = String(created.body.combo_id);
+    let performanceAddedCombos = 0;
 
     if (performanceEnabled) {
       await comboApp.listen(0, '127.0.0.1');
@@ -1108,6 +1109,12 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       const warmupRequests = 10;
       const performanceRows: Array<Record<string, number | string>> = [];
       const pricingToken = makeToken({ scope: 'precios:leer' });
+      const performanceHumanToken = makeToken({
+        tipo: 'acceso',
+        sub: randomUUID(),
+        roles: ['admin', 'GESTOR_COMERCIAL'],
+        scope: undefined,
+      });
       const combosUrl = `${await comboApp.getUrl()}/api/v1/combos?pagina=1&tamanio=20`;
       const pricingUrl = `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`;
       const comboCount = Number(
@@ -1143,7 +1150,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
           method: 'GET' as const,
           endpoint: combosUrl,
           label: 'GET /api/v1/combos?pagina=1&tamanio=20',
-          bearer: humanToken,
+          bearer: performanceHumanToken,
           datasetRows: comboCount,
         },
         {
@@ -1160,7 +1167,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
           endpoint: `${await comboApp.getUrl()}/api/v1/combos`,
           label:
             'POST /api/v1/combos (real Catalog/Pricing provider resolution)',
-          bearer: humanToken,
+          bearer: performanceHumanToken,
           datasetRows: comboCount,
           body: providerBackedCreate,
         },
@@ -1168,13 +1175,19 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       for (const target of targets) {
         for (const concurrency of [1, 8, 32] as const) {
           for (let index = 0; index < warmupRequests; index += 1) {
+            const warmupBody = target.body
+              ? JSON.stringify({
+                  ...target.body,
+                  nombre: `${target.body.nombre} ${randomUUID()}`,
+                })
+              : undefined;
             const warmup = await fetch(target.endpoint, {
               method: target.method,
               headers: {
                 authorization: `Bearer ${target.bearer}`,
-                ...(target.body ? { 'content-type': 'application/json' } : {}),
+                ...(warmupBody ? { 'content-type': 'application/json' } : {}),
               },
-              ...(target.body ? { body: JSON.stringify(target.body) } : {}),
+              ...(warmupBody ? { body: warmupBody } : {}),
               signal: AbortSignal.timeout(5000),
             });
             await warmup.arrayBuffer();
@@ -1321,6 +1334,16 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       );
       expect(totalFailures).toBe(0);
       expect(totalTimeouts).toBe(0);
+      performanceAddedCombos =
+        Number(
+          (
+            await admin.query<{ count: string }>(
+              'SELECT count(*)::text AS count FROM combos.combos',
+            )
+          ).rows[0]?.count ?? 0,
+        ) -
+        Number(beforeCreate.rows[0]?.count ?? 0) -
+        1;
     }
 
     const stored = await admin.query(
@@ -1373,7 +1396,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     expect(afterRejected.rows[0]?.count).toBe(beforeRejected.rows[0]?.count);
     expect(Number(beforeRejected.rows[0]?.count)).toBe(
-      Number(beforeCreate.rows[0]?.count) + 1,
+      Number(beforeCreate.rows[0]?.count) + 1 + performanceAddedCombos,
     );
 
     const missingPrice = await request(comboApp.getHttpServer())
