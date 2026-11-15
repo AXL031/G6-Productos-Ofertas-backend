@@ -35,7 +35,7 @@ for (const { path, value } of reports) {
   if (!['baseline', 'candidate'].includes(variant))
     throw new Error(`Missing baseline/candidate variant in ${path}`);
   for (const result of value.results) {
-    const key = `${value.benchmark}|${result.endpoint}|${result.concurrency}`;
+    const key = `${value.benchmark}|${result.service}|${result.endpoint}|${result.concurrency}`;
     const pair = pairs.get(key) ?? {};
     if (pair[variant]) throw new Error(`Duplicate ${variant} row for ${key}`);
     pair[variant] = { report: value, result };
