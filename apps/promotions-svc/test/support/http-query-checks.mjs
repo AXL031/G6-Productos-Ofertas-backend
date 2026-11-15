@@ -303,7 +303,7 @@ export async function verifyHttpReadQueries(resources, baseConfig, adminPool) {
           const sorted = samples.sort((left, right) => left - right);
           const sqlStats = adminPool
             ? await adminPool.query(
-                `SELECT COALESCE(sum(calls),0)::text calls, COALESCE(sum(shared_blks_hit),0)::text shared_blks_hit, COALESCE(sum(shared_blks_read),0)::text shared_blks_read, COALESCE(json_agg(json_build_object('query',left(query,240),'calls',calls,'shared_blks_hit',shared_blks_hit,'shared_blks_read',shared_blks_read)) FILTER (WHERE query NOT LIKE '%pg_stat_statements%'), '[]'::json) statements FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())`,
+                `SELECT COALESCE(sum(calls),0)::text calls, COALESCE(sum(shared_blks_hit),0)::text shared_blks_hit, COALESCE(sum(shared_blks_read),0)::text shared_blks_read, COALESCE(json_agg(json_build_object('query',left(query,240),'calls',calls,'shared_blks_hit',shared_blks_hit,'shared_blks_read',shared_blks_read)), '[]'::json) statements FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'`,
               )
             : { rows: [] };
           latencies.push(...sorted);
