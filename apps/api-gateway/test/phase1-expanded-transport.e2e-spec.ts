@@ -8,6 +8,7 @@ import { GatewayIdentity } from '../src/routing/gateway-identity.js';
 import { CONTRACT_ROUTES } from '../src/routing/contract-routes.js';
 import { PHASE1_INTERNAL_READ_ROUTES } from '../src/routing/phase1-internal-read-routes.js';
 import { isEligiblePublicRead } from '../src/routing/gateway-public-reads.js';
+import { createSignedIdentity } from './support/signed-identity.js';
 import {
   GATEWAY_SETTINGS,
   readGatewaySettings,
@@ -21,6 +22,7 @@ describe('Expanded Phase 1 Gateway HTTP transport', () => {
   );
   let provider: Server;
   let app: INestApplication;
+  let signed: ReturnType<typeof createSignedIdentity>;
   const received: Array<{
     method?: string;
     url?: string;
@@ -64,6 +66,7 @@ describe('Expanded Phase 1 Gateway HTTP transport', () => {
       env['GATEWAY_' + service.replaceAll('-', '_').toUpperCase() + '_URL'] =
         'http://127.0.0.1:' + address.port;
     const settings = readGatewaySettings(env);
+    signed = createSignedIdentity(settings);
     const module = await Test.createTestingModule({
       imports: [ApiGatewayModule],
     })
@@ -81,8 +84,8 @@ describe('Expanded Phase 1 Gateway HTTP transport', () => {
     if (provider)
       await new Promise<void>((resolve) => provider.close(() => resolve()));
   });
-  it('selects 59 GET and six non-mutating POST candidates', () => {
-    expect(routes.filter((r) => r.method === 'GET')).toHaveLength(59);
+  it('selects 58 GET and six non-mutating POST candidates', () => {
+    expect(routes.filter((r) => r.method === 'GET')).toHaveLength(58);
     expect(routes.filter((r) => r.method === 'POST')).toHaveLength(6);
   });
   for (const route of routes)
@@ -120,6 +123,25 @@ describe('Expanded Phase 1 Gateway HTTP transport', () => {
       .get('/api/v1/productos')
       .set('Authorization', 'Bearer invalid')
       .expect(503);
+    expect(received).toHaveLength(start);
+  });
+
+  it('keeps private SKU context outside the external Gateway, even with a valid service JWT', async () => {
+    const path = '/api/v1/productos/skus/OPAQUE-001/contexto';
+    const start = received.length;
+    await request(app.getHttpServer()).get(path).expect(404);
+    await request(app.getHttpServer())
+      .get(path)
+      .set(
+        'Authorization',
+        `Bearer ${signed.token({
+          sub: 'modulo-productos',
+          tipo: 'servicio',
+          aud: ['api-productos'],
+          scope: 'catalogo:leer',
+        })}`,
+      )
+      .expect(404);
     expect(received).toHaveLength(start);
   });
 });

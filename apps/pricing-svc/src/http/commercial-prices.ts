@@ -8,9 +8,12 @@ import { wireMoney, wireVersion } from './pricing-reads.js';
 export const PRICING_CATALOG_CONTEXT = Symbol('PRICING_CATALOG_CONTEXT');
 // Puerto interno: requiere un provider autoritativo; no define otro endpoint de Catálogo.
 export interface PricingCatalogContext {
+  /** Private Catalog batch is authorized only when the adapter declares its mode. */
+  readonly batchMode?: 'G7_AUTHENTICATED';
   resolve(
     sku: string,
     correlationId?: string,
+    operationId?: 'consultarPrecios' | 'obtenerPrecioSku',
   ): Promise<{
     sku: string;
     productId: string;
@@ -18,8 +21,24 @@ export interface PricingCatalogContext {
     active: boolean;
     eligible: boolean;
   } | null>;
+  resolveBatch?(
+    skus: readonly string[],
+    correlationId?: string,
+  ): Promise<
+    Array<{
+      sku: string;
+      productId: string;
+      isVariant: boolean;
+      active: boolean;
+      eligible: boolean;
+    } | null>
+  >;
 }
 export const channels = ['MARKETPLACE', 'CHATBOT', 'RETAIL', 'VENTAS'] as const;
+const MAX_CATALOG_CONTEXT_CONCURRENCY = 8;
+type CommercialCandidates = Awaited<
+  ReturnType<PricingRepository['readCandidates']>
+>;
 export function parseCommercialQuery(
   query: Record<string, unknown>,
   batch = false,
@@ -73,24 +92,21 @@ export class CommercialPrices {
     @Inject(PRICING_CATALOG_CONTEXT)
     private readonly catalog?: PricingCatalogContext,
   ) {}
-  async sku(
+
+  private async resolveContext(
     sku: string,
-    channel: (typeof channels)[number] | undefined,
-    at: Date,
-    historical = false,
     correlationId?: string,
-  ) {
-    if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
+    operationId?: 'consultarPrecios' | 'obtenerPrecioSku',
+  ): Promise<Awaited<ReturnType<PricingCatalogContext['resolve']>>> {
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
     try {
-      context = await this.catalog.resolve(sku, correlationId);
+      context = await this.catalog.resolve(sku, correlationId, operationId);
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
-    if (context === null)
-      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    if (context === null) return null;
     if (
       !context ||
       context.sku !== sku ||
@@ -101,15 +117,18 @@ export class CommercialPrices {
       typeof context.eligible !== 'boolean'
     )
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
-    if (!context.active || !context.eligible)
-      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    return context;
+  }
+
+  private price(
+    sku: string,
+    context: NonNullable<Awaited<ReturnType<PricingCatalogContext['resolve']>>>,
+    definitions: CommercialCandidates,
+    channel: (typeof channels)[number] | undefined,
+    at: Date,
+    historical: boolean,
+  ) {
     const channelId = channel ?? null;
-    const definitions = await this.repository.readCandidates(
-      context.productId,
-      sku,
-      channelId,
-      at,
-    );
     const resolved = resolvePrice(definitions, context, channelId, at);
     let effectiveChannel: (typeof channels)[number] | null = null;
     if (resolved.definition.channelId !== null) {
@@ -118,8 +137,8 @@ export class CommercialPrices {
       effectiveChannel = channel;
     }
     const validity = definitions
-      .flatMap((d) => d.validities)
-      .find((v) => v === resolved.validity)!;
+      .flatMap((definition) => definition.validities)
+      .find((candidate) => candidate === resolved.validity)!;
     return {
       sku,
       precio_regular: wireMoney(validity.precioRegular),
@@ -138,19 +157,151 @@ export class CommercialPrices {
       origen: resolved.origen,
     };
   }
+
+  async sku(
+    sku: string,
+    channel: (typeof channels)[number] | undefined,
+    at: Date,
+    historical = false,
+    correlationId?: string,
+  ) {
+    if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
+    const context = await this.resolveContext(
+      sku,
+      correlationId,
+      'obtenerPrecioSku',
+    );
+    if (context === null)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    if (!context.active || !context.eligible)
+      throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
+    const channelId = channel ?? null;
+    const definitions = await this.repository.readCandidates(
+      context.productId,
+      sku,
+      channelId,
+      at,
+    );
+    return this.price(sku, context, definitions, channel, at, historical);
+  }
   async batch(
     skus: string[],
     channel: (typeof channels)[number] | undefined,
     at: Date,
     historical = false,
     correlationId?: string,
+    // Interno para calibración; no forma parte de los parámetros HTTP.
+    contextConcurrency = MAX_CATALOG_CONTEXT_CONCURRENCY,
   ) {
+    if (!skus.length) return { items: [] };
+    if (skus.some((sku) => !sku.trim()))
+      throw new PricingHttpError(400, 'VALIDACION');
+    if (!this.catalog)
+      throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    const concurrency =
+      Number.isSafeInteger(contextConcurrency) && contextConcurrency > 0
+        ? Math.min(contextConcurrency, 16)
+        : MAX_CATALOG_CONTEXT_CONCURRENCY;
+    const uniqueSkus = [...new Set(skus)];
+    const contexts = new Map<
+      string,
+      Awaited<ReturnType<PricingCatalogContext['resolve']>>
+    >();
+    // Select the private batch capability before making a request. In legacy
+    // read modes, use the explicitly supported individual GET path. Once the
+    // private G7 batch is selected, any HTTP/auth/technical failure is terminal;
+    // it must never silently downgrade to individual or public reads.
+    if (
+      this.catalog.resolveBatch &&
+      this.catalog.batchMode === 'G7_AUTHENTICATED'
+    ) {
+      let resolved: NonNullable<
+        Awaited<ReturnType<NonNullable<PricingCatalogContext['resolveBatch']>>>
+      >;
+      try {
+        resolved = await this.catalog.resolveBatch(uniqueSkus, correlationId);
+      } catch {
+        throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+      }
+      if (
+        !Array.isArray(resolved) ||
+        resolved.length !== uniqueSkus.length ||
+        resolved.some(
+          (context, index) =>
+            context !== null &&
+            (!context ||
+              context.sku !== uniqueSkus[index] ||
+              typeof context.productId !== 'string' ||
+              !context.productId.trim() ||
+              typeof context.isVariant !== 'boolean' ||
+              typeof context.active !== 'boolean' ||
+              typeof context.eligible !== 'boolean'),
+        )
+      )
+        throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+      uniqueSkus.forEach((sku, index) => contexts.set(sku, resolved[index]!));
+    } else {
+      let cursor = 0;
+      let failed = false;
+      let failure: unknown;
+      const worker = async () => {
+        while (!failed) {
+          const index = cursor++;
+          if (index >= uniqueSkus.length) return;
+          const sku = uniqueSkus[index]!;
+          try {
+            contexts.set(
+              sku,
+              await this.resolveContext(sku, correlationId, 'consultarPrecios'),
+            );
+          } catch (error) {
+            failed = true;
+            failure = error;
+          }
+        }
+      };
+      await Promise.all(
+        Array.from(
+          {
+            length: Math.min(concurrency, uniqueSkus.length),
+          },
+          worker,
+        ),
+      );
+      if (failed) throw failure;
+    }
+
+    const eligibleContexts = uniqueSkus.flatMap((sku) => {
+      const context = contexts.get(sku);
+      return context && context.active && context.eligible
+        ? [{ sku, productId: context.productId, context }]
+        : [];
+    });
+    const candidates = await this.repository.readCandidatesBatch(
+      eligibleContexts,
+      channel ?? null,
+      at,
+    );
+    const definitionsBySku = new Map(
+      candidates.map(({ sku, definitions }) => [sku, definitions]),
+    );
     const items: Awaited<ReturnType<CommercialPrices['sku']>>[] = [];
     for (const sku of skus) {
+      const context = contexts.get(sku);
+      if (!context || !context.active || !context.eligible) continue;
       try {
-        items.push(await this.sku(sku, channel, at, historical, correlationId));
+        items.push(
+          this.price(
+            sku,
+            context,
+            definitionsBySku.get(sku) ?? [],
+            channel,
+            at,
+            historical,
+          ),
+        );
       } catch (error) {
-        // ConsultaPrecios no tiene errores por fila: solo se omite ausencia de precio contractual.
+        // La consulta no tiene errores por fila: solo omite ausencias contractuales.
         if (
           !(
             error instanceof PricingHttpError &&

@@ -2,6 +2,7 @@
 // Commercial facts below are explicit test fixtures; production keeps its blocked provider.
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import os from 'node:os';
 import { Test } from '@nestjs/testing';
 import { PromotionsSvcModule } from '../../../../dist/apps/promotions-svc/promotions-svc.module.js';
 import { PromotionsConfigService } from '../../../../dist/apps/promotions-svc/infrastructure/config/promotions-config.js';
@@ -21,8 +22,9 @@ import {
   assertCoupon,
 } from '../../../../dist/apps/promotions-svc/domain/promotion-rules.js';
 
-export async function verifyHttpReadQueries(resources, baseConfig) {
+export async function verifyHttpReadQueries(resources, baseConfig, adminPool) {
   const checks = [];
+  let performanceProfileWritten = false;
   const policy = {
     pricingOffer: false,
     automaticPromotion: false,
@@ -169,6 +171,262 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
     app = module.createNestApplication({ logger: false });
     await app.listen(0, '127.0.0.1');
     const base = await app.getUrl();
+    if (
+      !performanceProfileWritten &&
+      process.env.G6_PERFORMANCE_HTTP === '1' &&
+      facts
+    ) {
+      performanceProfileWritten = true;
+      const profiles = [
+        {
+          path: '/api/v1/promociones?canal=MARKETPLACE',
+          bearer: service('promociones:leer'),
+        },
+        {
+          path: '/api/v1/cupones?pagina=1&tamanio=20',
+          bearer: user,
+        },
+        {
+          path: '/api/v1/recomendaciones/reglas?tipo=CROSS_SELL&tamanio=20',
+          bearer: user,
+        },
+        {
+          path: '/api/v1/recomendaciones?productoId=HTTP-ORIGIN&canal=MARKETPLACE',
+          bearer: service('recomendaciones:leer'),
+        },
+      ];
+      const concurrencyLevels = [1, 8, 32];
+      const warmupRequests = 10;
+      const samplesPerLevel = 1000;
+      const rows = [];
+      const latencies = [];
+      let totalFailures = 0;
+      let totalTimeouts = 0;
+      const explainPlans = {};
+      if (adminPool) {
+        const plans = {
+          promotionsList:
+            "SELECT * FROM promotions.promotions WHERE modality='CUPON' ORDER BY priority,id LIMIT 20",
+          couponList:
+            'SELECT * FROM promotions.coupons ORDER BY code,id LIMIT 20',
+          recommendationRuleList:
+            "SELECT * FROM promotions.recommendation_rules WHERE recommendation_type='CROSS_SELL' ORDER BY priority,id LIMIT 20",
+          productRecommendationMatch:
+            "SELECT * FROM promotions.recommendation_rules WHERE state='ACTIVO' AND valid_from <= TIMESTAMPTZ '2026-10-22T12:00:00Z' AND valid_until > TIMESTAMPTZ '2026-10-22T12:00:00Z' AND ((origin_type='PRODUCTO' AND origin_id='HTTP-ORIGIN') OR (origin_type='CATEGORIA' AND origin_id='HTTP-CATEGORY')) ORDER BY priority,id",
+        };
+        for (const [name, statement] of Object.entries(plans)) {
+          const result = await adminPool.query(
+            `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) ${statement}`,
+          );
+          explainPlans[name] = result.rows[0]['QUERY PLAN'];
+        }
+      }
+      const percentile = (sorted, fraction) =>
+        sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+      for (const profileCase of profiles) {
+        const { path, bearer } = profileCase;
+        const headers = { authorization: 'Bearer ' + bearer };
+        const requestTargetAndBearerBytes =
+          Buffer.byteLength(`GET ${path} HTTP/1.1\r\n`) +
+          Buffer.byteLength(`authorization: Bearer ${bearer}\r\n`);
+        for (const concurrency of concurrencyLevels) {
+          for (let index = 0; index < warmupRequests; index += 1) {
+            const response = await fetch(base + path, {
+              headers,
+              signal: AbortSignal.timeout(10000),
+            });
+            await response.arrayBuffer();
+            if (!response.ok)
+              throw new Error(
+                `HTTP profile rejected GET ${path.split('?')[0]} with ${response.status}`,
+              );
+          }
+          if (adminPool)
+            await adminPool.query('SELECT pg_stat_statements_reset()');
+          const samples = new Array(samplesPerLevel);
+          let levelFailures = 0;
+          let levelTimeouts = 0;
+          let responseBodyBytes = 0;
+          let next = 0;
+          let peakPoolTotal = resources.pool.totalCount;
+          let peakPoolActive =
+            resources.pool.totalCount - resources.pool.idleCount;
+          let peakPoolWaiting = resources.pool.waitingCount;
+          let monitoring = true;
+          const monitor = (async () => {
+            while (monitoring) {
+              peakPoolTotal = Math.max(
+                peakPoolTotal,
+                resources.pool.totalCount,
+              );
+              peakPoolActive = Math.max(
+                peakPoolActive,
+                resources.pool.totalCount - resources.pool.idleCount,
+              );
+              peakPoolWaiting = Math.max(
+                peakPoolWaiting,
+                resources.pool.waitingCount,
+              );
+              if (monitoring)
+                await new Promise((resolveDelay) =>
+                  setTimeout(resolveDelay, 100),
+                );
+            }
+          })();
+          const started = performance.now();
+          await Promise.all(
+            Array.from({ length: concurrency }, async () => {
+              while (true) {
+                const index = next++;
+                if (index >= samplesPerLevel) return;
+                const startedRequest = performance.now();
+                try {
+                  const response = await fetch(base + path, {
+                    headers,
+                    signal: AbortSignal.timeout(10000),
+                  });
+                  const body = await response.arrayBuffer();
+                  samples[index] = performance.now() - startedRequest;
+                  if (!response.ok) levelFailures += 1;
+                  else responseBodyBytes += body.byteLength;
+                } catch (error) {
+                  samples[index] = performance.now() - startedRequest;
+                  levelFailures += 1;
+                  if (error?.name === 'TimeoutError') levelTimeouts += 1;
+                }
+              }
+            }),
+          );
+          monitoring = false;
+          await monitor;
+          const durationMs = performance.now() - started;
+          const sorted = samples.sort((left, right) => left - right);
+          const sqlStats = adminPool
+            ? await adminPool.query(
+                `SELECT COALESCE(sum(calls),0)::text calls, COALESCE(sum(shared_blks_hit),0)::text shared_blks_hit, COALESCE(sum(shared_blks_read),0)::text shared_blks_read, COALESCE(json_agg(json_build_object('query',left(query,240),'calls',calls,'shared_blks_hit',shared_blks_hit,'shared_blks_read',shared_blks_read)), '[]'::json) statements FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'`,
+              )
+            : { rows: [] };
+          latencies.push(...sorted);
+          totalFailures += levelFailures;
+          totalTimeouts += levelTimeouts;
+          rows.push({
+            evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+            service: 'promotions-svc',
+            endpoint: `GET ${path}`,
+            variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
+            sha:
+              process.env.G6_PERFORMANCE_SHA ??
+              process.env.GITHUB_SHA ??
+              'local-unset',
+            concurrency,
+            samples: samplesPerLevel,
+            warmupRequests,
+            p50Ms: percentile(sorted, 0.5),
+            p95Ms: percentile(sorted, 0.95),
+            p99Ms: percentile(sorted, 0.99),
+            throughputRequestsPerSecond: (samplesPerLevel * 1000) / durationMs,
+            durationMs,
+            requestUrlBytes: requestTargetAndBearerBytes * samplesPerLevel,
+            requestBodyBytes: 0,
+            requestTargetAndBearerBytes:
+              requestTargetAndBearerBytes * samplesPerLevel,
+            responseBodyBytes,
+            poolConnectionsObservedAfter: resources.pool.totalCount,
+            activeConnectionsObservedAfter:
+              resources.pool.totalCount - resources.pool.idleCount,
+            poolWaitingClientsObservedAfter: resources.pool.waitingCount,
+            peakPoolConnections: peakPoolTotal,
+            peakActiveConnections: peakPoolActive,
+            peakWaitingClients: peakPoolWaiting,
+            failures: levelFailures,
+            timeouts: levelTimeouts,
+            recovery:
+              'not exercised; separate persistence E2E recovery checks remain in CI',
+            sqlCalls: Number(sqlStats.rows[0]?.calls ?? 0),
+            sharedBlocksHit: Number(sqlStats.rows[0]?.shared_blks_hit ?? 0),
+            sharedBlocksRead: Number(sqlStats.rows[0]?.shared_blks_read ?? 0),
+            sqlStatements: sqlStats.rows[0]?.statements ?? [],
+            buffersAndExplain: explainPlans,
+            pool: {
+              max: resources.pool.options?.max ?? null,
+              totalAfterWindow: resources.pool.totalCount,
+              idleAfterWindow: resources.pool.idleCount,
+              waitingAfterWindow: resources.pool.waitingCount,
+              peakTotal: peakPoolTotal,
+              peakActive: peakPoolActive,
+              peakWaiting: peakPoolWaiting,
+              observationIntervalMs: 100,
+              observerOverhead:
+                'in-process pg Pool counters; no SQL polling added',
+            },
+          });
+        }
+      }
+      const profile = {
+        schemaVersion: 1,
+        evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+        benchmark: 'promotions-http-real-postgres-tls',
+        service: 'promotions-svc',
+        variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
+        sha:
+          process.env.G6_PERFORMANCE_SHA ??
+          process.env.GITHUB_SHA ??
+          'local-unset',
+        composition:
+          'Nest TestingModule assembled from PromotionsSvcModule; real loopback HTTP listener and isolated PostgreSQL TLS provider; recommendation commercial facts use the existing deterministic test provider, while persisted promotions/coupons/rules use PostgreSQL',
+        pairedRun: process.env.G6_PERFORMANCE_PAIR_ID ?? null,
+        runner: {
+          platform: process.platform,
+          architecture: process.arch,
+          nodeVersion: process.version,
+          cpuCount: os.cpus().length,
+          cpuModel: os.cpus()[0]?.model ?? null,
+        },
+        routeCoverage: profiles.map(({ path }) => `GET ${path}`),
+        sampleDefinition:
+          '1,000 measured requests per route and concurrency after 10 warmups per route/window',
+        recovery:
+          'not exercised; service persistence E2E includes its own recovery checks',
+        measurement:
+          'PostgreSQL pg_stat_statements calls and shared buffer totals reset per route/concurrency window; EXPLAIN ANALYZE BUFFERS plans are representative seeded queries; pool peaks are sampled every 100ms via in-process counters',
+        requestBytesDefinition:
+          'request-target and bearer line; excludes transport framing and other HTTP headers',
+        responseBytesDefinition: 'exact response body bytes',
+        results: rows,
+        overall: {
+          samples: latencies.length,
+          p50Ms: percentile(
+            [...latencies].sort((left, right) => left - right),
+            0.5,
+          ),
+          p95Ms: percentile(
+            [...latencies].sort((left, right) => left - right),
+            0.95,
+          ),
+          p99Ms: percentile(
+            [...latencies].sort((left, right) => left - right),
+            0.99,
+          ),
+          failures: totalFailures,
+          timeouts: totalTimeouts,
+        },
+      };
+      const { mkdir, writeFile } = await import('node:fs/promises');
+      const { join, resolve } = await import('node:path');
+      const outputDirectory = resolve(
+        process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+      );
+      await mkdir(outputDirectory, { recursive: true });
+      await writeFile(
+        join(outputDirectory, 'promotions-http-profile.json'),
+        `${JSON.stringify(profile, null, 2)}\n`,
+      );
+      const columns = Object.keys(rows[0] ?? {});
+      await writeFile(
+        join(outputDirectory, 'promotions-http-profile.csv'),
+        `${[columns.join(','), ...rows.map((row) => columns.map((key) => JSON.stringify(row[key])).join(','))].join('\n')}\n`,
+      );
+    }
     return async (id, path, bearer, body, expected = 200) => {
       const trace = randomUUID();
       const headers = {

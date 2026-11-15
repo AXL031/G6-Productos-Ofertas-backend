@@ -94,7 +94,16 @@ export class CatalogQueryService {
   }
 
   listAdminProducts(input: Record<string, unknown>) {
-    const keys = ['pagina', 'tamanio', 'estado', 'q', 'categoriaId', 'marcaId'];
+    const keys = [
+      'pagina',
+      'tamanio',
+      'estado',
+      'q',
+      'categoriaId',
+      'marcaId',
+      'tipoProductoIdsIncluidos',
+      'tipoProductoIdsExcluidos',
+    ];
     if (Object.keys(input).some((key) => !keys.includes(key)))
       throw new BadRequestException();
     const query = parseProductQuery(input, false, false);
@@ -107,6 +116,31 @@ export class CatalogQueryService {
     )
       throw new BadRequestException();
     return this.repository.listAdminProducts(query);
+  }
+
+  resolveAdminSkus(body: unknown) {
+    if (
+      !body ||
+      typeof body !== 'object' ||
+      Array.isArray(body) ||
+      Object.keys(body).some((key) => key !== 'skus')
+    )
+      throw new BadRequestException({ code: 'VALIDACION' });
+    const skus = (body as Record<string, unknown>).skus;
+    if (
+      !Array.isArray(skus) ||
+      skus.length < 1 ||
+      skus.length > 100 ||
+      !skus.every(
+        (sku) =>
+          typeof sku === 'string' &&
+          sku.length > 0 &&
+          sku.length <= 256 &&
+          !sku.includes('\0'),
+      )
+    )
+      throw new BadRequestException({ code: 'VALIDACION' });
+    return this.repository.resolveAdminSkus(skus);
   }
 
   async adminProduct(productId: string) {

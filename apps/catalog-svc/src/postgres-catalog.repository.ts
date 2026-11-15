@@ -5,6 +5,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { CatalogTelemetry } from './catalog-telemetry.js';
+import { catalogSkuContext, catalogSkuRecords } from './catalog-sku-query.js';
 import {
   and,
   asc,
@@ -13,6 +14,7 @@ import {
   exists,
   ilike,
   inArray,
+  notInArray,
   or,
   sql,
   type SQL,
@@ -226,6 +228,16 @@ export class PostgresCatalogRepository {
       conditions.push(eq(products.categoria_id, query.categoriaId));
     if (query.marcaId !== undefined)
       conditions.push(eq(products.marca_id, query.marcaId));
+    if (query.tipoProductoIdsIncluidos?.length)
+      conditions.push(
+        inArray(products.tipo_producto_id, [...query.tipoProductoIdsIncluidos]),
+      );
+    if (query.tipoProductoIdsExcluidos?.length)
+      conditions.push(
+        notInArray(products.tipo_producto_id, [
+          ...query.tipoProductoIdsExcluidos,
+        ]),
+      );
     if (
       !readDemo &&
       (query.estado === undefined || query.estado === 'ACTIVO')
@@ -348,36 +360,41 @@ export class PostgresCatalogRepository {
   }
 
   /** Authoritative SKU state and commercial eligibility, independent of Pricing. */
+  async skuContexts(skus: readonly string[]) {
+    try {
+      return await this.database.read((db) =>
+        db.transaction(
+          async (tx) => {
+            const rows = await catalogSkuRecords(tx, skus);
+            const bySku = new Map(rows.map((row) => [row.sku, row]));
+            return skus.map((sku) => {
+              const row = bySku.get(sku);
+              return row
+                ? {
+                    sku,
+                    status: 'FOUND' as const,
+                    context: catalogSkuContext(row),
+                  }
+                : {
+                    sku,
+                    status: 'SKU_NO_ENCONTRADO' as const,
+                    context: null,
+                  };
+            });
+          },
+          { isolationLevel: 'repeatable read', accessMode: 'read only' },
+        ),
+      );
+    } catch {
+      throw new ServiceUnavailableException({
+        code: 'SERVICIO_NO_DISPONIBLE',
+      });
+    }
+  }
+
   async skuContext(sku: string) {
-    return this.database.read(async (db) => {
-      const result = await db.execute(sql`SELECT si.sku, p.id AS product_id,
-        (si.variant_id IS NOT NULL) AS is_variant,
-        (CASE WHEN si.variant_id IS NULL THEN p.estado = 'ACTIVO'
-          ELSE v.estado = 'ACTIVA' END) AS active,
-        (p.estado = 'ACTIVO' AND
-          ((si.product_id IS NOT NULL AND NOT p.tiene_variantes)
-            OR (si.variant_id IS NOT NULL AND p.tiene_variantes AND v.estado = 'ACTIVA'))) AS eligible
-        FROM catalog.sku_identity si LEFT JOIN catalog.variants v ON v.id = si.variant_id
-        JOIN catalog.products p ON p.id = COALESCE(si.product_id, v.product_id)
-        WHERE si.sku = ${sku}`);
-      const row = result.rows[0];
-      if (!row) return null;
-      if (
-        typeof row.sku !== 'string' ||
-        typeof row.product_id !== 'string' ||
-        typeof row.is_variant !== 'boolean' ||
-        typeof row.active !== 'boolean' ||
-        typeof row.eligible !== 'boolean'
-      )
-        throw new Error();
-      return {
-        sku: row.sku,
-        productId: row.product_id,
-        isVariant: row.is_variant,
-        active: row.active,
-        eligible: row.eligible,
-      };
-    });
+    const [result] = await this.skuContexts([sku]);
+    return result?.context ?? null;
   }
 
   async priceCandidates(query: ProductQuery): Promise<PriceCandidate[]> {
@@ -385,22 +402,24 @@ export class PostgresCatalogRepository {
       db.transaction(
         async (tx) => {
           const where = this.where(query);
-          const simple = await tx
-            .select({ productId: products.id, sku: products.sku_base })
-            .from(products)
-            .where(and(where, eq(products.tiene_variantes, false)));
-          const children = await tx
-            .select({ productId: products.id, sku: variants.sku })
-            .from(products)
-            .innerJoin(variants, eq(variants.product_id, products.id))
-            .where(
-              and(
-                where,
-                eq(products.tiene_variantes, true),
-                eq(variants.estado, 'ACTIVA'),
-              ),
-            );
-          return [...simple, ...children];
+          const result = await tx.execute(sql`
+            SELECT ${products.id} AS "productId", ${products.sku_base} AS "sku"
+            FROM ${products}
+            WHERE ${and(where, eq(products.tiene_variantes, false))}
+            UNION ALL
+            SELECT ${products.id} AS "productId", ${variants.sku} AS "sku"
+            FROM ${products}
+            INNER JOIN ${variants} ON ${eq(variants.product_id, products.id)}
+            WHERE ${and(
+              where,
+              eq(products.tiene_variantes, true),
+              eq(variants.estado, 'ACTIVA'),
+            )}
+          `);
+          return result.rows.map((row) => ({
+            productId: row.productId as string,
+            sku: row.sku as string,
+          }));
         },
         { isolationLevel: 'repeatable read', accessMode: 'read only' },
       ),

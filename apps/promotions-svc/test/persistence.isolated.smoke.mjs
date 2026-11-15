@@ -209,7 +209,7 @@ try {
         'postgres:17-alpine',
         'sh',
         '-c',
-        'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key',
+        'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key -c shared_preload_libraries=pg_stat_statements',
       ],
       { POSTGRES_PASSWORD: password },
     );
@@ -230,6 +230,8 @@ try {
     connectionTimeoutMillis: 1000,
   });
   await ready(() => admin.query('SELECT 1'));
+  if (process.env.G6_PERFORMANCE_HTTP === '1')
+    await admin.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
   stage = 'official migrations in disposable database';
   await admin.query(
     'CREATE ROLE po_promotions_owner NOLOGIN; CREATE ROLE po_promotions_runtime NOLOGIN; CREATE SCHEMA promotions AUTHORIZATION po_promotions_owner',
@@ -653,6 +655,7 @@ try {
       order_id: 'ISOLATED-' + randomUUID(),
       coupon_code: 'DEMO_REPO',
       channel_id: 'MARKETPLACE',
+      customer_ref: randomUUID(),
       reservation_id: randomUUID(),
       commercial_snapshot_ref: 'isolated-snapshot',
       effective_at: '2026-10-16T12:00:00Z',
@@ -679,6 +682,21 @@ try {
       )
     ).length,
     1,
+  );
+  const coupon = await persistence.read((repos) =>
+    repos.coupons.findByCode(command.data.coupon_code),
+  );
+  assert.deepEqual(
+    await persistence.read((repos) =>
+      repos.queries.couponUsage(coupon.id, command.data.customer_ref),
+    ),
+    { used: 1, customerUsed: 1 },
+  );
+  assert.deepEqual(
+    await persistence.read((repos) =>
+      repos.queries.couponUsage(coupon.id, null),
+    ),
+    { used: 1, customerUsed: 0 },
   );
   assert.equal(
     (await persistence.read((repos) => repos.receipt(command.operation_id)))
@@ -709,7 +727,7 @@ try {
     { code: '42501' },
   );
   checks.push(
-    'existing coupon command replays once; Drizzle reads use/receipt/inbox/outbox on the same pool; history and fingerprint remain protected',
+    'existing coupon command replays once; PostgreSQL coupon usage counts convert safely with and without customer_ref; Drizzle reads use/receipt/inbox/outbox on the same pool; history and fingerprint remain protected',
   );
 
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
@@ -725,7 +743,9 @@ try {
     )),
   );
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
-  checks.push(...(await verifyHttpReadQueries(resources, runtimeConfig)));
+  checks.push(
+    ...(await verifyHttpReadQueries(resources, runtimeConfig, admin)),
+  );
   if (process.env.G6_PROMOTIONS_GATEWAY_E2E === 'true') {
     stage = 'native Gateway/Promotions flow with real PostgreSQL';
     // The provider suite closes its pool to verify 503. A new restricted pool
@@ -767,6 +787,13 @@ try {
   );
 } catch (error) {
   // No connection string, query parameters, PostgreSQL detail or fixture password.
+  const profileDiagnostic =
+    error instanceof Error &&
+    /^HTTP profile rejected GET \/api\/v1\/[A-Za-z0-9/_-]+ with \d{3}$/.test(
+      error.message,
+    )
+      ? error.message
+      : undefined;
   console.error(
     JSON.stringify({
       status: 'FAIL',
@@ -774,7 +801,7 @@ try {
       code:
         error instanceof assert.AssertionError
           ? error.message.replaceAll(password, '[redacted]')
-          : 'ISOLATED_PERSISTENCE_CHECK_FAILED',
+          : (profileDiagnostic ?? 'ISOLATED_PERSISTENCE_CHECK_FAILED'),
     }),
   );
   process.exitCode = 1;

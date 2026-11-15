@@ -58,25 +58,34 @@ describe('Serialización del canal efectivo comercial', () => {
       validities: [validity],
     };
     const readCandidates = vi.fn().mockResolvedValue([definition]);
+    const readCandidatesBatch = vi
+      .fn()
+      .mockImplementation(async (contexts: readonly { sku: string }[]) =>
+        contexts.map(({ sku }) => ({ sku, definitions: [definition] })),
+      );
+    const resolve = vi.fn(async (sku: string) => ({
+      sku,
+      productId: 'product',
+      isVariant: false,
+      active: true,
+      eligible: true,
+    }));
     const service = new CommercialPrices(
-      { readCandidates } as unknown as PricingRepository,
-      {
-        resolve: async (sku) => ({
-          sku,
-          productId: 'product',
-          isVariant: false,
-          active: true,
-          eligible: true,
-        }),
-      },
+      { readCandidates, readCandidatesBatch } as unknown as PricingRepository,
+      { resolve },
     );
-    return { service, definition, validity, readCandidates };
+    return { service, definition, validity, readCandidates, resolve };
   }
   it.each(channels)(
     'consulta y devuelve el canal canonico %s sin mapping',
     async (channel) => {
-      const { service, readCandidates } = fixture(channel);
+      const { service, readCandidates, resolve } = fixture(channel);
       const response = await service.sku('sku', channel, at);
+      expect(resolve).toHaveBeenCalledWith(
+        'sku',
+        undefined,
+        'obtenerPrecioSku',
+      );
       expect(response.channel_id).toBe(channel);
       expect(readCandidates).toHaveBeenCalledWith(
         'product',
@@ -118,6 +127,245 @@ describe('Serialización del canal efectivo comercial', () => {
     },
   );
 });
+describe('Consulta comercial por lotes', () => {
+  const at = new Date('2030-06-01T00:00:00Z');
+  it('usa una sola consulta privada batch para contextos únicos y conserva duplicados', async () => {
+    const validity = {
+      id: randomUUID(),
+      precioRegular: '12.50',
+      precioOferta: null,
+      currency: 'PEN',
+      motivoCambio: 'fixture',
+      usuarioId: null,
+      validFrom: new Date('2030-01-01T00:00:00Z'),
+      validUntil: null,
+      priceVersion: 1n,
+      isCancelled: false,
+    };
+    const definition = {
+      target: { productId: 'product', sku: null },
+      channelId: null,
+      priceVersion: 1n,
+      validities: [validity],
+    };
+    const resolve = vi.fn();
+    const resolveBatch = vi.fn(async (skus: readonly string[]) =>
+      skus.map((sku) =>
+        sku === 'missing'
+          ? null
+          : {
+              sku,
+              productId: 'product',
+              isVariant: sku === 'variant',
+              active: true,
+              eligible: sku !== 'inactive',
+            },
+      ),
+    );
+    const readCandidatesBatch = vi
+      .fn()
+      .mockImplementation(async (contexts: readonly { sku: string }[]) =>
+        contexts.map(({ sku }) => ({ sku, definitions: [definition] })),
+      );
+    const service = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      { resolve, resolveBatch, batchMode: 'G7_AUTHENTICATED' },
+    );
+    const result = await service.batch(
+      ['variant', 'variant', 'inactive', 'missing'],
+      undefined,
+      at,
+    );
+    expect(resolve).not.toHaveBeenCalled();
+    expect(resolveBatch).toHaveBeenCalledOnce();
+    expect(resolveBatch).toHaveBeenCalledWith(
+      ['variant', 'inactive', 'missing'],
+      undefined,
+    );
+    expect(result.items.map((item) => item.sku)).toEqual([
+      'variant',
+      'variant',
+    ]);
+  });
+
+  it('limita la concurrencia de contexto Catálogo', async () => {
+    let active = 0;
+    let maximum = 0;
+    const resolve = vi.fn(async (sku: string) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((done) => setTimeout(done, 1));
+      active -= 1;
+      return {
+        sku,
+        productId: 'product',
+        isVariant: false,
+        active: true,
+        eligible: true,
+      };
+    });
+    const service = new CommercialPrices(
+      {
+        readCandidatesBatch: vi.fn().mockResolvedValue([]),
+      } as unknown as PricingRepository,
+      { resolve },
+    );
+
+    await service.batch(
+      Array.from({ length: 20 }, (_, index) => `sku-${index}`),
+      undefined,
+      at,
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(20);
+    expect(maximum).toBe(8);
+  });
+
+  it('agrupa la lectura de Pricing y conserva orden/duplicados del request', async () => {
+    const validity = {
+      id: randomUUID(),
+      precioRegular: '12.50',
+      precioOferta: null,
+      currency: 'PEN',
+      motivoCambio: 'fixture',
+      usuarioId: null,
+      validFrom: new Date('2030-01-01T00:00:00Z'),
+      validUntil: null,
+      priceVersion: 3n,
+      isCancelled: false,
+    };
+    const definition = {
+      target: { productId: 'product', sku: null },
+      channelId: null,
+      priceVersion: 3n,
+      validities: [validity],
+    };
+    const resolve = vi.fn(async (sku: string) => ({
+      sku,
+      productId: 'product',
+      isVariant: false,
+      active: true,
+      eligible: true,
+    }));
+    const readCandidates = vi.fn();
+    const readCandidatesBatch = vi
+      .fn()
+      .mockImplementation(async (contexts: readonly { sku: string }[]) =>
+        contexts.map(({ sku }) => ({ sku, definitions: [definition] })),
+      );
+    const service = new CommercialPrices(
+      { readCandidates, readCandidatesBatch } as unknown as PricingRepository,
+      { resolve },
+    );
+
+    const result = await service.batch(
+      ['sku-a', 'sku-b', 'sku-a'],
+      'RETAIL',
+      at,
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(readCandidates).not.toHaveBeenCalled();
+    expect(readCandidatesBatch).toHaveBeenCalledOnce();
+    expect(readCandidatesBatch).toHaveBeenCalledWith(
+      [
+        { sku: 'sku-a', productId: 'product', context: expect.any(Object) },
+        { sku: 'sku-b', productId: 'product', context: expect.any(Object) },
+      ],
+      'RETAIL',
+      at,
+    );
+    expect(result.items.map((item) => item.sku)).toEqual([
+      'sku-a',
+      'sku-b',
+      'sku-a',
+    ]);
+  });
+
+  it('omite contextos sin precio y falla ante un error de un SKU', async () => {
+    const readCandidatesBatch = vi.fn().mockResolvedValue([]);
+    const missing = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      { resolve: async () => null },
+    );
+    await expect(missing.batch(['missing'], undefined, at)).resolves.toEqual({
+      items: [],
+    });
+    expect(readCandidatesBatch).toHaveBeenCalledWith([], null, at);
+
+    const failed = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      {
+        resolve: async (sku) => {
+          if (sku === 'bad') throw new Error('upstream failure');
+          return {
+            sku,
+            productId: 'product',
+            isVariant: false,
+            active: true,
+            eligible: true,
+          };
+        },
+      },
+    );
+    await expect(
+      failed.batch(['good', 'bad'], undefined, at),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(readCandidatesBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva el GET individual cuando el adapter no declara capacidad batch', async () => {
+    const resolveBatch = vi.fn();
+    const resolve = vi.fn(async (sku: string) => ({
+      sku,
+      productId: 'product',
+      isVariant: false,
+      active: true,
+      eligible: true,
+    }));
+    const readCandidatesBatch = vi.fn().mockResolvedValue([]);
+    const service = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      { resolve, resolveBatch },
+    );
+
+    await service.batch(['sku-a', 'sku-b'], undefined, at);
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(resolve).toHaveBeenCalledWith(
+      'sku-a',
+      undefined,
+      'consultarPrecios',
+    );
+    expect(resolveBatch).not.toHaveBeenCalled();
+    expect(readCandidatesBatch).toHaveBeenCalledOnce();
+  });
+
+  it('no degrada a GET individual si el batch privado G7 falla', async () => {
+    const resolve = vi.fn();
+    const resolveBatch = vi
+      .fn()
+      .mockRejectedValue(new Error('G7 rechazó el batch'));
+    const service = new CommercialPrices(
+      { readCandidatesBatch: vi.fn() } as unknown as PricingRepository,
+      {
+        resolve,
+        resolveBatch,
+        batchMode: 'G7_AUTHENTICATED',
+      },
+    );
+
+    await expect(service.batch(['sku-a'], undefined, at)).rejects.toMatchObject(
+      {
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+      },
+    );
+    expect(resolveBatch).toHaveBeenCalledOnce();
+    expect(resolve).not.toHaveBeenCalled();
+  });
+});
+
 describe('JWT técnico solo para operationIds comerciales autorizados', () => {
   const identity = new SignedUser();
   let guard: PricingReadGuard;

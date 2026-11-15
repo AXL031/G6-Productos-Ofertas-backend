@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 const exec = promisify(execFile);
 const image =
   'postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea';
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
 
 // Solo crea su contenedor; no acepta DATABASE_URL ni un servidor externo.
 export class IsolatedPostgres {
@@ -33,6 +34,9 @@ export class IsolatedPostgres {
         '--env',
         'POSTGRES_DB=pricing_test',
         image,
+        ...(performanceEnabled
+          ? ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements']
+          : []),
       ],
       { timeout: 60000 },
     );
@@ -85,6 +89,8 @@ export class IsolatedPostgres {
       ${source}
       COMMIT;
     `);
+    if (performanceEnabled)
+      await this.admin.query('CREATE EXTENSION pg_stat_statements');
     const scheduleContextMigration = await readFile(
       new URL(
         '../migrations/0002_schedule_effective_events.sql',

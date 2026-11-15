@@ -18,24 +18,24 @@ export class IsolatedAuditPostgres {
 
   async start(): Promise<void> {
     const password = randomUUID();
-    await exec(
-      'docker',
-      [
-        'run',
-        '--detach',
-        '--rm',
-        '--name',
-        this.name,
-        '--publish',
-        '127.0.0.1::5432',
-        '--env',
-        `POSTGRES_PASSWORD=${password}`,
-        '--env',
-        'POSTGRES_DB=price_audit_test',
-        image,
-      ],
-      { timeout: 60000 },
-    );
+    const dockerArgs = [
+      'run',
+      '--detach',
+      '--rm',
+      '--name',
+      this.name,
+      '--publish',
+      '127.0.0.1::5432',
+      '--env',
+      `POSTGRES_PASSWORD=${password}`,
+      '--env',
+      'POSTGRES_DB=price_audit_test',
+      image,
+      ...(process.env.G6_PERFORMANCE_HTTP === '1'
+        ? ['postgres', '-c', 'shared_preload_libraries=pg_stat_statements']
+        : []),
+    ];
+    await exec('docker', dockerArgs, { timeout: 60000 });
     this.created = true;
     const { stdout } = await exec('docker', ['port', this.name, '5432/tcp']);
     const port = /^127\.0\.0\.1:(\d+)\s*$/.exec(stdout)?.[1];
@@ -57,6 +57,11 @@ export class IsolatedAuditPostgres {
       }
     }
     if (!ready) throw new Error('PostgreSQL aislado no disponible.');
+    if (process.env.G6_PERFORMANCE_HTTP === '1') {
+      await this.admin.query(
+        'CREATE EXTENSION IF NOT EXISTS pg_stat_statements',
+      );
+    }
     const source = await readFile(
       new URL('./fixtures/price-audit.sql', import.meta.url),
       'utf8',
