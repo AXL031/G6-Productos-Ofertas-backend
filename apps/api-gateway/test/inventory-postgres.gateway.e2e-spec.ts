@@ -321,7 +321,7 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
     async () => {
       const concurrencyLevels = [1, 8, 32] as const;
       const warmupRequests = 10;
-      const samplesPerLevel = 200;
+      const samplesPerLevel = 1000;
       const rows: Array<Record<string, number | string>> = [];
       const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
       let failures = 0;

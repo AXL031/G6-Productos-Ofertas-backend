@@ -127,6 +127,22 @@ for (const [key, pair] of pairs) {
       baseline.result.poolConnectionsObservedAfter ?? null,
     candidatePoolConnectionsObservedAfter:
       candidate.result.poolConnectionsObservedAfter ?? null,
+    baselineDatabaseConnectionsObservedAfter:
+      baseline.result.databaseConnectionsObservedAfter ?? null,
+    candidateDatabaseConnectionsObservedAfter:
+      candidate.result.databaseConnectionsObservedAfter ?? null,
+    baselineActiveDatabaseConnectionsObservedAfter:
+      baseline.result.activeDatabaseConnectionsObservedAfter ?? null,
+    candidateActiveDatabaseConnectionsObservedAfter:
+      candidate.result.activeDatabaseConnectionsObservedAfter ?? null,
+    baselinePricingConnectionsObservedAfter:
+      baseline.result.pricingConnectionsObservedAfter ?? null,
+    candidatePricingConnectionsObservedAfter:
+      candidate.result.pricingConnectionsObservedAfter ?? null,
+    baselineCatalogConnectionsObservedAfter:
+      baseline.result.catalogConnectionsObservedAfter ?? null,
+    candidateCatalogConnectionsObservedAfter:
+      candidate.result.catalogConnectionsObservedAfter ?? null,
     baselineActiveConnectionsObservedAfter:
       baseline.result.activeConnectionsObservedAfter ?? null,
     candidateActiveConnectionsObservedAfter:

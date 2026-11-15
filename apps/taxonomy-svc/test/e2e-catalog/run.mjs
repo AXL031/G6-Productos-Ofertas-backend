@@ -659,7 +659,7 @@ try {
     let timeouts = 0;
     for (const concurrency of [1, 8, 32]) {
       const warmupRequests = 10;
-      const samples = 120;
+      const samples = 1000;
       for (let index = 0; index < warmupRequests; index += 1) {
         const response = await fetch(endpoint, {
           headers: { authorization },

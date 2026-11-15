@@ -1107,7 +1107,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     if (performanceEnabled) {
       await comboApp.listen(0, '127.0.0.1');
       const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
-      const samplesPerLevel = 120;
+      const samplesPerLevel = 1000;
       const warmupRequests = 10;
       const performanceRows: Array<Record<string, number | string>> = [];
       const pricingToken = makeToken({ scope: 'precios:leer' });
@@ -1137,6 +1137,24 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       };
       let totalFailures = 0;
       let totalTimeouts = 0;
+      const explainPlans = {
+        combosCount: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT count(*) FROM combos.combos',
+          )
+        ).rows[0]?.['QUERY PLAN'],
+        combosPage: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM combos.combos ORDER BY created_at DESC, id ASC LIMIT 20 OFFSET 0',
+          )
+        ).rows[0]?.['QUERY PLAN'],
+        pricingSku: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM pricing.prices WHERE (product_id = $1::uuid OR sku = $2) AND channel_id IS NULL',
+            [activeProductId, activeSku],
+          )
+        ).rows[0]?.['QUERY PLAN'],
+      };
 
       const targets: Array<{
         service: string;
@@ -1201,6 +1219,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
             if (!warmup.ok)
               throw new Error(`${target.label} warmup HTTP ${warmup.status}`);
           }
+          await admin.query('SELECT pg_stat_statements_reset()');
           const latencies: number[] = [];
           let responseBodyBytes = 0;
           let levelFailures = 0;
@@ -1261,6 +1280,35 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
             );
           }
           const durationMs = performance.now() - started;
+          const sqlStats = await admin.query<{
+            calls: string;
+            shared_blks_hit: string;
+            shared_blks_read: string;
+          }>(`
+            SELECT COALESCE(sum(calls),0)::text AS calls,
+                   COALESCE(sum(shared_blks_hit),0)::text AS shared_blks_hit,
+                   COALESCE(sum(shared_blks_read),0)::text AS shared_blks_read
+              FROM pg_stat_statements
+             WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())
+               AND query NOT LIKE '%pg_stat_statements%'
+          `);
+          const connectionStats = await admin.query<{
+            role: string;
+            total: number;
+            active: number;
+          }>(`
+            SELECT usename AS role, count(*)::int AS total,
+                   count(*) FILTER (WHERE state='active')::int AS active
+              FROM pg_stat_activity
+             WHERE datname=current_database()
+             GROUP BY usename
+          `);
+          const connections = Object.fromEntries(
+            connectionStats.rows.map((row) => [
+              row.role,
+              { total: row.total, active: row.active },
+            ]),
+          );
           const measuredBodyBytes = target.body
             ? Buffer.byteLength(
                 JSON.stringify({
@@ -1291,10 +1339,24 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
               ) * samplesPerLevel,
             requestBodyBytes: measuredBodyBytes * samplesPerLevel,
             responseBodyBytes,
+            sqlCalls: Number(sqlStats.rows[0]?.calls ?? 0),
+            sharedBlocksHit: Number(sqlStats.rows[0]?.shared_blks_hit ?? 0),
+            sharedBlocksRead: Number(sqlStats.rows[0]?.shared_blks_read ?? 0),
+            databaseConnectionsObservedAfter: Object.values(connections).reduce(
+              (total, connection) => total + connection.total,
+              0,
+            ),
+            activeDatabaseConnectionsObservedAfter: Object.values(
+              connections,
+            ).reduce((total, connection) => total + connection.active, 0),
+            pricingConnectionsObservedAfter:
+              connections.pricing_app?.total ?? 0,
+            catalogConnectionsObservedAfter:
+              connections.catalog_app?.total ?? 0,
+            sqlInstrumentation:
+              'pg_stat_statements reset after warmup per concurrency window',
             failures: levelFailures,
             timeouts: levelTimeouts,
-            sqlCountsBuffersExplainPool:
-              'NOT_COLLECTED: harness does not instrument per-request SQL plans or pool usage',
           });
         }
       }
@@ -1321,9 +1383,13 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
           requestBytes:
             'request-target path and query bytes only; headers excluded',
           responseBytes: 'response body bytes',
-          sqlQueryCount: 'not instrumented',
-          buffersAndExplain: 'not collected',
-          poolOccupancy: 'not instrumented',
+          sqlQueryCount:
+            'pg_stat_statements calls and shared-block counters reset per concurrency window',
+          buffersAndExplain:
+            'shared hit/read counters per row; EXPLAIN JSON for Pricing and Combos list queries',
+          explainPlans,
+          poolOccupancy:
+            'post-window pg_stat_activity snapshots grouped by database role; peak in-window occupancy not instrumented',
           failuresAndTimeouts: 'counted per request',
           recovery:
             'not exercised by this profile; service and dependency failure scenarios remain in isolated E2E suites',

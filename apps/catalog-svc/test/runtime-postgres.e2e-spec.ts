@@ -652,7 +652,7 @@ describe.skipIf(!dockerAvailable)(
           expect(warmupBody.meta.total).toBe(productCount);
 
           const warmupRequests = 10;
-          const samplesPerLevel = 120;
+          const samplesPerLevel = 1000;
           for (const concurrency of [1, 8, 32] as const) {
             for (let index = 0; index < warmupRequests; index += 1) {
               const response = await fetch(url, {

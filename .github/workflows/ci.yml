@@ -1016,6 +1016,46 @@ jobs:
           .ci/performance/taxonomy-http-${{ matrix.variant }}.log
         if-no-files-found: warn
         retention-days: 14
+  remaining_http_startup_attempts:
+    name: Intentar arranque HTTP de Promotions, Price Audit y Bulk
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Compilar procesos de Promotions, Price Audit y Bulk
+      run: |
+        npm run build:promotions-svc
+        npm run build:price-audit-svc
+        npm run build:bulk-svc
+    - name: Registrar intentos HTTP aislados (no es benchmark)
+      env:
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+      run: |
+        node scripts/performance/attempt-unmeasured-http-startups.mjs | tee .ci/performance/remaining-http-startup-attempts.log
+    - name: Publicar evidencia de intentos HTTP
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: remaining-http-startup-attempts
+        path: |
+          .ci/performance/remaining-http-startup-attempts.json
+          .ci/performance/remaining-http-startup-attempts.csv
+          .ci/performance/remaining-http-startup-attempts.log
+        if-no-files-found: warn
+        retention-days: 30
   summarize_http_performance:
     name: Consolidar comparativa HTTP baseline/candidato
     if: github.event_name == 'workflow_dispatch' && needs.catalog_http_performance.result == 'success' && needs.gateway_inventory_http_performance.result == 'success' && needs.combos_pricing_http_performance.result == 'success' && needs.taxonomy_http_performance.result == 'success'
