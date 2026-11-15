@@ -781,6 +781,13 @@ try {
   );
 } catch (error) {
   // No connection string, query parameters, PostgreSQL detail or fixture password.
+  const profileDiagnostic =
+    error instanceof Error &&
+    /^HTTP profile rejected GET \/api\/v1\/[A-Za-z0-9/_-]+ with \d{3}$/.test(
+      error.message,
+    )
+      ? error.message
+      : undefined;
   console.error(
     JSON.stringify({
       status: 'FAIL',
@@ -788,7 +795,7 @@ try {
       code:
         error instanceof assert.AssertionError
           ? error.message.replaceAll(password, '[redacted]')
-          : 'ISOLATED_PERSISTENCE_CHECK_FAILED',
+          : (profileDiagnostic ?? 'ISOLATED_PERSISTENCE_CHECK_FAILED'),
     }),
   );
   process.exitCode = 1;

@@ -170,7 +170,11 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
     app = module.createNestApplication({ logger: false });
     await app.listen(0, '127.0.0.1');
     const base = await app.getUrl();
-    if (!performanceProfileWritten && process.env.G6_PERFORMANCE_HTTP === '1') {
+    if (
+      !performanceProfileWritten &&
+      process.env.G6_PERFORMANCE_HTTP === '1' &&
+      facts
+    ) {
       performanceProfileWritten = true;
       const profiles = [
         {
@@ -213,7 +217,9 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
             });
             await response.arrayBuffer();
             if (!response.ok)
-              throw new Error(`Promotions warmup HTTP ${response.status}`);
+              throw new Error(
+                `HTTP profile rejected GET ${path.split('?')[0]} with ${response.status}`,
+              );
           }
           const samples = new Array(samplesPerLevel);
           let levelFailures = 0;
@@ -301,7 +307,7 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
           process.env.GITHUB_SHA ??
           'local-unset',
         composition:
-          'Nest TestingModule assembled from PromotionsSvcModule; real loopback HTTP listener and isolated PostgreSQL TLS provider; commercial/provider facts not mocked for this route',
+          'Nest TestingModule assembled from PromotionsSvcModule; real loopback HTTP listener and isolated PostgreSQL TLS provider; recommendation commercial facts use the existing deterministic test provider, while persisted promotions/coupons/rules use PostgreSQL',
         routeCoverage: profiles.map(({ path }) => `GET ${path}`),
         sampleDefinition:
           '1,000 measured requests per route and concurrency after 10 warmups per route/window',
