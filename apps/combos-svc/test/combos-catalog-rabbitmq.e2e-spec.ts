@@ -1150,7 +1150,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
         ).rows[0]?.['QUERY PLAN'],
         pricingSku: (
           await admin.query(
-            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM pricing.prices WHERE (product_id = $1::uuid OR sku = $2) AND channel_id IS NULL',
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM pricing.prices WHERE (product_id = $1::text OR sku = $2) AND channel_id IS NULL',
             [activeProductId, activeSku],
           )
         ).rows[0]?.['QUERY PLAN'],
