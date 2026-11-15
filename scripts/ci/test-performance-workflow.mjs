@@ -19,6 +19,7 @@ const scenarioJobs = {
   catalog_http_performance: 'catalog',
   pricing_individual_http_performance: 'pricing',
   combos_pricing_http_performance: 'combos',
+  bulk_http_performance: 'bulk',
 };
 
 assert.match(ci, /^  automatizacion:/m, 'normal CI jobs remain present');
@@ -118,6 +119,7 @@ for (const jobId of [
   'catalog_http_performance',
   'pricing_individual_http_performance',
   'combos_pricing_http_performance',
+  'bulk_http_performance',
 ]) {
   const index = jobStarts.findIndex((match) => match[1] === jobId);
   const start = jobStarts[index].index;

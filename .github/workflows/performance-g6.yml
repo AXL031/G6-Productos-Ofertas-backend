@@ -322,73 +322,70 @@ jobs:
         if-no-files-found: warn
         retention-days: 30
   bulk_http_performance:
-    name: Medir HTTP Bulk/PostgreSQL/RabbitMQ/Storage fixture (${{ matrix.variant }})
+    name: Comparar HTTP Bulk en perfiles pareados alternados
     if: inputs.component == 'bulk'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 90
     needs:
     - preflight
-    strategy:
-      max-parallel: ${{ fromJSON(inputs.parallelism) }}
-      fail-fast: false
-      matrix:
-        include:
-        - variant: baseline
-          ref: ${{ needs.preflight.outputs.baseline_sha }}
-        - variant: candidate
-          ref: ${{ needs.preflight.outputs.candidate_sha }}
     permissions:
       contents: read
     steps:
-    - name: Obtener servicio de la revisión comparada
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ matrix.ref }}
-    - name: Obtener harness HTTP de la revisión candidata
+    - name: Obtener revisión candidata y harness
       uses: actions/checkout@v4
       with:
         ref: ${{ needs.preflight.outputs.candidate_sha }}
-        path: .ci/benchmark-harness
+    - name: Obtener revisión baseline en el mismo runner
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.baseline_sha }}
+        path: .ci/baseline
     - name: Configurar Node.js
       uses: actions/setup-node@v4
       with:
         node-version: 24.15.0
         cache: npm
-    - name: Instalar dependencias de forma reproducible
-      run: npm ci
-    - name: Usar perfil y RabbitMQ fixture mantenidos en el candidato
-      run: 'cp .ci/benchmark-harness/vitest.config.e2e.ts vitest.config.e2e.ts
-
-        cp .ci/benchmark-harness/apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
-
-        cp .ci/benchmark-harness/apps/bulk-svc/test/isolated-bulk-rabbitmq.ts apps/bulk-svc/test/isolated-bulk-rabbitmq.ts
-
-        '
-    - name: Medir admisión multipart HTTP, persistencia y publicación RabbitMQ
+    - name: Instalar dependencias para ambas revisiones
+      run: |
+        set -Eeuo pipefail
+        npm ci
+        npm ci --prefix .ci/baseline
+        cp vitest.config.e2e.ts .ci/baseline/vitest.config.e2e.ts
+        cp apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts .ci/baseline/apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
+        cp apps/bulk-svc/test/isolated-bulk-rabbitmq.ts .ci/baseline/apps/bulk-svc/test/isolated-bulk-rabbitmq.ts
+        mkdir -p .ci/performance/paired/{baseline-first,candidate-first,candidate-second,baseline-second}
+    - name: Ejecutar baseline → candidato → candidato → baseline
       env:
         G6_PERFORMANCE_HTTP: '1'
-        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
-        G6_PERFORMANCE_OUTPUT: .ci/performance
-      run: 'set -o pipefail
-
-        mkdir -p .ci/performance
-
-        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" npm run test:e2e -- apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
-        --reporter=verbose 2>&1 | tee .ci/performance/bulk-http-${{ matrix.variant }}.log
-
-        '
-    - name: Publicar perfil HTTP de Bulk
+        BASELINE_SHA: ${{ needs.preflight.outputs.baseline_sha }}
+        CANDIDATE_SHA: ${{ needs.preflight.outputs.candidate_sha }}
+      run: |
+        set -uo pipefail
+        failed=0
+        run_profile() {
+          local variant="$1" order="$2" source="$3" sha="$4"
+          local output="$GITHUB_WORKSPACE/.ci/performance/paired/$order"
+          mkdir -p "$output"
+          echo "PROFILE=$order VARIANT=$variant SHA=$sha" | tee "$output/profile.log"
+          if (cd "$source" && G6_PERFORMANCE_VARIANT="$variant" G6_PERFORMANCE_SHA="$sha" G6_PERFORMANCE_OUTPUT="$output" npm run test:e2e -- apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts --reporter=verbose) 2>&1 | tee -a "$output/profile.log"; then
+            echo "RESULT=PASS" | tee -a "$output/profile.log"
+          else
+            status=$?
+            echo "RESULT=FAIL EXIT=$status" | tee -a "$output/profile.log"
+            failed=1
+          fi
+        }
+        run_profile baseline baseline-first .ci/baseline "$BASELINE_SHA"
+        run_profile candidate candidate-first . "$CANDIDATE_SHA"
+        run_profile candidate candidate-second . "$CANDIDATE_SHA"
+        run_profile baseline baseline-second .ci/baseline "$BASELINE_SHA"
+        exit "$failed"
+    - name: Publicar todos los perfiles y diagnósticos de Bulk
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: bulk-http-${{ matrix.variant }}-${{ needs.preflight.outputs.candidate_sha }}
-        path: '.ci/performance/bulk-http-profile.json
-
-          .ci/performance/bulk-http-profile.csv
-
-          .ci/performance/bulk-http-${{ matrix.variant }}.log
-
-          '
+        name: bulk-http-paired-${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/performance/paired/
         if-no-files-found: warn
         retention-days: 30
   gateway_inventory_http_performance:
