@@ -1,6 +1,9 @@
 import { createServer, type Server } from 'node:http';
+import { randomUUID } from 'node:crypto';
+import { vi } from 'vitest';
 import { CatalogContextHttp } from './catalog-context.js';
 import { validateEnvironment } from '../config/environment.js';
+import { createH4CatalogClient } from './h4-catalog-client.js';
 
 describe('Pricing -> Catalog: contrato HTTP privado', () => {
   let server: Server;
@@ -10,7 +13,12 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
   let body: unknown;
   let raw: string | undefined;
   let delay = 0;
-  let received: { url?: string; authorization?: string }[];
+  let received: {
+    url?: string;
+    authorization?: string;
+    method?: string;
+    body?: string;
+  }[];
   const sku = '0001 /á,?';
   const config = () => ({
     nodeEnv: 'test' as const,
@@ -18,19 +26,30 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
     databaseUrl: 'unused',
     databaseSsl: false as const,
     catalogUrl: origin,
+    securityMode: 'G7_AUTHENTICATED' as const,
+    publicOperations: [] as readonly string[],
   });
   beforeAll(async () => {
     server = createServer((req, res) => {
-      received.push({ url: req.url, authorization: req.headers.authorization });
-      const respond = () => {
-        res.writeHead(status, {
-          'content-type': type,
-          location: origin + '/redirect',
+      const chunks: Buffer[] = [];
+      req.on('data', (chunk: Buffer) => chunks.push(chunk));
+      req.on('end', () => {
+        received.push({
+          url: req.url,
+          method: req.method,
+          authorization: req.headers.authorization,
+          body: Buffer.concat(chunks).toString('utf8'),
         });
-        res.end(raw ?? JSON.stringify(body));
-      };
-      if (delay) setTimeout(respond, delay);
-      else respond();
+        const respond = () => {
+          res.writeHead(status, {
+            'content-type': type,
+            location: origin + '/redirect',
+          });
+          res.end(raw ?? JSON.stringify(body));
+        };
+        if (delay) setTimeout(respond, delay);
+        else respond();
+      });
     });
     await new Promise<void>((resolve) =>
       server.listen(0, '127.0.0.1', resolve),
@@ -74,12 +93,12 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
           async () => 'fixture-service-token',
         ).resolve(sku),
       ).toEqual(body);
-      expect(received).toEqual([
-        {
-          url: `/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
-          authorization: 'Bearer fixture-service-token',
-        },
-      ]);
+      expect(received).toHaveLength(1);
+      expect(received[0]).toMatchObject({
+        method: 'GET',
+        url: `/api/v1/productos/skus/${encodeURIComponent(sku)}/contexto`,
+        authorization: 'Bearer fixture-service-token',
+      });
     },
   );
   it.each([
@@ -107,7 +126,7 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
           publicOperations: ['consultarPrecios'],
         },
         tokens,
-      ).resolve(sku),
+      ).resolve(sku, randomUUID(), 'consultarPrecios'),
     ).resolves.toEqual(body);
     expect(received[0].authorization).toBeUndefined();
     expect(tokens).not.toHaveBeenCalled();
@@ -120,6 +139,95 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
         }).resolve(sku),
       ).rejects.toMatchObject({ status: 503 });
     expect(received).toHaveLength(1);
+  });
+  it('permite contexto sin credencial solo para las lecturas de precio autorizadas', async () => {
+    for (const operation of ['consultarPrecios', 'obtenerPrecioSku']) {
+      received = [];
+      await expect(
+        new CatalogContextHttp({
+          ...config(),
+          securityMode: 'PUBLIC_READ_ONLY',
+          publicOperations: [operation],
+        }).resolve(
+          sku,
+          randomUUID(),
+          operation as 'consultarPrecios' | 'obtenerPrecioSku',
+        ),
+      ).resolves.toMatchObject({ sku });
+      expect(received[0].authorization).toBeUndefined();
+    }
+
+    received = [];
+    await expect(
+      new CatalogContextHttp({
+        ...config(),
+        securityMode: 'PUBLIC_READ_ONLY',
+        publicOperations: ['listarProgramacionesPrecioSku'],
+      }).resolve(sku),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(received).toEqual([]);
+  });
+  it('declara batch privado solo para G7 y mantiene SIMULATED_AUTH por GET técnico', async () => {
+    const g7 = new CatalogContextHttp(config(), async () => 'service-token');
+    expect(g7.batchMode).toBe('G7_AUTHENTICATED');
+
+    const simulated = new CatalogContextHttp(
+      {
+        ...config(),
+        securityMode: 'SIMULATED_AUTH',
+      },
+      async () => 'simulated-service-token',
+    );
+    expect(simulated.batchMode).toBeUndefined();
+    await expect(simulated.resolve(sku)).resolves.toMatchObject({ sku });
+    expect(received[0]).toMatchObject({
+      method: 'GET',
+      authorization: 'Bearer simulated-service-token',
+    });
+  });
+  it('mantiene el cliente H4 histórico en GET individual y sin batch', async () => {
+    const get = vi.fn(
+      async (_sku: string, _headers: Record<string, string>) =>
+        new Response(
+          JSON.stringify({
+            sku,
+            productId: 'product',
+            isVariant: false,
+            active: true,
+            eligible: true,
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+    );
+    const h4 = { get } as unknown as ReturnType<typeof createH4CatalogClient>;
+    const context = new CatalogContextHttp(
+      { ...config(), catalogUrl: undefined },
+      async () => 'historical-h4-jwt',
+      h4,
+    );
+    expect(context.batchMode).toBeUndefined();
+    await expect(context.resolve(sku)).resolves.toMatchObject({ sku });
+    expect(get).toHaveBeenCalledOnce();
+  });
+  it('no reactiva H4 caducado ni cae a lectura pública', async () => {
+    const h4 = createH4CatalogClient({
+      PRICING_H4_SKU_ENABLED: 'true',
+      G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+      PRICING_H4_SKU_UNTIL: '2026-11-07T00:00:00Z',
+      PRICING_H4_SKU_ORIGIN: 'https://catalog.internal',
+    });
+    expect(h4).toBeUndefined();
+    const context = new CatalogContextHttp(
+      {
+        ...config(),
+        securityMode: 'G7_AUTHENTICATED',
+        publicOperations: ['obtenerPrecioSku'],
+      },
+      async () => null,
+      h4,
+    );
+    await expect(context.resolve(sku)).rejects.toMatchObject({ status: 503 });
+    expect(received).toEqual([]);
   });
   it('solo traduce el 404 contractual a null', async () => {
     status = 404;
@@ -187,6 +295,77 @@ describe('Pricing -> Catalog: contrato HTTP privado', () => {
         async () => 'fixture-service-token',
       ).resolve(sku),
     ).rejects.toMatchObject({ status: 503 });
+  });
+  it('resuelve un lote privado con identidades opacas, duplicados y ausencias por fila', async () => {
+    const missing = 'SKU sin, coma / á?';
+    const skus = [sku, missing, sku];
+    const context = {
+      sku,
+      productId: 'product',
+      isVariant: true,
+      active: true,
+      eligible: true,
+    };
+    body = {
+      items: [
+        { sku, status: 'FOUND', context },
+        { sku: missing, status: 'SKU_NO_ENCONTRADO', context: null },
+        { sku, status: 'FOUND', context },
+      ],
+    };
+    const result = await new CatalogContextHttp(
+      config(),
+      async () => 'fixture-service-token',
+    ).resolveBatch(skus, randomUUID());
+    expect(result).toEqual([context, null, context]);
+    expect(received).toHaveLength(1);
+    expect(received[0]).toMatchObject({
+      method: 'POST',
+      url: '/api/v1/productos/skus/contexto/lote',
+      authorization: 'Bearer fixture-service-token',
+      body: JSON.stringify({ skus }),
+    });
+  });
+  it.each([401, 403, 503])(
+    'falla cerrado para rechazo del contexto batch HTTP %s sin retry',
+    async (code) => {
+      status = code;
+      type = 'application/problem+json';
+      body = { status: code, code: 'SERVICIO_NO_DISPONIBLE' };
+      await expect(
+        new CatalogContextHttp(
+          config(),
+          async () => 'fixture-service-token',
+        ).resolveBatch([sku]),
+      ).rejects.toMatchObject({ status: 503 });
+      expect(received).toHaveLength(1);
+    },
+  );
+  it('no utiliza una lectura pública ni una credencial humana para el contexto batch privado', async () => {
+    for (const securityMode of [
+      'PUBLIC_READ_ONLY',
+      'SIMULATED_AUTH',
+    ] as const) {
+      await expect(
+        new CatalogContextHttp(
+          {
+            ...config(),
+            securityMode,
+            publicOperations: ['consultarPrecios'],
+          },
+          async () => 'fixture-token',
+        ).resolveBatch([sku]),
+      ).rejects.toMatchObject({ status: 503 });
+    }
+    expect(received).toEqual([]);
+  });
+  it('no permite contexto batch cuando G7 técnico no está configurado', async () => {
+    await expect(
+      new CatalogContextHttp({
+        ...config(),
+      }).resolveBatch([sku]),
+    ).rejects.toMatchObject({ status: 503 });
+    expect(received).toEqual([]);
   });
   it('valida el origen configurado y permite solo HTTP loopback de pruebas', () => {
     const env = {

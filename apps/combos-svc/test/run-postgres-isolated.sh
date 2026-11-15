@@ -186,6 +186,10 @@ docker run --rm --user root --volume "$tmp_dir:/cert" --entrypoint sh rabbitmq:4
   "openssl req -x509 -nodes -newkey rsa:2048 -keyout /cert/server.key -out /cert/server.crt -days 1 -subj '/CN=127.0.0.1' -addext 'subjectAltName=IP:127.0.0.1' && chmod 600 /cert/server.key && chown 70:70 /cert/server.key /cert/server.crt" >/dev/null
 chmod 711 "$tmp_dir"
 
+pg_server_options=(-c ssl=on -c ssl_cert_file=/cert/server.crt -c ssl_key_file=/cert/server.key)
+if [[ "${G6_PERFORMANCE_HTTP:-}" == 1 ]]; then
+  pg_server_options+=(-c shared_preload_libraries=pg_stat_statements)
+fi
 docker run --detach --name "$pg_container" \
   --label "$harness_label=true" \
   --label "com.taller-sw.g6.combos-harness-id=$harness_id" \
@@ -193,11 +197,12 @@ docker run --detach --name "$pg_container" \
   --volume "$tmp_dir:/cert:ro" \
   --env "POSTGRES_PASSWORD=$pg_password" \
   --env POSTGRES_DB=combos_test \
-  postgres:17-alpine postgres -c ssl=on -c ssl_cert_file=/cert/server.crt -c ssl_key_file=/cert/server.key >/dev/null
+  postgres:17-alpine postgres "${pg_server_options[@]}" >/dev/null
 
 pg_ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$pg_container" pg_isready -U postgres -d combos_test >/dev/null 2>&1; then
+  if docker exec "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 \
+    -c 'SELECT 1;' >/dev/null 2>&1; then
     pg_ready=1
     break
   fi
@@ -207,6 +212,10 @@ if [[ "$pg_ready" != 1 ]]; then
   diagnostics "$pg_container"
   printf 'PostgreSQL 17 desechable no alcanzó readiness.\n' >&2
   exit 1
+fi
+if [[ "${G6_PERFORMANCE_HTTP:-}" == 1 ]]; then
+  docker exec "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 \
+    -c 'CREATE EXTENSION IF NOT EXISTS pg_stat_statements;' >/dev/null
 fi
 pg_port="$(docker port "$pg_container" 5432/tcp | awk -F: '{print $NF}')"
 [[ "$pg_port" =~ ^[0-9]+$ ]]

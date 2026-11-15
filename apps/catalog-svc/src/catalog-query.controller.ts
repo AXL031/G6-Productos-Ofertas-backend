@@ -42,6 +42,17 @@ export class CatalogQueryController {
     return this.service.listAdminProducts(query);
   }
 
+  @Post('administracion/skus/resolver')
+  @HttpCode(200)
+  @RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
+  resolveAdminSkus(
+    @Body() body: unknown,
+    @Headers('x-correlation-id') correlationId?: string,
+  ) {
+    this.validateCorrelation(correlationId);
+    return this.service.resolveAdminSkus(body);
+  }
+
   @Get('administracion/:productoId')
   @RequireCatalogIdentity({ identity: 'user', roles: ['GESTOR_COMERCIAL'] })
   adminProduct(

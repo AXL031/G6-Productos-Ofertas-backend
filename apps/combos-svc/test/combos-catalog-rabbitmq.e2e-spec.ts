@@ -1,9 +1,11 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import type { AddressInfo } from 'node:net';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -40,6 +42,19 @@ const activeSku = 'SKU-CATALOG-ACTIVE-001';
 const inactiveSku = 'SKU-CATALOG-INACTIVE-001';
 const ineligibleBaseSku = 'SKU-CATALOG-INELIGIBLE-BASE';
 const opaqueSku = 'SKU /?%# ñ';
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
+const performanceOutput = resolve(
+  process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+);
+
+function percentile(values: number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
 const execPath = resolve(process.cwd(), 'dist/apps/catalog-svc/main.js');
 const pricingExecPath = resolve(process.cwd(), 'dist/apps/pricing-svc/main.js');
 
@@ -102,6 +117,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     'COMBOS_G7_CLIENT_SECRET',
     'COMBOS_CATALOG_CONTEXT_AUTHORIZED',
     'COMBOS_RESTRICTED_DEMO_ENABLED',
+    'COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN',
     'COMBOS_ALLOWED_ROLES_CREAR_COMBO',
     'COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO',
     'G6_SECURITY_MODE',
@@ -758,6 +774,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
     process.env.COMBOS_G7_TOKEN_URL = `${issuer}/api/v1/auth/token`;
     process.env.COMBOS_G7_CLIENT_SECRET = 'isolated-secret';
+    process.env.COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN = 'GESTOR_COMERCIAL';
     process.env.COMBOS_ALLOWED_ROLES_CREAR_COMBO = 'admin';
     process.env.COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO = 'admin';
     process.env.COMBOS_RESTRICTED_DEMO_ENABLED = 'false';
@@ -1085,6 +1102,326 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     const created = await create('E2E Pricing real', 40).expect(201);
     const comboId = String(created.body.combo_id);
+    let performanceAddedCombos = 0;
+
+    if (performanceEnabled) {
+      await comboApp.listen(0, '127.0.0.1');
+      const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
+      const samplesPerLevel = 1000;
+      const warmupRequests = 10;
+      const performanceRows: Array<Record<string, number | string>> = [];
+      const pricingToken = makeToken({ scope: 'precios:leer' });
+      const performanceHumanToken = makeToken({
+        tipo: 'acceso',
+        sub: randomUUID(),
+        roles: ['GESTOR_COMERCIAL'],
+        scope: undefined,
+      });
+      const combosUrl = `${await comboApp.getUrl()}/api/v1/combos?pagina=1&tamanio=20`;
+      const pricingUrl = `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`;
+      const comboCount = Number(
+        (await admin.query('SELECT count(*)::int AS total FROM combos.combos'))
+          .rows[0]?.total ?? 0,
+      );
+      const pricingCount = Number(
+        (await admin.query('SELECT count(*)::int AS total FROM pricing.prices'))
+          .rows[0]?.total ?? 0,
+      );
+      const providerBackedCreate = {
+        nombre: 'Performance provider-backed combo',
+        componentes: [
+          { sku: activeSku, cantidad: 1 },
+          { sku: opaqueSku, cantidad: 1 },
+        ],
+        precioCombo: 40,
+      };
+      let totalFailures = 0;
+      let totalTimeouts = 0;
+      const explainPlans = {
+        combosCount: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT count(*) FROM combos.combos',
+          )
+        ).rows[0]?.['QUERY PLAN'],
+        combosPage: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM combos.combos ORDER BY created_at DESC, id ASC LIMIT 20 OFFSET 0',
+          )
+        ).rows[0]?.['QUERY PLAN'],
+        pricingSku: (
+          await admin.query(
+            'EXPLAIN (FORMAT JSON, BUFFERS) SELECT * FROM pricing.prices WHERE (product_id = $1::text OR sku = $2) AND channel_id IS NULL',
+            [activeProductId, activeSku],
+          )
+        ).rows[0]?.['QUERY PLAN'],
+      };
+
+      const targets: Array<{
+        service: string;
+        method: 'GET' | 'POST';
+        endpoint: string;
+        label: string;
+        bearer: string;
+        datasetRows: number;
+        body?: typeof providerBackedCreate;
+        idempotent?: boolean;
+      }> = [
+        {
+          service: 'Combos',
+          method: 'GET' as const,
+          endpoint: combosUrl,
+          label: 'GET /api/v1/combos?pagina=1&tamanio=20',
+          bearer: performanceHumanToken,
+          datasetRows: comboCount,
+        },
+        {
+          service: 'Pricing',
+          method: 'GET' as const,
+          endpoint: pricingUrl,
+          label: `GET /api/v1/precios/skus/${activeSku}?at=<fixed-per-run>`,
+          bearer: pricingToken,
+          datasetRows: pricingCount,
+        },
+        {
+          service: 'Combos → Catalog + Pricing providers',
+          method: 'POST' as const,
+          endpoint: `${await comboApp.getUrl()}/api/v1/combos/administracion`,
+          label:
+            'POST /api/v1/combos/administracion (idempotent real Catalog/Pricing provider resolution)',
+          bearer: performanceHumanToken,
+          datasetRows: comboCount,
+          body: providerBackedCreate,
+          idempotent: true,
+        },
+      ];
+      for (const target of targets) {
+        for (const concurrency of [1, 8, 32] as const) {
+          for (let index = 0; index < warmupRequests; index += 1) {
+            const warmupBody = target.body
+              ? JSON.stringify({
+                  ...target.body,
+                  nombre: `${target.body.nombre} ${randomUUID()}`,
+                })
+              : undefined;
+            const warmup = await fetch(target.endpoint, {
+              method: target.method,
+              headers: {
+                authorization: `Bearer ${target.bearer}`,
+                ...(target.idempotent
+                  ? { 'idempotency-key': randomUUID() }
+                  : {}),
+                ...(warmupBody ? { 'content-type': 'application/json' } : {}),
+              },
+              ...(warmupBody ? { body: warmupBody } : {}),
+              signal: AbortSignal.timeout(5000),
+            });
+            await warmup.arrayBuffer();
+            if (!warmup.ok)
+              throw new Error(`${target.label} warmup HTTP ${warmup.status}`);
+          }
+          await admin.query('SELECT pg_stat_statements_reset()');
+          const latencies: number[] = [];
+          let responseBodyBytes = 0;
+          let levelFailures = 0;
+          let levelTimeouts = 0;
+          const started = performance.now();
+          for (
+            let offset = 0;
+            offset < samplesPerLevel;
+            offset += concurrency
+          ) {
+            await Promise.all(
+              Array.from(
+                { length: Math.min(concurrency, samplesPerLevel - offset) },
+                async () => {
+                  const requestStarted = performance.now();
+                  try {
+                    const requestBody = target.body
+                      ? JSON.stringify({
+                          ...target.body,
+                          nombre: `${target.body.nombre} ${randomUUID()}`,
+                        })
+                      : undefined;
+                    const response = await fetch(target.endpoint, {
+                      method: target.method,
+                      headers: {
+                        authorization: `Bearer ${target.bearer}`,
+                        ...(target.idempotent
+                          ? { 'idempotency-key': randomUUID() }
+                          : {}),
+                        ...(requestBody
+                          ? { 'content-type': 'application/json' }
+                          : {}),
+                      },
+                      ...(requestBody ? { body: requestBody } : {}),
+                      signal: AbortSignal.timeout(5000),
+                    });
+                    const body = await response.arrayBuffer();
+                    responseBodyBytes += body.byteLength;
+                    if (!response.ok) {
+                      levelFailures += 1;
+                      totalFailures += 1;
+                    }
+                  } catch (error) {
+                    levelFailures += 1;
+                    totalFailures += 1;
+                    if (
+                      error instanceof DOMException &&
+                      error.name === 'TimeoutError'
+                    ) {
+                      levelTimeouts += 1;
+                      totalTimeouts += 1;
+                    }
+                  } finally {
+                    latencies.push(performance.now() - requestStarted);
+                  }
+                },
+              ),
+            );
+          }
+          const durationMs = performance.now() - started;
+          const sqlStats = await admin.query<{
+            calls: string;
+            shared_blks_hit: string;
+            shared_blks_read: string;
+          }>(`
+            SELECT COALESCE(sum(calls),0)::text AS calls,
+                   COALESCE(sum(shared_blks_hit),0)::text AS shared_blks_hit,
+                   COALESCE(sum(shared_blks_read),0)::text AS shared_blks_read
+              FROM pg_stat_statements
+             WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())
+               AND query NOT LIKE '%pg_stat_statements%'
+          `);
+          const connectionStats = await admin.query<{
+            role: string;
+            total: number;
+            active: number;
+          }>(`
+            SELECT usename AS role, count(*)::int AS total,
+                   count(*) FILTER (WHERE state='active')::int AS active
+              FROM pg_stat_activity
+             WHERE datname=current_database()
+             GROUP BY usename
+          `);
+          const connections = Object.fromEntries(
+            connectionStats.rows.map((row) => [
+              row.role,
+              { total: row.total, active: row.active },
+            ]),
+          );
+          const measuredBodyBytes = target.body
+            ? Buffer.byteLength(
+                JSON.stringify({
+                  ...target.body,
+                  nombre: `${target.body.nombre} ${randomUUID()}`,
+                }),
+              )
+            : 0;
+          performanceRows.push({
+            service: target.service,
+            endpoint: target.label,
+            evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+            variant,
+            concurrency,
+            warmupRequests,
+            samples: samplesPerLevel,
+            datasetRows: target.datasetRows,
+            p50Ms: Number(percentile(latencies, 0.5).toFixed(3)),
+            p95Ms: Number(percentile(latencies, 0.95).toFixed(3)),
+            p99Ms: Number(percentile(latencies, 0.99).toFixed(3)),
+            throughputRequestsPerSecond: Number(
+              ((samplesPerLevel * 1000) / durationMs).toFixed(2),
+            ),
+            durationMs: Number(durationMs.toFixed(3)),
+            requestUrlBytes:
+              Buffer.byteLength(
+                `${new URL(target.endpoint).pathname}${new URL(target.endpoint).search}`,
+              ) * samplesPerLevel,
+            requestBodyBytes: measuredBodyBytes * samplesPerLevel,
+            responseBodyBytes,
+            sqlCalls: Number(sqlStats.rows[0]?.calls ?? 0),
+            sharedBlocksHit: Number(sqlStats.rows[0]?.shared_blks_hit ?? 0),
+            sharedBlocksRead: Number(sqlStats.rows[0]?.shared_blks_read ?? 0),
+            databaseConnectionsObservedAfter: Object.values(connections).reduce(
+              (total, connection) => total + connection.total,
+              0,
+            ),
+            activeDatabaseConnectionsObservedAfter: Object.values(
+              connections,
+            ).reduce((total, connection) => total + connection.active, 0),
+            pricingConnectionsObservedAfter:
+              connections.pricing_app?.total ?? 0,
+            catalogConnectionsObservedAfter:
+              connections.catalog_app?.total ?? 0,
+            sqlInstrumentation:
+              'pg_stat_statements reset after warmup per concurrency window',
+            failures: levelFailures,
+            timeouts: levelTimeouts,
+          });
+        }
+      }
+      await mkdir(performanceOutput, { recursive: true });
+      const report = {
+        schemaVersion: 1,
+        benchmark: 'combos-pricing-http',
+        sha: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+        }).trim(),
+        variant,
+        processTopology: {
+          combos: 'Nest HTTP app listening on loopback in Vitest process',
+          pricing: 'compiled Pricing Nest HTTP child process',
+          catalog:
+            'compiled Catalog Nest HTTP child process used by Combos integrations',
+          postgres: 'PostgreSQL 17 TLS disposable Docker container',
+          rabbitMq:
+            'RabbitMQ disposable container started by the isolated runner',
+        },
+        dataset:
+          'fixture products/prices; provider-backed write scenario creates disposable combos through real Catalog/Pricing HTTP providers',
+        measurement: {
+          requestBytes:
+            'request-target path and query bytes only; headers excluded',
+          responseBytes: 'response body bytes',
+          sqlQueryCount:
+            'pg_stat_statements calls and shared-block counters reset per concurrency window',
+          buffersAndExplain:
+            'shared hit/read counters per row; EXPLAIN JSON for Pricing and Combos list queries',
+          explainPlans,
+          poolOccupancy:
+            'post-window pg_stat_activity snapshots grouped by database role; peak in-window occupancy not instrumented',
+          failuresAndTimeouts: 'counted per request',
+          recovery:
+            'not exercised by this profile; service and dependency failure scenarios remain in isolated E2E suites',
+        },
+        totals: { failures: totalFailures, timeouts: totalTimeouts },
+        results: performanceRows,
+      };
+      await writeFile(
+        resolve(performanceOutput, `combos-pricing-http-${variant}.json`),
+        `${JSON.stringify(report, null, 2)}\n`,
+      );
+      const headers = Object.keys(performanceRows[0] ?? {})
+        .map(csvCell)
+        .join(',');
+      await writeFile(
+        resolve(performanceOutput, `combos-pricing-http-${variant}.csv`),
+        `${[headers, ...performanceRows.map((row) => Object.values(row).map(csvCell).join(','))].join('\n')}\n`,
+      );
+      expect(totalFailures).toBe(0);
+      expect(totalTimeouts).toBe(0);
+      performanceAddedCombos =
+        Number(
+          (
+            await admin.query<{ count: string }>(
+              'SELECT count(*)::text AS count FROM combos.combos',
+            )
+          ).rows[0]?.count ?? 0,
+        ) -
+        Number(beforeCreate.rows[0]?.count ?? 0) -
+        1;
+    }
+
     const stored = await admin.query(
       `SELECT c.currency, c.combo_price, c.version, count(i.id)::int AS items
          FROM combos.combos c JOIN combos.combo_items i ON i.combo_id = c.id
@@ -1135,7 +1472,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     expect(afterRejected.rows[0]?.count).toBe(beforeRejected.rows[0]?.count);
     expect(Number(beforeRejected.rows[0]?.count)).toBe(
-      Number(beforeCreate.rows[0]?.count) + 1,
+      Number(beforeCreate.rows[0]?.count) + 1 + performanceAddedCombos,
     );
 
     const missingPrice = await request(comboApp.getHttpServer())

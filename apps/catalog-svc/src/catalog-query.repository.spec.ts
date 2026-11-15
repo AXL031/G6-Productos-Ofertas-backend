@@ -206,6 +206,90 @@ describe('OPEN-09 physical repository (query-result fixtures)', () => {
   });
 });
 
+describe('Catalog authoritative administrative SKU batch lookup', () => {
+  const row = (
+    sku: string,
+    patch: Partial<{
+      productId: string | null;
+      productName: string | null;
+      productStatus: string | null;
+      productHasVariants: boolean | null;
+      productTypeId: string | null;
+      variantId: string | null;
+      variantSku: string | null;
+      variantStatus: string | null;
+    }> = {},
+  ) => ({
+    sku,
+    productId: 'product-' + sku,
+    productName: 'Nombre ' + sku,
+    productStatus: 'ACTIVO',
+    productHasVariants: false,
+    productTypeId: 'opaque-type-id',
+    variantId: null,
+    variantSku: null,
+    variantStatus: null,
+    ...patch,
+  });
+
+  it('deduplicates the Catalog read but preserves every input SKU and its status in output order', async () => {
+    const records = [
+      row('000-base'),
+      row('special/ñ +%2F', {
+        productId: 'parent-2',
+        productName: 'Parent variant',
+        productHasVariants: true,
+        variantId: 'variant-2',
+        variantSku: 'special/ñ +%2F',
+        variantStatus: 'ACTIVA',
+      }),
+      row('inactive', { productStatus: 'INACTIVO' }),
+      row('base-with-variants', { productHasVariants: true }),
+    ];
+    const repository = repositoryWith(records);
+    const result = await repository.resolveAdminSkus([
+      '000-base',
+      'special/ñ +%2F',
+      'inactive',
+      'base-with-variants',
+      'missing',
+      '000-base',
+    ]);
+    expect(result.items.map((item) => item.sku)).toEqual([
+      '000-base',
+      'special/ñ +%2F',
+      'inactive',
+      'base-with-variants',
+      'missing',
+      '000-base',
+    ]);
+    expect(result.items.map((item) => item.resultado)).toEqual([
+      'ELEGIBLE',
+      'ELEGIBLE',
+      'INACTIVO',
+      'NO_ELEGIBLE',
+      'NO_ENCONTRADO',
+      'ELEGIBLE',
+    ]);
+    expect(result.items[0]).toMatchObject({
+      productId: 'product-000-base',
+      nombre: 'Nombre 000-base',
+      productoPadre: {
+        productId: 'product-000-base',
+        nombre: 'Nombre 000-base',
+        estado: 'ACTIVO',
+        tieneVariantes: false,
+      },
+      variante: null,
+      tipoProductoId: 'opaque-type-id',
+    });
+    expect(result.items[1]).toMatchObject({
+      productoPadre: { productId: 'parent-2', tieneVariantes: true },
+      variante: { variantId: 'variant-2', sku: 'special/ñ +%2F' },
+    });
+  });
+});
+
 describe('Catalog variant hydration query bounds', () => {
   it.each([0, 1, 24, 100, 200])(
     'preserves the complete variant projection with %i variants using a fixed SELECT count',

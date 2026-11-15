@@ -8,6 +8,7 @@ import {
 import {
   access,
   mkdir,
+  readdir,
   readFile,
   rename,
   rm,
@@ -149,6 +150,7 @@ export class AuditFileExportWorker
   implements AuditExportWorker, OnApplicationBootstrap, OnApplicationShutdown
 {
   private timer?: ReturnType<typeof setInterval>;
+  private lastOrphanSweepAt = 0;
   private active?: Promise<void>;
   private closing = false;
   private readonly logger = new Logger(AuditFileExportWorker.name);
@@ -210,7 +212,8 @@ export class AuditFileExportWorker
               : await renderPdf(rows, this.config.exportFont!);
           if (data.length > maxBytes)
             throw new Error('Exportación demasiado grande.');
-          const path = this.path(job);
+          const artifactId = randomUUID();
+          const path = this.path(job, artifactId);
           const temporary = path + '.' + randomUUID() + '.tmp';
           try {
             await writeFile(temporary, data, { flag: 'wx', mode: 0o600 });
@@ -218,18 +221,113 @@ export class AuditFileExportWorker
           } finally {
             await rm(temporary, { force: true });
           }
+          return {
+            artifactId,
+            discard: () => rm(path, { force: true }),
+          };
         }))
       )
         break;
     }
+    if (Date.now() - this.lastOrphanSweepAt >= 60_000) {
+      try {
+        await this.cleanupOrphanedArtifacts();
+        this.lastOrphanSweepAt = Date.now();
+      } catch {
+        this.logger.warn('No se pudieron limpiar artefactos huérfanos.');
+      }
+    }
   }
-  private path(job: typeof exportJobs.$inferSelect) {
+  async cleanupOrphanedArtifacts(): Promise<number> {
+    const directory = this.config.exportDirectory;
+    if (!directory) return 0;
+    const orphanAge = 15 * 60 * 1000;
+    const uuidPart =
+      '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+    const completeArtifact = new RegExp(
+      `^(${uuidPart})\\.(${uuidPart})\\.(csv|pdf)$`,
+      'i',
+    );
+    const temporaryArtifact = new RegExp(
+      `^(${uuidPart})\\.(${uuidPart})\\.(csv|pdf)\\.(${uuidPart})\\.tmp$`,
+      'i',
+    );
+    const candidates: Array<{
+      name: string;
+      jobId: string;
+      artifactId?: string;
+      temporary: boolean;
+      modifiedAt: number;
+    }> = [];
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (!entry.isFile()) continue;
+      const complete = completeArtifact.exec(entry.name);
+      const temporary = temporaryArtifact.exec(entry.name);
+      if (!complete && !temporary) continue;
+      const modifiedAt = (await stat(join(directory, entry.name))).mtimeMs;
+      if (Date.now() - modifiedAt < orphanAge) continue;
+      candidates.push({
+        name: entry.name,
+        jobId: (complete ?? temporary)![1]!,
+        ...(!temporary ? { artifactId: complete![2]! } : {}),
+        temporary: Boolean(temporary),
+        modifiedAt,
+      });
+    }
+    candidates.sort((left, right) => left.modifiedAt - right.modifiedAt);
+    const batch = candidates.slice(0, 500);
+    if (!batch.length) return 0;
+    const jobs = new Map<
+      string,
+      Awaited<ReturnType<AuditRepository['exportArtifactJobs']>>[number]
+    >();
+    for (let offset = 0; offset < batch.length; offset += 500) {
+      const rows = await this.repository.exportArtifactJobs(
+        batch.slice(offset, offset + 500).map((candidate) => candidate.jobId),
+      );
+      for (const row of rows) jobs.set(row.id, row);
+    }
+    let removed = 0;
+    for (const candidate of batch) {
+      const job = jobs.get(candidate.jobId);
+      if (!job || job.status !== 'PROCESSING') {
+        if (
+          candidate.temporary ||
+          job?.downloadUrl !== `audit-artifact:${candidate.artifactId}`
+        ) {
+          await rm(join(directory, candidate.name), { force: true });
+          removed++;
+        }
+      }
+    }
+    return removed;
+  }
+  private path(job: typeof exportJobs.$inferSelect, artifactId: string) {
     if (
+      !this.config.exportDirectory ||
+      !uuid.test(job.id) ||
+      !uuid.test(artifactId) ||
+      !['CSV', 'PDF'].includes(job.format)
+    )
+      throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    return join(
+      this.config.exportDirectory,
+      `${job.id}.${artifactId}.${job.format.toLowerCase()}`,
+    );
+  }
+  private downloadPath(job: typeof exportJobs.$inferSelect) {
+    const artifact = /^audit-artifact:([0-9a-f-]{36})$/i.exec(
+      job.downloadUrl ?? '',
+    )?.[1];
+    if (artifact && uuid.test(artifact)) return this.path(job, artifact);
+    if (
+      job.downloadUrl !== null ||
       !this.config.exportDirectory ||
       !uuid.test(job.id) ||
       !['CSV', 'PDF'].includes(job.format)
     )
       throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
+    // Keep compatibility with files completed before artifact references were persisted.
     return join(
       this.config.exportDirectory,
       `${job.id}.${job.format.toLowerCase()}`,
@@ -239,8 +337,9 @@ export class AuditFileExportWorker
     if (job.status !== 'COMPLETED')
       throw new AuditHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     try {
-      if ((await stat(this.path(job))).size > maxBytes) throw new Error();
-      const data = await readFile(this.path(job));
+      const path = this.downloadPath(job);
+      if ((await stat(path)).size > maxBytes) throw new Error();
+      const data = await readFile(path);
       if (data.length > maxBytes) throw new Error();
       return {
         data,

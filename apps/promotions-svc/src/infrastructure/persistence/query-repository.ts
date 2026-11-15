@@ -9,11 +9,25 @@ import {
   isNull,
   lte,
   or,
+  sql,
   type SQL,
 } from 'drizzle-orm';
 import type { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as s from './schema.js';
 type Database = NodePgDatabase<typeof s>;
+export function groupByKey<T>(
+  rows: readonly T[],
+  keyOf: (row: T) => string,
+): Map<string, T[]> {
+  const grouped = new Map<string, T[]>();
+  for (const row of rows) {
+    const key = keyOf(row);
+    const group = grouped.get(key);
+    if (group) group.push(row);
+    else grouped.set(key, [row]);
+  }
+  return grouped;
+}
 export interface PageFilter {
   pagina: number;
   tamanio: number;
@@ -25,6 +39,21 @@ const page = (f: PageFilter) => ({
   limit: f.tamanio,
   offset: (f.pagina - 1) * f.tamanio,
 });
+function safeCount(value: unknown): number {
+  const countValue =
+    typeof value === 'bigint'
+      ? Number(value)
+      : typeof value === 'string' && /^(0|[1-9]\d*)$/.test(value)
+        ? Number(value)
+        : value;
+  if (
+    typeof countValue !== 'number' ||
+    !Number.isSafeInteger(countValue) ||
+    countValue < 0
+  )
+    throw new Error('PROMOTIONS_COUNT_OUT_OF_RANGE');
+  return countValue;
+}
 export class PromotionsQueryRepository {
   constructor(private readonly db: Database) {}
   async summaries(
@@ -114,12 +143,20 @@ export class PromotionsQueryRepository {
       .from(s.couponUses)
       .where(inArray(s.couponUses.promotionId, ids))
       .groupBy(s.couponUses.promotionId);
+    const scopesByPromotion = groupByKey(scopes, (value) => value.promotionId);
+    const policiesByPromotion = new Map(
+      policies.map((value) => [value.promotionId, value]),
+    );
+    const couponCounts = new Map(
+      coupons.map((value) => [value.id, value.total]),
+    );
+    const useCounts = new Map(uses.map((value) => [value.id, value.total]));
     return rows.map((p) => ({
       ...p,
-      scopes: scopes.filter((v) => v.promotionId === p.id),
-      policy: policies.find((v) => v.promotionId === p.id),
-      couponCount: coupons.find((v) => v.id === p.id)?.total ?? 0,
-      historicalUseCount: uses.find((v) => v.id === p.id)?.total ?? 0,
+      scopes: scopesByPromotion.get(p.id) ?? [],
+      policy: policiesByPromotion.get(p.id),
+      couponCount: couponCounts.get(p.id) ?? 0,
+      historicalUseCount: useCounts.get(p.id) ?? 0,
     }));
   }
   async coupons(filter: PageFilter) {
@@ -163,33 +200,28 @@ export class PromotionsQueryRepository {
         ),
       )
       .groupBy(s.couponUses.couponId);
+    const usesByCoupon = new Map(
+      totals.map((value) => [value.id, value.total]),
+    );
     return rows.map((c) => ({
       ...c,
-      used: totals.find((v) => v.id === c.id)?.total ?? 0,
+      used: usesByCoupon.get(c.id) ?? 0,
     }));
   }
   async couponUsage(id: string, customerRef: string | null) {
-    const [{ used }] = await this.db
-      .select({ used: count() })
+    const [usage] = await this.db
+      .select({
+        used: sql<unknown>`count(*)`,
+        customerUsed: sql<unknown>`count(*) FILTER (WHERE ${s.couponUses.customerRef} = ${customerRef})`,
+      })
       .from(s.couponUses)
       .where(
         and(eq(s.couponUses.couponId, id), isNull(s.couponUses.restoredAt)),
       );
-    const customer = customerRef
-      ? (
-          await this.db
-            .select({ used: count() })
-            .from(s.couponUses)
-            .where(
-              and(
-                eq(s.couponUses.couponId, id),
-                eq(s.couponUses.customerRef, customerRef),
-                isNull(s.couponUses.restoredAt),
-              ),
-            )
-        )[0].used
-      : 0;
-    return { used, customerUsed: customer };
+    return {
+      used: safeCount(usage?.used ?? 0),
+      customerUsed: customerRef ? safeCount(usage?.customerUsed ?? 0) : 0,
+    };
   }
   async rules(filter: PageFilter) {
     const where = and(
@@ -245,9 +277,10 @@ export class PromotionsQueryRepository {
         asc(s.recommendationItems.itemOrder),
         asc(s.recommendationItems.id),
       );
+    const itemsByRule = groupByKey(items, (item) => item.ruleId);
     return rows.map((r) => ({
       ...r,
-      items: items.filter((i) => i.ruleId === r.id),
+      items: itemsByRule.get(r.id) ?? [],
     }));
   }
   async matchingRules(

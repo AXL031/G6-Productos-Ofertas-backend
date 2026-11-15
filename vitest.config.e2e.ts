@@ -7,12 +7,15 @@ export default defineConfig({
     globals: true,
     root: './',
     include: ['**/*.e2e-spec.ts'],
-    exclude: process.env.COMBOS_RUN_ISOLATED_E2E === '1'
-      ? []
-      : [
-          'apps/combos-svc/test/combos-postgres.e2e-spec.ts',
-          'apps/combos-svc/test/combos-rabbitmq.e2e-spec.ts',
-          'apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts',
-        ],
+    exclude: [
+      '.ci/**',
+      ...(process.env.COMBOS_RUN_ISOLATED_E2E === '1'
+        ? []
+        : [
+            'apps/combos-svc/test/combos-postgres.e2e-spec.ts',
+            'apps/combos-svc/test/combos-rabbitmq.e2e-spec.ts',
+            'apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts',
+          ]),
+    ],
   },
 });

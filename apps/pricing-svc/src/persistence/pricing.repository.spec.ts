@@ -75,6 +75,29 @@ describe('PricingRepository: transacciones Drizzle', () => {
     expect(client.release).toHaveBeenCalledOnce();
   });
 
+  it('mantiene una lectura agrupada aunque el lote tenga 100 SKU sin precio', async () => {
+    const { client, repository } = setup();
+    const contexts = Array.from({ length: 100 }, (_, index) => ({
+      sku: `sku-${index}`,
+      productId: `product-${index}`,
+    }));
+
+    const result = await repository.readCandidatesBatch(
+      contexts,
+      'RETAIL',
+      new Date('2030-06-01T00:00:00Z'),
+    );
+
+    const statements = client.query.mock.calls.map(([query]) =>
+      typeof query === 'string' ? query : query.text,
+    );
+    expect(
+      statements.filter((query) => query.startsWith('select')),
+    ).toHaveLength(1);
+    expect(result).toHaveLength(100);
+    expect(result.every((item) => item.definitions.length === 0)).toBe(true);
+  });
+
   it('readImport limita filas y solo selecciona campos de respuesta, nunca row_input', async () => {
     const { client, repository } = setup();
     client.query

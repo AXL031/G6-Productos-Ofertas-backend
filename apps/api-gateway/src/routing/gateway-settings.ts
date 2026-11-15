@@ -1,5 +1,4 @@
 import { CONTRACT_ROUTES } from './contract-routes.js';
-import { PHASE1_INTERNAL_READ_ROUTES } from './phase1-internal-read-routes.js';
 import { isEligiblePublicRead } from './gateway-public-reads.js';
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -164,7 +163,7 @@ export function readGatewaySettings(
     if (
       publicOperations.some((id) =>
         securityMode === 'PUBLIC_READ_ONLY'
-          ? ![...CONTRACT_ROUTES, ...PHASE1_INTERNAL_READ_ROUTES].some(
+          ? !CONTRACT_ROUTES.some(
               (r) => r.operationId === id && isEligiblePublicRead(r),
             )
           : true,

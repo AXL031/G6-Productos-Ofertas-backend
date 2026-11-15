@@ -5,12 +5,6 @@ import type { ContractRoute } from './contract-route.js';
  * Pricing multipart prevalidation is excluded: no implemented handler to certify.
  */
 const publicReadRoutes = [
-  [
-    'catalog-svc',
-    'obtenerContextoSku',
-    'GET',
-    '/api/v1/productos/skus/{sku}/contexto',
-  ],
   ['catalog-svc', 'listarProductos', 'GET', '/api/v1/productos'],
   ['catalog-svc', 'obtenerProducto', 'GET', '/api/v1/productos/{productoId}'],
   ['taxonomy-svc', 'listarCategorias', 'GET', '/api/v1/categorias'],

@@ -87,22 +87,55 @@ import {
   variantImages,
 } from '../src/catalog.schema.js';
 
-const dockerAvailable =
-  spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
-    encoding: 'utf8',
-    timeout: 5000,
-    windowsHide: true,
-  }).status === 0 &&
-  spawnSync('openssl', ['version'], {
-    encoding: 'utf8',
-    timeout: 5000,
-    windowsHide: true,
-  }).status === 0;
 const isCi = process.env.CI?.toLowerCase() === 'true';
+
+function checkDockerSupport() {
+  const docker = spawnSync(
+    'docker',
+    ['info', '--format', '{{.ServerVersion}}'],
+    {
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    },
+  );
+  const openssl = spawnSync('openssl', ['version'], {
+    encoding: 'utf8',
+    timeout: 5000,
+    windowsHide: true,
+  });
+  return {
+    available: docker.status === 0 && openssl.status === 0,
+    diagnostics: [
+      docker.status === 0
+        ? `Docker ${docker.stdout.trim()}`
+        : `Docker unavailable (${docker.error?.message ?? docker.stderr.trim() ?? `exit ${docker.status}`})`,
+      openssl.status === 0
+        ? openssl.stdout.trim()
+        : `OpenSSL unavailable (${openssl.error?.message ?? openssl.stderr.trim() ?? `exit ${openssl.status}`})`,
+    ],
+  };
+}
+
+let dockerSupport = checkDockerSupport();
+if (isCi && !dockerSupport.available) {
+  // Hosted runners occasionally expose the Docker CLI before the daemon is
+  // ready. Retry readiness; coverage still fails closed if prerequisites stay
+  // unavailable.
+  for (
+    let attempt = 0;
+    attempt < 10 && !dockerSupport.available;
+    attempt += 1
+  ) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    dockerSupport = checkDockerSupport();
+  }
+}
+const dockerAvailable = dockerSupport.available;
 
 if (isCi && !dockerAvailable) {
   throw new Error(
-    'Catalog persistence E2E requires Docker and OpenSSL in CI; refusing to skip PostgreSQL coverage',
+    `Catalog persistence E2E requires Docker and OpenSSL in CI; refusing to skip PostgreSQL coverage. ${dockerSupport.diagnostics.join('; ')}`,
   );
 }
 
@@ -5794,6 +5827,100 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         intentsBefore,
       );
     });
+    it('applies product-type inclusion/exclusion before exact count and pagination across multiple excluded types', async () => {
+      const service = mutationService();
+      const marker = 'type-filter-' + randomUUID();
+      const definitions = [
+        { type: 'eligible-a', included: true },
+        { type: 'combo-alpha', included: false },
+        { type: 'eligible-b', included: true },
+        { type: 'combo-beta', included: false },
+        { type: 'eligible-c', included: true },
+      ];
+      const productsCreated = [] as Array<{
+        id: string;
+        sku: string;
+        name: string;
+        type: string;
+        included: boolean;
+      }>;
+      for (const [index, definition] of definitions.entries()) {
+        const input = {
+          ...createRequest(),
+          nombre: `${marker}-${index}`,
+          tipoProductoId: definition.type,
+        };
+        const created = await service.createProduct(input, actor);
+        await complete(created.product_id);
+        await service.state(
+          created.product_id,
+          undefined,
+          'activate',
+          {},
+          actor,
+        );
+        productsCreated.push({
+          id: created.product_id,
+          sku: created.sku_base,
+          name: input.nombre,
+          type: definition.type,
+          included: definition.included,
+        });
+      }
+
+      const queries = new CatalogQueryRepository(database);
+      const expected = productsCreated
+        .filter((product) => product.included)
+        .sort((a, b) => a.name.localeCompare(b.name, 'en'));
+      const query = {
+        pagina: 1,
+        tamanio: 2,
+        orden: 'NOMBRE_ASC' as const,
+        q: marker,
+        tipoProductoIdsIncluidos: ['eligible-a', 'eligible-b', 'eligible-c'],
+        tipoProductoIdsExcluidos: ['combo-alpha', 'combo-beta'],
+      };
+      for (const pagina of [1, 2]) {
+        const page = await queries.listAdminProducts({ ...query, pagina });
+        expect(page.meta).toEqual({
+          pagina,
+          tamanio: 2,
+          total: 3,
+          totalPaginas: 2,
+        });
+        expect(page.items.map((item) => item.productId)).toEqual(
+          expected.slice((pagina - 1) * 2, pagina * 2).map((item) => item.id),
+        );
+      }
+      expect(
+        await queries.listAdminProducts({ ...query, pagina: 3 }),
+      ).toMatchObject({ items: [], meta: { total: 3, totalPaginas: 2 } });
+      const commercial = new PostgresCatalogRepository(database);
+      for (const pagina of [1, 2]) {
+        const page = await commercial.listCandidates({
+          canal: 'RETAIL',
+          pagina,
+          tamanio: 2,
+          orden: 'NOMBRE_ASC',
+          q: marker,
+          tipoProductoIdsExcluidos: ['combo-alpha', 'combo-beta'],
+        });
+        expect(page.total).toBe(3);
+        expect(page.items.map((item) => item.product_id)).toEqual(
+          expected.slice((pagina - 1) * 2, pagina * 2).map((item) => item.id),
+        );
+      }
+      process.stdout.write(
+        JSON.stringify({
+          evidence: 'CATALOG-TYPE-FILTER-PAGINATION',
+          products: productsCreated.length,
+          excludedTypes: 2,
+          expectedTotal: expected.length,
+          pages: 2,
+          excludedProductsWereInterleaved: true,
+        }) + '\n',
+      );
+    }, 30000);
     it('D-CAT-01..04: persists multiple exact codes, rejects concurrent/history reuse and preserves retirement audit', async () => {
       const service = mutationService();
       const simple = await service.createProduct(createRequest(), actor);
@@ -5986,6 +6113,90 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
       expect(await reads.skuContext(draft.sku)).toMatchObject({
         active: false,
         eligible: false,
+      });
+      const missingSku = 'missing-' + randomUUID();
+      const batchSkus = [
+        parent.sku_base,
+        active.sku,
+        draft.sku,
+        missingSku,
+        active.sku,
+      ];
+      const contextBatch = await reads.skuContexts(batchSkus);
+      expect(contextBatch.map((item) => item.sku)).toEqual(batchSkus);
+      expect(contextBatch.map((item) => item.status)).toEqual([
+        'FOUND',
+        'FOUND',
+        'FOUND',
+        'SKU_NO_ENCONTRADO',
+        'FOUND',
+      ]);
+      expect(contextBatch[0]?.context).toMatchObject({
+        productId: parent.product_id,
+        isVariant: false,
+        active: true,
+        eligible: false,
+      });
+      expect(contextBatch[1]?.context).toMatchObject({
+        productId: parent.product_id,
+        isVariant: true,
+        active: true,
+        eligible: true,
+      });
+      expect(contextBatch[2]?.context).toMatchObject({
+        isVariant: true,
+        active: false,
+        eligible: false,
+      });
+      expect(contextBatch[3]?.context).toBeNull();
+      const adminBatch = await new CatalogQueryRepository(
+        database,
+      ).resolveAdminSkus(batchSkus);
+      expect(adminBatch.items.map((item) => item.resultado)).toEqual([
+        'NO_ELEGIBLE',
+        'ELEGIBLE',
+        'NO_ELEGIBLE',
+        'NO_ENCONTRADO',
+        'ELEGIBLE',
+      ]);
+      expect(adminBatch.items[0]?.productoPadre).toMatchObject({
+        productId: parent.product_id,
+        estado: 'ACTIVO',
+        tieneVariantes: true,
+      });
+      expect(adminBatch.items[1]?.variante).toMatchObject({
+        variantId: active.variant_id,
+        estado: 'ACTIVA',
+      });
+      const inactive = await service.createProduct(
+        { ...createRequest(), skuBase: '000-' + randomUUID() },
+        actor,
+      );
+      await complete(inactive.product_id);
+      await service.state(
+        inactive.product_id,
+        undefined,
+        'activate',
+        {},
+        actor,
+      );
+      await service.state(
+        inactive.product_id,
+        undefined,
+        'deactivate',
+        {},
+        actor,
+      );
+      expect(
+        (
+          await new CatalogQueryRepository(database).resolveAdminSkus([
+            inactive.sku_base,
+          ])
+        ).items[0],
+      ).toMatchObject({
+        resultado: 'INACTIVO',
+        estado: 'INACTIVO',
+        productoPadre: { estado: 'INACTIVO' },
       });
       expect(await reads.priceCandidates(query)).toEqual([
         { productId: parent.product_id, sku: active.sku },

@@ -5,7 +5,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { and, asc, eq, inArray, or, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, or, sql } from 'drizzle-orm';
 import { Database, type CatalogTransaction } from './database.js';
 import {
   activationChecks,
@@ -36,6 +36,7 @@ import {
   type CatalogPreparationConfig,
   UnresolvedCatalogAttempt,
 } from './catalog-messages.js';
+import { catalogSkuContext, catalogSkuRecords } from './catalog-sku-query.js';
 
 type VariantRow = {
   variant_id: string;
@@ -88,6 +89,80 @@ export class CatalogQueryRepository {
       timeoutMs: preparationTimeout(),
     },
   ) {}
+
+  resolveAdminSkus(skus: readonly string[]) {
+    return this.database
+      .read((db) =>
+        db.transaction(
+          async (tx) => {
+            const rows = await catalogSkuRecords(tx, skus);
+            const bySku = new Map(rows.map((row) => [row.sku, row]));
+            return {
+              items: skus.map((sku) => {
+                const row = bySku.get(sku);
+                if (!row)
+                  return {
+                    sku,
+                    resultado: 'NO_ENCONTRADO' as const,
+                    productId: null,
+                    nombre: null,
+                    productoPadre: null,
+                    variante: null,
+                    estado: null,
+                    tipoProductoId: null,
+                  };
+                if (
+                  row.productId === null ||
+                  row.productName === null ||
+                  row.productTypeId === null ||
+                  row.productHasVariants === null ||
+                  row.productStatus === null ||
+                  (row.variantId !== null &&
+                    (row.variantStatus === null || row.variantSku === null))
+                )
+                  throw new Error('CATALOG_SKU_IDENTITY_INCONSISTENT');
+                const context = catalogSkuContext(row);
+                const inactive =
+                  row.productStatus === 'INACTIVO' ||
+                  row.variantStatus === 'INACTIVA';
+                return {
+                  sku,
+                  resultado: inactive
+                    ? ('INACTIVO' as const)
+                    : context.eligible
+                      ? ('ELEGIBLE' as const)
+                      : ('NO_ELEGIBLE' as const),
+                  productId: row.productId,
+                  nombre: row.productName,
+                  productoPadre: {
+                    productId: row.productId,
+                    nombre: row.productName,
+                    estado: row.productStatus,
+                    tieneVariantes: row.productHasVariants,
+                  },
+                  variante: row.variantId
+                    ? {
+                        variantId: row.variantId,
+                        sku: row.variantSku,
+                        estado: row.variantStatus,
+                      }
+                    : null,
+                  estado: row.variantId ? row.variantStatus : row.productStatus,
+                  tipoProductoId: row.productTypeId,
+                };
+              }),
+            };
+          },
+          { isolationLevel: 'repeatable read', accessMode: 'read only' },
+        ),
+      )
+      .catch((error: unknown) => {
+        if (error instanceof ServiceUnavailableException) throw error;
+        throw new ServiceUnavailableException({
+          code: 'SERVICIO_NO_DISPONIBLE',
+        });
+      });
+  }
 
   physicalData(skus: readonly string[]): Promise<{
     productos: PhysicalSkuData[];
@@ -219,7 +294,16 @@ export class CatalogQueryRepository {
   }
 
   listAdminProducts(query: ProductQuery) {
-    const { pagina, tamanio, estado, categoriaId, marcaId, q } = query;
+    const {
+      pagina,
+      tamanio,
+      estado,
+      categoriaId,
+      marcaId,
+      q,
+      tipoProductoIdsIncluidos,
+      tipoProductoIdsExcluidos,
+    } = query;
     const pattern =
       q === undefined
         ? undefined
@@ -232,6 +316,12 @@ export class CatalogQueryRepository {
         ? undefined
         : eq(products.categoria_id, categoriaId),
       marcaId === undefined ? undefined : eq(products.marca_id, marcaId),
+      tipoProductoIdsIncluidos?.length
+        ? inArray(products.tipo_producto_id, [...tipoProductoIdsIncluidos])
+        : undefined,
+      tipoProductoIdsExcluidos?.length
+        ? notInArray(products.tipo_producto_id, [...tipoProductoIdsExcluidos])
+        : undefined,
       pattern === undefined
         ? undefined
         : or(

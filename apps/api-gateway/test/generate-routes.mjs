@@ -28,7 +28,12 @@ const adminCandidates = {
   },
   '0.6.0-h4-catalog-admin': {
     service: 'catalog-svc',
-    path: /^\/api\/v1\/productos\/administracion(?:\/\{productoId\})?$/,
+    path: /^\/api\/v1\/productos\/administracion(?:\/\{productoId\}|\/skus\/resolver)?$/,
+  },
+  '0.6.0-rc.5': {
+    method: 'POST',
+    service: 'catalog-svc',
+    path: /^\/api\/v1\/productos\/administracion\/skus\/resolver$/,
   },
   '0.6.0-h4-pricing-admin': {
     service: 'pricing-svc',
@@ -39,7 +44,9 @@ const candidate = adminCandidates[spec.info.version];
 if (
   (add
     ? !candidate
-    : !['0.6.0-rc.2', '0.6.0-rc.3'].includes(spec.info.version)) ||
+    : !['0.6.0-rc.2', '0.6.0-rc.3', '0.6.0-rc.4', '0.6.0-rc.5'].includes(
+        spec.info.version,
+      )) ||
   spec.servers[0].url !== '/api/v1'
 ) {
   throw new Error('Unexpected contract version or base path');

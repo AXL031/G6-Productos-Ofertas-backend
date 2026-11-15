@@ -126,6 +126,10 @@ export class IsolatedBulkRabbitmq {
     return (await this.nextCommandDelivery()).payload;
   }
 
+  async commandQueueDepth(): Promise<number> {
+    return (await this.adminChannel!.checkQueue('po.catalogo.q')).messageCount;
+  }
+
   async nextCommandDelivery(): Promise<CapturedBulkCommand> {
     const deadline = Date.now() + 10000;
     while (Date.now() < deadline) {

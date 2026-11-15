@@ -423,6 +423,125 @@ export class InMemoryDatabaseMock implements IDatabaseService {
   ): QueryResult<T> {
     const s = sql.trim().toUpperCase();
 
+    if (s.includes('FILTERED_BALANCE AS MATERIALIZED')) {
+      const [skuFilter, locationFilter, defaultThreshold] = params ?? [];
+      const rows = this.stockBalance.filter(
+        (row) =>
+          (!skuFilter || row.sku_id === skuFilter) &&
+          (!locationFilter || row.location_id === locationFilter),
+      );
+      const globalThreshold = this.thresholdOverrides.find(
+        (override) =>
+          (override.sku_id === null || override.sku_id === undefined) &&
+          (override.location_id === null || override.location_id === undefined),
+      )?.umbral_efectivo;
+      const skuThresholds = new Map(
+        this.thresholdOverrides
+          .filter(
+            (override) =>
+              override.sku_id !== null &&
+              override.sku_id !== undefined &&
+              (override.location_id === null ||
+                override.location_id === undefined),
+          )
+          .map((override) => [override.sku_id!, override.umbral_efectivo]),
+      );
+      const thresholdFor = (sku: string) =>
+        skuThresholds.get(sku) ?? globalThreshold ?? Number(defaultThreshold);
+      const bySku = new Map<
+        string,
+        { onHand: number; reserved: number; blocked: number; available: number }
+      >();
+      const byLocation = new Map<
+        string,
+        {
+          onHand: number;
+          reserved: number;
+          blocked: number;
+          available: number;
+          disponibles: number;
+          stockBajo: number;
+          agotados: number;
+        }
+      >();
+      for (const row of rows) {
+        const sku = bySku.get(row.sku_id) ?? {
+          onHand: 0,
+          reserved: 0,
+          blocked: 0,
+          available: 0,
+        };
+        sku.onHand += row.on_hand;
+        sku.reserved += row.reserved;
+        sku.blocked += row.blocked;
+        sku.available += row.available;
+        bySku.set(row.sku_id, sku);
+
+        const location = byLocation.get(row.location_id) ?? {
+          onHand: 0,
+          reserved: 0,
+          blocked: 0,
+          available: 0,
+          disponibles: 0,
+          stockBajo: 0,
+          agotados: 0,
+        };
+        location.onHand += row.on_hand;
+        location.reserved += row.reserved;
+        location.blocked += row.blocked;
+        location.available += row.available;
+        if (row.available <= 0) location.agotados += 1;
+        else if (row.available <= thresholdFor(row.sku_id))
+          location.stockBajo += 1;
+        else location.disponibles += 1;
+        byLocation.set(row.location_id, location);
+      }
+
+      let disponibles = 0;
+      let stockBajo = 0;
+      let agotados = 0;
+      let totalOnHand = 0;
+      let totalReserved = 0;
+      let totalBlocked = 0;
+      let totalAvailable = 0;
+      for (const [skuId, aggregate] of bySku) {
+        totalOnHand += aggregate.onHand;
+        totalReserved += aggregate.reserved;
+        totalBlocked += aggregate.blocked;
+        totalAvailable += aggregate.available;
+        if (aggregate.available <= 0) agotados += 1;
+        else if (aggregate.available <= thresholdFor(skuId)) stockBajo += 1;
+        else disponibles += 1;
+      }
+      const result = [
+        {
+          group_kind: 'TOTAL',
+          location_id: null,
+          total_skus: bySku.size,
+          total_on_hand: totalOnHand,
+          total_reserved: totalReserved,
+          total_blocked: totalBlocked,
+          total_available: totalAvailable,
+          skus_disponibles: disponibles,
+          skus_stock_bajo: stockBajo,
+          skus_agotados: agotados,
+        },
+        ...[...byLocation.entries()].map(([locationId, aggregate]) => ({
+          group_kind: 'LOCATION',
+          location_id: locationId,
+          total_skus: 0,
+          total_on_hand: aggregate.onHand,
+          total_reserved: aggregate.reserved,
+          total_blocked: aggregate.blocked,
+          total_available: aggregate.available,
+          skus_disponibles: aggregate.disponibles,
+          skus_stock_bajo: aggregate.stockBajo,
+          skus_agotados: aggregate.agotados,
+        })),
+      ];
+      return { rows: result as any, rowCount: result.length };
+    }
+
     if (s.startsWith('SELECT 1')) {
       return { rows: [{ '?column?': 1 }] as any, rowCount: 1 };
     }

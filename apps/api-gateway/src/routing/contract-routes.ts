@@ -1,4 +1,4 @@
-// Generated from Docs OpenAPI 0.6.0-rc.3; focused update: consultarDisponibilidadComercial.
+// Generated from Docs OpenAPI 0.6.0-rc.5; focused update: obtenerAuditoriaPrecioAdministracion.
 import type { ContractRoute } from './contract-route.js';
 export const CONTRACT_ROUTES: readonly ContractRoute[] = [
   {
@@ -7637,6 +7637,49 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       '500': {
         types: ['application/problem+json'],
         codes: ['ERROR_INTERNO'],
+        headers: [],
+      },
+      '503': {
+        types: ['application/problem+json'],
+        codes: ['SERVICIO_NO_DISPONIBLE'],
+        headers: [],
+      },
+    },
+  },
+  {
+    method: 'POST',
+    path: '/api/v1/productos/administracion/skus/resolver',
+    operationId: 'resolverSkusAdministracion',
+    service: 'catalog-svc',
+    security: ['userBearer'],
+    role: 'GESTOR_COMERCIAL',
+    introspection: false,
+    headers: [
+      {
+        name: 'x-correlation-id',
+        required: false,
+      },
+    ],
+    requestTypes: ['application/json'],
+    responses: {
+      '200': {
+        types: ['application/json'],
+        codes: [],
+        headers: [],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: [],
+      },
+      '401': {
+        types: ['application/problem+json'],
+        codes: ['TOKEN_INVALIDO'],
+        headers: [],
+      },
+      '403': {
+        types: ['application/problem+json'],
+        codes: ['SCOPE_INSUFICIENTE'],
         headers: [],
       },
       '503': {

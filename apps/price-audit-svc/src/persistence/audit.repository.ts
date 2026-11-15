@@ -1,5 +1,16 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, count, desc, eq, gte, lte, inArray, sql } from 'drizzle-orm';
+import {
+  and,
+  count,
+  desc,
+  eq,
+  gte,
+  inArray,
+  lte,
+  lt,
+  or,
+  sql,
+} from 'drizzle-orm';
 import { AuditDatabase, type AuditTransaction } from './audit.database.js';
 import { auditLog, exportJobs, inbox } from './audit.schema.js';
 import {
@@ -13,6 +24,11 @@ import {
   AuditPersistenceError,
 } from '../http/audit-http.error.js';
 import { parseFilters, type AuditFilters } from '../http/audit-query.js';
+
+type ExportArtifact = {
+  artifactId: string;
+  discard: () => Promise<void>;
+};
 
 function where(filters: AuditFilters) {
   return and(
@@ -132,25 +148,70 @@ export class AuditRepository {
       true,
     );
   }
+  exportArtifactJobs(ids: readonly string[]) {
+    const unique = [...new Set(ids)].filter((id) => uuid.test(id));
+    if (!unique.length) return Promise.resolve([]);
+    return this.transaction(
+      (tx) =>
+        tx
+          .select({
+            id: exportJobs.id,
+            status: exportJobs.status,
+            downloadUrl: exportJobs.downloadUrl,
+          })
+          .from(exportJobs)
+          .where(inArray(exportJobs.id, unique)),
+      true,
+    );
+  }
   processExport(
     write: (
       job: typeof exportJobs.$inferSelect,
       rows: (typeof auditLog.$inferSelect)[],
-    ) => Promise<void>,
+    ) => Promise<ExportArtifact>,
   ) {
     return this.transaction(async (tx) => {
-      await tx.execute(sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ`);
-      const [job] = await tx
+      const staleBefore = new Date(Date.now() - 15 * 60 * 1000);
+      const [candidate] = await tx
         .select()
         .from(exportJobs)
-        .where(inArray(exportJobs.status, ['QUEUED', 'PROCESSING']))
+        .where(
+          or(
+            eq(exportJobs.status, 'QUEUED'),
+            and(
+              eq(exportJobs.status, 'PROCESSING'),
+              lt(exportJobs.updatedAt, staleBefore),
+            ),
+          ),
+        )
         .orderBy(exportJobs.createdAt)
         .limit(1)
         .for('update', { skipLocked: true });
-      if (!job) return false;
+      if (!candidate) return false;
+
+      const [claimed] = await tx
+        .update(exportJobs)
+        .set({ status: 'PROCESSING', updatedAt: new Date() })
+        .where(eq(exportJobs.id, candidate.id))
+        .returning();
+      if (!claimed) return false;
+      const [lease] = await tx
+        .select({ value: sql<string>`${exportJobs.updatedAt}::text` })
+        .from(exportJobs)
+        .where(eq(exportJobs.id, claimed.id))
+        .limit(1);
+      if (!lease) return false;
+      return { job: claimed, leaseTimestamp: lease.value };
+    }).then(async (claim) => {
+      if (claim === false) return false;
+      const { job, leaseTimestamp } = claim;
+      let artifact: ExportArtifact | undefined;
+      let completionAttempted = false;
+
       try {
-        // Una sola instantánea; los eventos posteriores no cambian el archivo en curso.
-        await tx.transaction(async (snapshot) => {
+        // Capture count and rows from one consistent snapshot, then release the
+        // database connection before rendering or writing the potentially large file.
+        const rows = await this.transaction(async (snapshot) => {
           const { filters } = parseFilters(
             job.filters as Record<string, unknown>,
             false,
@@ -165,29 +226,58 @@ export class AuditRepository {
           assertExportLimit(job.format, total.value);
           if (Number(total.bytes) > 32 * 1024 * 1024)
             throw new Error('Exportación demasiado grande.');
-          const rows = await snapshot
+          const result = await snapshot
             .select()
             .from(auditLog)
             .where(where(filters))
             .orderBy(desc(auditLog.at), desc(auditLog.id));
-          // Validar otra vez también protege contra datos inesperados en filtros persistidos.
-          assertExportLimit(job.format, rows.length);
-          await write(job, rows);
-          await snapshot
+          assertExportLimit(job.format, result.length);
+          return result;
+        }, true);
+
+        artifact = await write(job, rows);
+        if (!uuid.test(artifact.artifactId))
+          throw new Error('Identidad de archivo inválida.');
+        completionAttempted = true;
+        const completed = await this.transaction(async (tx) => {
+          const [updated] = await tx
             .update(exportJobs)
             .set({
               status: 'COMPLETED',
               recordCount: rows.length,
+              downloadUrl: `audit-artifact:${artifact!.artifactId}`,
               completedAt: new Date(),
               updatedAt: new Date(),
             })
-            .where(eq(exportJobs.id, job.id));
+            .where(
+              and(
+                eq(exportJobs.id, job.id),
+                eq(exportJobs.status, 'PROCESSING'),
+                sql`${exportJobs.updatedAt} = ${leaseTimestamp}::timestamptz`,
+              ),
+            )
+            .returning({ id: exportJobs.id });
+          return updated !== undefined;
         });
+        if (!completed) await artifact.discard();
       } catch {
-        await tx
-          .update(exportJobs)
-          .set({ status: 'FAILED_GENERAL', updatedAt: new Date() })
-          .where(eq(exportJobs.id, job.id));
+        // Once COMMIT is attempted, the connection may fail after PostgreSQL
+        // committed. Keep the immutable artifact in that ambiguous case so a
+        // completed job can never point to a file that was deleted by cleanup.
+        if (artifact && !completionAttempted)
+          await artifact.discard().catch(() => undefined);
+        await this.transaction(async (tx) => {
+          await tx
+            .update(exportJobs)
+            .set({ status: 'FAILED_GENERAL', updatedAt: new Date() })
+            .where(
+              and(
+                eq(exportJobs.id, job.id),
+                eq(exportJobs.status, 'PROCESSING'),
+                sql`${exportJobs.updatedAt} = ${leaseTimestamp}::timestamptz`,
+              ),
+            );
+        });
       }
       return true;
     });
