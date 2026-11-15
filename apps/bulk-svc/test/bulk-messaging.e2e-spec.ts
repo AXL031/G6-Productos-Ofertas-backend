@@ -31,6 +31,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   let broker: IsolatedBulkRabbitmq;
   let consumer: CatalogBulkResultConsumer;
   const replayInFlight = new Set<Promise<void>>();
+  let replayInvocationCount = 0;
 
   beforeAll(async () => {
     if (!databaseUrl) throw new Error('BULK_TEST_DATABASE_URL required');
@@ -61,12 +62,14 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   }, 90000);
 
   beforeEach(async () => {
+    replayInvocationCount = 0;
     await pool.query(
       'TRUNCATE bulk.inbox, bulk.outbox, bulk.row_domain_steps, bulk.batch_rows, bulk.export_jobs, bulk.batch_jobs, bulk.file_manifests CASCADE',
     );
     consumer = new CatalogBulkResultConsumer(repository, broker.url);
     const replay = consumer.replayPendingContractResults.bind(consumer);
     consumer.replayPendingContractResults = () => {
+      replayInvocationCount += 1;
       const task = replay();
       replayInFlight.add(task);
       void task.finally(() => replayInFlight.delete(task));
@@ -1418,6 +1421,7 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       data: { fixture: 'contract-shaped' },
     }));
 
+    const replayInvocationsBeforeDelivery = replayInvocationCount;
     for (const message of messages) await broker.publishResult(message);
     await waitFor(async () => {
       const result = await pool.query<{ count: string }>(
@@ -1428,6 +1432,13 @@ integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
       return Number(result.rows[0]?.count) === messages.length;
     });
     await waitFor(async () => (await broker.queueDepth()) === 0);
+    await waitFor(async () => {
+      return (
+        replayInvocationCount >=
+        replayInvocationsBeforeDelivery + messages.length
+      );
+    });
+    await waitForReplayIdle();
     const persisted = (
       await pool.query<{
         event_name: string;
@@ -1498,4 +1509,11 @@ async function waitFor(
   throw new Error(
     'El estado esperado no apareció en el plazo de la prueba aislada.',
   );
+}
+
+async function waitForReplayIdle(): Promise<void> {
+  while (replayInFlight.size > 0) {
+    await Promise.allSettled([...replayInFlight]);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 }
