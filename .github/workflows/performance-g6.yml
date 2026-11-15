@@ -1,0 +1,682 @@
+name: Benchmarks focalizados G6
+'on':
+  workflow_dispatch:
+    inputs:
+      component:
+        description: Componente que se medirá; solo se ejecutan sus escenarios
+        required: true
+        type: choice
+        options:
+        - pricing
+        - promotions
+        - price-audit
+        - bulk
+        - catalog
+        - combos
+        - inventory-gateway
+        - taxonomy
+      baseline_sha:
+        description: SHA Git completo (40 caracteres) de la revisión base
+        required: true
+        type: string
+      parallelism:
+        description: Máximo de variantes baseline/candidato concurrentes; 1 recomendado para aislar mediciones
+        required: true
+        type: choice
+        default: '1'
+        options:
+        - '1'
+        - '2'
+concurrency:
+  group: g6-performance-${{ github.repository }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  preflight:
+    name: Verificar referencias Git de la comparación
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      baseline_sha: ${{ steps.verify.outputs.baseline_sha }}
+      candidate_sha: ${{ steps.verify.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener la revisión seleccionada para el benchmark
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+    - name: Validar SHA base y candidato
+      id: verify
+      env:
+        BASELINE_SHA: ${{ inputs.baseline_sha }}
+        CANDIDATE_SHA: ${{ github.sha }}
+      run: "set -Eeuo pipefail\nfor sha in \"$BASELINE_SHA\" \"$CANDIDATE_SHA\"; do\n  [[ \"$sha\" =~ ^[0-9a-fA-F]{40}$ ]]\
+        \ || { echo \"Se requiere un SHA Git completo de 40 caracteres.\" >&2; exit 1; }\ndone\ngit fetch --no-tags origin\
+        \ \"$BASELINE_SHA\"\ngit cat-file -e \"$BASELINE_SHA^{commit}\"\ngit cat-file -e \"$CANDIDATE_SHA^{commit}\"\nprintf\
+        \ 'baseline_sha=%s\\ncandidate_sha=%s\\n' \"$BASELINE_SHA\" \"$CANDIDATE_SHA\" >> \"$GITHUB_OUTPUT\""
+  pricing_batch_benchmark:
+    name: Medir lotes de Pricing con PostgreSQL desechable
+    if: inputs.component == 'pricing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs:
+    - preflight
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener cÃ³digo fuente
+      uses: actions/checkout@v4
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Verificar Docker para PostgreSQL sintÃ©tico descartable
+      run: docker info
+    - name: Ejecutar comparaciÃ³n 1/20/100 SKU y calibrar concurrencia
+      run: "set -o pipefail\nmkdir -p .ci/performance\nnode_modules/.bin/vitest run --config apps/pricing-svc/test/commercial-batch.benchmark.config.ts\
+        \ \\\n  --reporter=verbose 2>&1 | tee .ci/performance/pricing-batch-benchmark.log\n"
+    - name: Medir singleflight de emisiÃ³n de token con emisor JWT firmado de prueba
+      run: "set -o pipefail\nnode_modules/.bin/vitest run --config apps/pricing-svc/test/catalog-token.benchmark.config.ts\
+        \ \\\n  --reporter=verbose 2>&1 | tee .ci/performance/pricing-token-benchmark.log\n"
+    - name: Publicar evidencias independientes de Pricing y emisor token
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pricing-component-benchmarks-${{ needs.preflight.outputs.candidate_sha }}
+        path: '.ci/performance/pricing-batch-benchmark.log
+
+          .ci/performance/pricing-token-benchmark.log
+
+          .ci/performance/pricing-token-benchmark.json
+
+          .ci/performance/pricing-token-benchmark.csv
+
+          '
+        retention-days: 7
+  promotions_http_performance:
+    name: Medir HTTP Promotions/PostgreSQL TLS (${{ matrix.variant }})
+    if: inputs.component == 'promotions'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - preflight
+    strategy:
+      max-parallel: ${{ fromJSON(inputs.parallelism) }}
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ needs.preflight.outputs.baseline_sha }}
+        - variant: candidate
+          ref: ${{ needs.preflight.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil medido mantenido en el candidato
+      run: cp .ci/benchmark-harness/apps/promotions-svc/test/support/http-query-checks.mjs apps/promotions-svc/test/support/http-query-checks.mjs
+    - name: Compilar y ejecutar perfil HTTP contra PG TLS y fixtures oficiales desechables
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        G6_TEST_OPENSSL: openssl
+      run: 'set -o pipefail
+
+        npm run build:promotions-svc
+
+        mkdir -p .ci/performance
+
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" node apps/promotions-svc/test/persistence.isolated.smoke.mjs 2>&1 | tee
+        .ci/performance/promotions-http-${{ matrix.variant }}.log
+
+        '
+    - name: Publicar perfil HTTP de Promotions
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: promotions-http-${{ matrix.variant }}-${{ needs.preflight.outputs.candidate_sha }}
+        path: '.ci/performance/promotions-http-profile.json
+
+          .ci/performance/promotions-http-profile.csv
+
+          .ci/performance/promotions-http-${{ matrix.variant }}.log
+
+          '
+        if-no-files-found: warn
+        retention-days: 30
+  promotions_paired_http_performance:
+    name: Comparar Promotions en pares sobre un runner persistente
+    if: inputs.component == 'promotions'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+    - preflight
+    - promotions_http_performance
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+    - name: Obtener revisión base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.baseline_sha }}
+        path: .ci/baseline
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+    - name: Instalar y compilar ambas revisiones en el mismo runner
+      run: 'set -Eeuo pipefail
+
+        cp apps/promotions-svc/test/persistence.isolated.smoke.mjs .ci/baseline/apps/promotions-svc/test/persistence.isolated.smoke.mjs
+
+        cp apps/promotions-svc/test/support/http-query-checks.mjs .ci/baseline/apps/promotions-svc/test/support/http-query-checks.mjs
+
+        npm ci
+
+        npm run build:promotions-svc
+
+        (cd .ci/baseline && npm ci && npm run build:promotions-svc)
+
+        mkdir -p .ci/performance/paired
+
+        '
+    - name: Ejecutar pares alternando el orden con fixtures y carga idénticos
+      env:
+        G6_TEST_OPENSSL: openssl
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_PAIR_ID: ${{ github.run_id }}-${{ github.run_attempt }}
+      run: "set -Eeuo pipefail\nrun_profile() {\n  local tree=\"$1\" variant=\"$2\" key=\"$3\"\n  local output=\"$GITHUB_WORKSPACE/.ci/performance/paired/$key\"\
+        \n  mkdir -p \"$output\"\n  (cd \"$tree\" && G6_PERFORMANCE_VARIANT=\"$variant\" G6_PERFORMANCE_SHA=\"$(git rev-parse\
+        \ HEAD)\" G6_PERFORMANCE_OUTPUT=\"$output\" node apps/promotions-svc/test/persistence.isolated.smoke.mjs) 2>&1 | tee\
+        \ \".ci/performance/paired/$key.log\"\n}\nrun_profile .ci/baseline baseline-first baseline-first\nrun_profile . candidate-first\
+        \ candidate-first\nrun_profile . candidate-second candidate-second\nrun_profile .ci/baseline baseline-second baseline-second\n"
+    - name: Publicar perfiles pareados de Promotions
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: promotions-paired-http-${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/performance/paired/
+        if-no-files-found: warn
+        retention-days: 30
+  price_audit_http_performance:
+    name: Medir HTTP Price Audit/PostgreSQL/RabbitMQ (${{ matrix.variant }})
+    if: inputs.component == 'price-audit'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - preflight
+    strategy:
+      max-parallel: ${{ fromJSON(inputs.parallelism) }}
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ needs.preflight.outputs.baseline_sha }}
+        - variant: candidate
+          ref: ${{ needs.preflight.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil y estadísticas SQL mantenidos en el candidato
+      run: 'cp .ci/benchmark-harness/apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts
+
+        cp .ci/benchmark-harness/apps/price-audit-svc/test/isolated-postgres.ts apps/price-audit-svc/test/isolated-postgres.ts
+
+        '
+    - name: Medir HTTP Nest con PostgreSQL/RabbitMQ reales y JWT local
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        PRICE_AUDIT_TEST_POSTGRES: '1'
+        PRICE_AUDIT_TEST_AMQP: '1'
+      run: 'set -o pipefail
+
+        mkdir -p .ci/performance
+
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" npm run test:e2e -- apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts
+        --reporter=verbose 2>&1 | tee .ci/performance/price-audit-http-${{ matrix.variant }}.log
+
+        '
+    - name: Publicar perfil HTTP de Price Audit
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: price-audit-http-${{ matrix.variant }}-${{ needs.preflight.outputs.candidate_sha }}
+        path: '.ci/performance/price-audit-http-profile.json
+
+          .ci/performance/price-audit-http-profile.csv
+
+          .ci/performance/price-audit-http-${{ matrix.variant }}.log
+
+          '
+        if-no-files-found: warn
+        retention-days: 30
+  bulk_http_performance:
+    name: Medir HTTP Bulk/PostgreSQL/RabbitMQ/Storage fixture (${{ matrix.variant }})
+    if: inputs.component == 'bulk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs:
+    - preflight
+    strategy:
+      max-parallel: ${{ fromJSON(inputs.parallelism) }}
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ needs.preflight.outputs.baseline_sha }}
+        - variant: candidate
+          ref: ${{ needs.preflight.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil y RabbitMQ fixture mantenidos en el candidato
+      run: 'cp .ci/benchmark-harness/vitest.config.e2e.ts vitest.config.e2e.ts
+
+        cp .ci/benchmark-harness/apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
+
+        cp .ci/benchmark-harness/apps/bulk-svc/test/isolated-bulk-rabbitmq.ts apps/bulk-svc/test/isolated-bulk-rabbitmq.ts
+
+        '
+    - name: Medir admisión multipart HTTP, persistencia y publicación RabbitMQ
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+      run: 'set -o pipefail
+
+        mkdir -p .ci/performance
+
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" npm run test:e2e -- apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
+        --reporter=verbose 2>&1 | tee .ci/performance/bulk-http-${{ matrix.variant }}.log
+
+        '
+    - name: Publicar perfil HTTP de Bulk
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bulk-http-${{ matrix.variant }}-${{ needs.preflight.outputs.candidate_sha }}
+        path: '.ci/performance/bulk-http-profile.json
+
+          .ci/performance/bulk-http-profile.csv
+
+          .ci/performance/bulk-http-${{ matrix.variant }}.log
+
+          '
+        if-no-files-found: warn
+        retention-days: 30
+  gateway_inventory_http_performance:
+    name: Medir HTTP Gateway → Inventory con PostgreSQL aislado
+    if: inputs.component == 'inventory-gateway'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs:
+    - preflight
+    strategy:
+      max-parallel: ${{ fromJSON(inputs.parallelism) }}
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ needs.preflight.outputs.baseline_sha }}
+        - variant: candidate
+          ref: ${{ needs.preflight.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código del backend
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness de medición de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/benchmark-harness
+    - name: Obtener migraciones oficiales de Inventory
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Fijar dependencias y configuración del harness candidato
+      run: 'cp .ci/benchmark-harness/package.json package.json
+
+        cp .ci/benchmark-harness/package-lock.json package-lock.json
+
+        cp .ci/benchmark-harness/vitest.config.e2e.ts vitest.config.e2e.ts
+
+        cp .ci/benchmark-harness/apps/api-gateway/test/support/phase1-postgres.ts apps/api-gateway/test/support/phase1-postgres.ts
+
+        '
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Compilar Gateway e Inventory
+      run: 'cp .ci/benchmark-harness/apps/api-gateway/test/inventory-postgres.gateway.e2e-spec.ts apps/api-gateway/test/inventory-postgres.gateway.e2e-spec.ts
+
+        npm run build:api-gateway
+
+        npm run build:inventory-svc
+
+        '
+    - name: Verificar Docker
+      run: docker info
+    - name: Ejecutar carga HTTP autenticada contra procesos reales
+      env:
+        G6_INVENTORY_GATEWAY_POSTGRES_E2E: '1'
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+      run: "set -o pipefail\nmkdir -p .ci/performance\nnode_modules/.bin/vitest run --config ./vitest.config.e2e.ts \\\n \
+        \ --exclude 'node_modules/**' \\\n  apps/api-gateway/test/inventory-postgres.gateway.e2e-spec.ts \\\n  --maxWorkers=1\
+        \ --reporter=verbose 2>&1 | tee .ci/performance/gateway-inventory-http.log\n"
+    - name: Publicar medición HTTP Gateway/Inventory
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: gateway-inventory-http-${{ matrix.variant }}-${{ matrix.ref }}
+        path: '.ci/performance/gateway-inventory-http-${{ matrix.variant }}.json
+
+          .ci/performance/gateway-inventory-http-${{ matrix.variant }}.csv
+
+          .ci/performance/gateway-inventory-http.log
+
+          '
+        if-no-files-found: warn
+        retention-days: 14
+  catalog_http_performance:
+    name: Comparar HTTP Catalog en el mismo runner
+    if: inputs.component == 'catalog'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+    - preflight
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        persist-credentials: false
+    - name: Obtener revisión base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.baseline_sha }}
+        path: .ci/baseline
+        persist-credentials: false
+    - name: Preparar Node.js y dependencias en ambas revisiones
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Fijar harness del candidato en baseline
+      run: 'cp package.json package-lock.json vitest.config.e2e.ts .ci/baseline/
+
+        cp apps/catalog-svc/test/runtime-postgres.e2e-spec.ts .ci/baseline/apps/catalog-svc/test/runtime-postgres.e2e-spec.ts
+
+        (cd .ci/baseline && npm ci)
+
+        npm ci
+
+        mkdir -p .ci/performance/paired'
+    - name: Verificar Docker
+      run: docker info
+    - name: Ejecutar pares alternados de listado administrativo Catalog
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+      run: "set -Eeuo pipefail\nrun_profile() {\n  local tree=\"$1\" variant=\"$2\" key=\"$3\"\n  local output=\"$GITHUB_WORKSPACE/.ci/performance/paired/$key\"\
+        \n  mkdir -p \"$output\"\n  (cd \"$tree\" && G6_PERFORMANCE_VARIANT=\"$variant\" G6_PERFORMANCE_SHA=\"$(git rev-parse\
+        \ HEAD)\" G6_PERFORMANCE_OUTPUT=\"$output\" node_modules/.bin/vitest run --config ./vitest.config.e2e.ts --exclude\
+        \ 'node_modules/**' apps/catalog-svc/test/runtime-postgres.e2e-spec.ts --testNamePattern='mide listado administrativo\
+        \ HTTP' --maxWorkers=1 --reporter=verbose) 2>&1 | tee \"$output.log\"\n}\nrun_profile .ci/baseline baseline-first\
+        \ baseline-first\nrun_profile . candidate-first candidate-first\nrun_profile . candidate-second candidate-second\n\
+        run_profile .ci/baseline baseline-second baseline-second"
+    - name: Publicar perfiles pareados de Catalog
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: catalog-admin-paired-${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/performance/paired/
+        if-no-files-found: warn
+        retention-days: 30
+  combos_pricing_http_performance:
+    name: Comparar HTTP Combos POST en el mismo runner
+    if: inputs.component == 'combos'
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    needs:
+    - preflight
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        persist-credentials: false
+    - name: Obtener revisión base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.baseline_sha }}
+        path: .ci/baseline
+        persist-credentials: false
+    - name: Obtener migraciones y contratos oficiales fijados
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: false
+    - name: Preparar Node.js y dependencias en ambas revisiones
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Fijar harness del candidato en baseline
+      run: 'cp package.json package-lock.json vitest.config.e2e.ts .ci/baseline/
+
+        cp apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts .ci/baseline/apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts
+
+        cp apps/combos-svc/test/run-postgres-isolated.sh .ci/baseline/apps/combos-svc/test/run-postgres-isolated.sh
+
+        (cd .ci/baseline && npm ci)
+
+        npm ci
+
+        mkdir -p .ci/performance/paired'
+    - name: Ejecutar pares alternados HTTP Combos POST
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        COMBOS_TEST_DOCS_ROOT: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+      run: "set -Eeuo pipefail\nrun_profile() {\n  local tree=\"$1\" variant=\"$2\" key=\"$3\"\n  local output=\"$GITHUB_WORKSPACE/.ci/performance/paired/$key\"\
+        \n  mkdir -p \"$output\"\n  (cd \"$tree\" && G6_PERFORMANCE_VARIANT=\"$variant\" G6_PERFORMANCE_SHA=\"$(git rev-parse\
+        \ HEAD)\" G6_PERFORMANCE_OUTPUT=\"$output\" COMBOS_TEST_EVIDENCE_DIR=\"$output/evidence\" COMBOS_TEST_DOCS_ROOT=\"\
+        $COMBOS_TEST_DOCS_ROOT\" bash apps/combos-svc/test/run-postgres-isolated.sh --test-file combos-catalog-rabbitmq.e2e-spec.ts)\
+        \ 2>&1 | tee \"$output.log\"\n}\nrun_profile .ci/baseline baseline-first baseline-first\nrun_profile . candidate-first\
+        \ candidate-first\nrun_profile . candidate-second candidate-second\nrun_profile .ci/baseline baseline-second baseline-second"
+    - name: Publicar perfiles pareados de Combos
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: combos-post-paired-${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/performance/paired/
+        if-no-files-found: warn
+        retention-days: 30
+  taxonomy_http_performance:
+    name: Medir HTTP Taxonomy/PostgreSQL/RabbitMQ (${{ matrix.variant }})
+    if: inputs.component == 'taxonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - preflight
+    strategy:
+      max-parallel: ${{ fromJSON(inputs.parallelism) }}
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ needs.preflight.outputs.baseline_sha }}
+        - variant: candidate
+          ref: ${{ needs.preflight.outputs.candidate_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código del backend
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness de medición de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/benchmark-harness
+    - name: Obtener migraciones oficiales fijadas
+      uses: actions/checkout@v4
+      with:
+        repository: Taller-SW-Web/G6-Productos-Ofertas-docs
+        ref: c36bd9a18f4fdb188df0d7e5158a431cf4b4ea7b
+        path: .ci/G6-Productos-Ofertas-docs
+        persist-credentials: 'false'
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de la revisión medida
+      run: npm ci
+    - name: Ejecutar carga HTTP autenticada con PostgreSQL 17 y RabbitMQ
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        G6_E2E_DOCS_PATH: ${{ github.workspace }}/.ci/G6-Productos-Ofertas-docs
+        G6_E2E_EVIDENCE_PATH: .ci/performance/taxonomy-integration-${{ matrix.variant }}.json
+      run: 'set -o pipefail
+
+        mkdir -p .ci/performance
+
+        cp .ci/benchmark-harness/apps/taxonomy-svc/test/e2e-catalog/run.mjs apps/taxonomy-svc/test/e2e-catalog/run.mjs
+
+        node apps/taxonomy-svc/test/e2e-catalog/run.mjs 2>&1 | tee .ci/performance/taxonomy-http-${{ matrix.variant }}.log
+
+        '
+    - name: Publicar medición HTTP Taxonomy
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: taxonomy-http-${{ matrix.variant }}-${{ matrix.ref }}
+        path: '.ci/performance/taxonomy-http-${{ matrix.variant }}.json
+
+          .ci/performance/taxonomy-http-${{ matrix.variant }}.csv
+
+          .ci/performance/taxonomy-integration-${{ matrix.variant }}.json
+
+          .ci/performance/taxonomy-http-${{ matrix.variant }}.log
+
+          '
+        if-no-files-found: warn
+        retention-days: 14
+  summary:
+    name: Consolidar evidencia seleccionada sin PASS integral
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+    - preflight
+    - pricing_batch_benchmark
+    - promotions_http_performance
+    - promotions_paired_http_performance
+    - price_audit_http_performance
+    - bulk_http_performance
+    - gateway_inventory_http_performance
+    - catalog_http_performance
+    - combos_pricing_http_performance
+    - taxonomy_http_performance
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener script de resumen
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        persist-credentials: false
+    - name: Generar resumen PASS/PARTIAL del componente solicitado
+      env:
+        COMPONENT: ${{ inputs.component }}
+        JOB_RESULTS: ${{ toJSON(needs) }}
+      run: node scripts/performance/summarize-selection.mjs
+    - name: Publicar resumen aunque falle el benchmark
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: g6-performance-selection-${{ github.run_id }}
+        path: .ci/performance/summary/selection-summary.json
+        if-no-files-found: error
+        retention-days: 30
