@@ -201,7 +201,8 @@ docker run --detach --name "$pg_container" \
 
 pg_ready=0
 for _ in $(seq 1 60); do
-  if docker exec "$pg_container" pg_isready -U postgres -d combos_test >/dev/null 2>&1; then
+  if docker exec "$pg_container" psql -U postgres -d combos_test -v ON_ERROR_STOP=1 \
+    -c 'SELECT 1;' >/dev/null 2>&1; then
     pg_ready=1
     break
   fi
