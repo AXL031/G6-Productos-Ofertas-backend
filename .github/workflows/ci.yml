@@ -922,9 +922,10 @@ jobs:
         cache: npm
     - name: Fijar dependencias y configuración del harness candidato
       run: |
-        cp .ci/benchmark-harness/package.json package.json
-        cp .ci/benchmark-harness/package-lock.json package-lock.json
-        cp .ci/benchmark-harness/vitest.config.e2e.ts vitest.config.e2e.ts
+        mv .ci/benchmark-harness "$RUNNER_TEMP/g6-benchmark-harness"
+        cp "$RUNNER_TEMP/g6-benchmark-harness/package.json" package.json
+        cp "$RUNNER_TEMP/g6-benchmark-harness/package-lock.json" package-lock.json
+        cp "$RUNNER_TEMP/g6-benchmark-harness/vitest.config.e2e.ts" vitest.config.e2e.ts
     - name: Instalar dependencias de forma reproducible
       run: npm ci
     - name: Ejecutar perfil HTTP con PostgreSQL 17, RabbitMQ y servicios reales
@@ -937,8 +938,8 @@ jobs:
       run: |
         set -o pipefail
         mkdir -p .ci/performance
-        cp .ci/benchmark-harness/apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts
-        cp .ci/benchmark-harness/apps/combos-svc/test/run-postgres-isolated.sh apps/combos-svc/test/run-postgres-isolated.sh
+        cp "$RUNNER_TEMP/g6-benchmark-harness/apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts" apps/combos-svc/test/combos-catalog-rabbitmq.e2e-spec.ts
+        cp "$RUNNER_TEMP/g6-benchmark-harness/apps/combos-svc/test/run-postgres-isolated.sh" apps/combos-svc/test/run-postgres-isolated.sh
         bash apps/combos-svc/test/run-postgres-isolated.sh --test-file combos-catalog-rabbitmq.e2e-spec.ts 2>&1 | tee .ci/performance/combos-pricing-http-${{ matrix.variant }}.log
     - name: Publicar medición HTTP Combos/Pricing
       if: always()
