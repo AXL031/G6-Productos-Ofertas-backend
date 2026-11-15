@@ -63,25 +63,29 @@ describe('Serialización del canal efectivo comercial', () => {
       .mockImplementation(async (contexts: readonly { sku: string }[]) =>
         contexts.map(({ sku }) => ({ sku, definitions: [definition] })),
       );
+    const resolve = vi.fn(async (sku: string) => ({
+      sku,
+      productId: 'product',
+      isVariant: false,
+      active: true,
+      eligible: true,
+    }));
     const service = new CommercialPrices(
       { readCandidates, readCandidatesBatch } as unknown as PricingRepository,
-      {
-        resolve: async (sku) => ({
-          sku,
-          productId: 'product',
-          isVariant: false,
-          active: true,
-          eligible: true,
-        }),
-      },
+      { resolve },
     );
-    return { service, definition, validity, readCandidates };
+    return { service, definition, validity, readCandidates, resolve };
   }
   it.each(channels)(
     'consulta y devuelve el canal canonico %s sin mapping',
     async (channel) => {
-      const { service, readCandidates } = fixture(channel);
+      const { service, readCandidates, resolve } = fixture(channel);
       const response = await service.sku('sku', channel, at);
+      expect(resolve).toHaveBeenCalledWith(
+        'sku',
+        undefined,
+        'obtenerPrecioSku',
+      );
       expect(response.channel_id).toBe(channel);
       expect(readCandidates).toHaveBeenCalledWith(
         'product',
@@ -165,7 +169,7 @@ describe('Consulta comercial por lotes', () => {
       );
     const service = new CommercialPrices(
       { readCandidatesBatch } as unknown as PricingRepository,
-      { resolve, resolveBatch },
+      { resolve, resolveBatch, batchMode: 'G7_AUTHENTICATED' },
     );
     const result = await service.batch(
       ['variant', 'variant', 'inactive', 'missing'],
@@ -308,6 +312,57 @@ describe('Consulta comercial por lotes', () => {
       failed.batch(['good', 'bad'], undefined, at),
     ).rejects.toMatchObject({ status: 503 });
     expect(readCandidatesBatch).toHaveBeenCalledTimes(1);
+  });
+
+  it('conserva el GET individual cuando el adapter no declara capacidad batch', async () => {
+    const resolveBatch = vi.fn();
+    const resolve = vi.fn(async (sku: string) => ({
+      sku,
+      productId: 'product',
+      isVariant: false,
+      active: true,
+      eligible: true,
+    }));
+    const readCandidatesBatch = vi.fn().mockResolvedValue([]);
+    const service = new CommercialPrices(
+      { readCandidatesBatch } as unknown as PricingRepository,
+      { resolve, resolveBatch },
+    );
+
+    await service.batch(['sku-a', 'sku-b'], undefined, at);
+
+    expect(resolve).toHaveBeenCalledTimes(2);
+    expect(resolve).toHaveBeenCalledWith(
+      'sku-a',
+      undefined,
+      'consultarPrecios',
+    );
+    expect(resolveBatch).not.toHaveBeenCalled();
+    expect(readCandidatesBatch).toHaveBeenCalledOnce();
+  });
+
+  it('no degrada a GET individual si el batch privado G7 falla', async () => {
+    const resolve = vi.fn();
+    const resolveBatch = vi
+      .fn()
+      .mockRejectedValue(new Error('G7 rechazó el batch'));
+    const service = new CommercialPrices(
+      { readCandidatesBatch: vi.fn() } as unknown as PricingRepository,
+      {
+        resolve,
+        resolveBatch,
+        batchMode: 'G7_AUTHENTICATED',
+      },
+    );
+
+    await expect(service.batch(['sku-a'], undefined, at)).rejects.toMatchObject(
+      {
+        status: 503,
+        code: 'SERVICIO_NO_DISPONIBLE',
+      },
+    );
+    expect(resolveBatch).toHaveBeenCalledOnce();
+    expect(resolve).not.toHaveBeenCalled();
   });
 });
 

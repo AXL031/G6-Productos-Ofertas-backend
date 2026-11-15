@@ -182,6 +182,59 @@ describe('Gateway forwarding against isolated HTTP providers', () => {
     },
   );
 
+  it('forwards the administrative SKU resolver only for a human commercial manager', async () => {
+    const path = '/api/v1/productos/administracion/skus/resolver';
+    const humanToken = signed.token({
+      tipo: 'acceso',
+      sub: '11111111-1111-4111-8111-111111111111',
+      roles: ['GESTOR_COMERCIAL'],
+    });
+    const body = { skus: ['0001', 'VAR/40 + ñ', '0001'] };
+    reply.body = JSON.stringify({
+      items: body.skus.map((sku) => ({ sku, productoId: 'producto-1' })),
+    });
+
+    const accepted = await request(app.getHttpServer())
+      .post(path)
+      .set('Authorization', `Bearer ${humanToken}`)
+      .send(body)
+      .expect(200);
+    expect(
+      accepted.body.items.map((item: { sku: string }) => item.sku),
+    ).toEqual(body.skus);
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      method: 'POST',
+      url: path,
+      headers: { authorization: `Bearer ${humanToken}` },
+      body: JSON.stringify(body),
+    });
+
+    calls = [];
+    await request(app.getHttpServer())
+      .post(path)
+      .set(
+        'Authorization',
+        `Bearer ${signed.token({
+          tipo: 'acceso',
+          sub: '11111111-1111-4111-8111-111111111111',
+          roles: ['CLIENTE'],
+        })}`,
+      )
+      .send(body)
+      .expect(403);
+    expect(calls).toHaveLength(0);
+
+    // The private Pricing→Catalog batch context remains absent from the
+    // browser Gateway contract; an authenticated browser still cannot reach it.
+    await request(app.getHttpServer())
+      .post('/api/v1/productos/skus/contexto/lote')
+      .set('Authorization', `Bearer ${humanToken}`)
+      .send(body)
+      .expect(404);
+    expect(calls).toHaveLength(0);
+  });
+
   it('keeps G7 transfers closed until local Inventory authorization is enabled', async () => {
     const path = '/api/v1/inventario/traslados';
     const token = signed.token({

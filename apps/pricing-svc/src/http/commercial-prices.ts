@@ -8,9 +8,12 @@ import { wireMoney, wireVersion } from './pricing-reads.js';
 export const PRICING_CATALOG_CONTEXT = Symbol('PRICING_CATALOG_CONTEXT');
 // Puerto interno: requiere un provider autoritativo; no define otro endpoint de Catálogo.
 export interface PricingCatalogContext {
+  /** Private Catalog batch is authorized only when the adapter declares its mode. */
+  readonly batchMode?: 'G7_AUTHENTICATED';
   resolve(
     sku: string,
     correlationId?: string,
+    operationId?: 'consultarPrecios' | 'obtenerPrecioSku',
   ): Promise<{
     sku: string;
     productId: string;
@@ -93,12 +96,13 @@ export class CommercialPrices {
   private async resolveContext(
     sku: string,
     correlationId?: string,
+    operationId?: 'consultarPrecios' | 'obtenerPrecioSku',
   ): Promise<Awaited<ReturnType<PricingCatalogContext['resolve']>>> {
     if (!this.catalog)
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     let context: Awaited<ReturnType<PricingCatalogContext['resolve']>>;
     try {
-      context = await this.catalog.resolve(sku, correlationId);
+      context = await this.catalog.resolve(sku, correlationId, operationId);
     } catch {
       throw new PricingHttpError(503, 'SERVICIO_NO_DISPONIBLE');
     }
@@ -162,7 +166,11 @@ export class CommercialPrices {
     correlationId?: string,
   ) {
     if (!sku.trim()) throw new PricingHttpError(400, 'VALIDACION');
-    const context = await this.resolveContext(sku, correlationId);
+    const context = await this.resolveContext(
+      sku,
+      correlationId,
+      'obtenerPrecioSku',
+    );
     if (context === null)
       throw new PricingHttpError(404, 'PRECIO_NO_ENCONTRADO');
     if (!context.active || !context.eligible)
@@ -199,7 +207,14 @@ export class CommercialPrices {
       string,
       Awaited<ReturnType<PricingCatalogContext['resolve']>>
     >();
-    if (this.catalog.resolveBatch) {
+    // Select the private batch capability before making a request. In legacy
+    // read modes, use the explicitly supported individual GET path. Once the
+    // private G7 batch is selected, any HTTP/auth/technical failure is terminal;
+    // it must never silently downgrade to individual or public reads.
+    if (
+      this.catalog.resolveBatch &&
+      this.catalog.batchMode === 'G7_AUTHENTICATED'
+    ) {
       let resolved: NonNullable<
         Awaited<ReturnType<NonNullable<PricingCatalogContext['resolveBatch']>>>
       >;
@@ -235,7 +250,10 @@ export class CommercialPrices {
           if (index >= uniqueSkus.length) return;
           const sku = uniqueSkus[index]!;
           try {
-            contexts.set(sku, await this.resolveContext(sku, correlationId));
+            contexts.set(
+              sku,
+              await this.resolveContext(sku, correlationId, 'consultarPrecios'),
+            );
           } catch (error) {
             failed = true;
             failure = error;

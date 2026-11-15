@@ -14,6 +14,8 @@ export type PricingCatalogToken = (sku?: string) => Promise<string | null>;
 
 @Injectable()
 export class CatalogContextHttp implements PricingCatalogContext {
+  readonly batchMode: PricingCatalogContext['batchMode'];
+
   constructor(
     @Inject(PRICING_CONFIG) private readonly config: PricingConfig,
     @Optional()
@@ -22,9 +24,19 @@ export class CatalogContextHttp implements PricingCatalogContext {
     @Optional()
     @Inject(PRICING_CATALOG_H4)
     private readonly h4?: ReturnType<typeof createH4CatalogClient>,
-  ) {}
+  ) {
+    // The batch endpoint is private and is supported only by the normal G7
+    // technical identity. Historical H4 clients and Phase 1 / simulated
+    // security retain only the individually authorized context GET.
+    if (config.securityMode === 'G7_AUTHENTICATED' && !h4 && config.catalogUrl)
+      this.batchMode = 'G7_AUTHENTICATED';
+  }
 
-  async resolve(sku: string, correlationId = randomUUID()) {
+  async resolve(
+    sku: string,
+    correlationId = randomUUID(),
+    operationId?: 'consultarPrecios' | 'obtenerPrecioSku',
+  ) {
     try {
       if ((!this.h4 && !this.config.catalogUrl) || !uuid.test(correlationId))
         throw new Error();
@@ -32,9 +44,9 @@ export class CatalogContextHttp implements PricingCatalogContext {
       const publicRead =
         !this.h4 &&
         this.config.securityMode === 'PUBLIC_READ_ONLY' &&
-        this.config.publicOperations?.some((id) =>
-          PHASE1_PUBLIC_OPERATION_IDS.has(id),
-        );
+        operationId !== undefined &&
+        this.config.publicOperations?.includes(operationId) &&
+        PHASE1_PUBLIC_OPERATION_IDS.has(operationId);
       const authorization = publicRead ? undefined : await this.token?.(sku);
       if (!publicRead && !authorization) throw new Error();
       const headers = {
@@ -102,6 +114,7 @@ export class CatalogContextHttp implements PricingCatalogContext {
   async resolveBatch(skus: readonly string[], correlationId = randomUUID()) {
     try {
       if (
+        this.batchMode !== 'G7_AUTHENTICATED' ||
         !this.config.catalogUrl ||
         this.h4 ||
         !uuid.test(correlationId) ||
