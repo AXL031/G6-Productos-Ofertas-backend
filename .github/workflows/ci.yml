@@ -130,12 +130,21 @@ jobs:
         mkdir -p .ci/performance
         node_modules/.bin/vitest run --config apps/pricing-svc/test/commercial-batch.benchmark.config.ts \
           --reporter=verbose 2>&1 | tee .ci/performance/pricing-batch-benchmark.log
-    - name: Publicar métricas sintéticas de Pricing
+    - name: Medir singleflight de emisión de token con emisor JWT firmado de prueba
+      run: |
+        set -o pipefail
+        node_modules/.bin/vitest run --config apps/pricing-svc/test/catalog-token.benchmark.config.ts \
+          --reporter=verbose 2>&1 | tee .ci/performance/pricing-token-benchmark.log
+    - name: Publicar evidencias independientes de Pricing y emisor token
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: pricing-batch-benchmark-${{ github.sha }}
-        path: .ci/performance/pricing-batch-benchmark.log
+        name: pricing-component-benchmarks-${{ github.sha }}
+        path: |
+          .ci/performance/pricing-batch-benchmark.log
+          .ci/performance/pricing-token-benchmark.log
+          .ci/performance/pricing-token-benchmark.json
+          .ci/performance/pricing-token-benchmark.csv
         retention-days: 7
   e2e:
     name: Ejecutar pruebas de extremo a extremo

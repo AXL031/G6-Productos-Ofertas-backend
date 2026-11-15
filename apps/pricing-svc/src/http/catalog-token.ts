@@ -9,6 +9,7 @@ export type PricingServiceScope =
 @Injectable()
 export class CatalogServiceToken {
   private readonly cached = new Map<string, { value: string; until: number }>();
+  private readonly inFlight = new Map<string, Promise<string | null>>();
   constructor(
     @Inject(PRICING_CONFIG) private readonly config: PricingConfig,
     @Inject(PricingReadGuard) private readonly verifier: PricingReadGuard,
@@ -20,6 +21,16 @@ export class CatalogServiceToken {
     const cached = this.cached.get(scope);
     if (cached && Date.now() < cached.until) return cached.value;
     this.cached.delete(scope);
+    const pending = this.inFlight.get(scope);
+    if (pending) return pending;
+    const request = this.issue(scope).finally(() => {
+      if (this.inFlight.get(scope) === request) this.inFlight.delete(scope);
+    });
+    this.inFlight.set(scope, request);
+    return request;
+  }
+
+  private async issue(scope: PricingServiceScope): Promise<string | null> {
     try {
       if (!this.config.serviceToken) throw new Error();
       const response = await fetch(this.config.serviceToken.url, {
