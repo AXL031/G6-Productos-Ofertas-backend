@@ -87,22 +87,55 @@ import {
   variantImages,
 } from '../src/catalog.schema.js';
 
-const dockerAvailable =
-  spawnSync('docker', ['info', '--format', '{{.ServerVersion}}'], {
-    encoding: 'utf8',
-    timeout: 5000,
-    windowsHide: true,
-  }).status === 0 &&
-  spawnSync('openssl', ['version'], {
-    encoding: 'utf8',
-    timeout: 5000,
-    windowsHide: true,
-  }).status === 0;
 const isCi = process.env.CI?.toLowerCase() === 'true';
+
+function checkDockerSupport() {
+  const docker = spawnSync(
+    'docker',
+    ['info', '--format', '{{.ServerVersion}}'],
+    {
+      encoding: 'utf8',
+      timeout: 5000,
+      windowsHide: true,
+    },
+  );
+  const openssl = spawnSync('openssl', ['version'], {
+    encoding: 'utf8',
+    timeout: 5000,
+    windowsHide: true,
+  });
+  return {
+    available: docker.status === 0 && openssl.status === 0,
+    diagnostics: [
+      docker.status === 0
+        ? `Docker ${docker.stdout.trim()}`
+        : `Docker unavailable (${docker.error?.message ?? docker.stderr.trim() ?? `exit ${docker.status}`})`,
+      openssl.status === 0
+        ? openssl.stdout.trim()
+        : `OpenSSL unavailable (${openssl.error?.message ?? openssl.stderr.trim() ?? `exit ${openssl.status}`})`,
+    ],
+  };
+}
+
+let dockerSupport = checkDockerSupport();
+if (isCi && !dockerSupport.available) {
+  // Hosted runners occasionally expose the Docker CLI before the daemon is
+  // ready. Retry readiness; coverage still fails closed if prerequisites stay
+  // unavailable.
+  for (
+    let attempt = 0;
+    attempt < 10 && !dockerSupport.available;
+    attempt += 1
+  ) {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 1000);
+    dockerSupport = checkDockerSupport();
+  }
+}
+const dockerAvailable = dockerSupport.available;
 
 if (isCi && !dockerAvailable) {
   throw new Error(
-    'Catalog persistence E2E requires Docker and OpenSSL in CI; refusing to skip PostgreSQL coverage',
+    `Catalog persistence E2E requires Docker and OpenSSL in CI; refusing to skip PostgreSQL coverage. ${dockerSupport.diagnostics.join('; ')}`,
   );
 }
 

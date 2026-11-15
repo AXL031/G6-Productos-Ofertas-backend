@@ -172,8 +172,24 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
     const base = await app.getUrl();
     if (!performanceProfileWritten && process.env.G6_PERFORMANCE_HTTP === '1') {
       performanceProfileWritten = true;
-      const token = service('promociones:leer');
-      const path = '/api/v1/promociones?canal=MARKETPLACE';
+      const profiles = [
+        {
+          path: '/api/v1/promociones?canal=MARKETPLACE',
+          bearer: service('promociones:leer'),
+        },
+        {
+          path: '/api/v1/cupones?pagina=1&tamanio=20',
+          bearer: user,
+        },
+        {
+          path: '/api/v1/recomendaciones/reglas?tipo=CROSS_SELL&tamanio=20',
+          bearer: user,
+        },
+        {
+          path: '/api/v1/recomendaciones?productoId=HTTP-ORIGIN&canal=MARKETPLACE',
+          bearer: service('recomendaciones:leer'),
+        },
+      ];
       const concurrencyLevels = [1, 8, 32];
       const warmupRequests = 10;
       const samplesPerLevel = 1000;
@@ -181,95 +197,98 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
       const latencies = [];
       let totalFailures = 0;
       let totalTimeouts = 0;
-      const headers = { authorization: 'Bearer ' + token };
-      const requestTargetAndBearerBytes =
-        Buffer.byteLength(`GET ${path} HTTP/1.1\r\n`) +
-        Buffer.byteLength(`authorization: Bearer ${token}\r\n`);
       const percentile = (sorted, fraction) =>
         sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
-      for (const concurrency of concurrencyLevels) {
-        for (let index = 0; index < warmupRequests; index += 1) {
-          const response = await fetch(base + path, {
-            headers,
-            signal: AbortSignal.timeout(10000),
-          });
-          await response.arrayBuffer();
-          if (!response.ok)
-            throw new Error(`Promotions warmup HTTP ${response.status}`);
-        }
-        const samples = new Array(samplesPerLevel);
-        let levelFailures = 0;
-        let levelTimeouts = 0;
-        let responseBodyBytes = 0;
-        let next = 0;
-        const started = performance.now();
-        await Promise.all(
-          Array.from({ length: concurrency }, async () => {
-            while (true) {
-              const index = next++;
-              if (index >= samplesPerLevel) return;
-              const startedRequest = performance.now();
-              try {
-                const response = await fetch(base + path, {
-                  headers,
-                  signal: AbortSignal.timeout(10000),
-                });
-                const body = await response.arrayBuffer();
-                samples[index] = performance.now() - startedRequest;
-                if (!response.ok) levelFailures += 1;
-                else responseBodyBytes += body.byteLength;
-              } catch (error) {
-                samples[index] = performance.now() - startedRequest;
-                levelFailures += 1;
-                if (error?.name === 'TimeoutError') levelTimeouts += 1;
+      for (const profileCase of profiles) {
+        const { path, bearer } = profileCase;
+        const headers = { authorization: 'Bearer ' + bearer };
+        const requestTargetAndBearerBytes =
+          Buffer.byteLength(`GET ${path} HTTP/1.1\r\n`) +
+          Buffer.byteLength(`authorization: Bearer ${bearer}\r\n`);
+        for (const concurrency of concurrencyLevels) {
+          for (let index = 0; index < warmupRequests; index += 1) {
+            const response = await fetch(base + path, {
+              headers,
+              signal: AbortSignal.timeout(10000),
+            });
+            await response.arrayBuffer();
+            if (!response.ok)
+              throw new Error(`Promotions warmup HTTP ${response.status}`);
+          }
+          const samples = new Array(samplesPerLevel);
+          let levelFailures = 0;
+          let levelTimeouts = 0;
+          let responseBodyBytes = 0;
+          let next = 0;
+          const started = performance.now();
+          await Promise.all(
+            Array.from({ length: concurrency }, async () => {
+              while (true) {
+                const index = next++;
+                if (index >= samplesPerLevel) return;
+                const startedRequest = performance.now();
+                try {
+                  const response = await fetch(base + path, {
+                    headers,
+                    signal: AbortSignal.timeout(10000),
+                  });
+                  const body = await response.arrayBuffer();
+                  samples[index] = performance.now() - startedRequest;
+                  if (!response.ok) levelFailures += 1;
+                  else responseBodyBytes += body.byteLength;
+                } catch (error) {
+                  samples[index] = performance.now() - startedRequest;
+                  levelFailures += 1;
+                  if (error?.name === 'TimeoutError') levelTimeouts += 1;
+                }
               }
-            }
-          }),
-        );
-        const durationMs = performance.now() - started;
-        const sorted = samples.sort((left, right) => left - right);
-        latencies.push(...sorted);
-        totalFailures += levelFailures;
-        totalTimeouts += levelTimeouts;
-        rows.push({
-          evidenceClass: 'HTTP_PROCESS_BENCHMARK',
-          service: 'promotions-svc',
-          endpoint: 'GET /api/v1/promociones?canal=MARKETPLACE',
-          variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
-          sha:
-            process.env.G6_PERFORMANCE_SHA ??
-            process.env.GITHUB_SHA ??
-            'local-unset',
-          concurrency,
-          samples: samplesPerLevel,
-          warmupRequests,
-          p50Ms: percentile(sorted, 0.5),
-          p95Ms: percentile(sorted, 0.95),
-          p99Ms: percentile(sorted, 0.99),
-          throughputRequestsPerSecond: (samplesPerLevel * 1000) / durationMs,
-          durationMs,
-          requestUrlBytes: requestTargetAndBearerBytes * samplesPerLevel,
-          requestBodyBytes: 0,
-          requestTargetAndBearerBytes:
-            requestTargetAndBearerBytes * samplesPerLevel,
-          responseBodyBytes,
-          poolConnectionsObservedAfter: resources.pool.totalCount,
-          activeConnectionsObservedAfter:
-            resources.pool.totalCount - resources.pool.idleCount,
-          poolWaitingClientsObservedAfter: resources.pool.waitingCount,
-          failures: levelFailures,
-          timeouts: levelTimeouts,
-          recovery:
-            'not exercised; separate persistence E2E recovery checks remain in CI',
-          sqlQueries: 'not instrumented by this harness',
-          buffersAndExplain: 'not instrumented by this harness',
-          pool: {
-            max: resources.pool.options?.max ?? null,
-            totalAfterWindow: resources.pool.totalCount,
-            idleAfterWindow: resources.pool.idleCount,
-            waitingAfterWindow: resources.pool.waitingCount,
-          },
-        });
+            }),
+          );
+          const durationMs = performance.now() - started;
+          const sorted = samples.sort((left, right) => left - right);
+          latencies.push(...sorted);
+          totalFailures += levelFailures;
+          totalTimeouts += levelTimeouts;
+          rows.push({
+            evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+            service: 'promotions-svc',
+            endpoint: `GET ${path}`,
+            variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
+            sha:
+              process.env.G6_PERFORMANCE_SHA ??
+              process.env.GITHUB_SHA ??
+              'local-unset',
+            concurrency,
+            samples: samplesPerLevel,
+            warmupRequests,
+            p50Ms: percentile(sorted, 0.5),
+            p95Ms: percentile(sorted, 0.95),
+            p99Ms: percentile(sorted, 0.99),
+            throughputRequestsPerSecond: (samplesPerLevel * 1000) / durationMs,
+            durationMs,
+            requestUrlBytes: requestTargetAndBearerBytes * samplesPerLevel,
+            requestBodyBytes: 0,
+            requestTargetAndBearerBytes:
+              requestTargetAndBearerBytes * samplesPerLevel,
+            responseBodyBytes,
+            poolConnectionsObservedAfter: resources.pool.totalCount,
+            activeConnectionsObservedAfter:
+              resources.pool.totalCount - resources.pool.idleCount,
+            poolWaitingClientsObservedAfter: resources.pool.waitingCount,
+            failures: levelFailures,
+            timeouts: levelTimeouts,
+            recovery:
+              'not exercised; separate persistence E2E recovery checks remain in CI',
+            sqlQueries: 'not instrumented by this harness',
+            buffersAndExplain: 'not instrumented by this harness',
+            pool: {
+              max: resources.pool.options?.max ?? null,
+              totalAfterWindow: resources.pool.totalCount,
+              idleAfterWindow: resources.pool.idleCount,
+              waitingAfterWindow: resources.pool.waitingCount,
+            },
+          });
+        }
       }
       const profile = {
         schemaVersion: 1,
@@ -283,9 +302,9 @@ export async function verifyHttpReadQueries(resources, baseConfig) {
           'local-unset',
         composition:
           'Nest TestingModule assembled from PromotionsSvcModule; real loopback HTTP listener and isolated PostgreSQL TLS provider; commercial/provider facts not mocked for this route',
-        routeCoverage: ['GET /api/v1/promociones?canal=MARKETPLACE'],
+        routeCoverage: profiles.map(({ path }) => `GET ${path}`),
         sampleDefinition:
-          '1,000 measured requests per concurrency after 10 warmups',
+          '1,000 measured requests per route and concurrency after 10 warmups per route/window',
         recovery:
           'not exercised; service persistence E2E includes its own recovery checks',
         requestBytesDefinition:

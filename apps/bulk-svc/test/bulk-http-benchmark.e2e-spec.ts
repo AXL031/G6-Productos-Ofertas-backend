@@ -18,8 +18,9 @@ import { BulkProblemFilter } from '../src/http/bulk-problem.filter.js';
 import { createValidBulkCsv } from './support/bulk-template-fixtures.js';
 import { IsolatedBulkRabbitmq } from './isolated-bulk-rabbitmq.js';
 
-if (process.env.G6_PERFORMANCE_HTTP === '1') {
-  describe('Bulk isolated real HTTP admission performance', () => {
+describe.skipIf(process.env.G6_PERFORMANCE_HTTP !== '1')(
+  'Bulk isolated real HTTP admission performance',
+  () => {
     const runId = randomUUID();
     const pgName = `g6-bulk-http-${runId.slice(0, 8)}`;
     const pgPassword = randomBytes(24).toString('base64url');
@@ -416,5 +417,5 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
       expect(failures).toBe(0);
       expect(timeouts).toBe(0);
     }, 600000);
-  });
-}
+  },
+);
