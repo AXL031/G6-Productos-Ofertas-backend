@@ -431,6 +431,101 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
         });
       }
 
+      const directInventoryUrl = `${inventoryOrigin}${commercial}?skus=${enoughSku}&canal=MARKETPLACE`;
+      const directRequestUrlBytes = Buffer.byteLength(
+        new URL(directInventoryUrl).pathname +
+          new URL(directInventoryUrl).search,
+      );
+      for (const concurrency of concurrencyLevels) {
+        for (let index = 0; index < warmupRequests; index += 1) {
+          const response = await fetch(directInventoryUrl, {
+            headers: { authorization },
+            signal: AbortSignal.timeout(5000),
+          });
+          await response.arrayBuffer();
+          if (!response.ok)
+            throw new Error(`Direct Inventory warmup HTTP ${response.status}`);
+        }
+        postgres.sql('SELECT pg_stat_statements_reset();');
+        const latencies: number[] = [];
+        let responseBodyBytes = 0;
+        let levelFailures = 0;
+        let levelTimeouts = 0;
+        const started = performance.now();
+        for (let offset = 0; offset < samplesPerLevel; offset += concurrency) {
+          await Promise.all(
+            Array.from(
+              { length: Math.min(concurrency, samplesPerLevel - offset) },
+              async () => {
+                const requestStarted = performance.now();
+                try {
+                  const response = await fetch(directInventoryUrl, {
+                    headers: { authorization },
+                    signal: AbortSignal.timeout(5000),
+                  });
+                  const body = await response.arrayBuffer();
+                  responseBodyBytes += body.byteLength;
+                  if (!response.ok) {
+                    failures += 1;
+                    levelFailures += 1;
+                  }
+                } catch (error) {
+                  failures += 1;
+                  levelFailures += 1;
+                  if (
+                    error instanceof DOMException &&
+                    error.name === 'TimeoutError'
+                  ) {
+                    timeouts += 1;
+                    levelTimeouts += 1;
+                  }
+                } finally {
+                  latencies.push(performance.now() - requestStarted);
+                }
+              },
+            ),
+          );
+        }
+        const durationMs = performance.now() - started;
+        const databaseCounters = JSON.parse(
+          postgres.sql(
+            `SELECT json_build_object(
+              'sqlCalls', COALESCE((SELECT sum(calls) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'sharedBlocksHit', COALESCE((SELECT sum(shared_blks_hit) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'sharedBlocksRead', COALESCE((SELECT sum(shared_blks_read) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'poolConnectionsObservedAfter', (SELECT count(*) FROM pg_stat_activity WHERE usename='inventory_gateway_e2e'),
+              'activeConnectionsObservedAfter', (SELECT count(*) FROM pg_stat_activity WHERE usename='inventory_gateway_e2e' AND state='active')
+            )::text;`,
+          ),
+        ) as Record<string, number>;
+        rows.push({
+          service: 'Inventory direct',
+          endpoint: 'GET /api/v1/inventario/disponibilidad/comercial',
+          evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+          variant,
+          concurrency,
+          warmupRequests,
+          samples: samplesPerLevel,
+          p50Ms: Number(percentile(latencies, 0.5).toFixed(3)),
+          p95Ms: Number(percentile(latencies, 0.95).toFixed(3)),
+          p99Ms: Number(percentile(latencies, 0.99).toFixed(3)),
+          throughputRequestsPerSecond: Number(
+            ((samplesPerLevel * 1000) / durationMs).toFixed(2),
+          ),
+          durationMs: Number(durationMs.toFixed(3)),
+          requestUrlBytes: directRequestUrlBytes * samplesPerLevel,
+          requestBodyBytes: 0,
+          responseBodyBytes,
+          ...databaseCounters,
+          failures: levelFailures,
+          timeouts: levelTimeouts,
+          database: 'PostgreSQL 17 container; seeded 2 stock_balance rows',
+          bearer: 'RS256 signed isolated test service identity',
+          sqlInstrumentation:
+            'pg_stat_statements aggregate calls and shared-block counters reset per concurrency window',
+        });
+      }
+
       execFileSync('docker', ['stop', '--time', '0', postgres.name], {
         encoding: 'utf8',
         timeout: 15000,

@@ -117,6 +117,40 @@ for (const [key, pair] of pairs) {
     candidateFailures: candidate.result.failures,
     baselineTimeouts: baseline.result.timeouts,
     candidateTimeouts: candidate.result.timeouts,
+    baselineSqlCalls: baseline.result.sqlCalls ?? null,
+    candidateSqlCalls: candidate.result.sqlCalls ?? null,
+    baselineSharedBlocksHit: baseline.result.sharedBlocksHit ?? null,
+    candidateSharedBlocksHit: candidate.result.sharedBlocksHit ?? null,
+    baselineSharedBlocksRead: baseline.result.sharedBlocksRead ?? null,
+    candidateSharedBlocksRead: candidate.result.sharedBlocksRead ?? null,
+    baselinePoolConnectionsObservedAfter:
+      baseline.result.poolConnectionsObservedAfter ?? null,
+    candidatePoolConnectionsObservedAfter:
+      candidate.result.poolConnectionsObservedAfter ?? null,
+    baselineActiveConnectionsObservedAfter:
+      baseline.result.activeConnectionsObservedAfter ?? null,
+    candidateActiveConnectionsObservedAfter:
+      candidate.result.activeConnectionsObservedAfter ?? null,
+    baselinePoolPeakTotalConnections:
+      baseline.result.poolPeakTotalConnections ?? null,
+    candidatePoolPeakTotalConnections:
+      candidate.result.poolPeakTotalConnections ?? null,
+    baselinePoolPeakConnectionsInUse:
+      baseline.result.poolPeakConnectionsInUse ?? null,
+    candidatePoolPeakConnectionsInUse:
+      candidate.result.poolPeakConnectionsInUse ?? null,
+    baselinePoolPeakWaitingClients:
+      baseline.result.poolPeakWaitingClients ?? null,
+    candidatePoolPeakWaitingClients:
+      candidate.result.poolPeakWaitingClients ?? null,
+    baselineExplainPlan:
+      baseline.report.measurement?.explainPlans ??
+      baseline.report.measurement?.explainPlan ??
+      null,
+    candidateExplainPlan:
+      candidate.report.measurement?.explainPlans ??
+      candidate.report.measurement?.explainPlan ??
+      null,
     baselineRecovery: baseline.report.recovery ?? null,
     candidateRecovery: candidate.report.recovery ?? null,
   });
@@ -150,6 +184,15 @@ await writeFile(
             authorization: 'signed service JWT fixture',
           },
           {
+            service: 'Inventory direct',
+            endpoint: 'GET /api/v1/inventario/disponibilidad/comercial',
+            runtime:
+              'compiled Inventory Nest HTTP child process + PostgreSQL 17 container',
+            dataset: 'two synthetic stock_balance rows',
+            authorization:
+              'signed service JWT fixture sent directly to Inventory',
+          },
+          {
             service: 'Combos',
             endpoint: 'GET /api/v1/combos; POST /api/v1/combos/administracion',
             runtime:
@@ -180,11 +223,10 @@ await writeFile(
           'Promotions HTTP',
           'Price Audit HTTP',
           'Bulk HTTP',
-          'Inventory direct HTTP',
           'Gateway other administrative screens',
         ],
         limits:
-          'Combos/Pricing HTTP row does not yet collect SQL query counts, buffers, EXPLAIN plans or pool occupancy. Integration runners for Promotions, Price Audit and Bulk are not performance rows. Gateway HTTP rows traverse Inventory but are not direct Inventory HTTP measurements.',
+          'Combos/Pricing HTTP row does not yet collect SQL query counts, buffers, EXPLAIN plans or pool occupancy. Integration runners for Promotions, Price Audit and Bulk are not performance rows.',
       },
       rows: results,
     },
