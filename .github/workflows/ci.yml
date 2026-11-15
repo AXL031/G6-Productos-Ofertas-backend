@@ -173,6 +173,185 @@ jobs:
           .ci/performance/pricing-token-benchmark.json
           .ci/performance/pricing-token-benchmark.csv
         retention-days: 7
+  promotions_http_performance:
+    name: Medir HTTP Promotions/PostgreSQL TLS (${{ matrix.variant }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - pricing_batch_benchmark
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ inputs.baseline_ref }}
+        - variant: candidate
+          ref: ${{ github.sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil medido mantenido en el candidato
+      run: cp .ci/benchmark-harness/apps/promotions-svc/test/support/http-query-checks.mjs apps/promotions-svc/test/support/http-query-checks.mjs
+    - name: Compilar y ejecutar perfil HTTP contra PG TLS y fixtures oficiales desechables
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        G6_TEST_OPENSSL: openssl
+      run: |
+        set -o pipefail
+        npm run build:promotions-svc
+        mkdir -p .ci/performance
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" node apps/promotions-svc/test/persistence.isolated.smoke.mjs 2>&1 | tee .ci/performance/promotions-http-${{ matrix.variant }}.log
+    - name: Publicar perfil HTTP de Promotions
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: promotions-http-${{ matrix.variant }}-${{ github.sha }}
+        path: |
+          .ci/performance/promotions-http-profile.json
+          .ci/performance/promotions-http-profile.csv
+          .ci/performance/promotions-http-${{ matrix.variant }}.log
+        if-no-files-found: warn
+        retention-days: 30
+  price_audit_http_performance:
+    name: Medir HTTP Price Audit/PostgreSQL/RabbitMQ (${{ matrix.variant }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs:
+    - promotions_http_performance
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ inputs.baseline_ref }}
+        - variant: candidate
+          ref: ${{ github.sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil y estadísticas SQL mantenidos en el candidato
+      run: |
+        cp .ci/benchmark-harness/apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts
+        cp .ci/benchmark-harness/apps/price-audit-svc/test/isolated-postgres.ts apps/price-audit-svc/test/isolated-postgres.ts
+    - name: Medir HTTP Nest con PostgreSQL/RabbitMQ reales y JWT local
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+        PRICE_AUDIT_TEST_POSTGRES: '1'
+        PRICE_AUDIT_TEST_AMQP: '1'
+      run: |
+        set -o pipefail
+        mkdir -p .ci/performance
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" npm run test:e2e -- apps/price-audit-svc/test/consumer.amqp.e2e-spec.ts --reporter=verbose 2>&1 | tee .ci/performance/price-audit-http-${{ matrix.variant }}.log
+    - name: Publicar perfil HTTP de Price Audit
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: price-audit-http-${{ matrix.variant }}-${{ github.sha }}
+        path: |
+          .ci/performance/price-audit-http-profile.json
+          .ci/performance/price-audit-http-profile.csv
+          .ci/performance/price-audit-http-${{ matrix.variant }}.log
+        if-no-files-found: warn
+        retention-days: 30
+  bulk_http_performance:
+    name: Medir HTTP Bulk/PostgreSQL/RabbitMQ/Storage fixture (${{ matrix.variant }})
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs:
+    - price_audit_http_performance
+    strategy:
+      max-parallel: 1
+      fail-fast: false
+      matrix:
+        include:
+        - variant: baseline
+          ref: ${{ inputs.baseline_ref }}
+        - variant: candidate
+          ref: ${{ github.sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener servicio de la revisión comparada
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ matrix.ref }}
+    - name: Obtener harness HTTP de la revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        path: .ci/benchmark-harness
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de forma reproducible
+      run: npm ci
+    - name: Usar perfil y RabbitMQ fixture mantenidos en el candidato
+      run: |
+        cp .ci/benchmark-harness/apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
+        cp .ci/benchmark-harness/apps/bulk-svc/test/isolated-bulk-rabbitmq.ts apps/bulk-svc/test/isolated-bulk-rabbitmq.ts
+    - name: Medir admisión multipart HTTP, persistencia y publicación RabbitMQ
+      env:
+        G6_PERFORMANCE_HTTP: '1'
+        G6_PERFORMANCE_VARIANT: ${{ matrix.variant }}
+        G6_PERFORMANCE_OUTPUT: .ci/performance
+      run: |
+        set -o pipefail
+        mkdir -p .ci/performance
+        G6_PERFORMANCE_SHA="$(git rev-parse HEAD)" npm run test:e2e -- apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts --reporter=verbose 2>&1 | tee .ci/performance/bulk-http-${{ matrix.variant }}.log
+    - name: Publicar perfil HTTP de Bulk
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: bulk-http-${{ matrix.variant }}-${{ github.sha }}
+        path: |
+          .ci/performance/bulk-http-profile.json
+          .ci/performance/bulk-http-profile.csv
+          .ci/performance/bulk-http-${{ matrix.variant }}.log
+        if-no-files-found: warn
+        retention-days: 30
   e2e:
     name: Ejecutar pruebas de extremo a extremo
     runs-on: ubuntu-latest
@@ -849,7 +1028,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     needs:
-    - pricing_batch_benchmark
+    - bulk_http_performance
     strategy:
       max-parallel: 1
       fail-fast: false
@@ -1093,10 +1272,13 @@ jobs:
         retention-days: 30
   summarize_http_performance:
     name: Consolidar comparativa HTTP baseline/candidato
-    if: github.event_name == 'workflow_dispatch' && needs.catalog_http_performance.result == 'success' && needs.gateway_inventory_http_performance.result == 'success' && needs.combos_pricing_http_performance.result == 'success' && needs.taxonomy_http_performance.result == 'success' && needs.remaining_http_startup_attempts.result == 'success'
+    if: github.event_name == 'workflow_dispatch' && needs.promotions_http_performance.result == 'success' && needs.price_audit_http_performance.result == 'success' && needs.bulk_http_performance.result == 'success' && needs.catalog_http_performance.result == 'success' && needs.gateway_inventory_http_performance.result == 'success' && needs.combos_pricing_http_performance.result == 'success' && needs.taxonomy_http_performance.result == 'success' && needs.remaining_http_startup_attempts.result == 'success'
     runs-on: ubuntu-latest
     needs:
     - catalog_http_performance
+    - promotions_http_performance
+    - price_audit_http_performance
+    - bulk_http_performance
     - gateway_inventory_http_performance
     - combos_pricing_http_performance
     - taxonomy_http_performance
@@ -1111,6 +1293,24 @@ jobs:
       with:
         pattern: catalog-admin-http-*
         path: .ci/performance/artifacts/catalog
+        merge-multiple: true
+    - name: Descargar mediciones de Promotions
+      uses: actions/download-artifact@v4
+      with:
+        pattern: promotions-http-*
+        path: .ci/performance/artifacts/promotions
+        merge-multiple: true
+    - name: Descargar mediciones de Price Audit
+      uses: actions/download-artifact@v4
+      with:
+        pattern: price-audit-http-*
+        path: .ci/performance/artifacts/price-audit
+        merge-multiple: true
+    - name: Descargar mediciones de Bulk
+      uses: actions/download-artifact@v4
+      with:
+        pattern: bulk-http-*
+        path: .ci/performance/artifacts/bulk
         merge-multiple: true
     - name: Descargar mediciones de Gateway e Inventory
       uses: actions/download-artifact@v4

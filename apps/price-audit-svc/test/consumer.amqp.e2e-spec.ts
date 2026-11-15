@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { join, resolve } from 'node:path';
 import { setTimeout } from 'node:timers/promises';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -252,5 +254,172 @@ describe.skipIf(process.env.PRICE_AUDIT_TEST_AMQP !== '1')(
         .toBe(1);
       await request(app.getHttpServer()).get('/health/ready').expect(200);
     }, 45000);
+    if (process.env.G6_PERFORMANCE_HTTP === '1') {
+      it('mide HTTP Nest con PostgreSQL/RabbitMQ reales en el harness aislado', async () => {
+        const sku = 'amqp-once';
+        expect(await rows(sku)).toBe(1);
+        await app.listen(0, '127.0.0.1');
+        const base = await app.getUrl();
+        const path = `/api/v1/auditoria-precios?sku=${sku}`;
+        const bearer = identity.token();
+        const headers = { authorization: `Bearer ${bearer}` };
+        const requestUrlBytes = Buffer.byteLength(`GET ${path} HTTP/1.1\r\n`);
+        const bearerBytes = Buffer.byteLength(
+          `authorization: Bearer ${bearer}\r\n`,
+        );
+        const percentile = (sorted: number[], fraction: number) =>
+          sorted[Math.max(0, Math.ceil(sorted.length * fraction) - 1)] ?? 0;
+        const rowsOut: Array<Record<string, unknown>> = [];
+        let totalFailures = 0;
+        let totalTimeouts = 0;
+        const explain = (
+          await postgres.admin!.query(
+            'EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) SELECT * FROM price_audit.price_audit_log WHERE sku=$1 ORDER BY timestamp DESC, id_auditoria DESC LIMIT 20 OFFSET 0',
+            [sku],
+          )
+        ).rows[0]?.['QUERY PLAN'];
+        for (const concurrency of [1, 8, 32]) {
+          for (let index = 0; index < 10; index += 1) {
+            const warmup = await fetch(base + path, {
+              headers,
+              signal: AbortSignal.timeout(10000),
+            });
+            await warmup.arrayBuffer();
+            if (!warmup.ok)
+              throw new Error(`Price Audit warmup HTTP ${warmup.status}`);
+          }
+          await postgres.admin!.query('SELECT pg_stat_statements_reset()');
+          const latencies: number[] = [];
+          let responseBodyBytes = 0;
+          let levelFailures = 0;
+          let levelTimeouts = 0;
+          let next = 0;
+          const samples = 1000;
+          const started = performance.now();
+          await Promise.all(
+            Array.from({ length: concurrency }, async () => {
+              while (true) {
+                const index = next++;
+                if (index >= samples) return;
+                const requestStarted = performance.now();
+                try {
+                  const response = await fetch(base + path, {
+                    headers,
+                    signal: AbortSignal.timeout(10000),
+                  });
+                  const body = await response.arrayBuffer();
+                  latencies.push(performance.now() - requestStarted);
+                  if (response.ok) responseBodyBytes += body.byteLength;
+                  else levelFailures += 1;
+                } catch (error) {
+                  latencies.push(performance.now() - requestStarted);
+                  levelFailures += 1;
+                  if (error?.name === 'TimeoutError') levelTimeouts += 1;
+                }
+              }
+            }),
+          );
+          const durationMs = performance.now() - started;
+          const sorted = latencies.sort((left, right) => left - right);
+          totalFailures += levelFailures;
+          totalTimeouts += levelTimeouts;
+          const sqlStats = await postgres.admin!.query<{
+            calls: string;
+            shared_blks_hit: string;
+            shared_blks_read: string;
+          }>(`
+            SELECT COALESCE(sum(calls),0)::text AS calls,
+                   COALESCE(sum(shared_blks_hit),0)::text AS shared_blks_hit,
+                   COALESCE(sum(shared_blks_read),0)::text AS shared_blks_read
+              FROM pg_stat_statements
+             WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())
+               AND query NOT LIKE '%pg_stat_statements%'
+          `);
+          const pool = await postgres.admin!.query<{
+            total: number;
+            active: number;
+          }>(`
+            SELECT count(*)::int AS total,
+                   count(*) FILTER (WHERE state='active')::int AS active
+              FROM pg_stat_activity
+             WHERE datname=current_database() AND usename='price_audit_app'
+          `);
+          rowsOut.push({
+            evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+            service: 'price-audit-svc',
+            endpoint: `GET ${path}`,
+            variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
+            sha:
+              process.env.G6_PERFORMANCE_SHA ??
+              process.env.GITHUB_SHA ??
+              'local-unset',
+            concurrency,
+            samples,
+            warmupRequests: 10,
+            p50Ms: percentile(sorted, 0.5),
+            p95Ms: percentile(sorted, 0.95),
+            p99Ms: percentile(sorted, 0.99),
+            throughputRequestsPerSecond: (samples * 1000) / durationMs,
+            durationMs,
+            requestUrlBytes: requestUrlBytes * samples,
+            requestBodyBytes: 0,
+            requestBearerBytes: bearerBytes * samples,
+            responseBodyBytes,
+            failures: levelFailures,
+            timeouts: levelTimeouts,
+            sqlCalls: Number(sqlStats.rows[0]?.calls ?? 0),
+            sharedBlocksHit: Number(sqlStats.rows[0]?.shared_blks_hit ?? 0),
+            sharedBlocksRead: Number(sqlStats.rows[0]?.shared_blks_read ?? 0),
+            poolConnectionsObservedAfter: pool.rows[0]?.total ?? null,
+            activeConnectionsObservedAfter: pool.rows[0]?.active ?? null,
+          });
+        }
+        const output = resolve(
+          process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+        );
+        await mkdir(output, { recursive: true });
+        const profile = {
+          schemaVersion: 1,
+          evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+          benchmark: 'price-audit-http-postgres-rabbitmq',
+          service: 'price-audit-svc',
+          variant: process.env.G6_PERFORMANCE_VARIANT ?? 'candidate',
+          sha:
+            process.env.G6_PERFORMANCE_SHA ??
+            process.env.GITHUB_SHA ??
+            'local-unset',
+          composition:
+            'Nest TestingModule assembled from PriceAuditSvcModule, loopback HTTP listener, isolated PostgreSQL 16 and RabbitMQ, signed local test issuer; not dist/main process',
+          routeCoverage: [path],
+          sampleDefinition:
+            '1,000 measured requests per concurrency after 10 warmups',
+          requestBytesDefinition:
+            'request-target and bearer header counted separately; excludes transport framing and other headers',
+          responseBytesDefinition: 'exact response body bytes',
+          recovery:
+            'RabbitMQ reconnection exercised by the same E2E suite; no outage during HTTP load window',
+          measurement: {
+            sqlQueryCount: 'pg_stat_statements reset per concurrency window',
+            sharedBuffers:
+              'pg_stat_statements shared_blks_hit/shared_blks_read per window',
+            explainPlan: explain,
+            poolOccupancy:
+              'post-window pg_stat_activity snapshot for price_audit_app; peak in-window occupancy unavailable',
+          },
+          results: rowsOut,
+          failures: totalFailures,
+          timeouts: totalTimeouts,
+        };
+        await writeFile(
+          join(output, 'price-audit-http-profile.json'),
+          `${JSON.stringify(profile, null, 2)}\n`,
+        );
+        const columns = Object.keys(rowsOut[0] ?? {});
+        await writeFile(
+          join(output, 'price-audit-http-profile.csv'),
+          `${[columns.join(','), ...rowsOut.map((row) => columns.map((key) => JSON.stringify(row[key] ?? '')).join(','))].join('\n')}\n`,
+        );
+      }, 240000);
+    }
   },
 );
