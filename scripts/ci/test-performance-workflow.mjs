@@ -10,25 +10,24 @@ const summary = await readFile(
   'scripts/performance/summarize-selection.mjs',
   'utf8',
 );
+const pricingPersistence = await readFile(
+  'apps/pricing-svc/test/persistence.e2e-spec.ts',
+  'utf8',
+);
 
 const scenarioJobs = {
-  pricing_batch_benchmark: 'pricing',
-  promotions_http_performance: 'promotions',
-  promotions_paired_http_performance: 'promotions',
-  price_audit_http_performance: 'price-audit',
-  bulk_http_performance: 'bulk',
   catalog_http_performance: 'catalog',
+  pricing_individual_http_performance: 'pricing',
   combos_pricing_http_performance: 'combos',
-  gateway_inventory_http_performance: 'inventory-gateway',
-  taxonomy_http_performance: 'taxonomy',
 };
 
 assert.match(ci, /^  automatizacion:/m, 'normal CI jobs remain present');
-assert.match(ci, /workflow_dispatch:[\s\S]*?baseline_ref:/);
-assert.match(ci, /baseline_ref debe usar component@master/);
-assert.match(ci, /uses: \.\/\.github\/workflows\/performance-g6\.yml/);
-assert.match(ci, /needs:\n    - integral\n    - compatibilidad/);
-assert.match(performance, /workflow_call:[\s\S]*?baseline_sha:/);
+assert.match(ci, /mode:[\s\S]*?options: \[ci, benchmark\]/);
+assert.match(
+  ci,
+  /benchmark_focalizado:[\s\S]*?uses: \.\/\.github\/workflows\/performance-g6\.yml/,
+);
+assert.match(ci, /inputs\.mode != 'benchmark'/);
 for (const jobId of Object.keys(scenarioJobs)) {
   assert.doesNotMatch(
     ci,
@@ -37,6 +36,7 @@ for (const jobId of Object.keys(scenarioJobs)) {
   );
 }
 assert.match(performance, /^  workflow_dispatch:/m);
+assert.match(performance, /^  workflow_call:/m);
 assert.match(performance, /baseline_sha:/);
 assert.match(performance, /parallelism:[\s\S]*?default: '1'[\s\S]*?- '2'/);
 assert.match(
@@ -86,8 +86,12 @@ for (const [jobId, component] of Object.entries(scenarioJobs)) {
 
 assert.match(summary, /'PARTIAL'/);
 assert.match(summary, /integral: false/);
-assert.match(summary, /component !== 'pricing'/);
-assert.match(summary, /does not execute a baseline revision/);
+assert.match(summary, /pricing: \['pricing_individual_http_performance'\]/);
+assert.doesNotMatch(summary, /pricing_batch_benchmark/);
+assert.match(
+  performance,
+  /inputs\.component == 'pricing' && inputs\.include_legacy_pricing/,
+);
 assert.match(performance, /selection-summary\.json/);
 assert.match(
   performance,
@@ -95,8 +99,14 @@ assert.match(
 );
 assert.match(performance, /needs\.preflight\.outputs\.baseline_sha/);
 assert.match(performance, /needs\.preflight\.outputs\.candidate_sha/);
+assert.match(performance, /G6_PERFORMANCE_SHA/);
+assert.match(
+  pricingPersistence,
+  /mide GET individual HTTP de SKU con PostgreSQL desechable/,
+);
 for (const jobId of [
   'catalog_http_performance',
+  'pricing_individual_http_performance',
   'combos_pricing_http_performance',
 ]) {
   const index = jobStarts.findIndex((match) => match[1] === jobId);
@@ -108,6 +118,24 @@ for (const jobId of [
     /^    strategy:/m,
     `${jobId} keeps the pair on one runner`,
   );
+  if (jobId === 'pricing_individual_http_performance') {
+    const runOrder = [
+      'baseline-first',
+      'candidate-first',
+      'candidate-second',
+      'baseline-second',
+    ].map((label) => block.indexOf(label));
+    assert.ok(
+      runOrder.every((position) => position >= 0),
+      `${jobId} includes all four paired runs`,
+    );
+    assert.deepEqual(
+      [...runOrder].sort((a, b) => a - b),
+      runOrder,
+      `${jobId} alternates baseline and candidate`,
+    );
+    continue;
+  }
   const runOrder = [
     'baseline-first',
     'candidate-first',

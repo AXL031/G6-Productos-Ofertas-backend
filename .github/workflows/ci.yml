@@ -12,18 +12,29 @@ name: Integración continua (CI)
     - correccion/inventory-cierre-integral-marco
   workflow_dispatch:
     inputs:
-      baseline_ref:
-        description: Use component@master or component@<40-character-base-SHA>, e.g. bulk@master
+      mode:
+        description: Ejecutar CI normal o un benchmark focalizado
         required: true
-        default: bulk@master
+        type: choice
+        default: ci
+        options: [ci, benchmark]
+      component:
+        description: Componente del benchmark
+        required: false
+        type: choice
+        options: [catalog, pricing, combos]
+      baseline_sha:
+        description: SHA completo de master u otra revisión base aprobada
+        required: false
         type: string
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.mode || 'ci' }}
+  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark' }}
 permissions:
   contents: read
 jobs:
   automatizacion:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Validar flujos de automatización
     runs-on: ubuntu-latest
     steps:
@@ -38,6 +49,7 @@ jobs:
     - name: Comprobar aislamiento del workflow de performance G6
       run: node scripts/ci/test-performance-workflow.mjs
   azure_cd_h5:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar el ejecutor de CD Azure H5 sin credenciales
     runs-on: ubuntu-latest
     permissions:
@@ -58,6 +70,7 @@ jobs:
         for file in ops/shared/ensure-ghcr-sha-image.sh ops/shared/tests/ensure-ghcr-sha-image.test.sh ops/oracle/ensure-ghcr-sha-image.sh ops/azure/container-apps/validate-source.sh ops/azure/container-apps/verify-environment-protection.sh ops/azure/container-apps/deploy.sh ops/azure/container-apps/reconcile-recovery.sh ops/azure/container-apps/smoke-service.sh ops/azure/container-apps/tests/validate-source.test.sh ops/azure/container-apps/tests/verify-environment-protection.test.sh ops/azure/container-apps/tests/deploy.test.sh ops/azure/container-apps/tests/smoke.test.sh ops/azure/container-apps/tests/reconcile-recovery.test.sh ops/azure/container-apps/tests/workflow.test.sh; do bash -n "$file"; done
         shellcheck ops/shared/ensure-ghcr-sha-image.sh ops/shared/tests/ensure-ghcr-sha-image.test.sh ops/oracle/ensure-ghcr-sha-image.sh ops/azure/container-apps/validate-source.sh ops/azure/container-apps/verify-environment-protection.sh ops/azure/container-apps/deploy.sh ops/azure/container-apps/reconcile-recovery.sh ops/azure/container-apps/smoke-service.sh ops/azure/container-apps/tests/validate-source.test.sh ops/azure/container-apps/tests/verify-environment-protection.test.sh ops/azure/container-apps/tests/deploy.test.sh ops/azure/container-apps/tests/smoke.test.sh ops/azure/container-apps/tests/reconcile-recovery.test.sh ops/azure/container-apps/tests/workflow.test.sh
   tipos:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Comprobar tipos TypeScript
     runs-on: ubuntu-latest
     steps:
@@ -73,6 +86,7 @@ jobs:
     - name: Comprobar tipos TypeScript
       run: npm run typecheck
   calidad:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Revisar calidad del código
     runs-on: ubuntu-latest
     steps:
@@ -88,6 +102,7 @@ jobs:
     - name: Revisar calidad del código con Oxlint
       run: npm run lint
   formato:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Comprobar formato del código
     runs-on: ubuntu-latest
     steps:
@@ -103,6 +118,7 @@ jobs:
     - name: Comprobar el formato del código
       run: npm run format:check
   unitarias:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Ejecutar pruebas unitarias
     runs-on: ubuntu-latest
     steps:
@@ -118,6 +134,7 @@ jobs:
     - name: Ejecutar pruebas unitarias
       run: npm test
   e2e:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Ejecutar pruebas de extremo a extremo
     runs-on: ubuntu-latest
     steps:
@@ -133,6 +150,7 @@ jobs:
     - name: Ejecutar pruebas de extremo a extremo
       run: npm run test:e2e
   contratos:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Validar contratos y datos iniciales
     runs-on: ubuntu-latest
     steps:
@@ -149,6 +167,7 @@ jobs:
     - name: Validar datos iniciales y resultados del agregador
       run: node --test scripts/seed/run.test.mjs scripts/seed/mcp/pricing/verify.test.mjs scripts/ci/verify-ci-results.test.mjs
   compilacion:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Compilar microservicios
     runs-on: ubuntu-latest
     steps:
@@ -176,6 +195,7 @@ jobs:
         path: dist/
         retention-days: 1
   contenedores:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Validar imágenes de contenedores
     runs-on: ubuntu-latest
     steps:
@@ -398,6 +418,7 @@ jobs:
     - compilacion
     timeout-minutes: 30
   oracle:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Verificar infraestructura Oracle
     runs-on: ubuntu-latest
     needs:
@@ -442,6 +463,7 @@ jobs:
         price-audit-svc\",\"pricing-svc\",\"promotions-svc\",\"taxonomy-svc\"]'\ntest \"$(awk -F'|' '$1 !~ /^#/\
         \ && NF { count++ } END { print count+0 }' ops/oracle/services.psv)\" = 9\n"
   taxonomia:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar integración de Taxonomy con PostgreSQL desechable
     runs-on: ubuntu-latest
     steps:
@@ -472,6 +494,7 @@ jobs:
     - name: Ejecutar pruebas de integración Taxonomy (obligatorias)
       run: node scripts/ci/run-taxonomy-integration.mjs
   taxonomia_catalogo:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar E2E aislado Taxonomy y Catalog
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -515,6 +538,7 @@ jobs:
           backend/apps/taxonomy-svc/test/e2e-catalog/run.log
         if-no-files-found: warn
   inventario:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar integración de Inventory con PostgreSQL y RabbitMQ desechables
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -548,6 +572,7 @@ jobs:
         INVENTORY_REAL_INTEGRATION: '1'
       run: npm test -- apps/inventory-svc/test/inventory.real.integration.spec.ts --reporter=verbose
   persistencia:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar persistencia y mensajería de Pricing y Price Audit
     runs-on: ubuntu-latest
     steps:
@@ -569,6 +594,7 @@ jobs:
         PRICE_AUDIT_TEST_AMQP: '1'
       run: npm run test:e2e -- apps/pricing-svc apps/price-audit-svc --reporter=verbose
   promotions:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar persistencia de Promotions con PostgreSQL TLS
     runs-on: ubuntu-latest
     steps:
@@ -590,6 +616,7 @@ jobs:
     - name: Validar transporte de cupones y Outbox con dependencias desechables
       run: node apps/promotions-svc/test/coupons.isolated.smoke.mjs
   combos_catalogo:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar integración de Combos con PostgreSQL, RabbitMQ y Catalog desechables
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -634,6 +661,7 @@ jobs:
           backend/apps/combos-svc/test/evidence-ci/run-summary.txt
         if-no-files-found: warn
   gateway_inventory_postgres:
+    if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Probar E2E Gateway → Inventory → PostgreSQL 17 (obligatorio)
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -728,7 +756,7 @@ jobs:
       - promotions
       - combos_catalogo
       - gateway_inventory_postgres
-    if: always()
+    if: (github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark') && (always())
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
@@ -763,7 +791,7 @@ jobs:
     - promotions
     - combos_catalogo
     - gateway_inventory_postgres
-    if: always()
+    if: (github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark') && (always())
     steps:
     - name: Obtener código fuente
       uses: actions/checkout@v4
@@ -777,53 +805,11 @@ jobs:
       run: |
         printf '%s\n' "$RESULTADOS"
         node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions gateway_inventory_postgres
-  preparar_benchmark_g6_seleccionado:
-    name: Preparar componente y SHA base para benchmark G6
-    if: github.event_name == 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs:
-    - integral
-    - compatibilidad
-    outputs:
-      component: ${{ steps.selection.outputs.component }}
-      baseline_sha: ${{ steps.selection.outputs.baseline_sha }}
-    permissions:
-      contents: read
-    steps:
-    - name: Obtener código con historia del candidato
-      uses: actions/checkout@v4
-      with:
-        ref: ${{ github.sha }}
-        fetch-depth: 0
-    - name: Validar selección y resolver SHA base completo
-      id: selection
-      env:
-        BASELINE_SELECTION: ${{ inputs.baseline_ref }}
-      run: |
-        set -Eeuo pipefail
-        if [[ ! "$BASELINE_SELECTION" =~ ^(pricing|promotions|price-audit|bulk|catalog|combos|inventory-gateway|taxonomy)@(master|[0-9a-fA-F]{40})$ ]]; then
-          echo 'baseline_ref debe usar component@master o component@<SHA Git de 40 caracteres>.' >&2
-          exit 1
-        fi
-        component="${BASH_REMATCH[1]}"
-        base="${BASH_REMATCH[2]}"
-        if [[ "$base" == master ]]; then
-          git fetch --no-tags origin master
-          baseline_sha="$(git rev-parse FETCH_HEAD)"
-        else
-          git fetch --no-tags origin "$base"
-          git cat-file -e "$base^{commit}"
-          baseline_sha="$(git rev-parse "$base^{commit}")"
-        fi
-        printf 'component=%s\nbaseline_sha=%s\n' "$component" "$baseline_sha" >> "$GITHUB_OUTPUT"
-  benchmark_g6_seleccionado:
-    name: Ejecutar benchmarks G6 seleccionados tras CI
-    if: github.event_name == 'workflow_dispatch'
-    needs:
-    - preparar_benchmark_g6_seleccionado
+  benchmark_focalizado:
+    name: Benchmark focalizado solicitado
+    if: github.event_name == 'workflow_dispatch' && inputs.mode == 'benchmark'
     uses: ./.github/workflows/performance-g6.yml
     with:
-      component: ${{ needs.preparar_benchmark_g6_seleccionado.outputs.component }}
-      baseline_sha: ${{ needs.preparar_benchmark_g6_seleccionado.outputs.baseline_sha }}
+      component: ${{ inputs.component }}
+      baseline_sha: ${{ inputs.baseline_sha }}
       parallelism: '1'

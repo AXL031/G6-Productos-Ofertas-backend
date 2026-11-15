@@ -7,14 +7,9 @@ name: Benchmarks focalizados G6
         required: true
         type: choice
         options:
-        - pricing
-        - promotions
-        - price-audit
-        - bulk
         - catalog
+        - pricing
         - combos
-        - inventory-gateway
-        - taxonomy
       baseline_sha:
         description: SHA Git completo (40 caracteres) de la revisión base
         required: true
@@ -27,18 +22,31 @@ name: Benchmarks focalizados G6
         options:
         - '1'
         - '2'
+      include_legacy_pricing:
+        description: Ejecuta además las mediciones batch/token históricas de Pricing
+        required: false
+        type: boolean
+        default: false
   workflow_call:
     inputs:
       component:
+        description: Componente focalizado
         required: true
         type: string
       baseline_sha:
+        description: SHA completo de la revisión base
         required: true
         type: string
       parallelism:
+        description: Máximo de variantes concurrentes
         required: false
-        default: '1'
         type: string
+        default: '1'
+      include_legacy_pricing:
+        description: Ejecuta mediciones batch/token históricas
+        required: false
+        type: boolean
+        default: false
 concurrency:
   group: g6-performance-${{ github.repository }}
   cancel-in-progress: false
@@ -65,13 +73,20 @@ jobs:
       env:
         BASELINE_SHA: ${{ inputs.baseline_sha }}
         CANDIDATE_SHA: ${{ github.sha }}
-      run: "set -Eeuo pipefail\nfor sha in \"$BASELINE_SHA\" \"$CANDIDATE_SHA\"; do\n  [[ \"$sha\" =~ ^[0-9a-fA-F]{40}$ ]]\
-        \ || { echo \"Se requiere un SHA Git completo de 40 caracteres.\" >&2; exit 1; }\ndone\ngit fetch --no-tags origin\
-        \ \"$BASELINE_SHA\"\ngit cat-file -e \"$BASELINE_SHA^{commit}\"\ngit cat-file -e \"$CANDIDATE_SHA^{commit}\"\nprintf\
-        \ 'baseline_sha=%s\\ncandidate_sha=%s\\n' \"$BASELINE_SHA\" \"$CANDIDATE_SHA\" >> \"$GITHUB_OUTPUT\""
+        COMPONENT: ${{ inputs.component }}
+      run: |
+        set -Eeuo pipefail
+        [[ "$COMPONENT" =~ ^(catalog|pricing|combos)$ ]] || { echo "Se requiere catalog, pricing o combos." >&2; exit 1; }
+        for sha in "$BASELINE_SHA" "$CANDIDATE_SHA"; do
+          [[ "$sha" =~ ^[0-9a-fA-F]{40}$ ]] || { echo "Se requiere un SHA Git completo de 40 caracteres." >&2; exit 1; }
+        done
+        git fetch --no-tags origin "$BASELINE_SHA"
+        git cat-file -e "$BASELINE_SHA^{commit}"
+        git cat-file -e "$CANDIDATE_SHA^{commit}"
+        printf 'baseline_sha=%s\ncandidate_sha=%s\n' "$BASELINE_SHA" "$CANDIDATE_SHA" >> "$GITHUB_OUTPUT"
   pricing_batch_benchmark:
     name: Medir lotes de Pricing con PostgreSQL desechable
-    if: inputs.component == 'pricing'
+    if: inputs.component == 'pricing' && inputs.include_legacy_pricing
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs:
@@ -518,6 +533,64 @@ jobs:
         path: .ci/performance/paired/
         if-no-files-found: warn
         retention-days: 30
+  pricing_individual_http_performance:
+    name: Comparar GET individual de Pricing en el mismo runner
+    if: inputs.component == 'pricing'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs:
+    - preflight
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener revisión candidata
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.candidate_sha }}
+        persist-credentials: false
+    - name: Obtener revisión base
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ needs.preflight.outputs.baseline_sha }}
+        path: .ci/baseline
+        persist-credentials: false
+    - name: Preparar Node.js y fijar harness idéntico en ambas revisiones
+      uses: actions/setup-node@v4
+      with:
+        node-version: 24.15.0
+        cache: npm
+    - name: Instalar dependencias de ambas revisiones
+      run: |
+        set -Eeuo pipefail
+        cp package.json package-lock.json .ci/baseline/
+        cp apps/pricing-svc/test/persistence.e2e-spec.ts .ci/baseline/apps/pricing-svc/test/persistence.e2e-spec.ts
+        cp apps/pricing-svc/test/isolated-postgres.ts .ci/baseline/apps/pricing-svc/test/isolated-postgres.ts
+        (cd .ci/baseline && npm ci)
+        npm ci
+        mkdir -p .ci/performance/pricing-individual
+    - name: Verificar Docker desechable
+      run: docker info
+    - name: Ejecutar pares alternados GET Pricing individual, 32 concurrentes
+      run: |
+        set -Eeuo pipefail
+        run_profile() {
+          local tree="$1" variant="$2" key="$3" sha="$4"
+          local output="$GITHUB_WORKSPACE/.ci/performance/pricing-individual/$key"
+          mkdir -p "$output"
+          (cd "$tree" && PRICING_TEST_POSTGRES=1 G6_PERFORMANCE_HTTP=1 G6_PERFORMANCE_VARIANT="$variant" G6_PERFORMANCE_SHA="$sha" G6_PERFORMANCE_OUTPUT="$output" node_modules/.bin/vitest run --config ./vitest.config.e2e.ts apps/pricing-svc/test/persistence.e2e-spec.ts --testNamePattern='mide GET individual HTTP de SKU con PostgreSQL desechable' --maxWorkers=1 --reporter=verbose) 2>&1 | tee "$output.log"
+        }
+        run_profile .ci/baseline baseline-first baseline-first '${{ needs.preflight.outputs.baseline_sha }}'
+        run_profile . candidate-first candidate-first '${{ needs.preflight.outputs.candidate_sha }}'
+        run_profile . candidate-second candidate-second '${{ needs.preflight.outputs.candidate_sha }}'
+        run_profile .ci/baseline baseline-second baseline-second '${{ needs.preflight.outputs.baseline_sha }}'
+    - name: Publicar perfiles pareados de Pricing individual
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: pricing-individual-paired-${{ needs.preflight.outputs.candidate_sha }}
+        path: .ci/performance/pricing-individual/
+        if-no-files-found: warn
+        retention-days: 30
   combos_pricing_http_performance:
     name: Comparar HTTP Combos POST en el mismo runner
     if: inputs.component == 'combos'
@@ -669,6 +742,7 @@ jobs:
     - bulk_http_performance
     - gateway_inventory_http_performance
     - catalog_http_performance
+    - pricing_individual_http_performance
     - combos_pricing_http_performance
     - taxonomy_http_performance
     permissions:

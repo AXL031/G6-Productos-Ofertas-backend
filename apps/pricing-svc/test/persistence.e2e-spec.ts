@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { performance } from 'node:perf_hooks';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
 import { and, eq, inArray, sql } from 'drizzle-orm';
@@ -49,6 +50,17 @@ import {
   schedulePrice,
   type PriceDefinition,
 } from '../src/domain/price.js';
+
+function benchmarkPercentile(values: number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+}
+
+function benchmarkCsvCell(value: unknown): string {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
+
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
 
 describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
   'Pricing Drizzle / PostgreSQL aislado (#53)',
@@ -2975,5 +2987,229 @@ describe.skipIf(process.env.PRICING_TEST_POSTGRES !== '1')(
       );
       expect(await database.check()).toBe(true);
     });
+    it.skipIf(!performanceEnabled)(
+      'mide GET individual HTTP de SKU con PostgreSQL desechable',
+      async () => {
+        const sku = 'G6-PERF-PRICING-INDIVIDUAL-001';
+        const outputDirectory =
+          process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance';
+        const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
+        const sha = process.env.G6_PERFORMANCE_SHA ?? '';
+        expect(sha).toMatch(/^[0-9a-f]{40}$/i);
+        await repository.transaction((tx) => create(tx, { sku }, null));
+        const path = `/api/v1/precios/administracion/skus/${sku}`;
+        const bearer = 'Bearer ' + identity.token();
+        const warmupRequests = 20;
+        const samples = 1024;
+        const concurrency = 32;
+        const timeoutMs = 5000;
+        for (let index = 0; index < warmupRequests; index += 1) {
+          await request(app!.getHttpServer())
+            .get(path)
+            .set('Authorization', bearer)
+            .timeout({ deadline: timeoutMs })
+            .expect(200);
+        }
+        let sqlQueryCount: number | null = null;
+        let sqlStatements: Array<{
+          query: string;
+          calls: number;
+          meanExecutionMs: number;
+          sharedBlocksHit: number;
+          sharedBlocksRead: number;
+        }> | null = null;
+        let sqlInstrumentation = 'pg_stat_statements is unavailable';
+        try {
+          await postgres.admin!.query('SELECT pg_stat_statements_reset()');
+          sqlInstrumentation =
+            'pg_stat_statements aggregate calls after warm-up';
+        } catch (error) {
+          const code =
+            typeof error === 'object' && error !== null && 'code' in error
+              ? String(error.code)
+              : 'unknown';
+          sqlInstrumentation = `pg_stat_statements unavailable (reset error ${code})`;
+        }
+        const latencies: number[] = [];
+        let failures = 0;
+        let timeouts = 0;
+        let responseBodyBytes = 0;
+        const started = performance.now();
+        for (let offset = 0; offset < samples; offset += concurrency) {
+          await Promise.all(
+            Array.from({ length: concurrency }, async () => {
+              const requestStarted = performance.now();
+              try {
+                const response = await request(app!.getHttpServer())
+                  .get(path)
+                  .set('Authorization', bearer)
+                  .timeout({ deadline: timeoutMs });
+                responseBodyBytes += Buffer.byteLength(response.text ?? '');
+                if (response.status !== 200) failures += 1;
+              } catch (error) {
+                failures += 1;
+                if (
+                  typeof error === 'object' &&
+                  error !== null &&
+                  'timeout' in error
+                )
+                  timeouts += 1;
+              } finally {
+                latencies.push(performance.now() - requestStarted);
+              }
+            }),
+          );
+        }
+        const durationMs = performance.now() - started;
+        if (sqlInstrumentation.startsWith('pg_stat_statements aggregate')) {
+          try {
+            const stats = await postgres.admin!.query<{
+              calls: string;
+              query: string;
+              mean_exec_time: string;
+              shared_blks_hit: string;
+              shared_blks_read: string;
+            }>(`
+              SELECT COALESCE(sum(calls), 0)::text AS calls,
+                     ''::text AS query,
+                     0::text AS mean_exec_time,
+                     0::text AS shared_blks_hit,
+                     0::text AS shared_blks_read
+              FROM pg_stat_statements
+              WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                AND query NOT LIKE '%pg_stat_statements%'
+            `);
+            sqlQueryCount = Number(stats.rows[0]?.calls ?? 0);
+            const statements = await postgres.admin!.query<{
+              query: string;
+              calls: string;
+              mean_exec_time: string;
+              shared_blks_hit: string;
+              shared_blks_read: string;
+            }>(`
+              SELECT query, calls::text, mean_exec_time::text,
+                     shared_blks_hit::text, shared_blks_read::text
+              FROM pg_stat_statements
+              WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+                AND query NOT LIKE '%pg_stat_statements%'
+              ORDER BY calls DESC
+              LIMIT 20
+            `);
+            sqlStatements = statements.rows.map((row) => ({
+              query: row.query,
+              calls: Number(row.calls),
+              meanExecutionMs: Number(row.mean_exec_time),
+              sharedBlocksHit: Number(row.shared_blks_hit),
+              sharedBlocksRead: Number(row.shared_blks_read),
+            }));
+          } catch (error) {
+            const code =
+              typeof error === 'object' && error !== null && 'code' in error
+                ? String(error.code)
+                : 'unknown';
+            sqlInstrumentation = `pg_stat_statements unavailable (read error ${code})`;
+          }
+        }
+        const poolStats = await postgres.admin!.query<{
+          connections: string;
+          active: string;
+        }>(`
+          SELECT count(*)::text AS connections,
+                 count(*) FILTER (WHERE state = 'active')::text AS active
+          FROM pg_stat_activity WHERE usename = 'pricing_app'
+        `);
+        const result = {
+          schemaVersion: 1,
+          benchmark: 'pricing-individual-admin-sku-http',
+          service: 'Pricing',
+          endpoint: `GET ${path}`,
+          sha,
+          variant,
+          order: variant,
+          dataset: { syntheticPriceDefinitions: 1, sku },
+          load: { warmupRequests, samples, concurrency, timeoutMs },
+          latencyMs: {
+            p50: Number(benchmarkPercentile(latencies, 0.5).toFixed(3)),
+            p95: Number(benchmarkPercentile(latencies, 0.95).toFixed(3)),
+            p99: Number(benchmarkPercentile(latencies, 0.99).toFixed(3)),
+          },
+          throughputRequestsPerSecond: Number(
+            ((samples * 1000) / durationMs).toFixed(2),
+          ),
+          durationMs: Number(durationMs.toFixed(3)),
+          requestTargetBytes: Buffer.byteLength(path) * samples,
+          requestBodyBytes: 0,
+          responseBodyBytes,
+          failures,
+          timeouts,
+          sqlQueryCount,
+          sqlStatements,
+          sqlInstrumentation,
+          pool: {
+            configuredMaxConnections: 2,
+            observedConnectionsAfterWindow: Number(
+              poolStats.rows[0]?.connections ?? 0,
+            ),
+            observedActiveConnectionsAfterWindow: Number(
+              poolStats.rows[0]?.active ?? 0,
+            ),
+            sampling:
+              'post-window pg_stat_activity snapshot; peak not instrumented',
+          },
+          dependencies: {
+            database: 'PostgreSQL 16 isolated Docker fixture',
+            authentication: 'SignedUser RS256 and local JWKS fixture',
+            catalogContext:
+              'Explicit test provider override; admin GET does not call it',
+            commercialProvider:
+              'No HTTP provider called by the admin-definition route',
+          },
+        };
+        await mkdir(outputDirectory, { recursive: true });
+        await writeFile(
+          `${outputDirectory}/pricing-individual-${variant}.json`,
+          `${JSON.stringify(result, null, 2)}\n`,
+        );
+        const csvRows = [
+          [
+            'sha',
+            'variant',
+            'concurrency',
+            'samples',
+            'p50Ms',
+            'p95Ms',
+            'p99Ms',
+            'throughputRequestsPerSecond',
+            'failures',
+            'timeouts',
+            'responseBodyBytes',
+            'sqlQueryCount',
+            'observedConnectionsAfterWindow',
+          ],
+          [
+            sha,
+            variant,
+            concurrency,
+            samples,
+            result.latencyMs.p50,
+            result.latencyMs.p95,
+            result.latencyMs.p99,
+            result.throughputRequestsPerSecond,
+            failures,
+            timeouts,
+            responseBodyBytes,
+            sqlQueryCount,
+            result.pool.observedConnectionsAfterWindow,
+          ],
+        ].map((row) => row.map(benchmarkCsvCell).join(','));
+        await writeFile(
+          `${outputDirectory}/pricing-individual-${variant}.csv`,
+          `${csvRows.join('\n')}\n`,
+        );
+        expect(failures).toBe(0);
+        expect(timeouts).toBe(0);
+      },
+      180000,
+    );
   },
 );
