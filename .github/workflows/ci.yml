@@ -11,6 +11,12 @@ name: Integración continua (CI)
     - master
     - correccion/inventory-cierre-integral-marco
   workflow_dispatch:
+    inputs:
+      baseline_ref:
+        description: Use component@master or component@<40-character-base-SHA>, e.g. bulk@master
+        required: true
+        default: bulk@master
+        type: string
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -771,3 +777,53 @@ jobs:
       run: |
         printf '%s\n' "$RESULTADOS"
         node scripts/ci/verify-ci-results.mjs "$RESULTADOS" automatizacion tipos calidad formato unitarias e2e contratos compilacion contenedores persistencia oracle taxonomia taxonomia_catalogo inventario promotions gateway_inventory_postgres
+  preparar_benchmark_g6_seleccionado:
+    name: Preparar componente y SHA base para benchmark G6
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs:
+    - integral
+    - compatibilidad
+    outputs:
+      component: ${{ steps.selection.outputs.component }}
+      baseline_sha: ${{ steps.selection.outputs.baseline_sha }}
+    permissions:
+      contents: read
+    steps:
+    - name: Obtener código con historia del candidato
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ github.sha }}
+        fetch-depth: 0
+    - name: Validar selección y resolver SHA base completo
+      id: selection
+      env:
+        BASELINE_SELECTION: ${{ inputs.baseline_ref }}
+      run: |
+        set -Eeuo pipefail
+        if [[ ! "$BASELINE_SELECTION" =~ ^(pricing|promotions|price-audit|bulk|catalog|combos|inventory-gateway|taxonomy)@(master|[0-9a-fA-F]{40})$ ]]; then
+          echo 'baseline_ref debe usar component@master o component@<SHA Git de 40 caracteres>.' >&2
+          exit 1
+        fi
+        component="${BASH_REMATCH[1]}"
+        base="${BASH_REMATCH[2]}"
+        if [[ "$base" == master ]]; then
+          git fetch --no-tags origin master
+          baseline_sha="$(git rev-parse FETCH_HEAD)"
+        else
+          git fetch --no-tags origin "$base"
+          git cat-file -e "$base^{commit}"
+          baseline_sha="$(git rev-parse "$base^{commit}")"
+        fi
+        printf 'component=%s\nbaseline_sha=%s\n' "$component" "$baseline_sha" >> "$GITHUB_OUTPUT"
+  benchmark_g6_seleccionado:
+    name: Ejecutar benchmarks G6 seleccionados tras CI
+    if: github.event_name == 'workflow_dispatch'
+    needs:
+    - preparar_benchmark_g6_seleccionado
+    uses: ./.github/workflows/performance-g6.yml
+    with:
+      component: ${{ needs.preparar_benchmark_g6_seleccionado.outputs.component }}
+      baseline_sha: ${{ needs.preparar_benchmark_g6_seleccionado.outputs.baseline_sha }}
+      parallelism: '1'

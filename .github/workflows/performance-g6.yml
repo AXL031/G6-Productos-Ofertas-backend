@@ -27,6 +27,18 @@ name: Benchmarks focalizados G6
         options:
         - '1'
         - '2'
+  workflow_call:
+    inputs:
+      component:
+        required: true
+        type: string
+      baseline_sha:
+        required: true
+        type: string
+      parallelism:
+        required: false
+        default: '1'
+        type: string
 concurrency:
   group: g6-performance-${{ github.repository }}
   cancel-in-progress: false
