@@ -42,6 +42,11 @@ for (const jobId of Object.keys(scenarioJobs)) {
 }
 assert.match(performance, /^  workflow_dispatch:/m);
 assert.match(performance, /^  workflow_call:/m);
+assert.match(
+  performance,
+  /\^\(catalog\|pricing\|combos\|promotions\|price-audit\|bulk\|inventory-gateway\|taxonomy\)\$/,
+  'preflight accepts every implemented component scenario',
+);
 assert.match(performance, /baseline_sha:/);
 assert.match(performance, /parallelism:[\s\S]*?default: '1'[\s\S]*?- '2'/);
 assert.match(
