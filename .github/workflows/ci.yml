@@ -330,6 +330,7 @@ jobs:
       run: npm ci
     - name: Usar perfil y RabbitMQ fixture mantenidos en el candidato
       run: |
+        cp .ci/benchmark-harness/vitest.config.e2e.ts vitest.config.e2e.ts
         cp .ci/benchmark-harness/apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts apps/bulk-svc/test/bulk-http-benchmark.e2e-spec.ts
         cp .ci/benchmark-harness/apps/bulk-svc/test/isolated-bulk-rabbitmq.ts apps/bulk-svc/test/isolated-bulk-rabbitmq.ts
     - name: Medir admisión multipart HTTP, persistencia y publicación RabbitMQ

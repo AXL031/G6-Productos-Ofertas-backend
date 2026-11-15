@@ -47,7 +47,7 @@ describe.skipIf(process.env.G6_PERFORMANCE_HTTP !== '1')(
         input,
         timeout: 90000,
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
     const availablePort = async () => {
       const server = createTcpServer();
@@ -134,6 +134,14 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA bulk TO bulk_fixtur
 GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
       );
       await database.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
+
+      const role = await database.query<{ rolcanlogin: boolean }>(
+        `SELECT rolcanlogin FROM pg_roles WHERE rolname = 'bulk_fixture_app'`,
+      );
+      if (role.rows[0]?.rolcanlogin !== true)
+        throw new Error(
+          'Bulk benchmark PostgreSQL app role was not initialized',
+        );
 
       rabbit = new IsolatedBulkRabbitmq();
       await rabbit.start();
@@ -300,6 +308,41 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
         let next = 0;
         const sampleCount = 1000;
         const started = performance.now();
+        let peakPoolConnections = 0;
+        let peakActiveConnections = 0;
+        let peakRabbitCommandQueueDepth = 0;
+        let monitorError: string | null = null;
+        let monitoring = true;
+        const monitor = (async () => {
+          while (monitoring) {
+            try {
+              const [pool, queueDepth] = await Promise.all([
+                database!.query<{ total: number; active: number }>(
+                  `SELECT count(*)::int total, count(*) FILTER (WHERE state='active')::int active FROM pg_stat_activity WHERE datname=current_database() AND usename='bulk_fixture_app'`,
+                ),
+                rabbit!.commandQueueDepth(),
+              ]);
+              peakPoolConnections = Math.max(
+                peakPoolConnections,
+                pool.rows[0]?.total ?? 0,
+              );
+              peakActiveConnections = Math.max(
+                peakActiveConnections,
+                pool.rows[0]?.active ?? 0,
+              );
+              peakRabbitCommandQueueDepth = Math.max(
+                peakRabbitCommandQueueDepth,
+                queueDepth,
+              );
+            } catch (error) {
+              monitorError = error instanceof Error ? error.name : 'unknown';
+            }
+            if (monitoring)
+              await new Promise((resolveDelay) =>
+                setTimeout(resolveDelay, 100),
+              );
+          }
+        })();
         await Promise.all(
           Array.from({ length: concurrency }, async () => {
             while (true) {
@@ -335,6 +378,8 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
             }
           }),
         );
+        monitoring = false;
+        await monitor;
         const durationMs = performance.now() - started;
         const sorted = latencies.sort((a, b) => a - b);
         failures += rowFailures;
@@ -386,6 +431,11 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
           poolConnectionsObservedAfter: connections.rows[0]?.total ?? null,
           activeConnectionsObservedAfter: connections.rows[0]?.active ?? null,
           rabbitCommandQueueDepthAfter: await rabbit!.commandQueueDepth(),
+          peakPoolConnections,
+          peakActiveConnections,
+          peakRabbitCommandQueueDepth,
+          monitorError,
+          monitoringIntervalMs: 100,
         });
       }
       const output = resolve(
@@ -421,7 +471,9 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
           sharedBuffers: 'shared_blks_hit/shared_blks_read per window',
           explainPlan: explain,
           poolOccupancy:
-            'post-window pg_stat_activity snapshot; in-window peak not instrumented',
+            '100ms pg_stat_activity sampling of service-role sessions through an administrative observation connection; samples include observer overhead',
+          rabbitQueueDepth:
+            '100ms AMQP checkQueue sampling through the isolated fixture channel; samples include observer overhead',
           rabbitQueueDepthBefore: queueBefore,
         },
         results,
