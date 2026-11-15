@@ -258,6 +258,7 @@ jobs:
     - name: Instalar y compilar ambas revisiones en el mismo runner
       run: |
         set -Eeuo pipefail
+        cp apps/promotions-svc/test/persistence.isolated.smoke.mjs .ci/baseline/apps/promotions-svc/test/persistence.isolated.smoke.mjs
         cp apps/promotions-svc/test/support/http-query-checks.mjs .ci/baseline/apps/promotions-svc/test/support/http-query-checks.mjs
         npm ci
         npm run build:promotions-svc
