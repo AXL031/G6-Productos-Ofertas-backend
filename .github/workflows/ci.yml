@@ -747,7 +747,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    needs:
+    - catalog_http_performance
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -825,6 +828,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -888,7 +892,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs:
+    - gateway_inventory_http_performance
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
@@ -958,7 +965,10 @@ jobs:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs:
+    - combos_pricing_http_performance
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         include:
