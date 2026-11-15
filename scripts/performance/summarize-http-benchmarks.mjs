@@ -151,7 +151,7 @@ await writeFile(
           },
           {
             service: 'Combos',
-            endpoint: 'GET /api/v1/combos; POST /api/v1/combos',
+            endpoint: 'GET /api/v1/combos; POST /api/v1/combos/administracion',
             runtime:
               'Combos Nest HTTP app + Catalog/Pricing child processes + PostgreSQL 17 TLS and RabbitMQ containers',
             dataset:
@@ -172,6 +172,8 @@ await writeFile(
             dataset: '1000 synthetic brands plus E2E fixtures',
             authorization:
               'RS256 local simulated-auth service token in isolated runner',
+            databaseMetrics:
+              'pg_stat_statements calls/buffers reset per window, EXPLAIN JSON, 5ms node-postgres pool occupancy sampling',
           },
         ],
         notMeasured: [
@@ -182,7 +184,7 @@ await writeFile(
           'Gateway other administrative screens',
         ],
         limits:
-          'Integration runners for remaining services are not performance rows. SQL query counts, buffers, EXPLAIN plans, and pool occupancy require service-level instrumentation not collected by these HTTP harnesses.',
+          'Combos/Pricing HTTP row does not yet collect SQL query counts, buffers, EXPLAIN plans or pool occupancy. Integration runners for Promotions, Price Audit and Bulk are not performance rows. Gateway HTTP rows traverse Inventory but are not direct Inventory HTTP measurements.',
       },
       rows: results,
     },

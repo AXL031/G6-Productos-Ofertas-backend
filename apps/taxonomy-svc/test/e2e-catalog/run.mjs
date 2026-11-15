@@ -28,7 +28,11 @@ import pg from 'pg';
 import { connect } from 'amqplib';
 import { Test } from '@nestjs/testing';
 let iniciarTaxonomySvc, DeactivationIntentService, TaxonomyAmqpRuntime;
-let AppModule, CatalogConfig, CATALOG_AMQP_SETTINGS, CatalogDatabase;
+let AppModule,
+  CatalogConfig,
+  CATALOG_AMQP_SETTINGS,
+  CatalogDatabase,
+  TaxonomyDatabase;
 
 // Isolated, self-provisioned infrastructure only. Never accepts database or AMQP URLs.
 const token = randomBytes(10).toString('hex');
@@ -246,6 +250,8 @@ try {
     await import('../../../../dist/apps/catalog-svc/catalog-amqp.js'));
   ({ Database: CatalogDatabase } =
     await import('../../../../dist/apps/catalog-svc/database.js'));
+  ({ Database: TaxonomyDatabase } =
+    await import('../../../../dist/apps/taxonomy-svc/database.js'));
   report.build = 'PASS';
   const openssl =
     process.env.TAXONOMY_TEST_OPENSSL_BIN ??
@@ -294,6 +300,8 @@ try {
     '-e',
     'POSTGRES_DB=cross_test',
     'postgres:17-alpine',
+    '-c',
+    'shared_preload_libraries=pg_stat_statements',
   );
   pgCreated = true;
   await wait('PostgreSQL', () => {
@@ -373,7 +381,7 @@ try {
     max: 3,
   });
   await admin.query(
-    `CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE po_taxonomy_owner NOLOGIN; CREATE ROLE catalog_app LOGIN PASSWORD '${password}'; CREATE ROLE taxonomy_app LOGIN PASSWORD '${password}'; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner; CREATE SCHEMA taxonomy AUTHORIZATION po_taxonomy_owner; CREATE EXTENSION IF NOT EXISTS pgcrypto;`,
+    `CREATE ROLE po_catalog_owner NOLOGIN; CREATE ROLE po_taxonomy_owner NOLOGIN; CREATE ROLE catalog_app LOGIN PASSWORD '${password}'; CREATE ROLE taxonomy_app LOGIN PASSWORD '${password}'; CREATE SCHEMA catalog AUTHORIZATION po_catalog_owner; CREATE SCHEMA taxonomy AUTHORIZATION po_taxonomy_owner; CREATE EXTENSION IF NOT EXISTS pgcrypto; CREATE EXTENSION IF NOT EXISTS pg_stat_statements;`,
   );
   stage = 'Migraciones oficiales aisladas';
   const migrate = async (owner, paths) => {
@@ -664,6 +672,19 @@ try {
           `Taxonomy warmup HTTP ${response.status}`,
         );
       }
+      await admin.query('SELECT pg_stat_statements_reset()');
+      const databasePool = taxonomyApp.get(TaxonomyDatabase).pool;
+      let peakPoolTotal = databasePool.totalCount;
+      let peakPoolInUse = databasePool.totalCount - databasePool.idleCount;
+      let peakPoolWaiting = databasePool.waitingCount;
+      const poolSampler = setInterval(() => {
+        peakPoolTotal = Math.max(peakPoolTotal, databasePool.totalCount);
+        peakPoolInUse = Math.max(
+          peakPoolInUse,
+          databasePool.totalCount - databasePool.idleCount,
+        );
+        peakPoolWaiting = Math.max(peakPoolWaiting, databasePool.waitingCount);
+      }, 5);
       const latencies = [];
       let responseBodyBytes = 0;
       let levelFailures = 0;
@@ -701,6 +722,16 @@ try {
         );
       }
       const durationMs = performance.now() - started;
+      clearInterval(poolSampler);
+      const sqlStats = await admin.query(
+        `SELECT COALESCE(sum(calls),0)::bigint AS calls,
+                COALESCE(sum(shared_blks_hit),0)::bigint AS shared_blks_hit,
+                COALESCE(sum(shared_blks_read),0)::bigint AS shared_blks_read
+         FROM pg_stat_statements
+         WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database())
+           AND query NOT LIKE '%pg_stat_statements%'`,
+      );
+      const sqlTotals = sqlStats.rows[0];
       const sorted = [...latencies].sort((left, right) => left - right);
       const p = (ratio) =>
         sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
@@ -726,9 +757,19 @@ try {
         responseBodyBytes,
         failures: levelFailures,
         timeouts: levelTimeouts,
-        sqlAndPoolMetrics: 'NOT_COLLECTED by the existing Taxonomy runner',
+        sqlCalls: Number(sqlTotals.calls),
+        sharedBlocksHit: Number(sqlTotals.shared_blks_hit),
+        sharedBlocksRead: Number(sqlTotals.shared_blks_read),
+        poolPeakTotalConnections: peakPoolTotal,
+        poolPeakConnectionsInUse: peakPoolInUse,
+        poolPeakWaitingClients: peakPoolWaiting,
       });
     }
+    const explain = await admin.query(
+      `EXPLAIN (FORMAT JSON)
+       SELECT id, nombre, descripcion, pais_origen_iso, logo_url
+       FROM taxonomy.brands WHERE estado = 'ACTIVO'`,
+    );
     const healthResponse = await fetch(
       `http://127.0.0.1:${taxonomyPort}/health/ready`,
     );
@@ -750,7 +791,10 @@ try {
       measurement: {
         requestBytes: 'request-target path bytes only; headers excluded',
         responseBytes: 'response body bytes',
-        sqlQueryCountBuffersExplainPool: 'not instrumented in this harness',
+        sqlAndBuffers:
+          'pg_stat_statements reset after warmup for each concurrency window',
+        pool: 'Taxonomy Database node-postgres Pool sampled every 5ms during each load window',
+        explainPlan: explain.rows[0]['QUERY PLAN'],
         recovery:
           'health/readiness verified after load; dependency outage not injected in performance window',
       },

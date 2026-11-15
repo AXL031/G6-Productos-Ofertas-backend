@@ -117,6 +117,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     'COMBOS_G7_CLIENT_SECRET',
     'COMBOS_CATALOG_CONTEXT_AUTHORIZED',
     'COMBOS_RESTRICTED_DEMO_ENABLED',
+    'COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN',
     'COMBOS_ALLOWED_ROLES_CREAR_COMBO',
     'COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO',
     'G6_SECURITY_MODE',
@@ -773,6 +774,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     process.env.G6_SECURITY_MODE = 'G7_AUTHENTICATED';
     process.env.COMBOS_G7_TOKEN_URL = `${issuer}/api/v1/auth/token`;
     process.env.COMBOS_G7_CLIENT_SECRET = 'isolated-secret';
+    process.env.COMBOS_ALLOWED_ROLES_LISTAR_COMBOS_ADMIN = 'GESTOR_COMERCIAL';
     process.env.COMBOS_ALLOWED_ROLES_CREAR_COMBO = 'admin';
     process.env.COMBOS_ALLOWED_ROLES_ACTUALIZAR_COMBO = 'admin';
     process.env.COMBOS_RESTRICTED_DEMO_ENABLED = 'false';
@@ -1112,7 +1114,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
       const performanceHumanToken = makeToken({
         tipo: 'acceso',
         sub: randomUUID(),
-        roles: ['admin', 'GESTOR_COMERCIAL'],
+        roles: ['GESTOR_COMERCIAL'],
         scope: undefined,
       });
       const combosUrl = `${await comboApp.getUrl()}/api/v1/combos?pagina=1&tamanio=20`;
@@ -1144,6 +1146,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
         bearer: string;
         datasetRows: number;
         body?: typeof providerBackedCreate;
+        idempotent?: boolean;
       }> = [
         {
           service: 'Combos',
@@ -1164,12 +1167,13 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
         {
           service: 'Combos → Catalog + Pricing providers',
           method: 'POST' as const,
-          endpoint: `${await comboApp.getUrl()}/api/v1/combos`,
+          endpoint: `${await comboApp.getUrl()}/api/v1/combos/administracion`,
           label:
-            'POST /api/v1/combos (real Catalog/Pricing provider resolution)',
+            'POST /api/v1/combos/administracion (idempotent real Catalog/Pricing provider resolution)',
           bearer: performanceHumanToken,
           datasetRows: comboCount,
           body: providerBackedCreate,
+          idempotent: true,
         },
       ];
       for (const target of targets) {
@@ -1185,6 +1189,9 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
               method: target.method,
               headers: {
                 authorization: `Bearer ${target.bearer}`,
+                ...(target.idempotent
+                  ? { 'idempotency-key': randomUUID() }
+                  : {}),
                 ...(warmupBody ? { 'content-type': 'application/json' } : {}),
               },
               ...(warmupBody ? { body: warmupBody } : {}),
@@ -1192,7 +1199,7 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
             });
             await warmup.arrayBuffer();
             if (!warmup.ok)
-              throw new Error(`${target.service} warmup HTTP ${warmup.status}`);
+              throw new Error(`${target.label} warmup HTTP ${warmup.status}`);
           }
           const latencies: number[] = [];
           let responseBodyBytes = 0;
@@ -1220,6 +1227,9 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
                       method: target.method,
                       headers: {
                         authorization: `Bearer ${target.bearer}`,
+                        ...(target.idempotent
+                          ? { 'idempotency-key': randomUUID() }
+                          : {}),
                         ...(requestBody
                           ? { 'content-type': 'application/json' }
                           : {}),
