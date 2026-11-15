@@ -1,4 +1,5 @@
 import { createServer, type Server } from 'node:http';
+import { mkdir, writeFile } from 'node:fs/promises';
 import {
   execFileSync,
   spawn,
@@ -9,6 +10,7 @@ import { once } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -31,6 +33,19 @@ const locationId = 'a1ed4218-6d13-4df0-ae43-3379c1e7f932';
 const enoughSku = 'GATEWAY-E2E-ENOUGH';
 const shortSku = 'GATEWAY-E2E-SHORT';
 const missingSku = 'GATEWAY-E2E-MISSING';
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
+const performanceOutput = resolve(
+  process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+);
+
+function percentile(values: number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
 
 async function unusedPort(): Promise<number> {
   const server = createServer();
@@ -195,8 +210,10 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
         securityMode: 'G7_AUTHENTICATED',
       };
       signed = createSignedIdentity(testSettings);
-      postgres = new Phase1Postgres();
+      postgres = new Phase1Postgres(performanceEnabled);
       await postgres.start();
+      if (performanceEnabled)
+        postgres.sql('CREATE EXTENSION pg_stat_statements;');
       const postgresVersion = postgres.sql('SHOW server_version_num;');
       if (!postgresVersion.startsWith('17'))
         throw new Error(
@@ -298,6 +315,214 @@ run('Gateway → Inventory HTTP real → PostgreSQL 17 (JWT RS256 fixture)', () 
     });
     expect(response.headers['x-correlation-id']).toBe(correlationId);
   });
+
+  it.skipIf(!performanceEnabled)(
+    'mide HTTP sostenido Gateway → Inventory → PostgreSQL con JWT firmado',
+    async () => {
+      const concurrencyLevels = [1, 8, 32] as const;
+      const warmupRequests = 10;
+      const samplesPerLevel = 200;
+      const rows: Array<Record<string, number | string>> = [];
+      const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
+      let failures = 0;
+      let timeouts = 0;
+      let recovery: Record<string, number | boolean> = {};
+      const url = `${gateway}${commercial}?skus=${enoughSku}&canal=MARKETPLACE`;
+      const requestUrlBytes = Buffer.byteLength(
+        new URL(url).pathname + new URL(url).search,
+      );
+      const authorization = `Bearer ${token('modulo-productos')}`;
+      const explainPlans = {
+        stockBalance: postgres.sql(
+          `EXPLAIN (FORMAT JSON) SELECT sku_id, on_hand, reserved, blocked FROM inventory.stock_balance WHERE sku_id='${enoughSku}' AND location_id='${locationId}';`,
+        ),
+        commercialRoute: postgres.sql(
+          `EXPLAIN (FORMAT JSON) SELECT routes.location_id FROM inventory.commercial_fulfillment_routes AS routes JOIN inventory.locations AS eligible_location ON eligible_location.id=routes.location_id AND eligible_location.active=true WHERE routes.channel_id='MARKETPLACE' AND routes.active=true LIMIT 2;`,
+        ),
+      };
+
+      for (const concurrency of concurrencyLevels) {
+        for (let index = 0; index < warmupRequests; index += 1) {
+          const response = await fetch(url, {
+            headers: { authorization },
+            signal: AbortSignal.timeout(5000),
+          });
+          await response.arrayBuffer();
+          if (!response.ok) throw new Error(`Warmup HTTP ${response.status}`);
+        }
+        postgres.sql('SELECT pg_stat_statements_reset();');
+
+        const latencies: number[] = [];
+        let responseBodyBytes = 0;
+        let levelFailures = 0;
+        let levelTimeouts = 0;
+        const started = performance.now();
+        for (let offset = 0; offset < samplesPerLevel; offset += concurrency) {
+          const batch = Array.from(
+            { length: Math.min(concurrency, samplesPerLevel - offset) },
+            async () => {
+              const requestStarted = performance.now();
+              try {
+                const response = await fetch(url, {
+                  headers: { authorization },
+                  signal: AbortSignal.timeout(5000),
+                });
+                const body = await response.arrayBuffer();
+                responseBodyBytes += body.byteLength;
+                if (!response.ok) {
+                  levelFailures += 1;
+                  failures += 1;
+                }
+              } catch (error) {
+                levelFailures += 1;
+                failures += 1;
+                if (
+                  error instanceof DOMException &&
+                  error.name === 'TimeoutError'
+                ) {
+                  levelTimeouts += 1;
+                  timeouts += 1;
+                }
+              } finally {
+                latencies.push(performance.now() - requestStarted);
+              }
+            },
+          );
+          await Promise.all(batch);
+        }
+        const durationMs = performance.now() - started;
+        const databaseCounters = JSON.parse(
+          postgres.sql(
+            `SELECT json_build_object(
+              'sqlCalls', COALESCE((SELECT sum(calls) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'sharedBlocksHit', COALESCE((SELECT sum(shared_blks_hit) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'sharedBlocksRead', COALESCE((SELECT sum(shared_blks_read) FROM pg_stat_statements WHERE dbid=(SELECT oid FROM pg_database WHERE datname=current_database()) AND query NOT LIKE '%pg_stat_statements%'),0),
+              'poolConnectionsObservedAfter', (SELECT count(*) FROM pg_stat_activity WHERE usename='inventory_gateway_e2e'),
+              'activeConnectionsObservedAfter', (SELECT count(*) FROM pg_stat_activity WHERE usename='inventory_gateway_e2e' AND state='active')
+            )::text;`,
+          ),
+        ) as Record<string, number>;
+        const httpRequests = samplesPerLevel;
+        rows.push({
+          service: 'Gateway → Inventory',
+          endpoint: 'GET /api/v1/inventario/disponibilidad/comercial',
+          evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+          variant,
+          concurrency,
+          warmupRequests,
+          samples: httpRequests,
+          p50Ms: Number(percentile(latencies, 0.5).toFixed(3)),
+          p95Ms: Number(percentile(latencies, 0.95).toFixed(3)),
+          p99Ms: Number(percentile(latencies, 0.99).toFixed(3)),
+          throughputRequestsPerSecond: Number(
+            ((httpRequests * 1000) / durationMs).toFixed(2),
+          ),
+          durationMs: Number(durationMs.toFixed(3)),
+          requestUrlBytes: requestUrlBytes * httpRequests,
+          requestBodyBytes: 0,
+          responseBodyBytes,
+          ...databaseCounters,
+          failures: levelFailures,
+          timeouts: levelTimeouts,
+          database: 'PostgreSQL 17 container; seeded 2 stock_balance rows',
+          bearer: 'RS256 signed isolated test service identity',
+          sqlInstrumentation:
+            'pg_stat_statements aggregate calls and shared-block counters reset per concurrency window',
+        });
+      }
+
+      execFileSync('docker', ['stop', '--time', '0', postgres.name], {
+        encoding: 'utf8',
+        timeout: 15000,
+        windowsHide: true,
+      });
+      const unavailable = await fetch(url, {
+        headers: { authorization },
+        signal: AbortSignal.timeout(5000),
+      });
+      await unavailable.arrayBuffer();
+      expect(unavailable.status).toBe(503);
+      execFileSync('docker', ['start', postgres.name], {
+        encoding: 'utf8',
+        timeout: 15000,
+        windowsHide: true,
+      });
+      await stop(inventory);
+      await startInventory();
+      const recoveryDeadline = Date.now() + 30000;
+      let recovered = false;
+      while (Date.now() < recoveryDeadline) {
+        try {
+          const response = await fetch(url, {
+            headers: { authorization },
+            signal: AbortSignal.timeout(1000),
+          });
+          await response.arrayBuffer();
+          if (response.status === 200) {
+            recovered = true;
+            break;
+          }
+        } catch {
+          // Poll the same read endpoint while PostgreSQL and the pool recover.
+        }
+        await delay(200);
+      }
+      expect(recovered).toBe(true);
+      recovery = {
+        databaseDownHttpStatus: unavailable.status,
+        requestRecoveredAfterRestart: recovered,
+      };
+
+      const report = {
+        schemaVersion: 1,
+        benchmark: 'gateway-inventory-http',
+        sha: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+        }).trim(),
+        variant,
+        processTopology: {
+          gateway: 'Nest HTTP app listening on loopback in Vitest process',
+          inventory: 'compiled Nest HTTP child process',
+          database: 'PostgreSQL 17 disposable Docker container',
+          rabbitMq: 'not used by this GET path',
+        },
+        measurement: {
+          transport:
+            'HTTP fetch through Gateway; bearer and query URL sent on every request',
+          requestBytes:
+            'request-target path and query bytes only; headers excluded',
+          responseBytes: 'response body bytes',
+          errorsAndTimeouts: 'counted per request',
+          explainPlans,
+          poolOccupancy:
+            'post-window pg_stat_activity snapshot; peak/active-time series not instrumented',
+          limitations:
+            'pg_stat_statements counters aggregate database SQL during the isolated window; per-request SQL attribution is not available.',
+        },
+        results: rows,
+        totals: { failures, timeouts },
+        recovery,
+      };
+      await mkdir(performanceOutput, { recursive: true });
+      await writeFile(
+        resolve(performanceOutput, `gateway-inventory-http-${variant}.json`),
+        `${JSON.stringify(report, null, 2)}\n`,
+      );
+      const csvHeader = Object.keys(rows[0] ?? {})
+        .map(csvCell)
+        .join(',');
+      const csvRows = rows.map((row) =>
+        Object.values(row).map(csvCell).join(','),
+      );
+      await writeFile(
+        resolve(performanceOutput, `gateway-inventory-http-${variant}.csv`),
+        `${[csvHeader, ...csvRows].join('\n')}\n`,
+      );
+      expect(failures).toBe(0);
+      expect(timeouts).toBe(0);
+    },
+    120000,
+  );
 
   it('POST autenticado devuelve los tres resultados comerciales sin alterar estado', async () => {
     const before = await snapshot();

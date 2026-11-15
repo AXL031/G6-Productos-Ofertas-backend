@@ -75,6 +75,8 @@ export class Phase1Postgres {
   port = '';
   private created = false;
 
+  constructor(private readonly collectQueryStats = false) {}
+
   private command(bin: string, args: string[], input?: string): string {
     const result = spawnSync(bin, args, {
       input,
@@ -158,7 +160,7 @@ export class Phase1Postgres {
       '-c',
       // mkdtemp is mode 0700 on Linux. Copy both files while entrypoint is root;
       // the postgres user cannot traverse the bind-mounted host directory.
-      'cp /certs/server.crt /tmp/server.crt && cp /certs/server.key /tmp/server.key && chown postgres:postgres /tmp/server.crt /tmp/server.key && chmod 600 /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key',
+      `cp /certs/server.crt /tmp/server.crt && cp /certs/server.key /tmp/server.key && chown postgres:postgres /tmp/server.crt /tmp/server.key && chmod 600 /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key${this.collectQueryStats ? ' -c shared_preload_libraries=pg_stat_statements' : ''}`,
     ]);
     this.created = true;
     const deadline = Date.now() + 30000;

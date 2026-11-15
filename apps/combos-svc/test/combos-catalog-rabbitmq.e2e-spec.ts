@@ -1,9 +1,11 @@
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { once } from 'node:events';
 import { createServer, type Server } from 'node:http';
 import { randomUUID, generateKeyPairSync, sign } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { performance } from 'node:perf_hooks';
 import type { AddressInfo } from 'node:net';
 import { Test } from '@nestjs/testing';
 import type { INestApplication } from '@nestjs/common';
@@ -40,6 +42,19 @@ const activeSku = 'SKU-CATALOG-ACTIVE-001';
 const inactiveSku = 'SKU-CATALOG-INACTIVE-001';
 const ineligibleBaseSku = 'SKU-CATALOG-INELIGIBLE-BASE';
 const opaqueSku = 'SKU /?%# ñ';
+const performanceEnabled = process.env.G6_PERFORMANCE_HTTP === '1';
+const performanceOutput = resolve(
+  process.env.G6_PERFORMANCE_OUTPUT ?? '.ci/performance',
+);
+
+function percentile(values: number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
+}
+
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
 const execPath = resolve(process.cwd(), 'dist/apps/catalog-svc/main.js');
 const pricingExecPath = resolve(process.cwd(), 'dist/apps/pricing-svc/main.js');
 
@@ -1085,6 +1100,229 @@ describe('Combos -> real Catalog + PostgreSQL 17/TLS + RabbitMQ isolated integra
     );
     const created = await create('E2E Pricing real', 40).expect(201);
     const comboId = String(created.body.combo_id);
+
+    if (performanceEnabled) {
+      await comboApp.listen(0, '127.0.0.1');
+      const variant = process.env.G6_PERFORMANCE_VARIANT ?? 'candidate';
+      const samplesPerLevel = 120;
+      const warmupRequests = 10;
+      const performanceRows: Array<Record<string, number | string>> = [];
+      const pricingToken = makeToken({ scope: 'precios:leer' });
+      const combosUrl = `${await comboApp.getUrl()}/api/v1/combos?pagina=1&tamanio=20`;
+      const pricingUrl = `${pricingBase}/skus/${encodeURIComponent(activeSku)}?at=${encodeURIComponent(at)}`;
+      const comboCount = Number(
+        (await admin.query('SELECT count(*)::int AS total FROM combos.combos'))
+          .rows[0]?.total ?? 0,
+      );
+      const pricingCount = Number(
+        (await admin.query('SELECT count(*)::int AS total FROM pricing.prices'))
+          .rows[0]?.total ?? 0,
+      );
+      const providerBackedCreate = {
+        nombre: 'Performance provider-backed combo',
+        componentes: [
+          { sku: activeSku, cantidad: 1 },
+          { sku: opaqueSku, cantidad: 1 },
+        ],
+        precioCombo: 40,
+      };
+      let totalFailures = 0;
+      let totalTimeouts = 0;
+
+      const targets: Array<{
+        service: string;
+        method: 'GET' | 'POST';
+        endpoint: string;
+        label: string;
+        bearer: string;
+        datasetRows: number;
+        body?: typeof providerBackedCreate;
+      }> = [
+        {
+          service: 'Combos',
+          method: 'GET' as const,
+          endpoint: combosUrl,
+          label: 'GET /api/v1/combos?pagina=1&tamanio=20',
+          bearer: humanToken,
+          datasetRows: comboCount,
+        },
+        {
+          service: 'Pricing',
+          method: 'GET' as const,
+          endpoint: pricingUrl,
+          label: `GET /api/v1/precios/skus/${activeSku}?at=<fixed-per-run>`,
+          bearer: pricingToken,
+          datasetRows: pricingCount,
+        },
+        {
+          service: 'Combos → Catalog + Pricing providers',
+          method: 'POST' as const,
+          endpoint: `${await comboApp.getUrl()}/api/v1/combos`,
+          label:
+            'POST /api/v1/combos (real Catalog/Pricing provider resolution)',
+          bearer: humanToken,
+          datasetRows: comboCount,
+          body: providerBackedCreate,
+        },
+      ];
+      for (const target of targets) {
+        for (const concurrency of [1, 8, 32] as const) {
+          for (let index = 0; index < warmupRequests; index += 1) {
+            const warmup = await fetch(target.endpoint, {
+              method: target.method,
+              headers: {
+                authorization: `Bearer ${target.bearer}`,
+                ...(target.body ? { 'content-type': 'application/json' } : {}),
+              },
+              ...(target.body ? { body: JSON.stringify(target.body) } : {}),
+              signal: AbortSignal.timeout(5000),
+            });
+            await warmup.arrayBuffer();
+            if (!warmup.ok)
+              throw new Error(`${target.service} warmup HTTP ${warmup.status}`);
+          }
+          const latencies: number[] = [];
+          let responseBodyBytes = 0;
+          let levelFailures = 0;
+          let levelTimeouts = 0;
+          const started = performance.now();
+          for (
+            let offset = 0;
+            offset < samplesPerLevel;
+            offset += concurrency
+          ) {
+            await Promise.all(
+              Array.from(
+                { length: Math.min(concurrency, samplesPerLevel - offset) },
+                async () => {
+                  const requestStarted = performance.now();
+                  try {
+                    const requestBody = target.body
+                      ? JSON.stringify({
+                          ...target.body,
+                          nombre: `${target.body.nombre} ${randomUUID()}`,
+                        })
+                      : undefined;
+                    const response = await fetch(target.endpoint, {
+                      method: target.method,
+                      headers: {
+                        authorization: `Bearer ${target.bearer}`,
+                        ...(requestBody
+                          ? { 'content-type': 'application/json' }
+                          : {}),
+                      },
+                      ...(requestBody ? { body: requestBody } : {}),
+                      signal: AbortSignal.timeout(5000),
+                    });
+                    const body = await response.arrayBuffer();
+                    responseBodyBytes += body.byteLength;
+                    if (!response.ok) {
+                      levelFailures += 1;
+                      totalFailures += 1;
+                    }
+                  } catch (error) {
+                    levelFailures += 1;
+                    totalFailures += 1;
+                    if (
+                      error instanceof DOMException &&
+                      error.name === 'TimeoutError'
+                    ) {
+                      levelTimeouts += 1;
+                      totalTimeouts += 1;
+                    }
+                  } finally {
+                    latencies.push(performance.now() - requestStarted);
+                  }
+                },
+              ),
+            );
+          }
+          const durationMs = performance.now() - started;
+          const measuredBodyBytes = target.body
+            ? Buffer.byteLength(
+                JSON.stringify({
+                  ...target.body,
+                  nombre: `${target.body.nombre} ${randomUUID()}`,
+                }),
+              )
+            : 0;
+          performanceRows.push({
+            service: target.service,
+            endpoint: target.label,
+            evidenceClass: 'HTTP_PROCESS_BENCHMARK',
+            variant,
+            concurrency,
+            warmupRequests,
+            samples: samplesPerLevel,
+            datasetRows: target.datasetRows,
+            p50Ms: Number(percentile(latencies, 0.5).toFixed(3)),
+            p95Ms: Number(percentile(latencies, 0.95).toFixed(3)),
+            p99Ms: Number(percentile(latencies, 0.99).toFixed(3)),
+            throughputRequestsPerSecond: Number(
+              ((samplesPerLevel * 1000) / durationMs).toFixed(2),
+            ),
+            durationMs: Number(durationMs.toFixed(3)),
+            requestUrlBytes:
+              Buffer.byteLength(
+                `${new URL(target.endpoint).pathname}${new URL(target.endpoint).search}`,
+              ) * samplesPerLevel,
+            requestBodyBytes: measuredBodyBytes * samplesPerLevel,
+            responseBodyBytes,
+            failures: levelFailures,
+            timeouts: levelTimeouts,
+            sqlCountsBuffersExplainPool:
+              'NOT_COLLECTED: harness does not instrument per-request SQL plans or pool usage',
+          });
+        }
+      }
+      await mkdir(performanceOutput, { recursive: true });
+      const report = {
+        schemaVersion: 1,
+        benchmark: 'combos-pricing-http',
+        sha: execFileSync('git', ['rev-parse', 'HEAD'], {
+          encoding: 'utf8',
+        }).trim(),
+        variant,
+        processTopology: {
+          combos: 'Nest HTTP app listening on loopback in Vitest process',
+          pricing: 'compiled Pricing Nest HTTP child process',
+          catalog:
+            'compiled Catalog Nest HTTP child process used by Combos integrations',
+          postgres: 'PostgreSQL 17 TLS disposable Docker container',
+          rabbitMq:
+            'RabbitMQ disposable container started by the isolated runner',
+        },
+        dataset:
+          'fixture products/prices; provider-backed write scenario creates disposable combos through real Catalog/Pricing HTTP providers',
+        measurement: {
+          requestBytes:
+            'request-target path and query bytes only; headers excluded',
+          responseBytes: 'response body bytes',
+          sqlQueryCount: 'not instrumented',
+          buffersAndExplain: 'not collected',
+          poolOccupancy: 'not instrumented',
+          failuresAndTimeouts: 'counted per request',
+          recovery:
+            'not exercised by this profile; service and dependency failure scenarios remain in isolated E2E suites',
+        },
+        totals: { failures: totalFailures, timeouts: totalTimeouts },
+        results: performanceRows,
+      };
+      await writeFile(
+        resolve(performanceOutput, `combos-pricing-http-${variant}.json`),
+        `${JSON.stringify(report, null, 2)}\n`,
+      );
+      const headers = Object.keys(performanceRows[0] ?? {})
+        .map(csvCell)
+        .join(',');
+      await writeFile(
+        resolve(performanceOutput, `combos-pricing-http-${variant}.csv`),
+        `${[headers, ...performanceRows.map((row) => Object.values(row).map(csvCell).join(','))].join('\n')}\n`,
+      );
+      expect(totalFailures).toBe(0);
+      expect(totalTimeouts).toBe(0);
+    }
+
     const stored = await admin.query(
       `SELECT c.currency, c.combo_price, c.version, count(i.id)::int AS items
          FROM combos.combos c JOIN combos.combo_items i ON i.combo_id = c.id

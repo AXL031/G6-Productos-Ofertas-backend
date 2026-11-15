@@ -24,6 +24,10 @@ function percentile(values: number[], ratio: number): number {
   return sorted[Math.max(0, Math.ceil(sorted.length * ratio) - 1)] ?? 0;
 }
 
+function csvCell(value: unknown): string {
+  return `"${String(value ?? '').replaceAll('"', '""')}"`;
+}
+
 describe('Pricing token issuer cold-start benchmark (signed test issuer)', () => {
   const identity = new SignedUser();
   let server: Server;
@@ -203,10 +207,14 @@ describe('Pricing token issuer cold-start benchmark (signed test issuer)', () =>
       resolve(outputRoot, 'pricing-token-benchmark.json'),
       `${JSON.stringify(report, null, 2)}\n`,
     );
-    const header = Object.keys(rows[0] ?? {}).join(',');
+    const header = Object.keys(rows[0] ?? {})
+      .map(csvCell)
+      .join(',');
     const csv =
-      [header, ...rows.map((row) => Object.values(row).join(','))].join('\n') +
-      '\n';
+      [
+        header,
+        ...rows.map((row) => Object.values(row).map(csvCell).join(',')),
+      ].join('\n') + '\n';
     await writeFile(resolve(outputRoot, 'pricing-token-benchmark.csv'), csv);
     expect(failures).toBe(0);
     expect(
