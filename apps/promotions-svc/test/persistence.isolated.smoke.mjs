@@ -209,7 +209,7 @@ try {
         'postgres:17-alpine',
         'sh',
         '-c',
-        'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key',
+        'cp /test-tls/server.key /tmp/server.key && cp /test-tls/server.crt /tmp/server.crt && chmod 600 /tmp/server.key && chmod 644 /tmp/server.crt && chown postgres /tmp/server.key && exec docker-entrypoint.sh postgres -c ssl=on -c ssl_cert_file=/tmp/server.crt -c ssl_key_file=/tmp/server.key -c shared_preload_libraries=pg_stat_statements',
       ],
       { POSTGRES_PASSWORD: password },
     );
@@ -230,6 +230,8 @@ try {
     connectionTimeoutMillis: 1000,
   });
   await ready(() => admin.query('SELECT 1'));
+  if (process.env.G6_PERFORMANCE_HTTP === '1')
+    await admin.query('CREATE EXTENSION IF NOT EXISTS pg_stat_statements');
   stage = 'official migrations in disposable database';
   await admin.query(
     'CREATE ROLE po_promotions_owner NOLOGIN; CREATE ROLE po_promotions_runtime NOLOGIN; CREATE SCHEMA promotions AUTHORIZATION po_promotions_owner',
@@ -691,7 +693,9 @@ try {
     { used: 1, customerUsed: 1 },
   );
   assert.deepEqual(
-    await persistence.read((repos) => repos.queries.couponUsage(coupon.id, null)),
+    await persistence.read((repos) =>
+      repos.queries.couponUsage(coupon.id, null),
+    ),
     { used: 1, customerUsed: 0 },
   );
   assert.equal(
@@ -739,7 +743,9 @@ try {
     )),
   );
   stage = 'HTTP queries and signed JWT with real PostgreSQL';
-  checks.push(...(await verifyHttpReadQueries(resources, runtimeConfig)));
+  checks.push(
+    ...(await verifyHttpReadQueries(resources, runtimeConfig, admin)),
+  );
   if (process.env.G6_PROMOTIONS_GATEWAY_E2E === 'true') {
     stage = 'native Gateway/Promotions flow with real PostgreSQL';
     // The provider suite closes its pool to verify 503. A new restricted pool
