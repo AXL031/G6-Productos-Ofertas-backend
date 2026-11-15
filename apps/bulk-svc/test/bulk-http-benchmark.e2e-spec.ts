@@ -236,7 +236,12 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
           .clone()
           .json()
           .catch(() => null);
-        if (health?.reason !== 'DATABASE_UNAVAILABLE') break;
+        if (
+          !['DATABASE_UNAVAILABLE', 'AMQP_TEMPORARY_UNAVAILABLE'].includes(
+            health?.reason,
+          )
+        )
+          break;
         await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
       }
       if (!readyResponse || readyResponse.status !== 200)
@@ -296,9 +301,11 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
             },
             body: form,
           });
-          await response.arrayBuffer();
+          const responseBody = await response.text();
           if (response.status !== 202)
-            throw new Error(`Bulk warmup HTTP ${response.status}`);
+            throw new Error(
+              `Bulk warmup HTTP ${response.status}: ${responseBody.slice(0, 512)}`,
+            );
         }
         await database!.query('SELECT pg_stat_statements_reset()');
         const latencies: number[] = [];
