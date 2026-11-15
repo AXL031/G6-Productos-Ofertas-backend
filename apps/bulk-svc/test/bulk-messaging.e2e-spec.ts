@@ -24,13 +24,13 @@ const integration =
 const id = () => randomUUID();
 const fingerprint = (value: unknown) =>
   createHash('sha256').update(JSON.stringify(value)).digest('hex');
+const replayInFlight = new Set<Promise<void>>();
 
 integration('bulk-svc disposable PostgreSQL 17 + RabbitMQ 4.2.9', () => {
   let pool: Pool;
   let repository: BulkPersistenceRepository;
   let broker: IsolatedBulkRabbitmq;
   let consumer: CatalogBulkResultConsumer;
-  const replayInFlight = new Set<Promise<void>>();
   let replayInvocationCount = 0;
 
   beforeAll(async () => {
