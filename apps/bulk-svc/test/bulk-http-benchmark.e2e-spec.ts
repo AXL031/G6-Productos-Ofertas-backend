@@ -188,6 +188,20 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
       setEnvironment('BULK_STORAGE_BUCKET', bucket);
       setEnvironment('SUPABASE_SERVICE_ROLE_KEY', storageKey);
       setEnvironment('SUPABASE_URL', `http://127.0.0.1:${storageAddress.port}`);
+      const runtimeDatabase = new Pool({ connectionString: appUrl, max: 1 });
+      try {
+        await runtimeDatabase.query('SELECT 1 FROM bulk.batch_jobs LIMIT 0');
+      } catch (error) {
+        const code =
+          error && typeof error === 'object' && 'code' in error
+            ? String(error.code)
+            : 'UNKNOWN';
+        throw new Error(
+          `Bulk benchmark role cannot read initialized schema (PostgreSQL ${code})`,
+        );
+      } finally {
+        await runtimeDatabase.end();
+      }
       const payload = (value: object) =>
         Buffer.from(JSON.stringify(value)).toString('base64url');
       const now = Math.floor(Date.now() / 1000);
@@ -204,13 +218,22 @@ GRANT USAGE ON ALL SEQUENCES IN SCHEMA bulk TO bulk_fixture_app;`,
       await app.listen(0, '127.0.0.1');
       endpoint = `${await app.getUrl()}/api/v1/carga-masiva/productos/importaciones`;
       csv = createValidBulkCsv('SKU-BULK-PERFORMANCE');
-      const readyResponse = await fetch(
-        `${await app.getUrl()}/health/readiness`,
-        { signal: AbortSignal.timeout(10000) },
-      );
-      if (readyResponse.status !== 200)
+      let readyResponse: Response | undefined;
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        readyResponse = await fetch(`${await app.getUrl()}/health/readiness`, {
+          signal: AbortSignal.timeout(10000),
+        });
+        if (readyResponse.status === 200) break;
+        const health = await readyResponse
+          .clone()
+          .json()
+          .catch(() => null);
+        if (health?.reason !== 'DATABASE_UNAVAILABLE') break;
+        await new Promise((resolveDelay) => setTimeout(resolveDelay, 250));
+      }
+      if (!readyResponse || readyResponse.status !== 200)
         throw new Error(
-          `Bulk benchmark dependencies not ready: ${readyResponse.status} ${await readyResponse.text()}`,
+          `Bulk benchmark dependencies not ready: ${readyResponse?.status ?? 'no response'} ${readyResponse ? await readyResponse.text() : ''}`,
         );
     }, 120000);
 
