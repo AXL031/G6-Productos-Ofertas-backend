@@ -1,0 +1,11 @@
+# Candidato H5 para Catalog
+
+El módulo `catalog-service-bus.ts` consume mediante Peek-Lock y completa tras el retorno del caso de uso de Catalog. El handler usa el Inbox existente. Fallas transitorias abandonan la entrega y validaciones del sobre se envían a DLQ. Un fallo al completar puede causar redelivery con la misma identidad. La autorización de Azure depende del permiso de escritura exclusivo sobre cada cola de origen. El atributo `producer` y los metadatos se cotejan como controles de integridad.
+
+El relay candidato materializa una entrega por cola en la misma transacción que el outbox cuando se llama a `enqueueCatalogDeliveries`. Los duplicados se resuelven por `(message_id, destination)`. `relayCatalogDelivery` confirma una sola entrega por intento y nunca actualiza `catalog.outbox.published_at`. El lease con token evita que un worker atrasado confirme la entrega de otro. La llamada de red ocurre después del commit del claim. Una respuesta ambigua conserva el mensaje y permite reintentar con el mismo ID. El índice parcial cubre el barrido de pendientes.
+
+La fábrica exige `MESSAGING_PROVIDER=AZURE_SERVICE_BUS` y `SERVICE_BUS_NAMESPACE_FQDN` y rechaza RabbitMQ habilitado en el mismo proceso. Es una frontera de composición para laboratorio. Aún hace falta integrar y aprobar el escritor exclusivo H5 y el arranque del worker antes de cualquier corte. El proceso Nest de H4 mantiene su inicialización vigente.
+
+La migración `0001_outbox_delivery.sql` requiere el schema y el rol `catalog_app` ya instalados. Está fuera de las migraciones H4. El modo de prueba `-IncludeH5` del script `docs/hito-4/probar-catalogo-postgres.ps1` la carga en una base descartable con PostgreSQL y TLS, y ejecuta el relay contra un emisor simulado. El retorno a H4 requiere congelar los escritores H5 y conciliar entregas por ID, Inbox y resultado de negocio antes de decidir el destino de los pendientes. Retener la tabla como evidencia hasta completar la conciliación.
+
+El candidato requiere colas preaprovisionadas, límites Basic verificados, identidad administrada, RBAC por cola y acuerdos de consumo. Los mensajes Bulk demasiado grandes requieren fragmentación semántica o claim-check antes de la activación. Una expiración en el broker requiere conciliación por ID original y autorización de replay.
