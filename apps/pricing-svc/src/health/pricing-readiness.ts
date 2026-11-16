@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { PricingServiceBusRuntime } from '../messaging/service-bus-relay.js';
 import { PricingDatabase } from '../persistence/pricing.database.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingOutboxRelay } from '../messaging/outbox-relay.js';
@@ -12,6 +13,9 @@ export class PricingReadiness {
     @Inject(PricingOutboxRelay) private readonly relay?: PricingOutboxRelay,
     @Inject(PricingInboxConsumer)
     private readonly consumer?: PricingInboxConsumer,
+    @Optional()
+    @Inject(PricingServiceBusRuntime)
+    private readonly serviceBus?: PricingServiceBusRuntime,
   ) {}
 
   check(): Promise<boolean> {
@@ -19,6 +23,8 @@ export class PricingReadiness {
       this.config.securityMode === 'PUBLIC_READ_ONLY' &&
       this.config.publicOperations.length > 0;
     if (!this.config.auth && !publicReadOnly) return Promise.resolve(false);
+    if (this.config.serviceBus && !this.serviceBus?.available)
+      return Promise.resolve(false);
     if (
       this.config.amqpUrl &&
       (!this.consumer?.available || !this.relay?.available)

@@ -16,12 +16,12 @@ import { PricingRepository } from '../persistence/pricing.repository.js';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import {
   inbox,
-  outbox,
   priceValidities,
   prices,
   scheduledPrices,
 } from '../persistence/pricing.schema.js';
 import { createPricingPriceChangedFacts } from './pricing-fact.js';
+import { insertPricingFacts } from './service-bus-deliveries.js';
 
 const BATCH_SIZE = 25;
 
@@ -341,7 +341,8 @@ export class PricingScheduleReconciler
           .returning({ id: scheduledPrices.id });
         if (!changed.length) continue;
         if (facts.length)
-          await tx.insert(outbox).values(
+          await insertPricingFacts(
+            tx,
             facts.map((fact) => ({
               ...fact,
               eventName: 'pricing.price.changed',
@@ -349,6 +350,7 @@ export class PricingScheduleReconciler
               schemaVersion: 1,
               occurredAt: now,
             })),
+            this.config.serviceBus !== undefined,
           );
         activated++;
       }

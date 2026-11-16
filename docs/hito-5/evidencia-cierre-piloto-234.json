@@ -1,0 +1,464 @@
+{
+  "date": "2026-11-16",
+  "issue": "https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/234",
+  "branch": "sb-piloto-234",
+  "officialBase": "48594fe708cf4a3fbc050612682e4211267daf96",
+  "scope": "ISOLATED_PILOT_ONLY",
+  "scopeDecision": "Mantener piloto aislado; no omitir consumidores",
+  "existingAcaMessagingActivated": false,
+  "rabbitMqRetired": false,
+  "ci": "PENDING_OFFICIAL_SHA",
+  "azureFullNest": {
+    "check": "AZURE_ISOLATED_PILOT",
+    "status": "PASS",
+    "sourceBundleSha256": "04edefaa99b16615ac750368d22c10728909abaa17ea0ee07e67afe26423dc26",
+    "completedChecks": [
+      {
+        "check": "MANAGED_IDENTITIES_AUTHENTICATED",
+        "status": "PASS",
+        "namespace": "g6-sb-test-261116-axl01.servicebus.windows.net",
+        "pricingClientId": "ba1aa40c-5a4e-4fe2-94fb-16c705d9f949",
+        "auditClientId": "f899f0e8-32e8-4617-b487-6ec010a9de9d"
+      },
+      {
+        "check": "RECEIVED_DATA_SECTION",
+        "status": "PASS",
+        "binaryBody": true,
+        "messageId": "4083da0b-33ae-4913-8ffa-c67bf2239284"
+      },
+      {
+        "check": "PRICING_AZURE_AUDIT_REDELIVERY",
+        "status": "PASS",
+        "messageId": "4083da0b-33ae-4913-8ffa-c67bf2239284",
+        "correlationId": "792d4700-ef45-4087-9841-39ebff23415a",
+        "auditEffects": 1,
+        "deliveryCount": 1
+      },
+      {
+        "check": "AUDIT_CANNOT_SEND",
+        "status": "PASS"
+      },
+      {
+        "check": "PRICING_CANNOT_RECEIVE",
+        "status": "PASS"
+      },
+      {
+        "check": "INVALID_MESSAGE_REAL_DLQ",
+        "status": "PASS",
+        "messageId": "9a23e961-af3a-4c60-a5b0-0ee1c2381cc2"
+      },
+      {
+        "check": "FULL_NEST_PRODUCTION_TLS_BOOT",
+        "status": "PASS",
+        "correlationId": "48521b43-670a-4f7d-b648-43d7772fe6ad",
+        "auditEffects": 1,
+        "realG7PositiveAuthentication": false
+      },
+      {
+        "check": "FULL_NEST_RESTART_SQL_RECOVERY",
+        "status": "PASS",
+        "correlationId": "d243551b-9bcb-4746-a170-f4b053fb8a29",
+        "auditEffects": 1,
+        "realG7PositiveAuthentication": false
+      },
+      {
+        "check": "DLQ_INVENTORY",
+        "status": "PASS",
+        "messages": [
+          {
+            "messageId": "69bda4a6-ea64-4626-be17-a70795b1eb04",
+            "reason": "INVALID_PRICING_CONTRACT",
+            "bodySha256": "719aa9dcce27423be6c8fbe20cf4bf270ee80c2804b9dab99c02b494b672d29d"
+          },
+          {
+            "messageId": "347e950c-8539-4d6d-bc01-71adfef2c8ae",
+            "reason": "INVALID_PRICING_CONTRACT",
+            "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          {
+            "messageId": "ab5e66e2-00e6-43ed-b92f-124598391316",
+            "reason": "INVALID_PRICING_CONTRACT",
+            "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          },
+          {
+            "messageId": "9a23e961-af3a-4c60-a5b0-0ee1c2381cc2",
+            "reason": "INVALID_PRICING_CONTRACT",
+            "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+          }
+        ]
+      }
+    ]
+  },
+  "dlqDisposition": {
+    "check": "REVIEWED_TEST_DLQ_DISPOSITION",
+    "status": "PASS",
+    "namespace": "g6-sb-test-261116-axl01.servicebus.windows.net",
+    "completed": [
+      "69bda4a6-ea64-4626-be17-a70795b1eb04",
+      "347e950c-8539-4d6d-bc01-71adfef2c8ae",
+      "ab5e66e2-00e6-43ed-b92f-124598391316",
+      "9a23e961-af3a-4c60-a5b0-0ee1c2381cc2"
+    ],
+    "archivedManifest": {
+      "namespace": "g6-sb-test-261116-axl01.servicebus.windows.net",
+      "messages": [
+        {
+          "messageId": "69bda4a6-ea64-4626-be17-a70795b1eb04",
+          "reason": "INVALID_PRICING_CONTRACT",
+          "bodySha256": "719aa9dcce27423be6c8fbe20cf4bf270ee80c2804b9dab99c02b494b672d29d"
+        },
+        {
+          "messageId": "347e950c-8539-4d6d-bc01-71adfef2c8ae",
+          "reason": "INVALID_PRICING_CONTRACT",
+          "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        {
+          "messageId": "ab5e66e2-00e6-43ed-b92f-124598391316",
+          "reason": "INVALID_PRICING_CONTRACT",
+          "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        },
+        {
+          "messageId": "9a23e961-af3a-4c60-a5b0-0ee1c2381cc2",
+          "reason": "INVALID_PRICING_CONTRACT",
+          "bodySha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+        }
+      ]
+    },
+    "sourceBundleSha256": "3e29bb606b9faa45e1f1203c0343afa67af924f4630a8d1e8e76d4f9dd996f29"
+  },
+  "queueAfterCleanup": {
+    "activeMessageCount": 0,
+    "deadLetterMessageCount": 0,
+    "scheduledMessageCount": 0,
+    "transferDeadLetterMessageCount": 0,
+    "transferMessageCount": 0
+  },
+  "sharedDatabase": {
+    "project": "slzglmtiyrzygpkiuthf",
+    "migrationVersion": "20261116171655",
+    "migrationName": "h5_pricing_outbox_delivery_pilot",
+    "owner": "po_pricing_owner",
+    "initialRows": 0,
+    "runtimeGrants": [
+      "SELECT",
+      "INSERT",
+      "UPDATE"
+    ],
+    "runtimeDelete": false,
+    "anonAccess": false,
+    "authenticatedAccess": false,
+    "authorization": "Explicit user exception recorded in issuecomment-6923579888",
+    "historicalMigrationsAltered": false
+  },
+  "monitoring": {
+    "alerts": [
+      {
+        "actions": [],
+        "enabled": true,
+        "name": "g6-sb-pilot-backlog",
+        "scopes": [
+          "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01"
+        ]
+      },
+      {
+        "actions": [],
+        "enabled": true,
+        "name": "g6-sb-pilot-dlq",
+        "scopes": [
+          "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01"
+        ]
+      }
+    ],
+    "sqlObservation": "ops/azure/service-bus/outbox-observation.sql",
+    "sqlSchedulerDeployed": false,
+    "externalRecipientsConfigured": false
+  },
+  "releasePreparation": {
+    "identity": {
+      "clientId": "ff7d3105-f344-4e95-b02f-b9969672cdfe",
+      "id": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourcegroups/rg-g6-sb-pilot-261116/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-g6-sb-pilot-release",
+      "principalId": "0cb4bc88-8c56-4827-a7a6-4f8fbdd15349"
+    },
+    "federation": [
+      {
+        "audiences": [
+          "api://AzureADTokenExchange"
+        ],
+        "issuer": "https://token.actions.githubusercontent.com",
+        "name": "github-pilot-234",
+        "subject": "repo:Taller-SW-Web/G6-Productos-Ofertas-backend:environment:azure-h5-pilot-234"
+      }
+    ],
+    "assignments": [
+      {
+        "roleDefinitionName": null,
+        "scope": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-aca-chile/providers/Microsoft.App/containerApps/pricing-svc"
+      },
+      {
+        "roleDefinitionName": null,
+        "scope": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-aca-chile/providers/Microsoft.App/containerApps/price-audit-svc"
+      }
+    ],
+    "roleDefinitionId": "f0fba235-a6d1-40b7-8a8b-17fee1e22439",
+    "githubEnvironment": {
+      "branch_policy": {
+        "custom_branch_policies": true,
+        "protected_branches": false
+      },
+      "name": "azure-h5-pilot-234",
+      "reviewers": [
+        {
+          "prevent_self_review": false,
+          "reviewers": [
+            "AXL031"
+          ]
+        }
+      ]
+    },
+    "existingAppsUpdated": false,
+    "sharedSmokeRunnerRegistered": false
+  },
+  "checks": {
+    "unit": {
+      "passed": 2627,
+      "skipped": 73
+    },
+    "e2e": {
+      "passed": 1053,
+      "skipped": 259
+    },
+    "focusedMessaging": {
+      "passed": 27
+    },
+    "nodeDeployment": {
+      "passed": 54
+    },
+    "exactCandidateNode": {
+      "passed": 25
+    },
+    "typecheck": "PASS",
+    "builds": [
+      "pricing-svc",
+      "price-audit-svc"
+    ],
+    "dockerBuilds": "PASS",
+    "lint": "PASS_FOUR_PREEXISTING_WARNINGS",
+    "format": "PASS",
+    "npmAuditProductionVulnerabilities": 0,
+    "actionlint": "PASS_1.7.12"
+  },
+  "limitations": [
+    "Single lab host can access both identities; not security isolation of production workloads",
+    "Positive G7 HTTP authentication was not claimed",
+    "No shared cutover; other event consumers preserved",
+    "Lab databases are disposable; Supabase DDL was verified independently",
+    "Alerts have no external recipients; SQL observation has no production scheduler",
+    "Official commit/PR/CI receipt is recorded separately to avoid self-referential source hashes"
+  ],
+  "files": [
+    {
+      "path": ".github/workflows/cd-services-azure.yml",
+      "sha256": "74b05470a2d1281ed3a82f89020143559ba07263db5307acdc1592d5829241b9"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "sha256": "784f439fae3deadefbbb350d42bd28007fde9b2c2b7c946d16e665fab3fd1895"
+    },
+    {
+      "path": "apps/price-audit-svc/src/config/environment.ts",
+      "sha256": "e2fd022dac95809b91b7be163ca7914c459b5e74a11771e95376fbb8c1ebdca2"
+    },
+    {
+      "path": "apps/price-audit-svc/src/health/audit-readiness.ts",
+      "sha256": "a5e9ae7d872ec37acfe2a23b8960300a8748a6d7845faa3bb1173318ebad5c24"
+    },
+    {
+      "path": "apps/price-audit-svc/src/logging/safe-logger.ts",
+      "sha256": "57e443d348ab95f4053266f87fe565bf426de7bebf9662dcc67dac4838b087e5"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-consumer.ts",
+      "sha256": "3f1c7a1023cafffcc4806251a7cd93527e849bc0c9cb49e08eaf1ac8a97ba755"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-envelope.ts",
+      "sha256": "086be8f5812f46cb0ab7f275359da3430f054ee7804a8e9a300547e57d72267d"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-config.ts",
+      "sha256": "33b57ee6f7bcec29f2af594976ca631bd1ee65952f7fa36b1c77699624dd0eef"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-consumer.ts",
+      "sha256": "e36a97c816d2f0db4ce08e50759d2ab85abbd0bb38f0b2f0fc624fefab7a70ad"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "4796ce5b06eb352ce85b8b5eb8f1778a23766b15e1a35b19c3a90736c8ec8e6a"
+    },
+    {
+      "path": "apps/price-audit-svc/src/persistence/audit.repository.ts",
+      "sha256": "113a5359f7e8746de5444a3f629b8fb81e5c7a1ff9ba282cac70521ae99b991e"
+    },
+    {
+      "path": "apps/price-audit-svc/src/price-audit-svc.module.ts",
+      "sha256": "41a5c54fb74b5ef7badcc1f82f373ee931e05e0fc0cf8b20e2a192ab6278faee"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/0001_outbox_delivery.sql",
+      "sha256": "1a3c365c7953da0b70ed4977c8c237a5040522c4effd98bfe35bed0e1b5b58be"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/README.md",
+      "sha256": "737111233ab3e3dcdba40d088cc747b6cbe7a31570b2ce0ee4a1ad403f8fb061"
+    },
+    {
+      "path": "apps/pricing-svc/src/application/pricing-mutations.ts",
+      "sha256": "b3258ad06e168a1e9e320461f44f9a4fce1220dbfbc18bd11026cb9545fb9dec"
+    },
+    {
+      "path": "apps/pricing-svc/src/config/environment.ts",
+      "sha256": "74243d7c32d360e28b20fd68872fe771369a32e4934a3506d4d35876261eb3c1"
+    },
+    {
+      "path": "apps/pricing-svc/src/health/pricing-readiness.ts",
+      "sha256": "aa9e2ae7e1e1a858af44a01fb248abc8eade3e19250648a9f13306581ecde0e1"
+    },
+    {
+      "path": "apps/pricing-svc/src/logging/safe-logger.ts",
+      "sha256": "979f0b356cb62444541034d251ded0e718ecc42aa8e8da127370d3c4af9e5f6e"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/pricing-initialization.ts",
+      "sha256": "b00af2285fd30ddd3679bd6c5ad8a31c3c16d50cc85305a12f8d9ee1eb370834"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/schedule-reconciler.ts",
+      "sha256": "7ffad6ad3faa7a92a4c991f016002c4b56be19a4e659ae2a6e9be53c97813fa0"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-config.ts",
+      "sha256": "6a2cf4ed2aa495c765afabbcf4e7422b27c83d58f6ef38e30ab917b6ff3a6f9b"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-deliveries.ts",
+      "sha256": "7ec79385f38fbfd63b398e56c87cac7bbc1c127522d121931d7551f729b84f28"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-relay.ts",
+      "sha256": "74976c0141057bcba1bccf66c9e6834fd802415cb602c61e880b920fe6aeb93c"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "5fdf7e7f504587e79916aeddaf321e9a91df95d89eadbb44afdbc0582107ad09"
+    },
+    {
+      "path": "apps/pricing-svc/src/pricing-svc.module.ts",
+      "sha256": "f973a4584b1abb16451d9c4446b9ab02e41849b76e487a447918e7aa4d2da933"
+    },
+    {
+      "path": "ops/azure/container-apps/phase3-preflight.mjs",
+      "sha256": "a4629aa26d0bcdec677302fbb18f1e0080eab12370e48a0f1f596c41a8a34725"
+    },
+    {
+      "path": "ops/azure/container-apps/phase3-preflight.test.mjs",
+      "sha256": "1006f9fcc1551336faf86aad4a396577095b8269a2d6e71ef56364bfed0ae2e8"
+    },
+    {
+      "path": "ops/azure/container-apps/render-deployment.mjs",
+      "sha256": "94f2ea02ea88464cdf29f0126ec64868c7b7c9ba7217d1d743596b2fcb613a8e"
+    },
+    {
+      "path": "ops/azure/container-apps/render-deployment.test.mjs",
+      "sha256": "3e9ce28d5445f65b939dc9f9c7175b987ddeb11de6267b4565ae283757dce713"
+    },
+    {
+      "path": "ops/azure/container-apps/tests/verify-environment-protection.test.sh",
+      "sha256": "a199135d336eca8c0c7633f2902471cf3653694e4ed48496f93c8df3b855cfa4"
+    },
+    {
+      "path": "ops/azure/container-apps/tests/workflow.test.sh",
+      "sha256": "40555c7e2eed39837a52bd5ad0a1859fe6fd907e610d4fcbd239c3a58475108a"
+    },
+    {
+      "path": "ops/azure/container-apps/verify-environment-protection.sh",
+      "sha256": "e87d77d4f96fd608661d5bf7cc49b1a87913d014c39b1a2deee2a6568171e94a"
+    },
+    {
+      "path": "ops/azure/service-bus/CLOUD_PILOT.md",
+      "sha256": "12dd5268478f023792ac0c713e8b27bf43f17450b09bd247a9e88f9696f4f332"
+    },
+    {
+      "path": "ops/azure/service-bus/README.md",
+      "sha256": "3eca062667004b475b2c4a30215b07393da73cf24837b0e8a64101a73ac911d1"
+    },
+    {
+      "path": "ops/azure/service-bus/aca-pilot.mjs",
+      "sha256": "3cfa3a8c7409c5ce4ab9e4253d089a3bb282e9d11f5669ea697f5728ba7acd5d"
+    },
+    {
+      "path": "ops/azure/service-bus/aca-pilot.test.mjs",
+      "sha256": "3d9c2ea4e9793d469ececf266d427d2ec9e31d33ff4ce2256d2218c63da39eb6"
+    },
+    {
+      "path": "ops/azure/service-bus/cloud-bootstrap.cjs",
+      "sha256": "fdf85ab332ab09ee9c8d6d9d67c041ab6ad2622ae70dd1139033a393d232e838"
+    },
+    {
+      "path": "ops/azure/service-bus/cloud-runner.mjs",
+      "sha256": "6ab69b7c310c24f100121e0e615c8cb225fb19c85fda66464435238b216c9a60"
+    },
+    {
+      "path": "ops/azure/service-bus/isolated-infrastructure.bicep",
+      "sha256": "470649b51c87ea20cf9c79899aabe305e93df9ce21940ff48069178a9ed6da77"
+    },
+    {
+      "path": "ops/azure/service-bus/isolated-runner.bicep",
+      "sha256": "d27cc1599ccbecc4a745c5c2631ebb6d2f528064335e8d98f78824e17e134ed4"
+    },
+    {
+      "path": "ops/azure/service-bus/main.bicep",
+      "sha256": "f3f537b8d741eb42956173421a1d3f1a4ecfc46990368a5893cc3bc75af0557b"
+    },
+    {
+      "path": "ops/azure/service-bus/monitoring.bicep",
+      "sha256": "1df3966384d3c295c045217803fa85e42d711b8dc1c30e14cb21da6ba5e92521"
+    },
+    {
+      "path": "ops/azure/service-bus/outbox-observation.sql",
+      "sha256": "fd9518aa91378268df206b2d94e3eb436d61c216d8486690e7fa4fe1475776ce"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot-route.json",
+      "sha256": "108c3b2ab1f74d5cd92854dc0bc0a7dcc2b146da1de87cc62cdddcec27c0c099"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.azure.e2e-spec.ts",
+      "sha256": "a3acbe6b9f50fcf0e1787e21139cefeb28fdb202cf2854a085fec1f7cb3a3ac1"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.postgres.e2e-spec.ts",
+      "sha256": "6f480c484e3d90d4f3e13eeee8fe44513cbf1149f2b71f4366d872bd54d5005b"
+    },
+    {
+      "path": "ops/azure/service-bus/prepare-cloud-bundle.mjs",
+      "sha256": "ed67a023a78e0a6b7ffc3cd7ae76a0c49ff6130eebebd4a989f574747ac335e9"
+    },
+    {
+      "path": "ops/azure/service-bus/prepare-cloud-parameters.mjs",
+      "sha256": "2b40754a7602a1a3e33d3cebe05ffc83a1a7e09cfe99e3f44b1cadb97385d2a8"
+    },
+    {
+      "path": "ops/azure/service-bus/runtime.env.example",
+      "sha256": "6605645abbfc5222a87da6016204da68f6ffe097d7a6e72d0efbaf36991667d6"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.mjs",
+      "sha256": "64c631a3250335d82d0cfc9395bfd201bfc4c62919b66f2e49bcb3c5caee51cd"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.test.mjs",
+      "sha256": "540aede47e72dd1c3275fada6f102033f147eef433444342cf42dcaddd2099cc"
+    }
+  ]
+}

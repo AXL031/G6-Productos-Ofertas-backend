@@ -1,6 +1,8 @@
 import { selectHistoricalValidity } from '../domain/historical-price.js';
 import { createHash } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
+import { insertPricingFacts } from './service-bus-deliveries.js';
 import {
   and,
   asc,
@@ -125,7 +127,10 @@ function semanticIntent(data: Record<string, unknown>, rawAmount?: string) {
 
 @Injectable()
 export class PricingProductInitialization {
-  constructor(private readonly repository: PricingRepository) {}
+  constructor(
+    private readonly repository: PricingRepository,
+    @Optional() @Inject(PRICING_CONFIG) private readonly config?: PricingConfig,
+  ) {}
 
   async consume(raw: Buffer): Promise<'APPLIED' | 'DUPLICATE' | 'REJECTED'> {
     const rawText = raw.toString('utf8');
@@ -456,7 +461,8 @@ export class PricingProductInitialization {
             operationId: message.operation_id,
           },
         );
-        await tx.insert(outbox).values(
+        await insertPricingFacts(
+          tx,
           facts.map((fact) => ({
             ...fact,
             messageId: deterministicUuid(
@@ -468,6 +474,7 @@ export class PricingProductInitialization {
             schemaVersion: 1,
             occurredAt: new Date(message.occurred_at),
           })),
+          this.config?.serviceBus !== undefined,
         );
         await this.insertInbox(tx, message, savedPayload, 'APPLIED');
         await this.insertResult(

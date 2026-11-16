@@ -1,5 +1,5 @@
 import { connectPrivateAmqps } from '../private-amqps.js';
-import { validAuditTimestamp } from '../domain/audit-timestamp.js';
+import { decodeAuditEnvelope } from './audit-envelope.js';
 import {
   Inject,
   Injectable,
@@ -16,7 +16,7 @@ import {
 } from 'amqplib';
 import { PRICE_AUDIT_CONFIG, type AuditConfig } from '../config/environment.js';
 import { AuditRepository } from '../persistence/audit.repository.js';
-import { uuid, validateChange, type AuditChange } from '../domain/audit.js';
+import { validateChange, type AuditChange } from '../domain/audit.js';
 import {
   AuditHttpError,
   AuditPersistenceError,
@@ -27,55 +27,8 @@ export type AuditPriceChangeDecoder = (
   data: Record<string, unknown>,
   occurredAt: Date,
 ) => AuditChange[];
-function record(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
 export function decodeEnvelope(message: ConsumeMessage) {
-  if (
-    message.content.length > 1024 * 1024 ||
-    message.properties.contentType !== 'application/json'
-  )
-    throw new AuditHttpError(400, 'VALIDACION');
-  let body: unknown;
-  try {
-    body = JSON.parse(
-      new TextDecoder('utf-8', { fatal: true }).decode(message.content),
-    );
-  } catch {
-    throw new AuditHttpError(400, 'VALIDACION');
-  }
-  if (
-    !record(body) ||
-    body.name !== 'pricing.price.changed' ||
-    body.producer !== 'pricing-svc' ||
-    body.kind !== 'event' ||
-    body.schema_version !== 1 ||
-    typeof body.message_id !== 'string' ||
-    !uuid.test(body.message_id) ||
-    typeof body.correlation_id !== 'string' ||
-    !uuid.test(body.correlation_id) ||
-    !validAuditTimestamp(body.occurred_at) ||
-    !record(body.data) ||
-    (body.operation_id !== undefined &&
-      body.operation_id !== null &&
-      (typeof body.operation_id !== 'string' ||
-        !uuid.test(body.operation_id))) ||
-    (body.causation_id !== undefined &&
-      body.causation_id !== null &&
-      typeof body.causation_id !== 'string') ||
-    (message.properties.messageId !== undefined &&
-      message.properties.messageId !== body.message_id) ||
-    (message.properties.correlationId !== undefined &&
-      message.properties.correlationId !== body.correlation_id)
-  )
-    throw new AuditHttpError(400, 'VALIDACION');
-  return {
-    id: body.message_id,
-    correlationId: body.correlation_id,
-    payload: body,
-    data: body.data,
-    occurredAt: new Date(body.occurred_at),
-  };
+  return decodeAuditEnvelope(message.content, message.properties);
 }
 @Injectable()
 export class AuditConsumer

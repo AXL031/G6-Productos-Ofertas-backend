@@ -2,10 +2,15 @@ import { readFileSync } from 'node:fs';
 import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
+import {
+  readPricingServiceBus,
+  type PricingServiceBusConfig,
+} from '../messaging/service-bus-config.js';
 
 export const PRICING_CONFIG = Symbol('PRICING_CONFIG');
 
 export interface PricingConfig {
+  serviceBus?: PricingServiceBusConfig;
   securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   publicOperations: readonly string[];
   nodeEnv: 'development' | 'test' | 'production';
@@ -32,6 +37,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       'NODE_ENV debe ser development, test o production.',
     );
   }
+  const serviceBus = readPricingServiceBus(env);
   const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
   if (
     !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
@@ -255,11 +261,12 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): PricingConfig {
       ? undefined
       : validateAmqpUrl(env.PRICING_AMQP_URL, nodeEnv);
   const priceChangedPublishingEnabled = priceChangedFlag === 'true';
-  if (priceChangedPublishingEnabled && !amqpUrl)
+  if (priceChangedPublishingEnabled && !amqpUrl && !serviceBus)
     throw new InvalidPricingConfig(
       'La publicación de cambios de precio requiere PRICING_AMQP_URL.',
     );
   return {
+    ...(serviceBus ? { serviceBus } : {}),
     securityMode: securityMode as PricingConfig['securityMode'],
     publicOperations: Object.freeze(publicOperations),
     nodeEnv,

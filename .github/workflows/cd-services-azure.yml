@@ -21,8 +21,16 @@ name: CD Azure Container Apps H5
         description: SHA completo que debe coincidir con el HEAD vigente de master y tener CI exitosa
         required: true
         type: string
+      pilot_self_review:
+        description: Excepcion explicita #234, solo Pricing o Price Audit
+        required: true
+        type: boolean
+        default: false
 
 permissions: {}
+env:
+  H5_DEPLOY_ENVIRONMENT: ${{ inputs.pilot_self_review && 'azure-h5-pilot-234' || 'azure-h5' }}
+  H5_PILOT_SERVICE: ${{ inputs.service }}
 concurrency:
   group: g6-azure-h5-${{ github.repository }}
   cancel-in-progress: false
@@ -70,10 +78,18 @@ jobs:
           REQUESTED_SERVICE: ${{ inputs.service }}
         run: bash ops/azure/container-apps/validate-source.sh "$SOURCE_MODE" "${REQUESTED_SERVICE:-automatic}" "$SOURCE_SHA"
 
+      - name: Delimitar excepcion de autoaprobacion del piloto
+        if: inputs.pilot_self_review
+        run: |
+          case "$H5_PILOT_SERVICE" in
+            pricing-svc|price-audit-svc) ;;
+            *) echo 'PILOT_SELF_REVIEW_SCOPE_REJECTED' >&2; exit 1 ;;
+          esac
+
       - name: Preflight read-only de protección azure-h5 antes de publicar
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY" "$H5_DEPLOY_ENVIRONMENT" "$H5_PILOT_SERVICE"
 
       - name: Registrar origen y selección
         env:
@@ -286,7 +302,7 @@ jobs:
     needs: [prepare, publish]
     if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
     runs-on: ubuntu-latest
-    environment: azure-h5
+    environment: ${{ inputs.pilot_self_review && 'azure-h5-pilot-234' || 'azure-h5' }}
     concurrency:
       group: g6-azure-h5-${{ github.repository }}-azure-h5-${{ matrix.service }}
       cancel-in-progress: false
@@ -336,7 +352,7 @@ jobs:
       - name: Revalidar reglas reales del environment inmediatamente antes de OIDC
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY" "$H5_DEPLOY_ENVIRONMENT" "$H5_PILOT_SERVICE"
 
       - name: Autenticar en Azure mediante OIDC
         uses: azure/login@v2
@@ -376,7 +392,7 @@ jobs:
     needs: [prepare, deploy]
     if: needs.prepare.outputs.sha != '' && needs.prepare.outputs.services != ''
     runs-on: [self-hosted, linux, azure-h5-smoke]
-    environment: azure-h5
+    environment: ${{ inputs.pilot_self_review && 'azure-h5-pilot-234' || 'azure-h5' }}
     permissions:
       contents: read
     strategy:
@@ -426,7 +442,7 @@ jobs:
     needs: [prepare, deploy, smoke]
     if: always() && needs.prepare.outputs.sha != '' && (needs.deploy.result == 'failure' || needs.smoke.result == 'failure')
     runs-on: ubuntu-latest
-    environment: azure-h5
+    environment: ${{ inputs.pilot_self_review && 'azure-h5-pilot-234' || 'azure-h5' }}
     permissions:
       actions: read
       contents: read
@@ -447,7 +463,7 @@ jobs:
       - name: Revalidar reglas reales del environment inmediatamente antes de OIDC para recuperación
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY"
+        run: bash ops/azure/container-apps/verify-environment-protection.sh "$GITHUB_REPOSITORY" "$H5_DEPLOY_ENVIRONMENT" "$H5_PILOT_SERVICE"
       - name: Autenticar en Azure mediante OIDC para recuperación
         uses: azure/login@v2
         with:

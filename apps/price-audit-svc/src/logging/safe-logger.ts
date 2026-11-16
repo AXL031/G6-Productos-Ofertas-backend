@@ -8,12 +8,14 @@ const MESSAGES = new Set([
   'Exportaciones de auditoría temporalmente no disponibles.',
   'AMQP de auditoría temporalmente no disponible.',
   'Consumo de auditoría pausado por mensaje incompatible.',
+  'SERVICE_BUS_AUDIT_RECOVERY_PENDING',
 ]);
 const CONTEXTS = new Set([
   'Bootstrap',
   'AuditReadiness',
   'AuditDatabase',
   'AuditConsumer',
+  'AuditServiceBusRuntime',
   'AuditFileExportWorker',
   'NestFactory',
   'NestApplication',

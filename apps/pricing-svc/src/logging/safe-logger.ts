@@ -6,12 +6,14 @@ const MESSAGES = new Set([
   'No se pudo iniciar pricing-svc.',
   'Conexión PostgreSQL inactiva no disponible.',
   'Publicación AMQP de Pricing pendiente de recuperación.',
+  'SERVICE_BUS_PRICING_PENDING',
 ]);
 const CONTEXTS = new Set([
   'Bootstrap',
   'PricingReadiness',
   'PricingDatabase',
   'PricingOutboxRelay',
+  'PricingServiceBusRuntime',
   'NestFactory',
   'NestApplication',
 ]);
