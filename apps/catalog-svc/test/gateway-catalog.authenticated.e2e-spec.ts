@@ -263,7 +263,7 @@ describe('Issue #50 authenticated real Gateway → real Catalog (cryptographic f
     `/productos/${product}/variantes?pagina=1&pagina=2`,
     `/productos/${product}/variantes/not-a-uuid`,
   ])(
-    'records the Gateway route defect: variant read 400 VALIDACION is not admitted at %s',
+    'preserves variant read 400 VALIDACION through Gateway at %s',
     async (path) => {
       const direct = await harness.call(
         'GET',
@@ -275,8 +275,11 @@ describe('Issue #50 authenticated real Gateway → real Catalog (cryptographic f
       expect(direct.status).toBe(400);
       expect(direct.body.code).toBe('VALIDACION');
       const proxied = await harness.call('GET', path);
-      expect(proxied.status).toBe(503);
-      expect(proxied.body.code).toBe('SERVICIO_NO_DISPONIBLE');
+      expect(proxied.status).toBe(400);
+      expect(proxied.body).toMatchObject({
+        code: 'VALIDACION',
+        correlationId: harness.correlation,
+      });
     },
   );
 

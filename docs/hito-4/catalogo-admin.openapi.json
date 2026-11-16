@@ -730,6 +730,10 @@
               "type": "string"
             },
             "description": "Selección persistida por producto para identificar variantes. Una lista vacía indica que Catálogo aún no tiene selección para el producto."
+          },
+          "elegibleCorreccionTipo": {
+            "type": "boolean",
+            "description": "Confirma las precondiciones estructurales de Q-06 en el snapshot leído. El PATCH revalida versión y Taxonomía."
           }
         }
       },

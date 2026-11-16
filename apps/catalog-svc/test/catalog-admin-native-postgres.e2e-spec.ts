@@ -46,6 +46,7 @@ describe.runIf(process.env.CATALOG_H4_NATIVE_POSTGRES === '1')(
       const detail = await harness.call('GET', adminPath, undefined, manager);
       expect(detail.status).toBe(200);
       expect(detail.body).toMatchObject({
+        elegibleCorreccionTipo: true,
         productId,
         skuBase: sku,
         estado: 'BORRADOR',

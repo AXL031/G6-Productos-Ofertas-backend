@@ -1838,6 +1838,11 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
         codes: [],
         headers: [],
       },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
+        headers: [],
+      },
       '401': {
         types: ['application/problem+json'],
         codes: ['TOKEN_INVALIDO'],
@@ -1954,6 +1959,11 @@ export const CONTRACT_ROUTES: readonly ContractRoute[] = [
       '200': {
         types: ['application/json'],
         codes: [],
+        headers: [],
+      },
+      '400': {
+        types: ['application/problem+json'],
+        codes: ['VALIDACION'],
         headers: [],
       },
       '401': {

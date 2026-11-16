@@ -368,6 +368,17 @@ export class CatalogQueryRepository {
             .from(products)
             .where(eq(products.id, productId));
           if (!product) return null;
+          const structurallyEligible =
+            product.estado === 'BORRADOR' &&
+            !product.tiene_variantes &&
+            product.publicado_alguna_vez === false;
+          const [child] = structurallyEligible
+            ? await tx
+                .select({ id: variants.id })
+                .from(variants)
+                .where(eq(variants.product_id, product.id))
+                .limit(1)
+            : [];
           const imagenes = await tx
             .select({
               url: productImages.url,
@@ -408,6 +419,7 @@ export class CatalogQueryRepository {
             .where(eq(skuIdentity.product_id, product.id));
           return {
             ...adminProductSummary(product),
+            elegibleCorreccionTipo: structurallyEligible && !child,
             imagenes,
             atributos,
             caracteristicasIdentificadoras: identifying.map((row) => row.id),
