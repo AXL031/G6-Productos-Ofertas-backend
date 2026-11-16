@@ -2,7 +2,8 @@ param(
   [Parameter(Mandatory)] [string]$PostgresBin,
   [string]$OpenSsl = 'openssl',
   [string]$Psql,
-  [string]$CombosBaselineMigration
+  [string]$CombosBaselineMigration,
+  [switch]$IncludeH5
 )
 
 $ErrorActionPreference = 'Stop'
@@ -75,6 +76,17 @@ SET ROLE po_catalog_owner;
   $env:CATALOG_H4_NATIVE_POSTGRES = '1'
   npm.cmd run test:e2e -- --maxWorkers=1 apps/catalog-svc/test/catalog-admin-native-postgres.e2e-spec.ts
   Assert-FixtureCommand 'Catálogo H4 PostgreSQL'
+  if ($IncludeH5) {
+    $env:PGPASSWORD = $bootstrapPassword
+    @"
+SET ROLE po_catalog_owner;
+\i apps/catalog-svc/migrations-candidate/h5/0001_outbox_delivery.sql
+"@ | & $Psql -X -h 127.0.0.1 -p $port -U postgres -d h4_catalog_isolated -v ON_ERROR_STOP=1 -q
+    Assert-FixtureCommand 'Migración candidata H5 en PostgreSQL descartable'
+    $env:PGPASSWORD = $runtimePassword
+    npm.cmd run test:e2e -- --maxWorkers=1 apps/catalog-svc/test/catalog-service-bus-relay.postgres.e2e-spec.ts
+    Assert-FixtureCommand 'Relay H5 PostgreSQL'
+  }
   if ($CombosBaselineMigration) {
     $env:PGPASSWORD = $bootstrapPassword
     $env:PGSSLMODE = 'require'
