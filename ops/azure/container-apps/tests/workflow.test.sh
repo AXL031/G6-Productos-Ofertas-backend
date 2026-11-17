@@ -4,9 +4,10 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../../.." && pwd)"
 WORKFLOW="$ROOT/.github/workflows/cd-services-azure.yml"
 CI_WORKFLOW="$ROOT/.github/workflows/ci.yml"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
-for required in 'workflow_dispatch:' 'environment: azure-h5' 'id-token: write' 'cancel-in-progress: false' 'max-parallel: 1' 'packages: write' 'azure/login@v2' 'container-apps/deploy.sh' 'smoke-service.sh' 'reconcile-recovery.sh' 'g6-azure-h5-' 'publish-g6-ghcr-' 'ops/shared/ensure-ghcr-sha-image.sh'; do
+for required in 'workflow_dispatch:' 'azure-h5-pilot-234' 'PILOT_SELF_REVIEW_SCOPE_REJECTED' 'id-token: write' 'cancel-in-progress: false' 'max-parallel: 1' 'packages: write' 'azure/login@v2' 'container-apps/deploy.sh' 'smoke-service.sh' 'reconcile-recovery.sh' 'g6-azure-h5-' 'publish-g6-ghcr-' 'ops/shared/ensure-ghcr-sha-image.sh'; do
   grep -Fq "$required" "$WORKFLOW" || fail "falta $required"
 done
+grep -Fq "|| 'azure-h5'" "$WORKFLOW" || fail 'falta el environment normal por defecto'
 if grep -Eq '^[[:space:]]+workflow_run:' "$WORKFLOW"; then fail 'CD no debe desplegar automáticamente'; fi
 if grep -Fq 'ops/oracle/' "$WORKFLOW"; then fail 'CD Azure conserva dependencia operativa Oracle'; fi
 grep -Fq "github.repository == 'Taller-SW-Web/G6-Productos-Ofertas-backend'" "$WORKFLOW" || fail 'repositorio oficial no fijado'

@@ -1,0 +1,223 @@
+{
+  "date": "2026-11-16",
+  "branch": "cueva",
+  "baseSha": "8bf6b6ecf3e60730c945fe707769f95ffa450a8e",
+  "implementationCommit": null,
+  "docsSha": "f77c442485203695a5e877fce188a4d249c129fb",
+  "status": "PARTIAL",
+  "authorization": "Explicit user exception for Pricing/Audit/SB-01 and the local issue, 2026-11-16",
+  "dependencyVersions": {
+    "@azure/service-bus": "7.10.0",
+    "@azure/identity": "4.14.1"
+  },
+  "checks": {
+    "unitGeneral": {
+      "status": "PASS",
+      "passed": 2621,
+      "skipped": 73,
+      "log": "logs/service-bus-2026-11-16/unit-final.txt",
+      "note": "Before final Inbox-content comparison; that change was checked with SQL/HTTP tests and typecheck/build afterward."
+    },
+    "e2eGeneral": {
+      "status": "PASS",
+      "passed": 1053,
+      "skipped": 259,
+      "log": "logs/service-bus-2026-11-16/e2e-final.txt"
+    },
+    "postgresPilotAndAudit": {
+      "status": "PASS",
+      "passed": 22,
+      "skipped": 0,
+      "log": "logs/service-bus-2026-11-16/postgres-final.txt",
+      "pilotCases": 8,
+      "auditRegressionCases": 14,
+      "broker": "EXPLICIT_TEST_DOUBLE",
+      "postgres": "REAL_DISPOSABLE"
+    },
+    "focusedServiceBusUnit": {
+      "status": "PASS",
+      "passed": 21
+    },
+    "infrastructurePreflight": {
+      "status": "PASS",
+      "passed": 5
+    },
+    "bicepCompile": {
+      "status": "PASS",
+      "compiler": "0.49.2",
+      "provisioned": false
+    },
+    "typecheck": "PASS",
+    "lint": {
+      "status": "PASS",
+      "preexistingWarnings": 4,
+      "newWarnings": 0
+    },
+    "format": "PASS",
+    "pricingBuild": "PASS",
+    "auditBuild": "PASS",
+    "relativeLinks": 29,
+    "azureAuthenticated": "NOT_RUN",
+    "ci": "NOT_RUN",
+    "containerBuild": "NOT_RUN",
+    "deployment": "NOT_RUN"
+  },
+  "sharedDatabaseModified": false,
+  "azureResourcesProvisioned": false,
+  "githubIssuePublished": false,
+  "productionActivated": false,
+  "files": [
+    {
+      "path": "apps/price-audit-svc/src/config/environment.ts",
+      "sha256": "e2fd022dac95809b91b7be163ca7914c459b5e74a11771e95376fbb8c1ebdca2"
+    },
+    {
+      "path": "apps/price-audit-svc/src/health/audit-readiness.ts",
+      "sha256": "a5e9ae7d872ec37acfe2a23b8960300a8748a6d7845faa3bb1173318ebad5c24"
+    },
+    {
+      "path": "apps/price-audit-svc/src/logging/safe-logger.ts",
+      "sha256": "57e443d348ab95f4053266f87fe565bf426de7bebf9662dcc67dac4838b087e5"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-consumer.ts",
+      "sha256": "3f1c7a1023cafffcc4806251a7cd93527e849bc0c9cb49e08eaf1ac8a97ba755"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-envelope.ts",
+      "sha256": "086be8f5812f46cb0ab7f275359da3430f054ee7804a8e9a300547e57d72267d"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-config.ts",
+      "sha256": "ea2a1282f89da6cf3f2f1a3f15f3ba395cc8992890602767ab917440b3a58175"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-consumer.ts",
+      "sha256": "f4f06f12eb66b10890511be033f3b228bbe0161e5ba27c2fd3613dfbfd7ed88b"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "f86d6046753f5dae64425f1706edc8df2bdc40314a7ef478e46e83c95038b25a"
+    },
+    {
+      "path": "apps/price-audit-svc/src/persistence/audit.repository.ts",
+      "sha256": "113a5359f7e8746de5444a3f629b8fb81e5c7a1ff9ba282cac70521ae99b991e"
+    },
+    {
+      "path": "apps/price-audit-svc/src/price-audit-svc.module.ts",
+      "sha256": "41a5c54fb74b5ef7badcc1f82f373ee931e05e0fc0cf8b20e2a192ab6278faee"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/0001_outbox_delivery.sql",
+      "sha256": "1a3c365c7953da0b70ed4977c8c237a5040522c4effd98bfe35bed0e1b5b58be"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/README.md",
+      "sha256": "737111233ab3e3dcdba40d088cc747b6cbe7a31570b2ce0ee4a1ad403f8fb061"
+    },
+    {
+      "path": "apps/pricing-svc/src/application/pricing-mutations.ts",
+      "sha256": "b3258ad06e168a1e9e320461f44f9a4fce1220dbfbc18bd11026cb9545fb9dec"
+    },
+    {
+      "path": "apps/pricing-svc/src/config/environment.ts",
+      "sha256": "74243d7c32d360e28b20fd68872fe771369a32e4934a3506d4d35876261eb3c1"
+    },
+    {
+      "path": "apps/pricing-svc/src/health/pricing-readiness.ts",
+      "sha256": "aa9e2ae7e1e1a858af44a01fb248abc8eade3e19250648a9f13306581ecde0e1"
+    },
+    {
+      "path": "apps/pricing-svc/src/logging/safe-logger.ts",
+      "sha256": "979f0b356cb62444541034d251ded0e718ecc42aa8e8da127370d3c4af9e5f6e"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/pricing-initialization.ts",
+      "sha256": "b00af2285fd30ddd3679bd6c5ad8a31c3c16d50cc85305a12f8d9ee1eb370834"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/schedule-reconciler.ts",
+      "sha256": "7ffad6ad3faa7a92a4c991f016002c4b56be19a4e659ae2a6e9be53c97813fa0"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-config.ts",
+      "sha256": "325c92350b7b0f7bf38e147b8600223c75ca365bb19cef141d977e76ecdd257c"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-deliveries.ts",
+      "sha256": "7ec79385f38fbfd63b398e56c87cac7bbc1c127522d121931d7551f729b84f28"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-relay.ts",
+      "sha256": "9c8f6f3725f54697d4a82c4f97e4889c896f66507c2813099106d414fcd05840"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "eccdb7652f0e1e3a99dc16210fd5ea3912043fe4285a00061da0f82d8807fdfe"
+    },
+    {
+      "path": "apps/pricing-svc/src/pricing-svc.module.ts",
+      "sha256": "f973a4584b1abb16451d9c4446b9ab02e41849b76e487a447918e7aa4d2da933"
+    },
+    {
+      "path": "docs/hito-5/BACKLOG_SERVICE_BUS.md",
+      "sha256": "6b11eba80fbe8b52a618e5e24bc5d2edc128174b9ff891b008b38184a4b13fbd"
+    },
+    {
+      "path": "docs/hito-5/CAMBIOS_DOCUMENTACION_SERVICE_BUS.md",
+      "sha256": "57f21e7c21539053110010af6b9e0dacd785b484c29c90dcb6ff4779840ede3d"
+    },
+    {
+      "path": "docs/hito-5/EJECUCION_PILOTO_SERVICE_BUS.md",
+      "sha256": "702fff2d5c5c53d9265c4241624c993dea7ae72bb9a6b5901401a3f4240274ea"
+    },
+    {
+      "path": "docs/hito-5/ISSUE_PILOTO_SERVICE_BUS.md",
+      "sha256": "6a0fdb4c552b9a99aa191bb242c2aa68eca7bc2ed5203ad60b1c274cd8aaf44f"
+    },
+    {
+      "path": "docs/hito-5/PLAN_IMPLEMENTACION_SERVICE_BUS.md",
+      "sha256": "799e9d45bf2eba9d4ed8ccc7d26d2a96a450369df82149803999a5967ba75a7e"
+    },
+    {
+      "path": "ops/azure/service-bus/README.md",
+      "sha256": "5e686a6e68b7ca478aa9f586594b3332be1f62a475be94aced91825a795878ea"
+    },
+    {
+      "path": "ops/azure/service-bus/main.bicep",
+      "sha256": "f3f537b8d741eb42956173421a1d3f1a4ecfc46990368a5893cc3bc75af0557b"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot-route.json",
+      "sha256": "108c3b2ab1f74d5cd92854dc0bc0a7dcc2b146da1de87cc62cdddcec27c0c099"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.azure.e2e-spec.ts",
+      "sha256": "a3acbe6b9f50fcf0e1787e21139cefeb28fdb202cf2854a085fec1f7cb3a3ac1"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.postgres.e2e-spec.ts",
+      "sha256": "6f480c484e3d90d4f3e13eeee8fe44513cbf1149f2b71f4366d872bd54d5005b"
+    },
+    {
+      "path": "ops/azure/service-bus/runtime.env.example",
+      "sha256": "98482ca132de9c93e5e2d58ce3292b3c4a4ec310b78422b129024649cd90fc52"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.mjs",
+      "sha256": "64c631a3250335d82d0cfc9395bfd201bfc4c62919b66f2e49bcb3c5caee51cd"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.test.mjs",
+      "sha256": "540aede47e72dd1c3275fada6f102033f147eef433444342cf42dcaddd2099cc"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "11f13da129a044f26b44c89bac0b48d5bdbafe177623702a01f185df31e73365"
+    },
+    {
+      "path": "package.json",
+      "sha256": "cfa7da1fa64868381a659718f815291d1f8c08fc0247dba8ef2e958687e24b57"
+    }
+  ]
+}

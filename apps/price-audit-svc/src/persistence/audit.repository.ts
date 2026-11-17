@@ -97,7 +97,22 @@ export class AuditRepository {
         })
         .onConflictDoNothing({ target: [inbox.messageId, inbox.handler] })
         .returning({ id: inbox.id });
-      if (!accepted) return { duplicate: true };
+      if (!accepted) {
+        // DEC-F-009: a retry may repeat the same fact, never replace its content.
+        const [existing] = await tx
+          .select({
+            matches: sql<boolean>`${inbox.payload} = ${JSON.stringify(message.payload)}::jsonb`,
+          })
+          .from(inbox)
+          .where(
+            and(
+              eq(inbox.messageId, message.id),
+              eq(inbox.handler, 'price-audit-svc'),
+            ),
+          );
+        if (!existing?.matches) throw new AuditHttpError(400, 'VALIDACION');
+        return { duplicate: true };
+      }
       await tx
         .insert(auditLog)
         .values(changes.map((entry) => ({ ...entry, inboxId: accepted.id })));

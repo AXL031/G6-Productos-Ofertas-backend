@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "state": "ISOLATED_PILOT",
+  "message": "pricing.price.changed",
+  "schemaVersion": 1,
+  "producer": "pricing-svc",
+  "consumer": "price-audit-svc",
+  "destination": "g6.price-audit.from.pricing",
+  "transport": "AZURE_SERVICE_BUS",
+  "productionActivation": false,
+  "docsSha": "f77c442485203695a5e877fce188a4d249c129fb",
+  "asyncapiVersion": "0.6.0-rc.4"
+}

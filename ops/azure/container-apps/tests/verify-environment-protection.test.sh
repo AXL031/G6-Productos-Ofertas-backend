@@ -34,3 +34,14 @@ expect_reject 'environment ausente' MOCK_ENV_EXISTS=false
 expect_reject 'reviewers ausentes o autoaprobación permitida' MOCK_REVIEWERS=0
 expect_reject 'deployment branches sin restricción personalizada a master' MOCK_BRANCH_MODE=invalid
 expect_reject 'rama adicional habilitada' MOCK_BRANCHES=master,release
+bash "$VERIFIER" Taller-SW-Web/G6-Productos-Ofertas-backend azure-h5-pilot-234 pricing-svc >/dev/null
+bash "$VERIFIER" Taller-SW-Web/G6-Productos-Ofertas-backend azure-h5-pilot-234 price-audit-svc >/dev/null
+for forbidden in all catalog-svc api-gateway ''; do
+  if bash "$VERIFIER" Taller-SW-Web/G6-Productos-Ofertas-backend azure-h5-pilot-234 "$forbidden" >/dev/null 2>&1; then
+    echo 'FAIL: excepcion de piloto acepto otro servicio' >&2; exit 1
+  fi
+done
+if bash "$VERIFIER" Taller-SW-Web/G6-Productos-Ofertas-backend foreign pricing-svc >/dev/null 2>&1; then
+  echo 'FAIL: environment arbitrario aceptado' >&2; exit 1
+fi
+echo 'PASS: excepcion #234 limitada a Pricing/Audit y environment fijo'

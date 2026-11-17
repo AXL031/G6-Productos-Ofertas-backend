@@ -133,6 +133,8 @@ jobs:
       run: npm ci
     - name: Ejecutar pruebas unitarias
       run: npm test
+    - name: Verificar configuracion y despliegue del piloto Service Bus
+      run: node --test ops/azure/service-bus/aca-pilot.test.mjs ops/azure/service-bus/validate-pilot.test.mjs ops/azure/container-apps/phase3-preflight.test.mjs ops/azure/container-apps/render-deployment.test.mjs
   e2e:
     if: github.event_name != 'workflow_dispatch' || inputs.mode != 'benchmark'
     name: Ejecutar pruebas de extremo a extremo

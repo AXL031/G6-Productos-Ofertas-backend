@@ -1,0 +1,581 @@
+{
+  "recordedAt": "2026-11-16T16:09:56.503Z",
+  "branch": "cueva",
+  "baseSha": "8bf6b6ecf3e60730c945fe707769f95ffa450a8e",
+  "implementationCommit": null,
+  "docsSha": "f77c442485203695a5e877fce188a4d249c129fb",
+  "authorization": "Explicit user exception for Pricing/Audit/SB-01 followed by request to continue real Azure and deployment, 2026-11-16",
+  "overallStatus": "PARTIAL",
+  "azureIsolatedPilot": "PASS",
+  "productionActivated": false,
+  "existingAcaAppsModified": false,
+  "sharedDatabaseModified": false,
+  "githubIssuePublished": false,
+  "ciForImplementation": "NOT_RUN",
+  "subscriptionId": "fef42188-accd-4470-ae88-78f583eb4906",
+  "resourceGroup": "rg-g6-sb-pilot-261116",
+  "namespace": {
+    "id": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01",
+    "localAuthDisabled": true,
+    "location": "chilecentral",
+    "publicNetworkAccess": "Enabled",
+    "sku": "Basic",
+    "state": "Succeeded",
+    "tls": "1.2"
+  },
+  "queue": {
+    "counts": {
+      "activeMessageCount": 0,
+      "deadLetterMessageCount": 2,
+      "scheduledMessageCount": 0,
+      "transferDeadLetterMessageCount": 0,
+      "transferMessageCount": 0
+    },
+    "id": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01/queues/g6.price-audit.from.pricing",
+    "lockDuration": "PT1M",
+    "maxDeliveryCount": 10,
+    "status": "Active"
+  },
+  "roles": [
+    {
+      "principalId": "bd48f3f6-b6b3-4e75-8dca-ca572a84ab1d",
+      "role": "Azure Service Bus Data Sender",
+      "scope": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourcegroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01/queues/g6.price-audit.from.pricing"
+    },
+    {
+      "principalId": "aca57d5d-f777-4e71-bdc7-4806659d8b11",
+      "role": "Azure Service Bus Data Receiver",
+      "scope": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourcegroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01/queues/g6.price-audit.from.pricing"
+    }
+  ],
+  "deployedInfrastructure": {
+    "outputs": {
+      "auditClientId": {
+        "type": "String",
+        "value": "f899f0e8-32e8-4617-b487-6ec010a9de9d"
+      },
+      "auditIdentityId": {
+        "type": "String",
+        "value": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-g6-sb-pilot-audit"
+      },
+      "namespaceFqdn": {
+        "type": "String",
+        "value": "g6-sb-test-261116-axl01.servicebus.windows.net"
+      },
+      "pricingClientId": {
+        "type": "String",
+        "value": "ba1aa40c-5a4e-4fe2-94fb-16c705d9f949"
+      },
+      "pricingIdentityId": {
+        "type": "String",
+        "value": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ManagedIdentity/userAssignedIdentities/id-g6-sb-pilot-pricing"
+      },
+      "queueResourceId": {
+        "type": "String",
+        "value": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ServiceBus/namespaces/g6-sb-test-261116-axl01/queues/g6.price-audit.from.pricing"
+      }
+    },
+    "state": "Succeeded"
+  },
+  "runnerDeployment": {
+    "id": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ContainerInstance/containerGroups/aci-g6-sb-pilot",
+    "state": "Succeeded"
+  },
+  "runnerBeforeCleanup": {
+    "containers": [
+      {
+        "exit": 0,
+        "finished": "2026-11-16T15:51:03.981000+00:00",
+        "image": "node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f",
+        "name": "runner",
+        "started": "2026-11-16T15:50:37.789000+00:00",
+        "state": "Terminated"
+      },
+      {
+        "exit": 0,
+        "finished": "2026-11-16T15:51:03.981000+00:00",
+        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "name": "pricing-postgres",
+        "started": "2026-11-16T15:50:37.954000+00:00",
+        "state": "Terminated"
+      },
+      {
+        "exit": 0,
+        "finished": "2026-11-16T15:51:03.981000+00:00",
+        "image": "postgres:16-alpine@sha256:721873c34ceb9f8d8fc265984940dc982404c105f19ad51be9fdc5970a6080ea",
+        "name": "audit-postgres",
+        "started": "2026-11-16T15:50:37.956000+00:00",
+        "state": "Terminated"
+      }
+    ],
+    "id": "/subscriptions/fef42188-accd-4470-ae88-78f583eb4906/resourceGroups/rg-g6-sb-pilot-261116/providers/Microsoft.ContainerInstance/containerGroups/aci-g6-sb-pilot",
+    "publicIp": null,
+    "restartPolicy": "Never",
+    "state": "Succeeded"
+  },
+  "runnerRemoved": true,
+  "remainingContainerGroupsInPilotResourceGroup": [],
+  "privateParameterFileRemoved": true,
+  "workloadIdentityIsolation": "Distinct managed identities and queue roles verified; same lab host can access both, not production workload isolation",
+  "testInjection": "Real Audit commit followed by deliberate abandon and exception; no physical host kill",
+  "cloudChecks": [
+    {
+      "check": "MANAGED_IDENTITIES_AUTHENTICATED",
+      "status": "PASS",
+      "namespace": "g6-sb-test-261116-axl01.servicebus.windows.net",
+      "pricingClientId": "ba1aa40c-5a4e-4fe2-94fb-16c705d9f949",
+      "auditClientId": "f899f0e8-32e8-4617-b487-6ec010a9de9d"
+    },
+    {
+      "check": "RECEIVED_DATA_SECTION",
+      "status": "PASS",
+      "binaryBody": true,
+      "messageId": "73377d31-9ec4-4c5d-b855-1b99c399a174"
+    },
+    {
+      "check": "PRICING_AZURE_AUDIT_REDELIVERY",
+      "status": "PASS",
+      "messageId": "73377d31-9ec4-4c5d-b855-1b99c399a174",
+      "correlationId": "cc0d46d5-2601-49e5-9318-dd99dd5182fc",
+      "auditEffects": 1,
+      "deliveryCount": 1
+    },
+    {
+      "check": "AUDIT_CANNOT_SEND",
+      "status": "PASS"
+    },
+    {
+      "check": "PRICING_CANNOT_RECEIVE",
+      "status": "PASS"
+    },
+    {
+      "check": "INVALID_MESSAGE_REAL_DLQ",
+      "status": "PASS",
+      "messageId": "347e950c-8539-4d6d-bc01-71adfef2c8ae"
+    },
+    {
+      "check": "AZURE_ISOLATED_PILOT",
+      "status": "PASS",
+      "sourceBundleSha256": "d6c2af3499c079788760d55329d75b5193c21f153a145a4c353991f66fd25eff"
+    }
+  ],
+  "failedAttempt": {
+    "sourceBundleSha256": "72540ae3df74189f891cd3608d4d0f802908de62a5ef1053638b3218f0c265c7",
+    "status": "FAIL",
+    "stage": "audit-commit-and-redelivery",
+    "reason": "SDK raw binary/JSON serialization mismatch, corrected before successful second attempt",
+    "log": "logs/service-bus-2026-11-16/cloud/azure-run1.txt"
+  },
+  "dlqDisposition": "Two isolated test artifacts retained: first failed send and intentional invalid message; no automatic replay",
+  "currentLocalChecks": {
+    "serviceBusUnit": {
+      "passed": 25
+    },
+    "pricingAuditUnit": {
+      "passed": 524,
+      "log": "logs/service-bus-2026-11-16/focused-azure-fix-elevated.txt"
+    },
+    "postgresPilot": {
+      "passed": 8,
+      "broker": "EXPLICIT_TEST_DOUBLE",
+      "postgres": "REAL_DISPOSABLE",
+      "log": "logs/service-bus-2026-11-16/postgres-azure-fix.txt"
+    },
+    "typecheck": "PASS",
+    "pricingBuild": "PASS",
+    "auditBuild": "PASS",
+    "lint": {
+      "status": "PASS",
+      "preexistingWarnings": 4
+    },
+    "bicepCompile": "PASS",
+    "armRunnerValidate": "PASS",
+    "nodePreflight": {
+      "passed": 5
+    }
+  },
+  "existingAcaInventoryAfter": [
+    {
+      "identity": "None",
+      "name": "bulk-svc",
+      "revision": "bulk-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "price-audit-svc",
+      "revision": "price-audit-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "inventory-svc",
+      "revision": "inventory-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "taxonomy-svc",
+      "revision": "taxonomy-svc--http-4c40b31b-mwgii22g"
+    },
+    {
+      "identity": "None",
+      "name": "promotions-svc",
+      "revision": "promotions-svc--http-4c40b31b-mwgj2k1j"
+    },
+    {
+      "identity": "None",
+      "name": "catalog-svc",
+      "revision": "catalog-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "pricing-svc",
+      "revision": "pricing-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "combos-svc",
+      "revision": "combos-svc--http-4c40b31b-mwgil3mw"
+    },
+    {
+      "identity": "None",
+      "name": "api-gateway",
+      "revision": "api-gateway--http-4c40b31b-mwgil3mw"
+    }
+  ],
+  "bundle": {
+    "compressedSha256": "d6c2af3499c079788760d55329d75b5193c21f153a145a4c353991f66fd25eff",
+    "compressedBytes": 93578,
+    "files": [
+      {
+        "path": "package.json",
+        "sha256": "cfa7da1fa64868381a659718f815291d1f8c08fc0247dba8ef2e958687e24b57"
+      },
+      {
+        "path": "package-lock.json",
+        "sha256": "11f13da129a044f26b44c89bac0b48d5bdbafe177623702a01f185df31e73365"
+      },
+      {
+        "path": "ops/azure/service-bus/cloud-runner.mjs",
+        "sha256": "2ac7a0a750debcb0b5bb62e906d95291ab2fe7f3bebcb500307e01ec75c5336b"
+      },
+      {
+        "path": "dist/apps/pricing-svc/persistence/pricing.database.js",
+        "sha256": "400308877867c5ea1df2e361c1e182f0f542758872d3ec0f85c464942bb9bba1"
+      },
+      {
+        "path": "dist/apps/pricing-svc/config/environment.js",
+        "sha256": "60c4b48415e7812295d4014c17b855e0cf187392c323571fa65402d7cd564811"
+      },
+      {
+        "path": "dist/apps/pricing-svc/phase1-public-reads.js",
+        "sha256": "4c2849f44ab27591396a89ce62f78ede9ac520e35e4aa9c59d8fd6447aedc791"
+      },
+      {
+        "path": "dist/apps/pricing-svc/messaging/service-bus-config.js",
+        "sha256": "3a3276e3b7df6b6c7f830755d290236472a9c2b562b4e3cf60e85cf83fa6bfdf"
+      },
+      {
+        "path": "dist/apps/pricing-svc/persistence/pricing.schema.js",
+        "sha256": "ac57bba26de779921160f01834dfabb7669cae3c479af57f3ee5e096ba967b7a"
+      },
+      {
+        "path": "dist/apps/pricing-svc/persistence/pricing.repository.js",
+        "sha256": "f53c35cefb04456466992ca3f11c2828d42bf0c5a9ce0a2b9637c3fa34faa6a0"
+      },
+      {
+        "path": "dist/apps/pricing-svc/persistence/persistence.error.js",
+        "sha256": "d801e21e7000b3dd29e1d1bdfe1394d14ff5bd5e0114d2480ebb4703b5b94bd3"
+      },
+      {
+        "path": "dist/apps/pricing-svc/application/pricing-mutations.js",
+        "sha256": "deaa140378bd9078d77408646aa8cfc2c8ee70d9fc4b405871019331ba6e7ae1"
+      },
+      {
+        "path": "dist/apps/pricing-svc/messaging/service-bus-deliveries.js",
+        "sha256": "d50b052d4144ba170e030c443dc38ed88bd65174ebf9789b928d3ba0e70cff87"
+      },
+      {
+        "path": "dist/apps/pricing-svc/domain/price.js",
+        "sha256": "081f93ce6434db0958f37bde06cec7f373e47493412b1f9cdcaff3ee3dadc2ca"
+      },
+      {
+        "path": "dist/apps/pricing-svc/messaging/pricing-fact.js",
+        "sha256": "0e3c7d19ececffb6fe01de93937efaff44c643872d94f434ffd2faecde9ef36f"
+      },
+      {
+        "path": "dist/apps/pricing-svc/messaging/service-bus-relay.js",
+        "sha256": "a94ffaa9052d1d5a0107cfc493289ff189fdea93fc1e67016cd5ab6cc60da731"
+      },
+      {
+        "path": "dist/apps/pricing-svc/messaging/outbox-relay.js",
+        "sha256": "f547893bd5e9e0bc1d518fffebc9cf4ae88fd680f52f981f136f81222a548279"
+      },
+      {
+        "path": "dist/apps/pricing-svc/private-amqps.js",
+        "sha256": "9dcbbe26c34056d56fbe7dae8f6319f987bc8595294b972ddd9a752eea1d026f"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/persistence/audit.database.js",
+        "sha256": "aa9e6f040ffe036ecd78fdd9b67e0c23a77d9dbcc9522d43f8731df18ebf3eb2"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/config/environment.js",
+        "sha256": "830fc2061e705bb158b35f75a07eab248d155f5bac385a83528f5921c8cba9e0"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/phase1-public-reads.js",
+        "sha256": "5b8d0b72626ed84bf7b6cbd557aa4bd08eec959f5897b1122393229f1173c2bc"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/messaging/service-bus-config.js",
+        "sha256": "fe09eb4374a795266416d487dd7c55617445947fdfbc60d8d120e14f636bffcf"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/persistence/audit.schema.js",
+        "sha256": "754224b2cbc88723d3d2c6fe230150e0e534680ad1e66978baba3bb277c5649c"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/persistence/audit.repository.js",
+        "sha256": "dbeece02f8af7db364ec09e98974b006b98f44b1da8f97608f77d9980bd8ac35"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/domain/audit.js",
+        "sha256": "63f202d8458526ec7b91af05ce303f1688bc281e2be3e4d1d635a25a3aadb625"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/http/audit-http.error.js",
+        "sha256": "43e72f414163341dfa44894e3ac96efa7ec86e91fa3b7c223cac41ae57b8e963"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/http/audit-query.js",
+        "sha256": "dedde543537861159744f0e9d2c8d0b34aacd2454806a0e3c1ea4a7babeae902"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/domain/audit-timestamp.js",
+        "sha256": "deff2b8bcd9a28fa5839e2fde1953bd4dd3b53a2c83596db75f87ddab9fb201b"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/messaging/service-bus-consumer.js",
+        "sha256": "53a50ea64317ab0fad4d7b439ce5c67693325d6b4ed8627df9fd03f5fb9a4ace"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/messaging/audit-envelope.js",
+        "sha256": "12bcb1ee8a095727ddd2913179b781ef6baf8b4090662638d1ec27f61ef930b9"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/messaging/price-change-decoder.js",
+        "sha256": "6517f068f4aa1de056db49b0a0a4b8279c6e7f5d66bf5a6dcb21441ac6e935c8"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/http/audit-read.guard.js",
+        "sha256": "c85da9035ff3dfa8af8b78928e7c550afb6dbb3bdbeb129162642f962c53edf9"
+      },
+      {
+        "path": "dist/apps/price-audit-svc/logging/safe-logger.js",
+        "sha256": "e65f47f4f7e8e36e57acde66b907e7af758fedb40a5d431d679a44fb61c81e15"
+      },
+      {
+        "path": "apps/pricing-svc/test/fixtures/pricing.sql",
+        "sha256": "7f440ffa401e8d56ecb2664060edb131505a16b8568843093a5047a6c13bc581"
+      },
+      {
+        "path": "apps/price-audit-svc/test/fixtures/price-audit.sql",
+        "sha256": "7d890955717025572da03d258168d81e9b7fa38c797f1b697527f0d4cab89afc"
+      },
+      {
+        "path": "apps/pricing-svc/migrations/0002_schedule_effective_events.sql",
+        "sha256": "a336cb4ddcef8c06cd00ffbea3c84fbd8f6328304fd6f1a997fc53085ffeec1d"
+      },
+      {
+        "path": "apps/pricing-svc/migrations/0003_initialization_operation_index.sql",
+        "sha256": "f13ab851c88bdc6a3c35c682151d0074f1894216d084c6f707a3329f7017a559"
+      },
+      {
+        "path": "apps/pricing-svc/migrations-candidate/h5/0001_outbox_delivery.sql",
+        "sha256": "1a3c365c7953da0b70ed4977c8c237a5040522c4effd98bfe35bed0e1b5b58be"
+      },
+      {
+        "path": "apps/price-audit-svc/migrations/0002_typed_price_change.sql",
+        "sha256": "17092cee56b0889443939584d5935c182c2fc166d1c21e8484c32d6740a534e2"
+      }
+    ]
+  },
+  "sourceFiles": [
+    {
+      "path": "apps/price-audit-svc/src/config/environment.ts",
+      "sha256": "e2fd022dac95809b91b7be163ca7914c459b5e74a11771e95376fbb8c1ebdca2"
+    },
+    {
+      "path": "apps/price-audit-svc/src/health/audit-readiness.ts",
+      "sha256": "a5e9ae7d872ec37acfe2a23b8960300a8748a6d7845faa3bb1173318ebad5c24"
+    },
+    {
+      "path": "apps/price-audit-svc/src/logging/safe-logger.ts",
+      "sha256": "57e443d348ab95f4053266f87fe565bf426de7bebf9662dcc67dac4838b087e5"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-consumer.ts",
+      "sha256": "3f1c7a1023cafffcc4806251a7cd93527e849bc0c9cb49e08eaf1ac8a97ba755"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/audit-envelope.ts",
+      "sha256": "086be8f5812f46cb0ab7f275359da3430f054ee7804a8e9a300547e57d72267d"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-config.ts",
+      "sha256": "ea2a1282f89da6cf3f2f1a3f15f3ba395cc8992890602767ab917440b3a58175"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus-consumer.ts",
+      "sha256": "d2f2931f55e4ae0997612f4bc43017c9fea581864c2b52592496df59902143c8"
+    },
+    {
+      "path": "apps/price-audit-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "718a602c73056a8de68c1939792f186b2fe2ceadfd1c306743bc8017d4b6598a"
+    },
+    {
+      "path": "apps/price-audit-svc/src/persistence/audit.repository.ts",
+      "sha256": "113a5359f7e8746de5444a3f629b8fb81e5c7a1ff9ba282cac70521ae99b991e"
+    },
+    {
+      "path": "apps/price-audit-svc/src/price-audit-svc.module.ts",
+      "sha256": "41a5c54fb74b5ef7badcc1f82f373ee931e05e0fc0cf8b20e2a192ab6278faee"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/0001_outbox_delivery.sql",
+      "sha256": "1a3c365c7953da0b70ed4977c8c237a5040522c4effd98bfe35bed0e1b5b58be"
+    },
+    {
+      "path": "apps/pricing-svc/migrations-candidate/h5/README.md",
+      "sha256": "737111233ab3e3dcdba40d088cc747b6cbe7a31570b2ce0ee4a1ad403f8fb061"
+    },
+    {
+      "path": "apps/pricing-svc/src/application/pricing-mutations.ts",
+      "sha256": "b3258ad06e168a1e9e320461f44f9a4fce1220dbfbc18bd11026cb9545fb9dec"
+    },
+    {
+      "path": "apps/pricing-svc/src/config/environment.ts",
+      "sha256": "74243d7c32d360e28b20fd68872fe771369a32e4934a3506d4d35876261eb3c1"
+    },
+    {
+      "path": "apps/pricing-svc/src/health/pricing-readiness.ts",
+      "sha256": "aa9e2ae7e1e1a858af44a01fb248abc8eade3e19250648a9f13306581ecde0e1"
+    },
+    {
+      "path": "apps/pricing-svc/src/logging/safe-logger.ts",
+      "sha256": "979f0b356cb62444541034d251ded0e718ecc42aa8e8da127370d3c4af9e5f6e"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/pricing-initialization.ts",
+      "sha256": "b00af2285fd30ddd3679bd6c5ad8a31c3c16d50cc85305a12f8d9ee1eb370834"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/schedule-reconciler.ts",
+      "sha256": "7ffad6ad3faa7a92a4c991f016002c4b56be19a4e659ae2a6e9be53c97813fa0"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-config.ts",
+      "sha256": "325c92350b7b0f7bf38e147b8600223c75ca365bb19cef141d977e76ecdd257c"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-deliveries.ts",
+      "sha256": "7ec79385f38fbfd63b398e56c87cac7bbc1c127522d121931d7551f729b84f28"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus-relay.ts",
+      "sha256": "4964343b504780badbfa8cc7a2496d20084493ea62035b401261708836919e84"
+    },
+    {
+      "path": "apps/pricing-svc/src/messaging/service-bus.spec.ts",
+      "sha256": "4e520001dc951e0627322bdd715af1f93e5eb609b1f6c4042620a6b2518a71fe"
+    },
+    {
+      "path": "apps/pricing-svc/src/pricing-svc.module.ts",
+      "sha256": "f973a4584b1abb16451d9c4446b9ab02e41849b76e487a447918e7aa4d2da933"
+    },
+    {
+      "path": "ops/azure/service-bus/CLOUD_PILOT.md",
+      "sha256": "13484ba7fe87e717ef779c4fe41f7cd8a63075c45280346cf5b09b2719ff67e9"
+    },
+    {
+      "path": "ops/azure/service-bus/README.md",
+      "sha256": "6ffc9a906db484275083e14fe986129c581f9b73cfc35b29e73dbad9404f5c92"
+    },
+    {
+      "path": "ops/azure/service-bus/cloud-bootstrap.cjs",
+      "sha256": "6ae054e6ea63ec59f09befe1109d133520866c2cddce71043c51395068e22018"
+    },
+    {
+      "path": "ops/azure/service-bus/cloud-runner.mjs",
+      "sha256": "2ac7a0a750debcb0b5bb62e906d95291ab2fe7f3bebcb500307e01ec75c5336b"
+    },
+    {
+      "path": "ops/azure/service-bus/isolated-infrastructure.bicep",
+      "sha256": "470649b51c87ea20cf9c79899aabe305e93df9ce21940ff48069178a9ed6da77"
+    },
+    {
+      "path": "ops/azure/service-bus/isolated-runner.bicep",
+      "sha256": "a1773e023ba977ad5964a189dab41017ecb47d647d12aa23444ee8b279149cf2"
+    },
+    {
+      "path": "ops/azure/service-bus/main.bicep",
+      "sha256": "f3f537b8d741eb42956173421a1d3f1a4ecfc46990368a5893cc3bc75af0557b"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot-route.json",
+      "sha256": "108c3b2ab1f74d5cd92854dc0bc0a7dcc2b146da1de87cc62cdddcec27c0c099"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.azure.e2e-spec.ts",
+      "sha256": "a3acbe6b9f50fcf0e1787e21139cefeb28fdb202cf2854a085fec1f7cb3a3ac1"
+    },
+    {
+      "path": "ops/azure/service-bus/pilot.postgres.e2e-spec.ts",
+      "sha256": "6f480c484e3d90d4f3e13eeee8fe44513cbf1149f2b71f4366d872bd54d5005b"
+    },
+    {
+      "path": "ops/azure/service-bus/prepare-cloud-bundle.mjs",
+      "sha256": "ed67a023a78e0a6b7ffc3cd7ae76a0c49ff6130eebebd4a989f574747ac335e9"
+    },
+    {
+      "path": "ops/azure/service-bus/prepare-cloud-parameters.mjs",
+      "sha256": "d7401a88b48d7bb529faae5bbdeffe35139896b82ecfb956af17db602582b1b2"
+    },
+    {
+      "path": "ops/azure/service-bus/runtime.env.example",
+      "sha256": "98482ca132de9c93e5e2d58ce3292b3c4a4ec310b78422b129024649cd90fc52"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.mjs",
+      "sha256": "64c631a3250335d82d0cfc9395bfd201bfc4c62919b66f2e49bcb3c5caee51cd"
+    },
+    {
+      "path": "ops/azure/service-bus/validate-pilot.test.mjs",
+      "sha256": "540aede47e72dd1c3275fada6f102033f147eef433444342cf42dcaddd2099cc"
+    },
+    {
+      "path": "package-lock.json",
+      "sha256": "11f13da129a044f26b44c89bac0b48d5bdbafe177623702a01f185df31e73365"
+    },
+    {
+      "path": "package.json",
+      "sha256": "cfa7da1fa64868381a659718f815291d1f8c08fc0247dba8ef2e958687e24b57"
+    }
+  ],
+  "remainingDependencies": [
+    {
+      "owner": "Repository/Release owner",
+      "operation": "Official application deployment",
+      "unblock": "Published reviewed commit on official master, successful CI for that exact SHA, protected azure-h5 environment and deployment review"
+    },
+    {
+      "owner": "Pricing/Audit/Data owners",
+      "operation": "Production activation",
+      "unblock": "Reviewed production configuration, exclusive app identities, SQL relay continuously scheduled and authorized additive migration in target database"
+    },
+    {
+      "owner": "G6 coordination/external modules",
+      "operation": "ADR adoption and later external route cutover",
+      "unblock": "Explicit recorded decisions and verifiable agreement for affected shared contracts; separate from isolated test"
+    }
+  ]
+}

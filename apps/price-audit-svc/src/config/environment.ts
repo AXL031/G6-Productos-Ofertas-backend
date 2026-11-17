@@ -3,10 +3,15 @@ import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { X509Certificate } from 'node:crypto';
 import { isAbsolute } from 'node:path';
 import { checkServerIdentity, type ConnectionOptions } from 'node:tls';
+import {
+  readAuditServiceBus,
+  type AuditServiceBusConfig,
+} from '../messaging/service-bus-config.js';
 
 export const PRICE_AUDIT_CONFIG = Symbol('PRICE_AUDIT_CONFIG');
 
 export interface AuditConfig {
+  serviceBus?: AuditServiceBusConfig;
   publicOperations?: readonly string[];
   securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
   nodeEnv: 'development' | 'test' | 'production';
@@ -34,6 +39,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
       'NODE_ENV debe ser development, test o production.',
     );
   }
+  const serviceBus = readAuditServiceBus(env);
   const securityMode = env.G6_SECURITY_MODE ?? 'G7_AUTHENTICATED';
   if (
     !['PUBLIC_READ_ONLY', 'SIMULATED_AUTH', 'G7_AUTHENTICATED'].includes(
@@ -207,6 +213,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv): AuditConfig {
       'La retención debe expresarse con enteros positivos.',
     );
   return {
+    ...(serviceBus ? { serviceBus } : {}),
     securityMode: securityMode as AuditConfig['securityMode'],
     ...(env.AUDIT_EXPORT_DIRECTORY
       ? { exportDirectory: env.AUDIT_EXPORT_DIRECTORY }

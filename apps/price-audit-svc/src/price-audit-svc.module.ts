@@ -20,6 +20,7 @@ import {
 } from './messaging/audit-consumer.js';
 import { decodePriceChange } from './messaging/price-change-decoder.js';
 import { AuditFileExportWorker } from './exports/audit-file-worker.js';
+import { AuditServiceBusRuntime } from './messaging/service-bus-consumer.js';
 
 @Module({
   imports: [],
@@ -31,6 +32,7 @@ import { AuditFileExportWorker } from './exports/audit-file-worker.js';
     AuditReadGuard,
     AuditRepository,
     AuditConsumer,
+    AuditServiceBusRuntime,
     { provide: AUDIT_PRICE_CHANGE_DECODER, useValue: decodePriceChange },
     AuditFileExportWorker,
     { provide: AUDIT_EXPORT_WORKER, useExisting: AuditFileExportWorker },
