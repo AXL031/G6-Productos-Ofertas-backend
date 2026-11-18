@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { and, asc, eq, isNull, lte, or, sql } from 'drizzle-orm';
+import { and, asc, eq, isNull, lte, or, sql, type SQL } from 'drizzle-orm';
 import {
   pgSchema,
   text,
@@ -17,8 +17,12 @@ import { PricingRepository } from '../persistence/pricing.repository.js';
 
 export const AUDIT_PILOT_QUEUE = 'g6.price-audit.from.pricing';
 export const PROMOTIONS_PRICE_QUEUE = 'g6.promotions.from.pricing';
-export type PricingPriceChangedQueue =
-  typeof AUDIT_PILOT_QUEUE | typeof PROMOTIONS_PRICE_QUEUE;
+export const CATALOG_PRICING_QUEUE = 'g6.catalog.from.pricing';
+export const PRICING_CATALOG_QUEUE = 'g6.pricing.from.catalog';
+export type PricingDeliveryQueue =
+  | typeof AUDIT_PILOT_QUEUE
+  | typeof PROMOTIONS_PRICE_QUEUE
+  | typeof CATALOG_PRICING_QUEUE;
 const schema = pgSchema('pricing');
 export const outboxDeliveries = schema.table(
   'outbox_delivery',
@@ -51,7 +55,7 @@ export const outboxDeliveries = schema.table(
     }),
     check(
       'ck_delivery_route',
-      sql`${t.routeVersion} = 1 AND ${t.destination} IN ('g6.price-audit.from.pricing', 'g6.promotions.from.pricing') AND ${t.transport} = 'AZURE_SERVICE_BUS'`,
+      sql`${t.routeVersion} = 1 AND ${t.destination} IN ('g6.price-audit.from.pricing', 'g6.promotions.from.pricing', 'g6.catalog.from.pricing') AND ${t.transport} = 'AZURE_SERVICE_BUS'`,
     ),
     check('ck_delivery_attempts', sql`${t.attempts} >= 0`),
     check(
@@ -105,10 +109,46 @@ export type PricingDeliveryClaim = {
   row: typeof outbox.$inferSelect;
 };
 
+export function pricingDeliveryMatches(
+  target: PricingDeliveryQueue,
+  row: Pick<typeof outbox.$inferSelect, 'eventName' | 'kind'>,
+): boolean {
+  if (target === CATALOG_PRICING_QUEUE) {
+    return (
+      row.kind === 'result' &&
+      (row.eventName === 'pricing.product.initialization.completed' ||
+        row.eventName === 'pricing.product.initialization.rejected')
+    );
+  }
+  return row.kind === 'event' && row.eventName === 'pricing.price.changed';
+}
+
+export async function insertPricingCatalogResult(
+  tx: PricingTransaction,
+  fact: Omit<typeof outbox.$inferInsert, 'occurredAt'> & {
+    occurredAt: Date | SQL;
+  },
+  serviceBus: boolean,
+): Promise<void> {
+  if (!serviceBus) {
+    await tx.insert(outbox).values(fact);
+    return;
+  }
+  if (!pricingDeliveryMatches(CATALOG_PRICING_QUEUE, fact) || !fact.messageId)
+    throw new Error('SERVICE_BUS_PRICING_RESULT_INVALID');
+  await tx.insert(outbox).values(fact);
+  await tx.insert(outboxDeliveries).values({
+    messageId: fact.messageId,
+    destination: CATALOG_PRICING_QUEUE,
+    routeVersion: 1,
+    transport: 'AZURE_SERVICE_BUS',
+  });
+}
+
 export class PricingDeliveryStore {
   constructor(
     private readonly repository: PricingRepository,
-    private readonly destination: PricingPriceChangedQueue = AUDIT_PILOT_QUEUE,
+    private readonly destination: PricingDeliveryQueue = AUDIT_PILOT_QUEUE,
   ) {}
 
   claim(): Promise<PricingDeliveryClaim | undefined> {
@@ -145,11 +185,7 @@ export class PricingDeliveryStore {
         .select()
         .from(outbox)
         .where(eq(outbox.messageId, candidate.messageId));
-      if (
-        !row ||
-        row.eventName !== 'pricing.price.changed' ||
-        row.kind !== 'event'
-      )
+      if (!row || !pricingDeliveryMatches(this.destination, row))
         throw new Error('SERVICE_BUS_PILOT_FACT_INVALID');
       const token = randomUUID();
       await tx

@@ -11,3 +11,7 @@ La prueba `ops/azure/service-bus/pilot.postgres.e2e-spec.ts` aplica esta candida
 ## Segundo destino para cambios de precio
 
 `0002_price_changed_promotions.sql` amplía la restricción de destinos de `0001` sin reescribir filas ni crear entregas antiguas. Después de revisar y aplicar la migración en el entorno autorizado, `PRICING_SERVICE_BUS_FANOUT_ENABLED=true` selecciona Audit y Promotions. El modo es excluyente con `G6_SERVICE_BUS_PILOT_ENABLED=true`, que conserva solo Audit. Cada store reclama su destino y cada sender confirma su propia entrega. Antes de habilitar el modo compartido, acreditar ambos consumidores, las colas y sus permisos; para revertir el código, retener las filas pendientes y reconciliarlas.
+
+## Inicialización de Pricing por Catalog
+
+`0003_catalog_initialization_results.sql` añade la cola `g6.catalog.from.pricing` a la restricción. Aplicar 0001, 0002 y 0003 en orden donde aún no existan. `PRICING_SERVICE_BUS_CATALOG_ENABLED=true` activa R07/R15 junto con el modo de fan-out. El receptor dedicado escucha `g6.pricing.from.catalog` para inicialización y baja de SKU. El resultado de inicialización y la intención de entrega se insertan en la misma transacción que la operación e Inbox. Mantener los pendientes y reconciliar antes de cambiar el transporte.

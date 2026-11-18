@@ -9,16 +9,26 @@ import {
   DefaultAzureCredential,
   ManagedIdentityCredential,
 } from '@azure/identity';
-import { ServiceBusClient, type ServiceBusSender } from '@azure/service-bus';
+import {
+  ServiceBusClient,
+  type ServiceBusSender,
+  type ServiceBusReceiver,
+} from '@azure/service-bus';
 import { PRICING_CONFIG, type PricingConfig } from '../config/environment.js';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 import {
   PricingDeliveryStore,
   AUDIT_PILOT_QUEUE,
   PROMOTIONS_PRICE_QUEUE,
-  type PricingPriceChangedQueue,
+  CATALOG_PRICING_QUEUE,
+  PRICING_CATALOG_QUEUE,
+  pricingDeliveryMatches,
+  type PricingDeliveryQueue,
 } from './service-bus-deliveries.js';
 import { pricingEnvelope } from './outbox-relay.js';
+import { PricingProductInitialization } from './pricing-initialization.js';
+import { CatalogSkuDeactivated } from './catalog-sku-deactivated.js';
+import { PricingCatalogServiceBusHandler } from './service-bus-catalog.js';
 
 export class PricingServiceBusRelay {
   constructor(
@@ -27,7 +37,7 @@ export class PricingServiceBusRelay {
       ServiceBusSender,
       'createMessageBatch' | 'sendMessages'
     >,
-    private readonly destination: PricingPriceChangedQueue = AUDIT_PILOT_QUEUE,
+    private readonly destination: PricingDeliveryQueue = AUDIT_PILOT_QUEUE,
   ) {}
 
   async publishOne(): Promise<'empty' | 'sent' | 'pending' | 'lease-lost'> {
@@ -35,7 +45,10 @@ export class PricingServiceBusRelay {
     if (!claim) return 'empty';
     let confirmed = false;
     try {
-      if (claim.destination !== this.destination)
+      if (
+        claim.destination !== this.destination ||
+        !pricingDeliveryMatches(this.destination, claim.row)
+      )
         throw new Error('SERVICE_BUS_PILOT_ROUTE_NOT_APPROVED');
       // The SDK JSON-serializes non-binary bodies. Send canonical UTF-8 bytes
       // to avoid wrapping the envelope in a second JSON string.
@@ -49,7 +62,7 @@ export class PricingServiceBusRelay {
           body,
           messageId: claim.row.messageId,
           correlationId: claim.row.correlationId,
-          subject: 'pricing.price.changed',
+          subject: claim.row.eventName,
           contentType: 'application/json',
           applicationProperties: {
             producer: 'pricing-svc',
@@ -78,6 +91,9 @@ export class PricingServiceBusRuntime
   available = false;
   private client?: ServiceBusClient;
   private readonly senders: ServiceBusSender[] = [];
+  private readonly incoming = new Set<Promise<void>>();
+  private receiver?: ServiceBusReceiver;
+  private subscription?: { close(): Promise<void> };
   private timer?: ReturnType<typeof setTimeout>;
   private active?: Promise<void>;
   private stopped = false;
@@ -86,6 +102,8 @@ export class PricingServiceBusRuntime
   constructor(
     @Inject(PRICING_CONFIG) private readonly config: PricingConfig,
     @Inject(PricingRepository) private readonly repository: PricingRepository,
+    private readonly initialization: PricingProductInitialization,
+    private readonly skuDeactivated: CatalogSkuDeactivated,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -101,9 +119,39 @@ export class PricingServiceBusRuntime
         retryOptions: { maxRetries: 0, timeoutInMs: 5000 },
       },
     );
-    const destinations: PricingPriceChangedQueue[] = [AUDIT_PILOT_QUEUE];
+    const destinations: PricingDeliveryQueue[] = [AUDIT_PILOT_QUEUE];
     if (this.config.serviceBus.fanoutEnabled)
       destinations.push(PROMOTIONS_PRICE_QUEUE);
+    if (this.config.serviceBus.catalogEnabled) {
+      destinations.push(CATALOG_PRICING_QUEUE);
+      const receiver = this.client.createReceiver(PRICING_CATALOG_QUEUE, {
+        receiveMode: 'peekLock',
+        skipParsingBodyAsJson: true,
+        maxAutoLockRenewalDurationInMs: 60_000,
+      });
+      this.receiver = receiver;
+      const handler = new PricingCatalogServiceBusHandler(
+        this.initialization,
+        this.skuDeactivated,
+        receiver,
+      );
+      this.subscription = receiver.subscribe(
+        {
+          processMessage: (message) => {
+            const active = handler.handle(message).catch(() => {
+              this.available = false;
+            });
+            this.incoming.add(active);
+            void active.then(() => this.incoming.delete(active));
+            return active;
+          },
+          processError: async () => {
+            this.available = false;
+          },
+        },
+        { autoCompleteMessages: false, maxConcurrentCalls: 1 },
+      );
+    }
     const workers = destinations.map((destination) => {
       const sender = this.client!.createSender(destination);
       this.senders.push(sender);
@@ -125,11 +173,18 @@ export class PricingServiceBusRuntime
             return relay.publishOne();
           }),
         );
-        this.available = results.every(
-          (result) =>
-            result.status === 'fulfilled' &&
-            (result.value === 'empty' || result.value === 'sent'),
-        );
+        if (this.receiver) {
+          await this.receiver.peekMessages(1, {
+            abortSignal: AbortSignal.timeout(3000),
+          });
+        }
+        this.available =
+          !this.stopped &&
+          results.every(
+            (result) =>
+              result.status === 'fulfilled' &&
+              (result.value === 'empty' || result.value === 'sent'),
+          );
       })()
         .catch(() => {
           this.available = false;
@@ -145,10 +200,15 @@ export class PricingServiceBusRuntime
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;
     clearTimeout(this.timer);
+    await this.subscription?.close().catch(() => undefined);
+    await Promise.allSettled(this.incoming);
     await this.active;
     this.available = false;
     try {
-      await Promise.allSettled(this.senders.map((sender) => sender.close()));
+      await Promise.allSettled([
+        this.receiver?.close(),
+        ...this.senders.map((sender) => sender.close()),
+      ]);
     } finally {
       await this.client?.close();
     }
