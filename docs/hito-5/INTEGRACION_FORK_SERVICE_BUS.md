@@ -33,6 +33,8 @@ Taxonomy añadió 344 pruebas unitarias y dos casos de integración aprobados. E
 
 Con Catalog #243 integrado, pasaron 91 pruebas focalizadas de Catalog, Inventory y Bulk. La prueba bilateral de Pricing más la regresión del piloto pasó 10 casos con PostgreSQL descartable. Pasaron también typecheck, formato, lint con las cuatro advertencias preexistentes y builds de Catalog, Pricing, Inventory y Bulk.
 
+El CI del fork sobre 45659be detectó que el parser de Catalog rechazaba eventos válidos de Taxonomy con causation_id u operation_id omitidos. La corrección conserva esos campos como opcionales en el sobre general y mantiene las comprobaciones obligatorias para los resultados de inicialización. Pasaron los 27 casos focalizados de Catalog y Taxonomy. La suite opcional de Inventory aprobó sus diez casos H5 con PostgreSQL y el SQL oficial fijado por SHA.
+
 ## Laboratorio Azure
 
 `ops/azure/service-bus/h5-integration.bicep` define un namespace Basic independiente en el grupo de recursos de integración, colas escogidas por ID de flujo, identidades de workload y roles Sender/Receiver en cada cola. Usa autenticación Microsoft Entra, TLS 1.2 y métricas de backlog y DLQ. Infra revisa red, acceso del runner, retención, umbrales y destinatarios de alertas antes de desplegar. La salida de la plantilla contiene identificadores de identidad, no credenciales.
