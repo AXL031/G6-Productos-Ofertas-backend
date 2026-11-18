@@ -11,6 +11,7 @@ import { checkServerIdentity } from 'node:tls';
 import pg, { type PoolConfig } from 'pg';
 import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
 import { sql } from 'drizzle-orm';
+import { readTaxonomyServiceBus } from './config/service-bus.js';
 
 export function parseDatabaseUrl(
   urlStr: string,
@@ -88,6 +89,9 @@ export function readDatabaseConfig(
     const ca = readFileSync(effectiveEnv.PGSSLROOTCERT!, 'utf8');
     if (!ca.includes('-----BEGIN CERTIFICATE-----')) throw new Error();
     return {
+      ...(readTaxonomyServiceBus(effectiveEnv)
+        ? { options: '-c g6.taxonomy_messaging=AZURE_SERVICE_BUS' }
+        : {}),
       host: effectiveEnv.G6_CONNECT_HOST || effectiveEnv.PGHOST,
       port: Number(effectiveEnv.PGPORT),
       database: effectiveEnv.PGDATABASE,

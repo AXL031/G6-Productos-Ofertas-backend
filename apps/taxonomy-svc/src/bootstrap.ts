@@ -6,6 +6,8 @@ import { TaxonomySvcModule } from './taxonomy-svc.module.js';
 import { Database, readDatabaseConfig, parseDatabaseUrl } from './database.js';
 import { DeactivationRecoveryRunner } from './domain/deactivation-integration.ports.js';
 import { TaxonomyAmqpRuntime } from './domain/taxonomy-amqp.runtime.js';
+import { readTaxonomyServiceBus } from './config/service-bus.js';
+import { TaxonomyMessageStore } from './persistence/taxonomy-message.store.js';
 import {
   validarEntorno,
   ConfiguracionInvalidaError,
@@ -96,6 +98,9 @@ export async function iniciarTaxonomySvc(
   try {
     app.get(TaxonomyAmqpRuntime).configurar(env);
     await app.get(Database).verifyIdentity(env);
+    if (readTaxonomyServiceBus(env)) {
+      await app.get(TaxonomyMessageStore).verifyServiceBusStorage();
+    }
     app.enableShutdownHooks();
     await app.listen(port, host);
     app.get(DeactivationRecoveryRunner).iniciar();

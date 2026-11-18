@@ -6,10 +6,15 @@ import { setTimeout as delay } from 'node:timers/promises';
 const id = randomUUID().replaceAll('-', '').slice(0, 12);
 const name = 'g6-promotions-h5-' + id;
 const database = 'g6_promotions_h5_test_' + id;
-const suite =
-  process.argv[2] === 'inventory'
-    ? 'tests/h5/inventory-promotions.postgres.e2e-spec.ts'
-    : 'apps/promotions-svc/test/coupon-h5.postgres.e2e-spec.ts';
+const suites = {
+  coupons: 'apps/promotions-svc/test/coupon-h5.postgres.e2e-spec.ts',
+  inventory: 'tests/h5/inventory-promotions.postgres.e2e-spec.ts',
+  taxonomy: 'tests/h5/taxonomy-service-bus.postgres.e2e-spec.ts',
+};
+const nameOfSuite = process.argv[2] ?? 'coupons';
+if (!Object.hasOwn(suites, nameOfSuite))
+  throw new Error('UNKNOWN_H5_TEST_SUITE');
+const suite = suites[nameOfSuite];
 const docker = (args) =>
   execFileSync('docker', args, {
     encoding: 'utf8',

@@ -8,18 +8,23 @@ Base oficial b1edcf7fe70e98354239290fb5847c49c75d9107. Contratos OpenAPI y Async
 - R08 acepta el formato del publicador Catalog sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. La prueba local con publicación de Catalog y persistencia Promotions verificó la baja SKU, el orden de versión y el replay. Falta repetir con el runtime del #243 y los permisos Azure.
 - R17 añade una entrega independiente por destino para `pricing.price.changed`. Si falla la entrega de Promotions, Price Audit aún puede confirmar la suya. Se proponen una migración aditiva y configuración separada del piloto R16. Falta aplicar la migración en un entorno autorizado y probar ambos destinos con Azure y los dos consumidores.
 - R05/R12 tienen un receptor H5 de Combos que reutiliza el handler y la identidad de Inbox de H4, con complete después del commit. Verificar en Azure ambas colas y el permiso HTTP de lectura de Catalog que usa la baja por producto.
+- R09/R18 tienen runtime H5 del lado Taxonomy. El receptor conserva la correlación y la barrera del handler existente. La migración candidata marca el transporte al crear el hecho y registra la entrega durable al mismo tiempo. El relay H5 envía fuera de la transacción y retiene el MessageId ante un timeout. H4 conserva sus pendientes propios y excluye las filas de H5.
 - N01 usa los schemas de OpenAPI actuales y valida igualdad de snapshot ref con order_id. El controlador y el worker de producción siguen detrás del cierre de G5/G7 y de una fuente autorizada de las evidencias.
 
 ```powershell
 npm test -- --maxWorkers=2 apps/promotions-svc apps/inventory-svc/src/messaging apps/pricing-svc
 npm test -- --maxWorkers=2 apps/combos-svc
+npm test -- --maxWorkers=2 apps/taxonomy-svc
 node apps/promotions-svc/test/run-h5-postgres.mjs inventory
 node apps/promotions-svc/test/run-h5-postgres.mjs
+node apps/promotions-svc/test/run-h5-postgres.mjs taxonomy
 $env:G6_SERVICE_BUS_POSTGRES_TESTS='1'
 npm run test:e2e -- --maxWorkers=1 tests/h5/pricing-fanout.postgres.e2e-spec.ts ops/azure/service-bus/pilot.postgres.e2e-spec.ts
 ```
 
 En esta base pasaron las suites focalizadas de Promotions, Inventory y Pricing, 77 unitarias de Combos, 19 E2E de Promotions, 3 pruebas de SQL de cupones y 2 pruebas R08/R13 contra PostgreSQL descartable. Los 9 casos de SQL de Pricing incluyeron el fan-out y la regresión del piloto. Pasaron typecheck, builds de Pricing/Promotions/Combos y lint con cuatro avisos preexistentes. La plantilla compiló y el listado de 19 colas coincide con el AsyncAPI de la revisión fijada. Azure real y los flujos de G5/G7 requieren evidencia propia.
+
+Taxonomy añadió 344 pruebas unitarias y dos casos de integración aprobados. El test SQL usa el rol runtime y verifica selección de transporte por sesión, exclusión de las filas H5 del publicador H4 y reintento con el mismo MessageId. El segundo caso usa un doble del store para comprobar validación y orden de settlement del resultado de Catalog. Pasaron también build de Taxonomy y formato.
 
 ## Laboratorio Azure
 
@@ -33,7 +38,7 @@ Revisar el plan de Azure con el grupo de integración antes de crear recursos. P
 | --- | --- |
 | R06/R07/R11/R15 | Catalog #243, Inventory #240 y lado Pricing probados conjuntamente para inicializaciones, bajas y resultados durables |
 | R05/R12 | Prueba bilateral de emisor y receptor en Azure, con efecto único ante una entrega repetida |
-| R09/R18 | Circuito Taxonomy y Catalog verificado por mensaje, incluida barrera de baja |
+| R09/R18 | Aplicar migración candidata del lado Taxonomy y probar ambos lados con el runtime Catalog, incluida la barrera de baja en Azure |
 | R01–R04/R10/R14 | Contratos Bulk pendientes, ruta de contenido privado aprobada y E2E por destino dentro de 256 KB de Basic |
 | N01 y frontera externa | Homologación G5, grants verificados G7, evidencia reserva/snapshot, rutas autenticadas Gateway/APIM y conciliación durable G5 |
 | Corte y retiro H4 | CI del SHA candidato, migraciones y RBAC por ambiente, E2E Azure, recuperación, aprobación operativa y reconciliación de pendientes antes de retirar RabbitMQ |

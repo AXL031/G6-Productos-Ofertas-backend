@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Database } from '../database.js';
 import { esUuid } from '../errors/taxonomy.errors.js';
 import { DeactivationIntentService } from '../domain/deactivation-intent.service.js';
+import { taxonomyCatalogQueue } from '../config/service-bus.js';
 import type {
   IdentidadBaja,
   TipoMaestro,
@@ -36,6 +38,12 @@ const tipos = [
 ];
 const objeto = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
+
+export interface TaxonomyDeliveryClaim {
+  row: Record<string, unknown>;
+  messageId: string;
+  token: string;
+}
 export function parseChecked(value: unknown): CheckedEnvelope {
   if (!objeto(value) || !objeto(value.data))
     throw new Error('INVALID_ENVELOPE');
@@ -79,6 +87,78 @@ export class TaxonomyMessageStore {
     private readonly database: Database,
     private readonly intentos: DeactivationIntentService,
   ) {}
+
+  async verifyServiceBusStorage(): Promise<void> {
+    const result = await this.database.read((db) =>
+      db.execute(sql`
+      SELECT to_regclass('taxonomy.outbox_delivery') IS NOT NULL
+        AND current_setting('g6.taxonomy_messaging', true) = 'AZURE_SERVICE_BUS'
+        AND EXISTS (SELECT FROM pg_trigger WHERE tgname = 'trg_taxonomy_catalog_h5'
+          AND tgrelid = 'taxonomy.outbox'::regclass AND tgenabled IN ('O','A')) AS ready
+    `),
+    );
+    if (result.rows[0]?.ready !== true)
+      throw new Error('TAXONOMY_H5_STORAGE_NOT_READY');
+  }
+
+  async claimServiceBusDelivery(): Promise<TaxonomyDeliveryClaim | undefined> {
+    const token = randomUUID();
+    return this.database.read((db) =>
+      db.transaction(async (tx) => {
+        const result = await tx.execute(sql`
+        WITH candidate AS (
+          SELECT d.message_id FROM taxonomy.outbox_delivery d
+          JOIN taxonomy.outbox o USING (message_id)
+          WHERE d.destination = ${taxonomyCatalogQueue} AND d.sent_at IS NULL
+            AND d.next_attempt_at <= clock_timestamp()
+            AND (d.lease_until IS NULL OR d.lease_until <= clock_timestamp())
+            AND NOT EXISTS (
+              SELECT FROM taxonomy.outbox earlier
+              JOIN taxonomy.outbox_delivery pending USING (message_id)
+              WHERE earlier.operation_id = o.operation_id AND pending.sent_at IS NULL
+                AND pending.destination = d.destination
+                AND (earlier.occurred_at, earlier.id) < (o.occurred_at, o.id)
+            )
+          ORDER BY o.occurred_at, o.id LIMIT 1 FOR UPDATE OF d SKIP LOCKED
+        )
+        UPDATE taxonomy.outbox_delivery d
+        SET lease_token = ${token}::uuid, lease_until = clock_timestamp() + interval '30 seconds',
+            attempts = d.attempts + 1
+        FROM candidate c, taxonomy.outbox o
+        WHERE d.message_id = c.message_id AND o.message_id = c.message_id
+          AND d.destination = ${taxonomyCatalogQueue}
+        RETURNING o.message_id, o.event_name, o.correlation_id, o.payload
+      `);
+        const row = result.rows[0];
+        if (!row) return undefined;
+        if (typeof row.message_id !== 'string' || !esUuid(row.message_id))
+          throw new Error('INVALID_TAXONOMY_MESSAGE');
+        return { row, messageId: row.message_id, token };
+      }),
+    );
+  }
+
+  async finishServiceBusDelivery(
+    claim: TaxonomyDeliveryClaim,
+    outcome: 'sent' | 'pending' | 'terminal',
+  ): Promise<boolean> {
+    const result = await this.database.read((db) =>
+      db.execute(sql`
+      UPDATE taxonomy.outbox_delivery
+      SET lease_token=NULL, lease_until=NULL,
+          sent_at=CASE WHEN ${outcome}='sent' THEN clock_timestamp() ELSE NULL END,
+          last_error=CASE WHEN ${outcome}='sent' THEN NULL
+                          WHEN ${outcome}='terminal' THEN 'INVALID_OR_OVERSIZE_MESSAGE'
+                          ELSE 'SEND_NOT_CONFIRMED' END,
+          next_attempt_at=CASE WHEN ${outcome}='terminal' THEN 'infinity'::timestamptz
+            ELSE clock_timestamp()+make_interval(secs=>LEAST(60,power(2,LEAST(attempts,6))::int)) END
+      WHERE message_id=${claim.messageId}::uuid AND destination=${taxonomyCatalogQueue}
+        AND lease_token=${claim.token}::uuid AND lease_until > clock_timestamp() AND sent_at IS NULL
+      RETURNING message_id
+    `),
+    );
+    return result.rows.length === 1;
+  }
   async consumir(envelope: CheckedEnvelope): Promise<void> {
     const d = envelope.data;
     const identidad: IdentidadBaja & { result: unknown } = {
@@ -149,12 +229,14 @@ export class TaxonomyMessageStore {
                  o.occurred_at::text AS cursor_fecha
           FROM taxonomy.outbox o
           WHERE o.published_at IS NULL
+            AND COALESCE(to_jsonb(o)->>'delivery_transport', 'RABBITMQ') = 'RABBITMQ'
             AND o.event_name IN ('taxonomy.category.updated', 'taxonomy.product-type-schema.changed', 'taxonomy.characteristic-value.updated', 'taxonomy.master.deactivation.check.requested', 'taxonomy.master.deactivated', 'taxonomy.master.deactivation.rejected')
             AND (${cursor?.fecha ?? null}::timestamptz IS NULL OR
                  (o.occurred_at, o.id) > (${cursor?.fecha ?? null}::timestamptz, ${cursor?.id ?? null}::uuid))
             AND NOT EXISTS (
               SELECT 1 FROM taxonomy.outbox anterior
               WHERE anterior.operation_id = o.operation_id AND anterior.published_at IS NULL
+                AND COALESCE(to_jsonb(anterior)->>'delivery_transport', 'RABBITMQ') = 'RABBITMQ'
                 AND (anterior.occurred_at, anterior.id) < (o.occurred_at, o.id)
             )
           ORDER BY o.occurred_at, o.id LIMIT 1 FOR UPDATE OF o SKIP LOCKED

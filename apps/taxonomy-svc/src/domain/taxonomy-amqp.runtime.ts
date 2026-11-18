@@ -14,6 +14,8 @@ import {
   type ConsumeMessage,
 } from 'amqplib';
 import { esUuid } from '../errors/taxonomy.errors.js';
+import { readTaxonomyServiceBus } from '../config/service-bus.js';
+import { TaxonomyServiceBusRuntime } from './taxonomy-service-bus.runtime.js';
 import {
   TaxonomyMessageStore,
   parseChecked,
@@ -43,6 +45,7 @@ export function leerAmqp(env: Readonly<NodeJS.ProcessEnv>): Config | undefined {
 
 @Injectable()
 export class TaxonomyAmqpRuntime implements OnModuleDestroy {
+  private azure?: TaxonomyServiceBusRuntime;
   private logger: LoggerService = new Logger(TaxonomyAmqpRuntime.name);
   private config?: Config;
   private connection?: ChannelModel;
@@ -60,15 +63,26 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
     this.logger = logger;
   }
   configurar(env: Readonly<NodeJS.ProcessEnv>): void {
+    const azure = readTaxonomyServiceBus(env);
+    if (azure) {
+      this.azure = new TaxonomyServiceBusRuntime(azure, this.store);
+      this.config = undefined;
+      return;
+    }
     this.config = leerAmqp(env);
   }
   disponible(): boolean {
+    if (this.azure) return this.azure.available;
     return (
       !this.config ||
       (!!this.connection && !!this.consumer && !!this.publisher && !this.paused)
     );
   }
   iniciar(): void {
+    if (this.azure) {
+      this.azure.start();
+      return;
+    }
     if (!this.config || this.timer || this.stopped) return;
     const tick = () => {
       if (this.stopped || this.paused || this.cycle) return;
@@ -323,6 +337,7 @@ export class TaxonomyAmqpRuntime implements OnModuleDestroy {
     });
   }
   async onModuleDestroy(): Promise<void> {
+    await this.azure?.close();
     this.stopped = true;
     if (this.timer) clearInterval(this.timer);
     await this.cycle;
