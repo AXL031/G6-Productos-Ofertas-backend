@@ -172,3 +172,14 @@ ESTADO FINAL: PASS / PARTIAL / BLOCKED
 ## G1 Marketplace H4 — documentación operativa obligatoria
 
 Antes de implementar o modificar endpoints consumidos por Marketplace, lee [`integraciones/g1-marketplace/README.md`](integraciones/g1-marketplace/README.md), su [matriz de 25 funciones](integraciones/g1-marketplace/MATRIZ_OPERACIONES_H4.md) y [plan de pruebas/evidencias](integraciones/g1-marketplace/PRUEBAS_Y_EVIDENCIAS_H4.md), el [acuerdo normativo G1–G6 de Docs PR #94](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md), la [alineación Marketplace de Docs PR #94](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ALINEACION_MARKETPLACE.md) y el OpenAPI de Docs. Esta lectura se suma, no sustituye, a SPEC, DEC-F/ADR, modelo y pruebas del servicio. Registra contrato, código, CI, despliegue, grant y E2E con SHA exacto como estados independientes. No tomes informes históricos como estado actual.
+
+
+## Política CI Draft → Ready
+
+- Codex desarrolla y corrige sobre PR Draft.
+- No se ejecutan suites locales completas de manera rutinaria; se usan pruebas focalizadas para depurar.
+- La validación integral obligatoria se ejecuta en GitHub Actions al pasar el PR a Ready for Review.
+- El PR no se considera validado hasta que todos los checks obligatorios pasen para la revisión actual.
+- Cada commit nuevo en Ready invalida los resultados anteriores y vuelve a ejecutar CI; al volver a Draft, las suites pesadas quedan diferidas.
+- Toda evidencia debe identificar el código y SHA probados. No se hace merge con checks pendientes o fallidos.
+- Ready for Review no activa despliegues de producción.

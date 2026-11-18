@@ -211,7 +211,12 @@ jobs:
     name: Validar CI, autorización, selección y SHA de master
     if: >-
       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/master' && inputs.mode == 'deploy') ||
-      (github.event_name == 'workflow_run' && github.event.workflow_run.name == 'Integración continua (CI)')
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.name == 'Integración continua (CI)' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'master' &&
+       github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
     runs-on: ubuntu-latest
     permissions:
       actions: read
