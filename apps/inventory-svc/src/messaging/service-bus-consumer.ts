@@ -1,19 +1,21 @@
 /**
- * Consumer de Azure Service Bus para inventory-svc (H5).
+ * Consumidor punto a punto Azure Service Bus para inventory-svc (H5).
  *
- * Flujo R06: Escucha en modo PeekLock la cola g6.inventory.from.catalog:
- *   - inventory.sku.initialization.requested
- *   - catalog.sku.deactivated (respetando flag INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED)
+ * Flujo R06:
+ *   Cola: g6.inventory.from.catalog
+ *   Eventos autorizados:
+ *     - inventory.sku.initialization.requested
+ *     - catalog.sku.deactivated (respetando CATALOG_SKU_DEACTIVATION_ENABLED)
  *
- * Los mensajes se procesan usando InventoryCommandService con persistencia
- * transaccional e idempotencia en inbox.
- * Liquidación:
- *   - completeMessage: únicamente tras el commit durable en DB.
- *   - abandonMessage: ante fallos transitorios (DB, red) para reintento con backoff.
- *   - deadLetterMessage: para INVALID_MESSAGE, envelope corrupto, BLOCKED_CONTRACT
- *     o FEATURE_DISABLED (este último sin reintentos infinitos).
+ * Flujo R02 / Bulk:
+ *   Bloqueado por contrato (BLOCKED_CONTRACT). No se suscribe receptor para Bulk.
  *
- * R02 / Bulk permanece BLOCKED_CONTRACT: no se habilita su receptor.
+ * Idempotencia y durabilidad:
+ *   - Modo PeekLock.
+ *   - Validación estricta de envelope (subject === payload.name, messageId === payload.message_id como UUIDs válidos, producer === 'catalog-svc').
+ *   - DLQ inmediato para violaciones de contrato, INVALID_MESSAGE y FEATURE_DISABLED.
+ *   - Errores transitorios aplican retardo exponencial (1, 2, 4, 8, hasta 16s según deliveryCount) antes de abandonMessage.
+ *   - Commit durable antes de completeMessage.
  */
 
 import {
@@ -28,8 +30,8 @@ import {
 } from '@azure/identity';
 import {
   ServiceBusClient,
-  type ServiceBusReceiver,
   type ServiceBusReceivedMessage,
+  type ServiceBusReceiver,
 } from '@azure/service-bus';
 import {
   InventoryCommandService,
@@ -44,15 +46,31 @@ const ACCEPTED_EVENTS = new Set([
   'catalog.sku.deactivated',
 ]);
 
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export type InventoryBusSettlement = Pick<
   ServiceBusReceiver,
   'completeMessage' | 'abandonMessage' | 'deadLetterMessage'
 >;
 
+export type DelayFn = (ms: number) => Promise<void>;
+const defaultDelay: DelayFn = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export function computeTransientBackoffMs(deliveryCount?: number): number {
+  const count =
+    typeof deliveryCount === 'number' && deliveryCount > 0 ? deliveryCount : 1;
+  const exp = Math.min(count - 1, 4);
+  const seconds = Math.min(16, Math.pow(2, exp));
+  return seconds * 1000;
+}
+
 export class InventoryServiceBusHandler {
   constructor(
-    private readonly commands: InventoryCommandService,
+    private readonly commands: Pick<InventoryCommandService, 'process'>,
     private readonly receiver: InventoryBusSettlement,
+    private readonly delay: DelayFn = defaultDelay,
   ) {}
 
   async handle(
@@ -70,12 +88,24 @@ export class InventoryServiceBusHandler {
               ? Buffer.from(JSON.stringify(body), 'utf8')
               : undefined;
 
+      if (!content || content.byteLength > 256 * 1024) {
+        throw new Error('INVALID_ENVELOPE_CONTENT');
+      }
+
+      // Validar message.messageId como UUID válido
       if (
-        !content ||
-        content.byteLength > 256 * 1024 ||
-        typeof message.messageId !== 'string'
+        typeof message.messageId !== 'string' ||
+        !UUID_REGEX.test(message.messageId.trim())
       ) {
-        throw new Error('INVALID_ENVELOPE');
+        throw new Error('INVALID_BROKER_MESSAGE_ID');
+      }
+
+      // Validar message.subject existente y no vacío
+      if (
+        typeof message.subject !== 'string' ||
+        message.subject.trim().length === 0
+      ) {
+        throw new Error('INVALID_BROKER_SUBJECT');
       }
 
       payload = JSON.parse(content.toString('utf8'));
@@ -92,17 +122,15 @@ export class InventoryServiceBusHandler {
       const p = payload as Record<string, unknown>;
       const eventName = p.name as string;
 
-      // Validación estricta: correspondencia entre subject del mensaje y name del envelope
-      if (
-        typeof message.subject === 'string' &&
-        message.subject !== eventName
-      ) {
+      // Validación estricta: correspondencia exacta entre subject del mensaje y name del envelope
+      if (message.subject !== eventName) {
         throw new Error('SUBJECT_MISMATCH');
       }
 
-      // Validación de identidad: messageId del broker debe coincidir con payload.message_id
+      // Validación de payload.message_id como UUID válido y coincidencia exacta con message.messageId
       if (
-        typeof p.message_id === 'string' &&
+        typeof p.message_id !== 'string' ||
+        !UUID_REGEX.test(p.message_id.trim()) ||
         message.messageId !== p.message_id
       ) {
         throw new Error('MESSAGE_ID_MISMATCH');
@@ -139,8 +167,7 @@ export class InventoryServiceBusHandler {
       await this.commands.process(payload);
     } catch (error) {
       if (error instanceof InventoryMessageError) {
-        // INVALID_MESSAGE, BLOCKED_CONTRACT o FEATURE_DISABLED van a DLQ
-        // FEATURE_DISABLED no debe provocar un bucle de reintentos
+        // INVALID_MESSAGE, BLOCKED_CONTRACT o FEATURE_DISABLED van a DLQ de inmediato sin bucle de reintentos
         await this.receiver.deadLetterMessage(message, {
           deadLetterReason: error.reason,
           deadLetterErrorDescription: `Rechazado por InventoryCommandService: ${error.reason}`,
@@ -148,7 +175,9 @@ export class InventoryServiceBusHandler {
         return 'dead-lettered';
       }
 
-      // Error transitorio (DB, deadlock, red): abandonar mensaje para reintento con backoff
+      // Error transitorio (DB, deadlock, red): aplicar retardo de 1, 2, 4, 8 hasta 16s según deliveryCount antes de abandonMessage
+      const delayMs = computeTransientBackoffMs(message.deliveryCount);
+      await this.delay(delayMs);
       await this.receiver.abandonMessage(message);
       return 'abandoned';
     }
@@ -200,9 +229,20 @@ export class InventoryServiceBusConsumerRuntime
     this.isOpening = true;
 
     try {
-      // Garantizar que no existan suscripciones previas duplicadas
+      // Cierra la suscripción anterior antes de crear la siguiente.
+      // Si falla el cierre, no crea otra suscripción sobre el receiver anterior:
+      // cierra ese receiver y reintenta la recuperación.
       if (this.subscription) {
-        await this.subscription.close().catch(() => undefined);
+        try {
+          await this.subscription.close();
+        } catch (closeErr) {
+          this.subscription = undefined;
+          if (this.receiver) {
+            await this.receiver.close().catch(() => undefined);
+            this.receiver = undefined;
+          }
+          throw closeErr;
+        }
         this.subscription = undefined;
       }
 
@@ -240,12 +280,7 @@ export class InventoryServiceBusConsumerRuntime
             this.logger.warn(
               `SERVICE_BUS_INVENTORY_CONSUMER_RECOVERY_PENDING [${QUEUE_CATALOG}]`,
             );
-            if (!this.stopped && !this.reconnectTimer) {
-              this.reconnectTimer = setTimeout(() => {
-                this.reconnectTimer = undefined;
-                void this.open();
-              }, 2000);
-            }
+            this.scheduleReconnect();
           },
         },
         { autoCompleteMessages: false, maxConcurrentCalls: 1 },
@@ -254,14 +289,18 @@ export class InventoryServiceBusConsumerRuntime
       this.available = true;
     } catch {
       this.available = false;
-      if (!this.stopped && !this.reconnectTimer) {
-        this.reconnectTimer = setTimeout(() => {
-          this.reconnectTimer = undefined;
-          void this.open();
-        }, 2000);
-      }
+      this.scheduleReconnect();
     } finally {
       this.isOpening = false;
+    }
+  }
+
+  private scheduleReconnect(): void {
+    if (!this.stopped && !this.reconnectTimer) {
+      this.reconnectTimer = setTimeout(() => {
+        this.reconnectTimer = undefined;
+        void this.open();
+      }, 2000);
     }
   }
 
@@ -282,7 +321,9 @@ export class InventoryServiceBusConsumerRuntime
       try {
         await this.receiver?.close().catch(() => undefined);
       } finally {
+        this.receiver = undefined;
         await this.client?.close().catch(() => undefined);
+        this.client = undefined;
       }
     }
   }

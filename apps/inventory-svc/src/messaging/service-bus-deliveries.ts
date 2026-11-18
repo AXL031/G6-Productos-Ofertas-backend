@@ -23,16 +23,15 @@ export const INVENTORY_QUEUES = {
 export type InventoryQueue =
   (typeof INVENTORY_QUEUES)[keyof typeof INVENTORY_QUEUES];
 
-const APPROVED_ROUTES: ReadonlyMap<string, readonly InventoryQueue[]> = new Map(
-  [
+export const APPROVED_ROUTES: ReadonlyMap<string, readonly InventoryQueue[]> =
+  new Map([
     ['inventory.sku.initialization.completed', [INVENTORY_QUEUES.CATALOG]],
     ['inventory.sku.initialization.rejected', [INVENTORY_QUEUES.CATALOG]],
     [
       'inventory.stock.changed',
       [INVENTORY_QUEUES.COMBOS, INVENTORY_QUEUES.PROMOTIONS],
     ],
-  ],
-);
+  ]);
 
 export interface InventoryDeliveryClaim {
   token: string;
@@ -40,7 +39,8 @@ export interface InventoryDeliveryClaim {
   row: OutboxEntity;
 }
 
-export type DeliveryOutcome = 'confirmed' | 'failed' | 'terminal_too_large';
+export type DeliveryOutcome =
+  'confirmed' | 'failed' | 'terminal_too_large' | 'terminal_invalid_envelope';
 
 /**
  * Registra las entregas pendientes para un outbox row en la misma transacción de DB.
@@ -145,16 +145,20 @@ export class InventoryDeliveryStore {
     return this.txRunner.transaction(async (client) => {
       const isConfirmed = status === 'confirmed';
       const isTooLarge = status === 'terminal_too_large';
+      const isInvalidEnvelope = status === 'terminal_invalid_envelope';
+      const isTerminal = isTooLarge || isInvalidEnvelope;
 
       const lastError = isConfirmed
         ? null
         : isTooLarge
           ? 'MESSAGE_EXCEEDS_256KB'
-          : 'SEND_NOT_CONFIRMED';
+          : isInvalidEnvelope
+            ? 'INVALID_OUTBOX_CONTRACT'
+            : 'SEND_NOT_CONFIRMED';
 
       const nextAttemptSql = isConfirmed
         ? `clock_timestamp()`
-        : isTooLarge
+        : isTerminal
           ? `'infinity'::timestamptz`
           : `clock_timestamp() + make_interval(secs => least(60, power(2, least(attempts, 6))::int))`;
 

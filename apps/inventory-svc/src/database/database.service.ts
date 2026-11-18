@@ -71,9 +71,15 @@ export class DatabaseService
 
   private async initPool(config: InventoryConfig): Promise<void> {
     const production = process.env.NODE_ENV === 'production';
+    const isH5 = process.env.MESSAGING_PROVIDER === 'AZURE_SERVICE_BUS';
     try {
       const poolOptions = createPostgresPoolOptions(config);
       if (!poolOptions) {
+        if (isH5) {
+          throw new Error(
+            'PostgreSQL no está configurado para el transporte Azure Service Bus (H5).',
+          );
+        }
         this.logger.warn(
           'PostgreSQL no está configurado; readiness permanecerá no listo.',
         );
@@ -93,6 +99,7 @@ export class DatabaseService
       try {
         await client.query('SELECT 1');
         if (production) await this.assertRequiredSchema();
+        if (isH5) await this.assertRequiredH5Schema(client);
         this.requiredSchemaReady = true;
         this.isConnected = true;
         this.logger.log(
@@ -118,11 +125,125 @@ export class DatabaseService
             ? err.code
             : 'CONFIGURATION_OR_TLS_ERROR',
       });
-      if (production) {
+      if (production || isH5) {
         throw new Error(
           'PostgreSQL o el esquema requerido de Inventory no está preparado.',
         );
       }
+    }
+  }
+
+  private async assertRequiredH5Schema(
+    client: pg.PoolClient | pg.Pool,
+  ): Promise<void> {
+    // 1. Validar existencia de la tabla y columnas requeridas por InventoryDeliveryStore
+    const columnsResult = await client.query<{ column_name: string }>(
+      `SELECT column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'inventory'
+          AND table_name = 'outbox_delivery'`,
+    );
+
+    const requiredColumns = [
+      'message_id',
+      'destination',
+      'route_version',
+      'transport',
+      'created_at',
+      'next_attempt_at',
+      'attempts',
+      'lease_token',
+      'lease_until',
+      'sent_at',
+      'last_error',
+    ];
+
+    const actualColumns = new Set(columnsResult.rows.map((r) => r.column_name));
+    for (const col of requiredColumns) {
+      if (!actualColumns.has(col)) {
+        throw new Error(
+          `Columna requerida '${col}' no encontrada en inventory.outbox_delivery`,
+        );
+      }
+    }
+
+    // 2. Validar Primary Key (message_id, destination)
+    const pkResult = await client.query<{ column_name: string }>(
+      `SELECT kcu.column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+        WHERE tc.table_schema = 'inventory'
+          AND tc.table_name = 'outbox_delivery'
+          AND tc.constraint_type = 'PRIMARY KEY'
+        ORDER BY kcu.ordinal_position`,
+    );
+
+    const pkColumns = pkResult.rows.map((r) => r.column_name);
+    if (
+      pkColumns.length !== 2 ||
+      pkColumns[0] !== 'message_id' ||
+      pkColumns[1] !== 'destination'
+    ) {
+      throw new Error(
+        'Clave primaria compuesta (message_id, destination) no encontrada en inventory.outbox_delivery',
+      );
+    }
+
+    // 3. Validar FK contra inventory.outbox(event_id)
+    const fkResult = await client.query<{
+      column_name: string;
+      foreign_table_schema: string;
+      foreign_table_name: string;
+      foreign_column_name: string;
+    }>(
+      `SELECT kcu.column_name,
+              ccu.table_schema AS foreign_table_schema,
+              ccu.table_name AS foreign_table_name,
+              ccu.column_name AS foreign_column_name
+         FROM information_schema.table_constraints tc
+         JOIN information_schema.key_column_usage kcu
+           ON tc.constraint_name = kcu.constraint_name
+          AND tc.table_schema = kcu.table_schema
+         JOIN information_schema.constraint_column_usage ccu
+           ON ccu.constraint_name = tc.constraint_name
+          AND ccu.table_schema = tc.table_schema
+        WHERE tc.table_schema = 'inventory'
+          AND tc.table_name = 'outbox_delivery'
+          AND tc.constraint_type = 'FOREIGN KEY'`,
+    );
+
+    const hasFk = fkResult.rows.some(
+      (r) =>
+        r.column_name === 'message_id' &&
+        r.foreign_table_schema === 'inventory' &&
+        r.foreign_table_name === 'outbox' &&
+        r.foreign_column_name === 'event_id',
+    );
+
+    if (!hasFk) {
+      throw new Error(
+        'Clave foránea contra inventory.outbox(event_id) no encontrada en inventory.outbox_delivery',
+      );
+    }
+
+    // 4. Validar permisos SELECT, INSERT y UPDATE del usuario de aplicación
+    const privResult = await client.query<{
+      can_select: boolean;
+      can_insert: boolean;
+      can_update: boolean;
+    }>(
+      `SELECT has_table_privilege('inventory.outbox_delivery', 'SELECT') AS can_select,
+              has_table_privilege('inventory.outbox_delivery', 'INSERT') AS can_insert,
+              has_table_privilege('inventory.outbox_delivery', 'UPDATE') AS can_update`,
+    );
+
+    const priv = privResult.rows[0];
+    if (!priv?.can_select || !priv?.can_insert || !priv?.can_update) {
+      throw new Error(
+        'El usuario de base de datos no cuenta con permisos SELECT, INSERT y UPDATE sobre inventory.outbox_delivery',
+      );
     }
   }
 

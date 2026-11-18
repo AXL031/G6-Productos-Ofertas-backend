@@ -6,9 +6,14 @@
  *   R12: g6.combos.from.inventory    → inventory.stock.changed
  *   R13: g6.promotions.from.inventory → inventory.stock.changed
  *
- * Preserva payload.message_id como identificador canónico en el messageId del broker.
- * Si un mensaje excede los 256 KB, registra un fallo terminal recuperable evitando
- * reintentos infinitos.
+ * Exige contrato estricto de envelope:
+ *   - payload.message_id válido (UUID) como messageId del broker (sin fallback a event_id).
+ *   - payload.name === row.event_type
+ *   - payload.producer === 'inventory-svc'
+ *   - claim.destination coincidente con la ruta aprobada para el evento.
+ * Ante violación contractual, registra fallo terminal 'terminal_invalid_envelope'
+ * con last_error='INVALID_OUTBOX_CONTRACT' y next_attempt_at='infinity', conservando
+ * la fila sin marcarla como enviada.
  */
 
 import {
@@ -27,9 +32,11 @@ import { loadInventoryConfig } from '../config/inventory.config.js';
 import {
   InventoryDeliveryStore,
   INVENTORY_QUEUES,
+  APPROVED_ROUTES,
 } from './service-bus-deliveries.js';
 
-const APPROVED_DESTINATIONS = new Set(Object.values(INVENTORY_QUEUES));
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function inventoryEnvelope(row: {
   event_id: string;
@@ -58,9 +65,38 @@ export class InventoryServiceBusRelay {
     if (!claim) return 'empty';
 
     try {
-      if (!APPROVED_DESTINATIONS.has(claim.destination as any)) {
-        throw new Error('INVENTORY_SERVICE_BUS_ROUTE_NOT_APPROVED');
+      const payload =
+        typeof claim.row.payload === 'string'
+          ? JSON.parse(claim.row.payload)
+          : claim.row.payload;
+
+      // Validación estricta del contrato del outbox
+      const validMessageId =
+        typeof payload?.message_id === 'string' &&
+        UUID_REGEX.test(payload.message_id.trim());
+      const validName = payload?.name === claim.row.event_type;
+      const validProducer = payload?.producer === 'inventory-svc';
+      const approvedDestinations = APPROVED_ROUTES.get(claim.row.event_type);
+      const validDestination = Boolean(
+        approvedDestinations &&
+        approvedDestinations.includes(claim.destination as any),
+      );
+
+      if (
+        !validMessageId ||
+        !validName ||
+        !validProducer ||
+        !validDestination
+      ) {
+        // Fallo terminal contractual: libera el lease, last_error='INVALID_OUTBOX_CONTRACT',
+        // next_attempt_at='infinity', sin marcar sent_at.
+        const finished = await this.store.finish(
+          claim,
+          'terminal_invalid_envelope',
+        );
+        return finished ? 'terminal-failure' : 'lease-lost';
       }
+
       const sender = this.senders.get(claim.destination);
       if (!sender) {
         throw new Error('INVENTORY_SERVICE_BUS_SENDER_NOT_AVAILABLE');
@@ -71,17 +107,12 @@ export class InventoryServiceBusRelay {
         maxSizeInBytes: 256 * 1024,
       });
 
-      const payload =
-        typeof claim.row.payload === 'string'
-          ? JSON.parse(claim.row.payload)
-          : claim.row.payload;
-
-      // El messageId enviado al broker debe ser exactamente payload.message_id
-      const contractualMessageId = payload?.message_id || claim.row.event_id;
+      // El messageId enviado al broker debe ser exactamente payload.message_id (sin fallback a event_id)
+      const contractualMessageId = payload.message_id;
       const correlationId =
-        payload?.correlation_id || claim.row.correlation_id || undefined;
-      const operationId = payload?.operation_id || undefined;
-      const causationId = payload?.causation_id || undefined;
+        payload.correlation_id || claim.row.correlation_id || undefined;
+      const operationId = payload.operation_id || undefined;
+      const causationId = payload.causation_id || undefined;
 
       const added = batch.tryAddMessage({
         body,
@@ -91,7 +122,7 @@ export class InventoryServiceBusRelay {
         contentType: 'application/json',
         applicationProperties: {
           producer: 'inventory-svc',
-          schema_version: payload?.schema_version ?? 2,
+          schema_version: payload.schema_version ?? 2,
           route_version: 1,
           ...(operationId ? { operation_id: operationId } : {}),
           ...(causationId ? { causation_id: causationId } : {}),

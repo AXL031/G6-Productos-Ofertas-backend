@@ -9,6 +9,8 @@ import { readInventoryServiceBus } from './service-bus-config.js';
 import { InventoryServiceBusRelay } from './service-bus-relay.js';
 import {
   InventoryServiceBusHandler,
+  InventoryServiceBusConsumerRuntime,
+  computeTransientBackoffMs,
   type InventoryBusSettlement,
 } from './service-bus-consumer.js';
 import {
@@ -31,6 +33,7 @@ const env = {
 
 function outboxClaim(
   destination = INVENTORY_QUEUES.CATALOG,
+  overrides?: Partial<InventoryDeliveryClaim['row']>,
 ): InventoryDeliveryClaim {
   const eventId = randomUUID();
   const canonicalMessageId = randomUUID();
@@ -63,6 +66,7 @@ function outboxClaim(
       },
       status: 'PENDING',
       created_at: new Date().toISOString(),
+      ...overrides,
     },
   };
 }
@@ -78,6 +82,75 @@ describe('Inventory Service Bus — Configuración y Seguridad (H5)', () => {
       publishEnabled: true,
       consumeEnabled: true,
     });
+  });
+
+  it('rechaza MESSAGING_PROVIDER desconocido', () => {
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        MESSAGING_PROVIDER: 'KAFKA',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_CONFIGURATION_INVALID');
+
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        MESSAGING_PROVIDER: 'AWS_SNS',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_CONFIGURATION_INVALID');
+  });
+
+  it('exige la presencia de ambos flags de publicación y consumo como valores literales true o false', () => {
+    // Falta publishEnabled
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        INVENTORY_SERVICE_BUS_PUBLISH_ENABLED: undefined,
+        INVENTORY_SERVICE_BUS_CONSUME_ENABLED: 'true',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+
+    // Falta consumeEnabled
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        INVENTORY_SERVICE_BUS_PUBLISH_ENABLED: 'true',
+        INVENTORY_SERVICE_BUS_CONSUME_ENABLED: undefined,
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+
+    // Valor no literal en publishEnabled (no acepta '1', 'yes', etc.)
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        INVENTORY_SERVICE_BUS_PUBLISH_ENABLED: '1',
+        INVENTORY_SERVICE_BUS_CONSUME_ENABLED: 'true',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+
+    // Valor no literal en consumeEnabled
+    expect(() =>
+      readInventoryServiceBus({
+        ...env,
+        INVENTORY_SERVICE_BUS_PUBLISH_ENABLED: 'true',
+        INVENTORY_SERVICE_BUS_CONSUME_ENABLED: '0',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+  });
+
+  it('rechaza variables de H5 si MESSAGING_PROVIDER no es AZURE_SERVICE_BUS', () => {
+    expect(() =>
+      readInventoryServiceBus({
+        MESSAGING_PROVIDER: 'RABBITMQ',
+        INVENTORY_SERVICE_BUS_PUBLISH_ENABLED: 'true',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+
+    expect(() =>
+      readInventoryServiceBus({
+        INVENTORY_SERVICE_BUS_CONSUME_ENABLED: 'true',
+      }),
+    ).toThrow('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
   });
 
   it('permite controlar independientemente publicación y consumo', () => {
@@ -203,6 +276,66 @@ describe('Inventory Service Bus Relay — Publicación Outbox y Confirmación', 
     expect(f.store.finish).toHaveBeenCalledWith(f.claimObj, 'confirmed');
   });
 
+  it('rechaza y no publica si payload.message_id es ausente o no es UUID válido', async () => {
+    // 1. message_id ausente
+    const invalidClaim1 = outboxClaim();
+    delete invalidClaim1.row.payload.message_id;
+    const f1 = createFixture(true, invalidClaim1);
+    expect(await f1.relay.publishOne()).toBe('terminal-failure');
+    expect(f1.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f1.store.finish).toHaveBeenCalledWith(
+      invalidClaim1,
+      'terminal_invalid_envelope',
+    );
+
+    // 2. message_id no es UUID válido
+    const invalidClaim2 = outboxClaim();
+    invalidClaim2.row.payload.message_id = 'not-a-valid-uuid-1234';
+    const f2 = createFixture(true, invalidClaim2);
+    expect(await f2.relay.publishOne()).toBe('terminal-failure');
+    expect(f2.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f2.store.finish).toHaveBeenCalledWith(
+      invalidClaim2,
+      'terminal_invalid_envelope',
+    );
+  });
+
+  it('rechaza y no publica si payload.name no coincide con row.event_type', async () => {
+    const invalidClaim = outboxClaim();
+    invalidClaim.row.payload.name = 'otro.evento.discrepante';
+    const f = createFixture(true, invalidClaim);
+    expect(await f.relay.publishOne()).toBe('terminal-failure');
+    expect(f.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f.store.finish).toHaveBeenCalledWith(
+      invalidClaim,
+      'terminal_invalid_envelope',
+    );
+  });
+
+  it('rechaza y no publica si payload.producer no es inventory-svc', async () => {
+    const invalidClaim = outboxClaim();
+    invalidClaim.row.payload.producer = 'catalog-svc';
+    const f = createFixture(true, invalidClaim);
+    expect(await f.relay.publishOne()).toBe('terminal-failure');
+    expect(f.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f.store.finish).toHaveBeenCalledWith(
+      invalidClaim,
+      'terminal_invalid_envelope',
+    );
+  });
+
+  it('rechaza y no publica si el destino no corresponde a la ruta aprobada para ese evento', async () => {
+    // inventory.sku.initialization.completed solo está aprobado para CATALOG, no para COMBOS
+    const invalidClaim = outboxClaim(INVENTORY_QUEUES.COMBOS);
+    const f = createFixture(true, invalidClaim);
+    expect(await f.relay.publishOne()).toBe('terminal-failure');
+    expect(f.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f.store.finish).toHaveBeenCalledWith(
+      invalidClaim,
+      'terminal_invalid_envelope',
+    );
+  });
+
   it('conserva el mensaje PENDING con el mismo message_id ante timeout o error de broker', async () => {
     const f = createFixture();
     f.sender.sendMessages.mockRejectedValueOnce(
@@ -246,6 +379,7 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
   let settlement: InventoryBusSettlement;
   let mockCommands: any;
   let handler: InventoryServiceBusHandler;
+  let mockDelay: any;
 
   beforeEach(() => {
     settlement = {
@@ -256,7 +390,12 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
     mockCommands = {
       process: vi.fn(async () => ({ duplicate: false, status: 'INITIALIZED' })),
     };
-    handler = new InventoryServiceBusHandler(mockCommands, settlement);
+    mockDelay = vi.fn(async () => undefined);
+    handler = new InventoryServiceBusHandler(
+      mockCommands,
+      settlement,
+      mockDelay,
+    );
   });
 
   function createReceivedMessage(
@@ -270,6 +409,7 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
       correlationId,
       contentType: 'application/json',
       subject: name,
+      deliveryCount: 1,
       body: JSON.stringify({
         message_id: messageId,
         operation_id: randomUUID(),
@@ -283,6 +423,17 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
       }),
     } as unknown as ServiceBusReceivedMessage;
   }
+
+  it('calcula retardo de backoff según deliveryCount (1s, 2s, 4s, 8s, hasta 16s)', () => {
+    expect(computeTransientBackoffMs(1)).toBe(1000);
+    expect(computeTransientBackoffMs(2)).toBe(2000);
+    expect(computeTransientBackoffMs(3)).toBe(4000);
+    expect(computeTransientBackoffMs(4)).toBe(8000);
+    expect(computeTransientBackoffMs(5)).toBe(16000);
+    expect(computeTransientBackoffMs(6)).toBe(16000);
+    expect(computeTransientBackoffMs(10)).toBe(16000);
+    expect(computeTransientBackoffMs(undefined)).toBe(1000);
+  });
 
   it('procesa inventory.sku.initialization.requested y completa el mensaje', async () => {
     const msg = createReceivedMessage(
@@ -313,30 +464,63 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
     expect(settlement.completeMessage).toHaveBeenCalledWith(msg);
   });
 
-  it('rechaza con DLQ si el subject no coincide con el payload.name', async () => {
-    const msg = createReceivedMessage('inventory.sku.initialization.requested');
-    (msg as any).subject = 'otro.evento.distinto';
-    const result = await handler.handle(msg);
-    expect(result).toBe('dead-lettered');
-    expect(settlement.deadLetterMessage).toHaveBeenCalledWith(
-      msg,
-      expect.objectContaining({
-        deadLetterReason: 'INVALID_INVENTORY_CONTRACT',
-      }),
+  it('rechaza con DLQ antes de llamar a command service si subject está ausente o no coincide', async () => {
+    // 1. subject ausente
+    const msgWithoutSubject = createReceivedMessage(
+      'inventory.sku.initialization.requested',
     );
+    delete (msgWithoutSubject as any).subject;
+    const r1 = await handler.handle(msgWithoutSubject);
+    expect(r1).toBe('dead-lettered');
+    expect(mockCommands.process).not.toHaveBeenCalled();
+
+    // 2. subject discrepante
+    const msgMismatched = createReceivedMessage(
+      'inventory.sku.initialization.requested',
+    );
+    (msgMismatched as any).subject = 'otro.evento.distinto';
+    const r2 = await handler.handle(msgMismatched);
+    expect(r2).toBe('dead-lettered');
+    expect(mockCommands.process).not.toHaveBeenCalled();
   });
 
-  it('rechaza con DLQ si el messageId no coincide con payload.message_id', async () => {
+  it('rechaza con DLQ antes de llamar a command service si messageId o payload.message_id son inválidos o no coinciden', async () => {
+    // 1. messageId del broker no es UUID
+    const msg1 = createReceivedMessage(
+      'inventory.sku.initialization.requested',
+    );
+    (msg1 as any).messageId = 'not-a-uuid';
+    expect(await handler.handle(msg1)).toBe('dead-lettered');
+    expect(mockCommands.process).not.toHaveBeenCalled();
+
+    // 2. payload.message_id no es UUID
+    const msg2 = createReceivedMessage(
+      'inventory.sku.initialization.requested',
+    );
+    const parsed2 = JSON.parse(String(msg2.body));
+    parsed2.message_id = 'not-a-uuid';
+    (msg2 as any).body = JSON.stringify(parsed2);
+    expect(await handler.handle(msg2)).toBe('dead-lettered');
+    expect(mockCommands.process).not.toHaveBeenCalled();
+
+    // 3. messageId y payload.message_id difieren
+    const msg3 = createReceivedMessage(
+      'inventory.sku.initialization.requested',
+    );
+    (msg3 as any).messageId = randomUUID();
+    expect(await handler.handle(msg3)).toBe('dead-lettered');
+    expect(mockCommands.process).not.toHaveBeenCalled();
+  });
+
+  it('rechaza con DLQ si producer no es catalog-svc', async () => {
     const msg = createReceivedMessage('inventory.sku.initialization.requested');
-    (msg as any).messageId = randomUUID(); // distinto a payload.message_id
+    const parsed = JSON.parse(String(msg.body));
+    parsed.producer = 'promotions-svc';
+    (msg as any).body = JSON.stringify(parsed);
+
     const result = await handler.handle(msg);
     expect(result).toBe('dead-lettered');
-    expect(settlement.deadLetterMessage).toHaveBeenCalledWith(
-      msg,
-      expect.objectContaining({
-        deadLetterReason: 'INVALID_INVENTORY_CONTRACT',
-      }),
-    );
+    expect(mockCommands.process).not.toHaveBeenCalled();
   });
 
   it('bloquea por contrato inventory.bulk.stock.adjust.requested y lo envía a DLQ con BLOCKED_CONTRACT', async () => {
@@ -374,6 +558,7 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
   it('envía a DLQ si el mensaje tiene payload corrupto o no es JSON válido', async () => {
     const msg = {
       messageId: randomUUID(),
+      subject: 'inventory.sku.initialization.requested',
       body: 'INVALID JSON NOT OBJECT {{{',
     } as unknown as ServiceBusReceivedMessage;
     const result = await handler.handle(msg);
@@ -401,13 +586,16 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
     );
   });
 
-  it('abandona el mensaje ante fallo transitorio (DB error) para reintento con backoff', async () => {
+  it('aplica retardo exponencial antes de abandonar el mensaje ante fallo transitorio (DB error)', async () => {
     mockCommands.process.mockRejectedValueOnce(
       new Error('PostgreSQL connection timeout'),
     );
     const msg = createReceivedMessage('inventory.sku.initialization.requested');
+    (msg as any).deliveryCount = 3; // debe esperar 4000ms
+
     const result = await handler.handle(msg);
     expect(result).toBe('abandoned');
+    expect(mockDelay).toHaveBeenCalledWith(4000);
     expect(settlement.abandonMessage).toHaveBeenCalledWith(msg);
     expect(settlement.completeMessage).not.toHaveBeenCalled();
     expect(settlement.deadLetterMessage).not.toHaveBeenCalled();
@@ -477,5 +665,66 @@ describe('Inventory Outbox Deliveries — Transaccionalidad y Rollback', () => {
     } finally {
       process.env.MESSAGING_PROVIDER = prevProvider;
     }
+  });
+});
+
+describe('Inventory Service Bus Consumer Runtime — Ciclo de Vida y Reconexión', () => {
+  it('cierra el receiver y no crea nueva suscripción si el cierre de la anterior falla', async () => {
+    const runtime = new InventoryServiceBusConsumerRuntime({} as any);
+    const mockSubscription = {
+      close: vi
+        .fn()
+        .mockRejectedValue(new Error('Fallo al cerrar suscripción previa')),
+    };
+    const mockReceiver = {
+      close: vi.fn().mockResolvedValue(undefined),
+      peekMessages: vi.fn().mockResolvedValue([]),
+      subscribe: vi.fn(),
+    };
+    const mockClient = {
+      createReceiver: vi.fn(() => mockReceiver),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    (runtime as any).client = mockClient;
+    (runtime as any).subscription = mockSubscription;
+    (runtime as any).receiver = mockReceiver;
+
+    // Intentar abrir cuando ya existía una suscripción cuyo cierre falla
+    await (runtime as any).open();
+
+    expect(mockSubscription.close).toHaveBeenCalledTimes(1);
+    expect(mockReceiver.close).toHaveBeenCalledTimes(1);
+    expect(mockReceiver.subscribe).not.toHaveBeenCalled();
+    expect((runtime as any).subscription).toBeUndefined();
+    expect((runtime as any).receiver).toBeUndefined();
+    expect((runtime as any).available).toBe(false);
+
+    await runtime.onModuleDestroy();
+  });
+
+  it('cancela temporizador y evita reconexiones tras onModuleDestroy', async () => {
+    const runtime = new InventoryServiceBusConsumerRuntime({} as any);
+    const mockReceiver = {
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+    const mockClient = {
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    (runtime as any).client = mockClient;
+    (runtime as any).receiver = mockReceiver;
+    (runtime as any).reconnectTimer = setTimeout(() => {}, 10000);
+
+    await runtime.onModuleDestroy();
+
+    expect((runtime as any).stopped).toBe(true);
+    expect((runtime as any).reconnectTimer).toBeUndefined();
+    expect(mockReceiver.close).toHaveBeenCalledTimes(1);
+    expect(mockClient.close).toHaveBeenCalledTimes(1);
+
+    // Un intento de open posterior no debe hacer nada porque stopped es true
+    await (runtime as any).open();
+    expect((runtime as any).isOpening).toBe(false);
   });
 });

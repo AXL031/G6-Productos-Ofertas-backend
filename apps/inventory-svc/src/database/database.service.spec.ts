@@ -186,4 +186,147 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
     ).rejects.toBe(failure);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
+
+  describe('Validación obligatoria del esquema H5 (MESSAGING_PROVIDER=AZURE_SERVICE_BUS)', () => {
+    const h5Columns = [
+      'message_id',
+      'destination',
+      'route_version',
+      'transport',
+      'created_at',
+      'next_attempt_at',
+      'attempts',
+      'lease_token',
+      'lease_until',
+      'sent_at',
+      'last_error',
+    ].map((column_name) => ({ column_name }));
+
+    function setupH5Env() {
+      vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+      vi.stubEnv('G6_SERVICE_BUS_PILOT_ENABLED', 'true');
+      vi.stubEnv('INVENTORY_SERVICE_BUS_PUBLISH_ENABLED', 'true');
+      vi.stubEnv('INVENTORY_SERVICE_BUS_CONSUME_ENABLED', 'true');
+      vi.stubEnv(
+        'SERVICE_BUS_NAMESPACE_FQDN',
+        'g6-pilot-inventory.servicebus.windows.net',
+      );
+      vi.stubEnv('PGHOST', 'localhost');
+      vi.stubEnv('PGDATABASE', 'inventory_test');
+      vi.stubEnv('PGUSER', 'inventory_test');
+      vi.stubEnv('PGPASSWORD', 'contraseña-sintética');
+    }
+
+    it('falla el arranque incluso en desarrollo si H5 está seleccionado y PostgreSQL no está configurado', async () => {
+      vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+      vi.stubEnv('G6_SERVICE_BUS_PILOT_ENABLED', 'true');
+      vi.stubEnv('INVENTORY_SERVICE_BUS_PUBLISH_ENABLED', 'true');
+      vi.stubEnv('INVENTORY_SERVICE_BUS_CONSUME_ENABLED', 'true');
+      vi.stubEnv(
+        'SERVICE_BUS_NAMESPACE_FQDN',
+        'g6-pilot-inventory.servicebus.windows.net',
+      );
+      vi.stubEnv('NODE_ENV', 'development');
+
+      await expect(database.onModuleInit()).rejects.toThrow(
+        /PostgreSQL o el esquema requerido de Inventory no está preparado/,
+      );
+      expect(pg.Pool).not.toHaveBeenCalled();
+    });
+
+    it('falla el arranque si faltan columnas requeridas en inventory.outbox_delivery', async () => {
+      setupH5Env();
+      // SELECT 1
+      client.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+      // information_schema.columns (falta 'last_error')
+      client.query.mockResolvedValueOnce({
+        rows: h5Columns.slice(0, 10),
+      });
+
+      await expect(database.onModuleInit()).rejects.toThrow(
+        /PostgreSQL o el esquema requerido/,
+      );
+    });
+
+    it('falla el arranque si la Primary Key de outbox_delivery no es (message_id, destination)', async () => {
+      setupH5Env();
+      client.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+      client.query.mockResolvedValueOnce({ rows: h5Columns });
+      // PK solo con message_id
+      client.query.mockResolvedValueOnce({
+        rows: [{ column_name: 'message_id' }],
+      });
+
+      await expect(database.onModuleInit()).rejects.toThrow(
+        /PostgreSQL o el esquema requerido/,
+      );
+    });
+
+    it('falla el arranque si falta la Foreign Key contra inventory.outbox(event_id)', async () => {
+      setupH5Env();
+      client.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+      client.query.mockResolvedValueOnce({ rows: h5Columns });
+      client.query.mockResolvedValueOnce({
+        rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
+      });
+      // FK ausente
+      client.query.mockResolvedValueOnce({ rows: [] });
+
+      await expect(database.onModuleInit()).rejects.toThrow(
+        /PostgreSQL o el esquema requerido/,
+      );
+    });
+
+    it('falla el arranque si el usuario carece de permisos SELECT, INSERT o UPDATE', async () => {
+      setupH5Env();
+      client.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+      client.query.mockResolvedValueOnce({ rows: h5Columns });
+      client.query.mockResolvedValueOnce({
+        rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
+      });
+      client.query.mockResolvedValueOnce({
+        rows: [
+          {
+            column_name: 'message_id',
+            foreign_table_schema: 'inventory',
+            foreign_table_name: 'outbox',
+            foreign_column_name: 'event_id',
+          },
+        ],
+      });
+      // can_update: false
+      client.query.mockResolvedValueOnce({
+        rows: [{ can_select: true, can_insert: true, can_update: false }],
+      });
+
+      await expect(database.onModuleInit()).rejects.toThrow(
+        /PostgreSQL o el esquema requerido/,
+      );
+    });
+
+    it('inicia correctamente cuando la tabla outbox_delivery y sus permisos están íntegros', async () => {
+      setupH5Env();
+      client.query.mockResolvedValueOnce({ rows: [{ '?column?': 1 }] });
+      client.query.mockResolvedValueOnce({ rows: h5Columns });
+      client.query.mockResolvedValueOnce({
+        rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
+      });
+      client.query.mockResolvedValueOnce({
+        rows: [
+          {
+            column_name: 'message_id',
+            foreign_table_schema: 'inventory',
+            foreign_table_name: 'outbox',
+            foreign_column_name: 'event_id',
+          },
+        ],
+      });
+      client.query.mockResolvedValueOnce({
+        rows: [{ can_select: true, can_insert: true, can_update: true }],
+      });
+
+      await expect(database.onModuleInit()).resolves.toBeUndefined();
+      expect((await database.isHealthy()).healthy).toBe(true);
+    });
+  });
 });

@@ -1484,7 +1484,10 @@ export class InMemoryDatabaseMock implements IDatabaseService {
       s.startsWith('SELECT')
     ) {
       const candidate = this.outboxDeliveries.find(
-        (d) => !d.sent_at && d.last_error !== 'MESSAGE_EXCEEDS_256KB',
+        (d) =>
+          !d.sent_at &&
+          d.last_error !== 'MESSAGE_EXCEEDS_256KB' &&
+          d.last_error !== 'INVALID_OUTBOX_CONTRACT',
       );
       return {
         rows: candidate ? ([candidate] as any) : [],
