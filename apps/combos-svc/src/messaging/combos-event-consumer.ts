@@ -22,6 +22,16 @@ import {
   IntegrationFailure,
 } from '../integrations/catalog-sku-context.client.js';
 import { CombosServiceIdentity } from '../integrations/combos-service-identity.js';
+import type {
+  ServiceBusReceivedMessage,
+  ServiceBusReceiver,
+} from '@azure/service-bus';
+import {
+  CombosServiceBus,
+  combosServiceBusRoutes,
+  readCombosServiceBus,
+  type CombosEventQueue,
+} from './combos-service-bus.js';
 
 export const COMBOS_QUEUE = 'po.combos.q';
 const MAX_ATTEMPTS = 3;
@@ -123,7 +133,13 @@ function validDate(value: unknown): value is string {
 
 export function validateCombosEvent(
   value: unknown,
-  message: ConsumeMessage,
+  message: {
+    fields: Pick<ConsumeMessage['fields'], 'routingKey'>;
+    properties: Pick<
+      ConsumeMessage['properties'],
+      'messageId' | 'correlationId' | 'type' | 'contentType'
+    >;
+  },
 ): Envelope {
   if (
     !object(value) ||
@@ -220,6 +236,7 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   private paused = false;
   private connecting = false;
   private enabled = false;
+  private serviceBus?: CombosServiceBus;
   private processing = Promise.resolve();
 
   constructor(
@@ -238,6 +255,18 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   async onModuleInit(): Promise<void> {
+    const azure = readCombosServiceBus(process.env);
+    if (azure) {
+      if (azure.enabled) {
+        this.serviceBus = new CombosServiceBus(
+          azure,
+          (queue, receiver, message) =>
+            this.processServiceBusDelivery(queue, receiver, message),
+        );
+        await this.serviceBus.start();
+      }
+      return;
+    }
     if (
       process.env.COMBOS_AMQP_ENABLED === undefined ||
       process.env.COMBOS_AMQP_ENABLED === 'false'
@@ -264,6 +293,8 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
   }
 
   readinessStatus(): 'disabled' | 'ready' | 'not_ready' {
+    if (this.serviceBus)
+      return this.serviceBus.available ? 'ready' : 'not_ready';
     if (!this.enabled) return 'disabled';
     return this.connection &&
       this.channel &&
@@ -276,6 +307,7 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    await this.serviceBus?.close();
     const channel = this.channel;
     const tag = this.consumerTag;
     if (channel && tag) await channel.cancel(tag).catch(() => undefined);
@@ -426,6 +458,76 @@ export class CombosEventConsumer implements OnModuleInit, OnModuleDestroy {
       return;
     }
 
+    await this.applyEnvelope(envelope);
+  }
+
+  async processServiceBusDelivery(
+    queue: CombosEventQueue,
+    receiver: Pick<
+      ServiceBusReceiver,
+      'completeMessage' | 'abandonMessage' | 'deadLetterMessage'
+    >,
+    message: ServiceBusReceivedMessage,
+  ): Promise<void> {
+    let envelope: Envelope;
+    try {
+      if (
+        !(message.body instanceof Uint8Array) ||
+        message.body.byteLength > 256 * 1024 ||
+        typeof message.subject !== 'string' ||
+        !(combosServiceBusRoutes[queue] as readonly string[]).includes(
+          message.subject,
+        ) ||
+        typeof message.messageId !== 'string' ||
+        typeof message.correlationId !== 'string'
+      )
+        throw new Error('INVALID_SERVICE_BUS_EVENT');
+      envelope = validateCombosEvent(
+        JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(message.body),
+        ),
+        {
+          fields: { routingKey: message.subject },
+          properties: {
+            messageId: message.messageId,
+            correlationId: message.correlationId,
+            type: message.subject,
+            contentType: message.contentType,
+          },
+        },
+      );
+      const tags = message.applicationProperties ?? {};
+      if (
+        (Object.hasOwn(tags, 'producer') &&
+          tags.producer !== envelope.producer) ||
+        (Object.hasOwn(tags, 'schema_version') &&
+          tags.schema_version !== envelope.schema_version) ||
+        (Object.hasOwn(tags, 'route_version') && tags.route_version !== 1)
+      )
+        throw new Error('INVALID_SERVICE_BUS_EVENT');
+    } catch {
+      await receiver.deadLetterMessage(message, {
+        deadLetterReason: 'INVALID_COMBOS_EVENT',
+        deadLetterErrorDescription: 'Contract or queue validation failed',
+      });
+      return;
+    }
+    try {
+      await this.applyEnvelope(envelope);
+    } catch (error) {
+      if (error instanceof InboxMessageConflictError)
+        await receiver.deadLetterMessage(message, {
+          deadLetterReason: 'COMBOS_MESSAGE_ID_CONFLICT',
+          deadLetterErrorDescription:
+            'Message ID already recorded with different contents',
+        });
+      else await receiver.abandonMessage(message);
+      return;
+    }
+    await receiver.completeMessage(message);
+  }
+
+  private async applyEnvelope(envelope: Envelope): Promise<void> {
     const data = envelope.data;
     if (envelope.name === 'catalog.product.deactivated') {
       const catalogUrl = process.env.COMBOS_CATALOG_URL;

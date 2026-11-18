@@ -1,5 +1,14 @@
 import type { ConsumeMessage } from 'amqplib';
-import { validateCombosEvent } from './combos-event-consumer.js';
+import type { ServiceBusReceivedMessage } from '@azure/service-bus';
+import {
+  CombosEventConsumer,
+  validateCombosEvent,
+} from './combos-event-consumer.js';
+import {
+  InboxMessageConflictError,
+  type CombosRepository,
+} from '../persistence/combos.repository.js';
+import { readCombosServiceBus } from './combos-service-bus.js';
 
 const base = {
   message_id: 'catalog-message-1',
@@ -104,5 +113,111 @@ describe('validateCombosEvent', () => {
     expect(validateCombosEvent(value, message(value)).name).toBe(
       'catalog.sku.deactivated',
     );
+  });
+});
+
+describe('Combos H5 deliveries', () => {
+  const fixture = () => {
+    const processEvent = vi
+      .fn<CombosRepository['processEvent']>()
+      .mockResolvedValue('PROCESSED');
+    const consumer = new CombosEventConsumer({
+      processEvent,
+    } as CombosRepository);
+    const receiver = {
+      completeMessage: vi.fn(async () => undefined),
+      deadLetterMessage: vi.fn(async () => undefined),
+      abandonMessage: vi.fn(async () => undefined),
+    };
+    const wire = {
+      body: Buffer.from(JSON.stringify(base)),
+      messageId: base.message_id,
+      correlationId: base.correlation_id,
+      subject: base.name,
+      contentType: 'application/json',
+    } as ServiceBusReceivedMessage;
+    return { processEvent, consumer, receiver, wire };
+  };
+
+  it('keeps the same Inbox identity as H4 and completes after repository commit or duplicate', async () => {
+    const f = fixture();
+    let commit: (value: 'PROCESSED') => void = () => undefined;
+    f.processEvent.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          commit = resolve;
+        }),
+    );
+    const delivery = f.consumer.processServiceBusDelivery(
+      'g6.combos.from.catalog',
+      f.receiver,
+      f.wire,
+    );
+    expect(f.receiver.completeMessage).not.toHaveBeenCalled();
+    expect(f.processEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        handler: 'combos.catalog.sku.deactivated',
+        messageId: base.message_id,
+        sku: 'SKU-1',
+      }),
+    );
+    commit('PROCESSED');
+    await delivery;
+    f.processEvent.mockResolvedValueOnce('DUPLICATE');
+    await f.consumer.processServiceBusDelivery(
+      'g6.combos.from.catalog',
+      f.receiver,
+      f.wire,
+    );
+    expect(f.receiver.completeMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it('dead-letters a Catalog message on the Inventory queue without writing a projection', async () => {
+    const f = fixture();
+    await f.consumer.processServiceBusDelivery(
+      'g6.combos.from.inventory',
+      f.receiver,
+      f.wire,
+    );
+    expect(f.receiver.deadLetterMessage).toHaveBeenCalledOnce();
+    expect(f.processEvent).not.toHaveBeenCalled();
+  });
+
+  it('abandons transient failure and dead-letters a reused ID with different content', async () => {
+    const f = fixture();
+    f.processEvent.mockRejectedValueOnce(new Error('database unavailable'));
+    await f.consumer.processServiceBusDelivery(
+      'g6.combos.from.catalog',
+      f.receiver,
+      f.wire,
+    );
+    expect(f.receiver.abandonMessage).toHaveBeenCalledOnce();
+    f.processEvent.mockRejectedValueOnce(new InboxMessageConflictError());
+    await f.consumer.processServiceBusDelivery(
+      'g6.combos.from.catalog',
+      f.receiver,
+      f.wire,
+    );
+    expect(f.receiver.deadLetterMessage).toHaveBeenCalledWith(f.wire, {
+      deadLetterReason: 'COMBOS_MESSAGE_ID_CONFLICT',
+      deadLetterErrorDescription:
+        'Message ID already recorded with different contents',
+    });
+    expect(f.receiver.completeMessage).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when an Azure selection includes legacy transport or lacks production identity', () => {
+    const env = {
+      MESSAGING_PROVIDER: 'AZURE_SERVICE_BUS',
+      COMBOS_SERVICE_BUS_EVENTS_ENABLED: 'true',
+      SERVICE_BUS_NAMESPACE_FQDN: 'g6-h5-lab.servicebus.windows.net',
+    };
+    expect(readCombosServiceBus(env)?.enabled).toBe(true);
+    expect(() =>
+      readCombosServiceBus({ ...env, COMBOS_AMQP_ENABLED: 'true' }),
+    ).toThrow();
+    expect(() =>
+      readCombosServiceBus({ ...env, NODE_ENV: 'production' }),
+    ).toThrow();
   });
 });

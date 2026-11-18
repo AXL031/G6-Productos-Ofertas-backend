@@ -98,22 +98,29 @@ export class CombosSvcService {
     return Promise.resolve(undefined);
   }
   async readiness(
-    amqpStatus: 'disabled' | 'ready' | 'not_ready' = process.env
-      .COMBOS_AMQP_ENABLED === 'true'
+    brokerStatus: 'disabled' | 'ready' | 'not_ready' = process.env
+      .COMBOS_AMQP_ENABLED === 'true' ||
+    process.env.COMBOS_SERVICE_BUS_EVENTS_ENABLED === 'true'
       ? 'not_ready'
       : 'disabled',
   ) {
     const postgresReady = await this.database.ready();
-    const amqpRequired =
-      process.env.COMBOS_AMQP_ENABLED === 'true' || amqpStatus !== 'disabled';
-    const amqpReady = amqpStatus === 'ready';
-    const ready = postgresReady && (!amqpRequired || amqpReady);
+    const brokerRequired =
+      process.env.COMBOS_AMQP_ENABLED === 'true' ||
+      process.env.COMBOS_SERVICE_BUS_EVENTS_ENABLED === 'true' ||
+      brokerStatus !== 'disabled';
+    const broker =
+      process.env.MESSAGING_PROVIDER === 'AZURE_SERVICE_BUS'
+        ? 'service_bus'
+        : 'rabbitmq';
+    const brokerReady = brokerStatus === 'ready';
+    const ready = postgresReady && (!brokerRequired || brokerReady);
     return {
       status: ready ? 'ok' : 'error',
       service: 'combos-svc',
       dependencies: {
         postgres: postgresReady ? 'ok' : 'error',
-        ...(amqpRequired ? { rabbitmq: amqpReady ? 'ok' : 'error' } : {}),
+        ...(brokerRequired ? { [broker]: brokerReady ? 'ok' : 'error' } : {}),
       },
     };
   }
