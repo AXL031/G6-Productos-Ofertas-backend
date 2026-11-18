@@ -3,7 +3,11 @@ name: Integración histórica Pricing y Catalog
 on:
   pull_request:
     branches: [master]
-    types: [opened, reopened, synchronize, ready_for_review, edited]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+
+concurrency:
+  group: pricing-catalog-historico-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

@@ -787,7 +787,14 @@ jobs:
       with:
         node-version: 24.15.0
     - name: Record audited SHA
-      run: printf '%s\n' "$GITHUB_SHA" > dependency-audit-sha.txt
+      env:
+        AUDITED_SHA: ${{ github.sha }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha || '' }}
+        PR_BASE_SHA: ${{ github.event.pull_request.base.sha || '' }}
+        ACTIONS_RUN_ID: ${{ github.run_id }}
+      run: |
+        printf '%s\n' "$AUDITED_SHA" > dependency-audit-sha.txt
+        node -e "require('node:fs').writeFileSync('dependency-audit-context.json', JSON.stringify({audited_sha:process.env.AUDITED_SHA,pull_request_head_sha:process.env.PR_HEAD_SHA||null,pull_request_base_sha:process.env.PR_BASE_SHA||null,actions_run_id:process.env.ACTIONS_RUN_ID},null,2)+'\\n')"
     - name: Audit direct and transitive dependencies from package-lock
       run: npm audit --audit-level=high --json > dependency-audit.json
     - name: Preserve SHA evidence, including audit failures
@@ -797,6 +804,7 @@ jobs:
         name: dependency-audit-${{ github.sha }}
         path: |
           dependency-audit-sha.txt
+          dependency-audit-context.json
           dependency-audit.json
         if-no-files-found: error
         retention-days: 30
