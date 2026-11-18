@@ -19,14 +19,62 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
+      - name: Clasificar si aplica la integración histórica
+        id: alcance
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          mapfile -t archivos < <(git diff --name-only --diff-filter=ACDMRT "$PR_BASE_SHA...$PR_HEAD_SHA")
+          decision="$(node scripts/ci/clasificar-integracion-pricing-catalog.mjs "${archivos[@]}")"
+          echo "$decision" >> "$GITHUB_OUTPUT"
+          if [[ "$decision" == "aplica=false" ]]; then
+            echo "PR exclusivamente documental (AGENTS.md): integración histórica no aplicable."
+          else
+            echo "La PR incluye cambios distintos de AGENTS.md; se ejecutará la integración histórica."
+            printf 'Archivo: %s\n' "${archivos[@]}"
+          fi
       - name: Configurar Node.js
+        if: steps.alcance.outputs.aplica == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 24.15.0
           cache: npm
       - name: Instalar dependencias
+        if: steps.alcance.outputs.aplica == 'true'
         run: npm ci
+      - name: Verificar OpenSSL
+        if: steps.alcance.outputs.aplica == 'true'
+        run: |
+          set -euo pipefail
+          if ! command -v openssl >/dev/null 2>&1; then
+            echo 'OpenSSL no está instalado o no está disponible en PATH.' >&2
+            exit 1
+          fi
+          openssl version
+      - name: Esperar disponibilidad de Docker
+        if: steps.alcance.outputs.aplica == 'true'
+        run: |
+          set -euo pipefail
+          if ! command -v docker >/dev/null 2>&1; then
+            echo 'Docker CLI no está instalado o no está disponible en PATH.' >&2
+            exit 1
+          fi
+          ultimo_error=''
+          for intento in {1..30}; do
+            if docker info --format '{{.ServerVersion}}' >/tmp/docker-server-version 2>/tmp/docker-info-error; then
+              printf 'Docker daemon listo: %s (intento %s/30).\n' "$(cat /tmp/docker-server-version)" "$intento"
+              exit 0
+            fi
+            ultimo_error="$(cat /tmp/docker-info-error)"
+            sleep 2
+          done
+          echo 'Docker daemon no quedó listo después de 60 segundos.' >&2
+          printf '%s\n' "$ultimo_error" >&2
+          exit 1
       - name: Ejecutar integración con PostgreSQL y RabbitMQ descartables
+        if: steps.alcance.outputs.aplica == 'true'
         env:
           PRICING_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
@@ -36,7 +84,7 @@ jobs:
             -CatalogSha 72c3d238abfa3004e00fabb8839fa91cc9a7a3d1 \
             -PricingSha "$PRICING_HEAD_SHA" 2>&1 | tee integracion-pricing-catalog.log
       - name: Conservar evidencia
-        if: always()
+        if: always() && steps.alcance.outputs.aplica == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: integracion-pricing-catalog-${{ github.event.pull_request.head.sha }}
