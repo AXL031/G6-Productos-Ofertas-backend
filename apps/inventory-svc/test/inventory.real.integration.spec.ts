@@ -50,6 +50,7 @@ import {
   InventoryDeliveryStore,
   INVENTORY_QUEUES,
 } from '../src/messaging/service-bus-deliveries.js';
+import { InventoryServiceBusRelay } from '../src/messaging/service-bus-relay.js';
 
 const enabled = Boolean(process.env.INVENTORY_REAL_INTEGRATION === '1');
 const suite = enabled ? describe : describe.skip;
@@ -3796,6 +3797,110 @@ GRANT inventory_app TO inventory_test;`,
       // No se vuelve a reclamar automáticamente
       const reclaimed = await deliveryStore.claim();
       expect(reclaimed).toBeUndefined();
+    });
+
+    it('una entrega con payload inválido (cadena no interpretable como envelope) se marca terminal y permite procesar entregas válidas posteriores', async () => {
+      const invalidEventId = randomUUID();
+      const validEventId = randomUUID();
+      const validCanonicalMessageId = randomUUID();
+
+      // 1. Insertar evento con payload inválido: una cadena JSONB que no puede interpretarse como envelope válido
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-INV', '"cadena-invalida-no-envelope"', 'PENDING', now())`,
+          [invalidEventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: invalidEventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      // 2. Insertar evento válido posterior
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-VAL', $2::jsonb, 'PENDING', now())`,
+          [
+            validEventId,
+            JSON.stringify({
+              message_id: validCanonicalMessageId,
+              name: 'inventory.sku.initialization.completed',
+              producer: 'inventory-svc',
+              schema_version: 2,
+            }),
+          ],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: validEventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      // Limpiar otras entregas pendientes para aislar este test
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id NOT IN ($1, $2) AND sent_at IS NULL`,
+        [invalidEventId, validEventId],
+      );
+
+      // Crear sender mock para el relay
+      const sentMessages: any[] = [];
+      const mockSender = {
+        createMessageBatch: vi.fn(async () => ({
+          count: 1,
+          sizeInBytes: 100,
+          maxSizeInBytes: 256 * 1024,
+          tryAddMessage: (msg: any) => {
+            sentMessages.push(msg);
+            return true;
+          },
+        })),
+        sendMessages: vi.fn(async () => undefined),
+      };
+      const senders = new Map([
+        [INVENTORY_QUEUES.CATALOG, mockSender as any],
+        [INVENTORY_QUEUES.COMBOS, mockSender as any],
+        [INVENTORY_QUEUES.PROMOTIONS, mockSender as any],
+      ]);
+      const relay = new InventoryServiceBusRelay(deliveryStore, senders);
+
+      // Primer publishOne: debe reclamar invalidEventId, rechazarlo contractualmente y marcarlo terminal
+      const res1 = await relay.publishOne();
+      expect(res1).toBe('terminal-failure');
+
+      const invalidRow = await database.query<{
+        sent_at: string | null;
+        last_error: string | null;
+        next_attempt_at: string;
+      }>(
+        `SELECT sent_at, last_error, next_attempt_at::text FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [invalidEventId],
+      );
+      expect(invalidRow.rows[0].sent_at).toBeNull();
+      expect(invalidRow.rows[0].last_error).toBe('INVALID_OUTBOX_CONTRACT');
+      expect(invalidRow.rows[0].next_attempt_at).toBe('infinity');
+
+      // Segundo publishOne: la entrega inválida ya no bloquea; debe procesar la entrega válida posterior
+      const res2 = await relay.publishOne();
+      expect(res2).toBe('sent');
+
+      const validRow = await database.query<{
+        sent_at: string | null;
+        last_error: string | null;
+      }>(
+        `SELECT sent_at, last_error FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [validEventId],
+      );
+      expect(validRow.rows[0].sent_at).not.toBeNull();
+      expect(validRow.rows[0].last_error).toBeNull();
+      expect(sentMessages[0].messageId).toBe(validCanonicalMessageId);
+
+      // Tercer publishOne: no quedan entregas pendientes
+      const res3 = await relay.publishOne();
+      expect(res3).toBe('empty');
     });
   });
 });

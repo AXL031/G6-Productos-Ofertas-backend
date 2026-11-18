@@ -298,6 +298,39 @@ describe('Inventory Service Bus Relay — Publicación Outbox y Confirmación', 
       invalidClaim2,
       'terminal_invalid_envelope',
     );
+
+    // 3. message_id con espacios antes o después (rechazado por validación estricta sin trim)
+    const invalidClaim3 = outboxClaim();
+    invalidClaim3.row.payload.message_id = ` ${randomUUID()}`;
+    const f3 = createFixture(true, invalidClaim3);
+    expect(await f3.relay.publishOne()).toBe('terminal-failure');
+    expect(f3.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f3.store.finish).toHaveBeenCalledWith(
+      invalidClaim3,
+      'terminal_invalid_envelope',
+    );
+
+    const invalidClaim4 = outboxClaim();
+    invalidClaim4.row.payload.message_id = `${randomUUID()} `;
+    const f4 = createFixture(true, invalidClaim4);
+    expect(await f4.relay.publishOne()).toBe('terminal-failure');
+    expect(f4.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f4.store.finish).toHaveBeenCalledWith(
+      invalidClaim4,
+      'terminal_invalid_envelope',
+    );
+  });
+
+  it('rechaza y marca terminal si row.payload es una cadena no interpretable como envelope', async () => {
+    const invalidClaim = outboxClaim();
+    invalidClaim.row.payload = 'cadena-no-json-ni-envelope';
+    const f = createFixture(true, invalidClaim);
+    expect(await f.relay.publishOne()).toBe('terminal-failure');
+    expect(f.sender.sendMessages).not.toHaveBeenCalled();
+    expect(f.store.finish).toHaveBeenCalledWith(
+      invalidClaim,
+      'terminal_invalid_envelope',
+    );
   });
 
   it('rechaza y no publica si payload.name no coincide con row.event_type', async () => {
@@ -699,6 +732,91 @@ describe('Inventory Service Bus Consumer Runtime — Ciclo de Vida y Reconexión
     expect((runtime as any).subscription).toBeUndefined();
     expect((runtime as any).receiver).toBeUndefined();
     expect((runtime as any).available).toBe(false);
+
+    await runtime.onModuleDestroy();
+  });
+
+  it('conserva referencias y no crea otro receiver ni suscripción si tanto subscription.close como receiver.close fallan', async () => {
+    const runtime = new InventoryServiceBusConsumerRuntime({} as any);
+    const mockSubscription = {
+      close: vi
+        .fn()
+        .mockRejectedValue(new Error('Fallo al cerrar suscripción previa')),
+    };
+    const mockReceiver = {
+      close: vi
+        .fn()
+        .mockRejectedValue(new Error('Fallo al cerrar receiver previo')),
+      peekMessages: vi.fn().mockResolvedValue([]),
+      subscribe: vi.fn(),
+    };
+    const mockClient = {
+      createReceiver: vi.fn(() => mockReceiver),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    (runtime as any).client = mockClient;
+    (runtime as any).subscription = mockSubscription;
+    (runtime as any).receiver = mockReceiver;
+
+    // Al fallar ambos métodos close(), debe conservar las referencias y reintentar con el temporizador único
+    await (runtime as any).open();
+
+    expect(mockSubscription.close).toHaveBeenCalledTimes(1);
+    expect(mockReceiver.close).toHaveBeenCalledTimes(1);
+    expect(mockClient.createReceiver).not.toHaveBeenCalled();
+    expect(mockReceiver.subscribe).not.toHaveBeenCalled();
+    // Referencias conservadas
+    expect((runtime as any).subscription).toBe(mockSubscription);
+    expect((runtime as any).receiver).toBe(mockReceiver);
+    expect((runtime as any).available).toBe(false);
+    expect((runtime as any).reconnectTimer).toBeDefined();
+
+    await runtime.onModuleDestroy();
+  });
+
+  it('recupera y activa como máximo una suscripción cuando el cierre finalmente se confirma tras fallo inicial', async () => {
+    const runtime = new InventoryServiceBusConsumerRuntime({} as any);
+    const mockSubscription = {
+      close: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Fallo temporal de suscripción'))
+        .mockResolvedValueOnce(undefined),
+    };
+    const mockReceiver = {
+      close: vi
+        .fn()
+        .mockRejectedValueOnce(new Error('Fallo temporal de receiver'))
+        .mockResolvedValue(undefined),
+      peekMessages: vi.fn().mockResolvedValue([]),
+      subscribe: vi.fn(),
+    };
+    const mockClient = {
+      createReceiver: vi.fn(() => mockReceiver),
+      close: vi.fn().mockResolvedValue(undefined),
+    };
+
+    (runtime as any).client = mockClient;
+    (runtime as any).subscription = mockSubscription;
+    (runtime as any).receiver = mockReceiver;
+
+    // Intento 1: fallan ambos close()
+    await (runtime as any).open();
+    expect((runtime as any).subscription).toBe(mockSubscription);
+    expect((runtime as any).receiver).toBe(mockReceiver);
+    expect(mockReceiver.subscribe).not.toHaveBeenCalled();
+    expect((runtime as any).reconnectTimer).toBeDefined();
+
+    // Simular el disparo del temporizador de reconexión
+    clearTimeout((runtime as any).reconnectTimer);
+    (runtime as any).reconnectTimer = undefined;
+
+    // Intento 2: subscription.close() se recupera y confirma el cierre
+    await (runtime as any).open();
+    expect(mockSubscription.close).toHaveBeenCalledTimes(2);
+    // Exactamente una suscripción activa
+    expect(mockReceiver.subscribe).toHaveBeenCalledTimes(1);
+    expect((runtime as any).available).toBe(true);
 
     await runtime.onModuleDestroy();
   });

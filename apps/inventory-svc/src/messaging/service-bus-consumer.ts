@@ -230,20 +230,21 @@ export class InventoryServiceBusConsumerRuntime
 
     try {
       // Cierra la suscripción anterior antes de crear la siguiente.
-      // Si falla el cierre, no crea otra suscripción sobre el receiver anterior:
-      // cierra ese receiver y reintenta la recuperación.
+      // Si falla subscription.close(), intenta cerrar el receiver.
+      // Si receiver.close() también falla, conserva las referencias y no crea otro receiver ni otra suscripción.
+      // Solo libera las referencias después del cierre confirmado.
       if (this.subscription) {
         try {
           await this.subscription.close();
-        } catch (closeErr) {
           this.subscription = undefined;
+        } catch (closeErr) {
           if (this.receiver) {
-            await this.receiver.close().catch(() => undefined);
+            await this.receiver.close();
             this.receiver = undefined;
           }
+          this.subscription = undefined;
           throw closeErr;
         }
-        this.subscription = undefined;
       }
 
       this.receiver ??= this.client.createReceiver(QUEUE_CATALOG, {
@@ -312,17 +313,17 @@ export class InventoryServiceBusConsumerRuntime
     }
     try {
       if (this.subscription) {
-        await this.subscription.close().catch(() => undefined);
+        await Promise.resolve(this.subscription.close()).catch(() => undefined);
         this.subscription = undefined;
       }
       await Promise.allSettled(this.active);
     } finally {
       this.available = false;
       try {
-        await this.receiver?.close().catch(() => undefined);
+        await Promise.resolve(this.receiver?.close()).catch(() => undefined);
       } finally {
         this.receiver = undefined;
-        await this.client?.close().catch(() => undefined);
+        await Promise.resolve(this.client?.close()).catch(() => undefined);
         this.client = undefined;
       }
     }

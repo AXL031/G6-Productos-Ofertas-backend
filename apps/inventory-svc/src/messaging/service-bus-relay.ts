@@ -49,14 +49,7 @@ interface InventoryOutboxPayload {
   [key: string]: unknown;
 }
 
-function inventoryEnvelope(row: {
-  event_id: string;
-  event_type: string;
-  correlation_id?: string | null;
-  payload: unknown;
-}): Buffer {
-  const payload =
-    typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
+function inventoryEnvelope(payload: unknown): Buffer {
   return Buffer.from(JSON.stringify(payload), 'utf8');
 }
 
@@ -79,7 +72,12 @@ export class InventoryServiceBusRelay {
       let payload: InventoryOutboxPayload | null = null;
       if (typeof claim.row.payload === 'string') {
         try {
-          payload = JSON.parse(claim.row.payload) as InventoryOutboxPayload;
+          const parsed = JSON.parse(claim.row.payload);
+          if (parsed && typeof parsed === 'object') {
+            payload = parsed as InventoryOutboxPayload;
+          } else {
+            payload = null;
+          }
         } catch {
           payload = null;
         }
@@ -90,7 +88,7 @@ export class InventoryServiceBusRelay {
       // Validación estricta del contrato del outbox
       const validMessageId =
         typeof payload?.message_id === 'string' &&
-        UUID_REGEX.test(payload.message_id.trim());
+        UUID_REGEX.test(payload.message_id);
       const validName = payload?.name === claim.row.event_type;
       const validProducer = payload?.producer === 'inventory-svc';
       const approvedDestinations = APPROVED_ROUTES.get(claim.row.event_type);
@@ -120,7 +118,7 @@ export class InventoryServiceBusRelay {
         throw new Error('INVENTORY_SERVICE_BUS_SENDER_NOT_AVAILABLE');
       }
 
-      const body = inventoryEnvelope(claim.row);
+      const body = inventoryEnvelope(payload);
       const batch = await sender.createMessageBatch({
         maxSizeInBytes: 256 * 1024,
       });

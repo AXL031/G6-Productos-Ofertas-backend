@@ -114,10 +114,6 @@ export class InventoryDeliveryStore {
       const row = outboxResult.rows[0];
       if (!row) throw new Error('INVENTORY_SERVICE_BUS_FACT_MISSING');
 
-      if (typeof row.payload === 'string') {
-        row.payload = JSON.parse(row.payload);
-      }
-
       const token = randomUUID();
       await client.query(
         `UPDATE inventory.outbox_delivery
