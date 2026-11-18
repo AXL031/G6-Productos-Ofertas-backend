@@ -269,7 +269,9 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
       .expect(401);
 
     // Otro servicio: 403
-    const otherService = createCryptographicJwt({ clientId: 'modulo-marketplace' });
+    const otherService = createCryptographicJwt({
+      clientId: 'modulo-marketplace',
+    });
     await request(app.getHttpServer())
       .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
       .set('Authorization', `Bearer ${otherService}`)

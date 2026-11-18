@@ -2,12 +2,13 @@
  * Relay de Outbox → Azure Service Bus para inventory-svc (H5).
  *
  * Publica mensajes point-to-point a las colas autorizadas:
- *   g6.catalog.from.inventory   → initialization completed/rejected
- *   g6.combos.from.inventory    → stock.changed
- *   g6.promotions.from.inventory → stock.changed
+ *   R11: g6.catalog.from.inventory   → inventory.sku.initialization.completed / rejected
+ *   R12: g6.combos.from.inventory    → inventory.stock.changed
+ *   R13: g6.promotions.from.inventory → inventory.stock.changed
  *
- * Patrón idéntico al pricing-svc: claim → send → finish.
- * Si la conexión no existe o falla, los mensajes quedan PENDING en outbox.
+ * Preserva payload.message_id como identificador canónico en el messageId del broker.
+ * Si un mensaje excede los 256 KB, registra un fallo terminal recuperable evitando
+ * reintentos infinitos.
  */
 
 import {
@@ -22,11 +23,11 @@ import {
 } from '@azure/identity';
 import { ServiceBusClient, type ServiceBusSender } from '@azure/service-bus';
 import { DatabaseService } from '../database/database.service.js';
+import { loadInventoryConfig } from '../config/inventory.config.js';
 import {
   InventoryDeliveryStore,
   INVENTORY_QUEUES,
 } from './service-bus-deliveries.js';
-import { readInventoryServiceBus } from './service-bus-config.js';
 
 const APPROVED_DESTINATIONS = new Set(Object.values(INVENTORY_QUEUES));
 
@@ -50,48 +51,71 @@ export class InventoryServiceBusRelay {
     >,
   ) {}
 
-  async publishOne(): Promise<'empty' | 'sent' | 'pending' | 'lease-lost'> {
+  async publishOne(): Promise<
+    'empty' | 'sent' | 'pending' | 'lease-lost' | 'terminal-failure'
+  > {
     const claim = await this.store.claim();
     if (!claim) return 'empty';
-    let confirmed = false;
+
     try {
-      if (!APPROVED_DESTINATIONS.has(claim.destination as any))
+      if (!APPROVED_DESTINATIONS.has(claim.destination as any)) {
         throw new Error('INVENTORY_SERVICE_BUS_ROUTE_NOT_APPROVED');
+      }
       const sender = this.senders.get(claim.destination);
-      if (!sender)
+      if (!sender) {
         throw new Error('INVENTORY_SERVICE_BUS_SENDER_NOT_AVAILABLE');
+      }
+
       const body = inventoryEnvelope(claim.row);
       const batch = await sender.createMessageBatch({
         maxSizeInBytes: 256 * 1024,
       });
+
       const payload =
         typeof claim.row.payload === 'string'
           ? JSON.parse(claim.row.payload)
           : claim.row.payload;
-      if (
-        !batch.tryAddMessage({
-          body,
-          messageId: claim.row.event_id,
-          correlationId: claim.row.correlation_id ?? undefined,
-          subject: claim.row.event_type,
-          contentType: 'application/json',
-          applicationProperties: {
-            producer: 'inventory-svc',
-            schema_version: payload.schema_version ?? 2,
-            route_version: 1,
-          },
-        })
-      )
-        throw new Error('SERVICE_BUS_MESSAGE_TOO_LARGE');
+
+      // El messageId enviado al broker debe ser exactamente payload.message_id
+      const contractualMessageId = payload?.message_id || claim.row.event_id;
+      const correlationId =
+        payload?.correlation_id || claim.row.correlation_id || undefined;
+      const operationId = payload?.operation_id || undefined;
+      const causationId = payload?.causation_id || undefined;
+
+      const added = batch.tryAddMessage({
+        body,
+        messageId: contractualMessageId,
+        correlationId,
+        subject: claim.row.event_type,
+        contentType: 'application/json',
+        applicationProperties: {
+          producer: 'inventory-svc',
+          schema_version: payload?.schema_version ?? 2,
+          route_version: 1,
+          ...(operationId ? { operation_id: operationId } : {}),
+          ...(causationId ? { causation_id: causationId } : {}),
+        },
+      });
+
+      if (!added) {
+        // Fallo terminal recuperable para mensajes que exceden 256 KB:
+        // no reintentar en bucle infinito.
+        const finished = await this.store.finish(claim, 'terminal_too_large');
+        return finished ? 'terminal-failure' : 'lease-lost';
+      }
+
       await sender.sendMessages(batch, {
         abortSignal: AbortSignal.timeout(10_000),
       });
-      confirmed = true;
+
+      const updated = await this.store.finish(claim, 'confirmed');
+      return !updated ? 'lease-lost' : 'sent';
     } catch {
-      // Un timeout puede ocurrir después de que el broker aceptó el batch.
+      // Ante fallo transitorio de broker, conservar PENDING para reintento con backoff
+      const updated = await this.store.finish(claim, 'failed');
+      return !updated ? 'lease-lost' : 'pending';
     }
-    const updated = await this.store.finish(claim, confirmed);
-    return !updated ? 'lease-lost' : confirmed ? 'sent' : 'pending';
   }
 }
 
@@ -110,49 +134,50 @@ export class InventoryServiceBusRuntime
   constructor(private readonly database: DatabaseService) {}
 
   onApplicationBootstrap(): void {
-    let config: ReturnType<typeof readInventoryServiceBus>;
-    try {
-      config = readInventoryServiceBus(process.env);
-    } catch {
-      this.logger.warn('INVENTORY_SERVICE_BUS_CONFIGURATION_REJECTED');
-      return;
-    }
-    if (!config) return;
+    const config = loadInventoryConfig();
+    if (!config.serviceBus || !config.serviceBus.publishEnabled) return;
 
     this.client = new ServiceBusClient(
-      config.namespace,
-      config.managedIdentityClientId
+      config.serviceBus.namespace,
+      config.serviceBus.managedIdentityClientId
         ? new ManagedIdentityCredential({
-            clientId: config.managedIdentityClientId,
+            clientId: config.serviceBus.managedIdentityClientId,
           })
         : new DefaultAzureCredential(),
       {
         retryOptions: { maxRetries: 0, timeoutInMs: 5000 },
       },
     );
+
     for (const queue of Object.values(INVENTORY_QUEUES)) {
       this.senders.set(queue, this.client.createSender(queue));
     }
+
     const relay = new InventoryServiceBusRelay(
       new InventoryDeliveryStore(this.database),
       this.senders,
     );
+
     const tick = () => {
       this.active = (async () => {
-        // Probe: establecer el enlace y verificar autorización.
+        // Probe: verificar enlace con el broker
         const probe = this.senders.get(INVENTORY_QUEUES.CATALOG);
         if (probe) {
           await probe.createMessageBatch({ maxSizeInBytes: 256 * 1024 });
         }
         const result = await relay.publishOne();
-        this.available = result === 'empty' || result === 'sent';
+        this.available =
+          result === 'empty' ||
+          result === 'sent' ||
+          result === 'terminal-failure';
       })()
         .catch(() => {
           this.available = false;
         })
         .finally(() => {
-          if (!this.available)
+          if (!this.available) {
             this.logger.warn('SERVICE_BUS_INVENTORY_PENDING');
+          }
           if (!this.stopped) this.timer = setTimeout(tick, 1000);
         });
     };

@@ -64,7 +64,8 @@ export interface ConsultaOperacionInventario {
   completed_at?: string | null;
 }
 
-export type EstadoPersistidoReserva = 'ACTIVA' | 'CONSUMIDA' | 'LIBERADA' | 'EXPIRADA';
+export type EstadoPersistidoReserva =
+  'ACTIVA' | 'CONSUMIDA' | 'LIBERADA' | 'EXPIRADA';
 export type VigenciaEfectivaReserva = 'VIGENTE' | 'VENCIDA';
 
 export interface ConsultaEstadoReservaResponse {

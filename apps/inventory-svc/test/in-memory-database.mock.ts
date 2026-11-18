@@ -191,6 +191,7 @@ export class InMemoryDatabaseMock implements IDatabaseService {
   operations: OperationRow[] = [];
   kardex: KardexRow[] = [];
   outbox: OutboxRow[] = [];
+  outboxDeliveries: any[] = [];
   inbox: InboxEntity[] = [];
   commercialRoutes: CommercialRouteRow[] = [];
   thresholdOverrides: ThresholdOverrideRow[] = [];
@@ -290,6 +291,7 @@ export class InMemoryDatabaseMock implements IDatabaseService {
       operations: JSON.parse(JSON.stringify(this.operations)),
       kardex: JSON.parse(JSON.stringify(this.kardex)),
       outbox: JSON.parse(JSON.stringify(this.outbox)),
+      outboxDeliveries: JSON.parse(JSON.stringify(this.outboxDeliveries)),
       inbox: structuredClone(this.inbox),
       commercialRoutes: JSON.parse(JSON.stringify(this.commercialRoutes)),
       thresholdOverrides: JSON.parse(JSON.stringify(this.thresholdOverrides)),
@@ -311,6 +313,7 @@ export class InMemoryDatabaseMock implements IDatabaseService {
     this.operations = snapshot.operations;
     this.kardex = snapshot.kardex;
     this.outbox = snapshot.outbox;
+    this.outboxDeliveries = snapshot.outboxDeliveries || [];
     this.inbox = snapshot.inbox;
     this.commercialRoutes = snapshot.commercialRoutes;
     this.thresholdOverrides = snapshot.thresholdOverrides;
@@ -1412,7 +1415,10 @@ export class InMemoryDatabaseMock implements IDatabaseService {
     }
 
     // INSERT INTO outbox
-    if (s.startsWith('INSERT INTO INVENTORY.OUTBOX')) {
+    if (
+      s.startsWith('INSERT INTO INVENTORY.OUTBOX') &&
+      !s.startsWith('INSERT INTO INVENTORY.OUTBOX_DELIVERY')
+    ) {
       const row: OutboxRow = {
         id: 'outbox-' + Math.random().toString(36).substring(2),
         event_id: params?.[0],
@@ -1440,6 +1446,87 @@ export class InMemoryDatabaseMock implements IDatabaseService {
         target.published_at = new Date().toISOString();
       }
       return { rows: [], rowCount: 1 };
+    }
+
+    // INSERT INTO outbox_delivery
+    if (
+      s.includes('INVENTORY.OUTBOX_DELIVERY') &&
+      s.startsWith('INSERT INTO')
+    ) {
+      const message_id = params?.[0];
+      const destination = params?.[1];
+      const existing = this.outboxDeliveries.find(
+        (d) => d.message_id === message_id && d.destination === destination,
+      );
+      if (!existing) {
+        const row = {
+          message_id,
+          destination,
+          route_version: 1,
+          transport: 'AZURE_SERVICE_BUS',
+          created_at: new Date().toISOString(),
+          next_attempt_at: new Date().toISOString(),
+          attempts: 0,
+          lease_token: null,
+          lease_until: null,
+          sent_at: null,
+          last_error: null,
+        };
+        this.outboxDeliveries.push(row);
+        return { rows: [row] as any, rowCount: 1 };
+      }
+      return { rows: [existing] as any, rowCount: 1 };
+    }
+
+    // SELECT outbox_delivery FOR UPDATE SKIP LOCKED
+    if (
+      s.includes('FROM INVENTORY.OUTBOX_DELIVERY') &&
+      s.startsWith('SELECT')
+    ) {
+      const candidate = this.outboxDeliveries.find(
+        (d) => !d.sent_at && d.last_error !== 'MESSAGE_EXCEEDS_256KB',
+      );
+      return {
+        rows: candidate ? ([candidate] as any) : [],
+        rowCount: candidate ? 1 : 0,
+      };
+    }
+
+    // UPDATE outbox_delivery
+    if (s.startsWith('UPDATE INVENTORY.OUTBOX_DELIVERY')) {
+      if (s.includes('LEASE_TOKEN = $1')) {
+        const token = params?.[0];
+        const message_id = params?.[1];
+        const destination = params?.[2];
+        const d = this.outboxDeliveries.find(
+          (x) => x.message_id === message_id && x.destination === destination,
+        );
+        if (d) {
+          d.lease_token = token;
+          d.lease_until = new Date(Date.now() + 30000).toISOString();
+          d.attempts++;
+        }
+        return { rows: d ? ([d] as any) : [], rowCount: d ? 1 : 0 };
+      }
+      if (s.includes('SENT_AT = CASE WHEN $1')) {
+        const confirmed = params?.[0];
+        const lastError = params?.[1];
+        const message_id = params?.[2];
+        const destination = params?.[3];
+        const d = this.outboxDeliveries.find(
+          (x) => x.message_id === message_id && x.destination === destination,
+        );
+        if (d) {
+          d.lease_token = null;
+          d.lease_until = null;
+          d.sent_at = confirmed ? new Date().toISOString() : null;
+          d.last_error = lastError;
+        }
+        return {
+          rows: d ? ([{ message_id }] as any) : [],
+          rowCount: d ? 1 : 0,
+        };
+      }
     }
 
     return { rows: [], rowCount: 0 };

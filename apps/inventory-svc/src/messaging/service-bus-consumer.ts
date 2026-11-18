@@ -1,13 +1,19 @@
 /**
  * Consumer de Azure Service Bus para inventory-svc (H5).
  *
- * Escucha en modo PeekLock las colas:
- *   g6.inventory.from.catalog → initialization.requested, catalog.sku.deactivated
- *   g6.inventory.from.bulk    → bulk.stock.adjust.requested (BLOCKED_CONTRACT)
+ * Flujo R06: Escucha en modo PeekLock la cola g6.inventory.from.catalog:
+ *   - inventory.sku.initialization.requested
+ *   - catalog.sku.deactivated (respetando flag INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED)
  *
- * Los mensajes se procesan usando el InventoryCommandService existente
- * (misma lógica inbox/idempotencia), completando el mensaje del broker
- * sólo tras el commit de la transacción DB.
+ * Los mensajes se procesan usando InventoryCommandService con persistencia
+ * transaccional e idempotencia en inbox.
+ * Liquidación:
+ *   - completeMessage: únicamente tras el commit durable en DB.
+ *   - abandonMessage: ante fallos transitorios (DB, red) para reintento con backoff.
+ *   - deadLetterMessage: para INVALID_MESSAGE, envelope corrupto, BLOCKED_CONTRACT
+ *     o FEATURE_DISABLED (este último sin reintentos infinitos).
+ *
+ * R02 / Bulk permanece BLOCKED_CONTRACT: no se habilita su receptor.
  */
 
 import {
@@ -25,11 +31,13 @@ import {
   type ServiceBusReceiver,
   type ServiceBusReceivedMessage,
 } from '@azure/service-bus';
-import { InventoryCommandService } from '../inbox/inventory-command.service.js';
-import { readInventoryServiceBus } from './service-bus-config.js';
+import {
+  InventoryCommandService,
+  InventoryMessageError,
+} from '../inbox/inventory-command.service.js';
+import { loadInventoryConfig } from '../config/inventory.config.js';
 
-const QUEUE_CATALOG = 'g6.inventory.from.catalog';
-const QUEUE_BULK = 'g6.inventory.from.bulk';
+export const QUEUE_CATALOG = 'g6.inventory.from.catalog';
 
 const ACCEPTED_EVENTS = new Set([
   'inventory.sku.initialization.requested',
@@ -61,40 +69,63 @@ export class InventoryServiceBusHandler {
             : typeof body === 'object' && body !== null
               ? Buffer.from(JSON.stringify(body), 'utf8')
               : undefined;
+
       if (
         !content ||
         content.byteLength > 256 * 1024 ||
         typeof message.messageId !== 'string'
-      )
+      ) {
         throw new Error('INVALID_ENVELOPE');
+      }
 
       payload = JSON.parse(content.toString('utf8'));
 
-      // Validar que el mensaje es uno de los aceptados.
       if (
         !payload ||
         typeof payload !== 'object' ||
         !('name' in payload) ||
         typeof (payload as Record<string, unknown>).name !== 'string'
-      )
+      ) {
         throw new Error('INVALID_ENVELOPE');
+      }
 
-      const eventName = (payload as Record<string, unknown>).name as string;
+      const p = payload as Record<string, unknown>;
+      const eventName = p.name as string;
 
-      // Bloqueo explícito para bulk.
+      // Validación estricta: correspondencia entre subject del mensaje y name del envelope
+      if (
+        typeof message.subject === 'string' &&
+        message.subject !== eventName
+      ) {
+        throw new Error('SUBJECT_MISMATCH');
+      }
+
+      // Validación de identidad: messageId del broker debe coincidir con payload.message_id
+      if (
+        typeof p.message_id === 'string' &&
+        message.messageId !== p.message_id
+      ) {
+        throw new Error('MESSAGE_ID_MISMATCH');
+      }
+
+      // Validación de emisor legítimo para R06
+      if (p.producer !== 'catalog-svc') {
+        throw new Error('PRODUCER_MISMATCH');
+      }
+
+      // Bloqueo estricto para operaciones de Bulk (R02)
       if (eventName === 'inventory.bulk.stock.adjust.requested') {
-        // BLOCKED_CONTRACT: el InventoryCommandService lo rechaza,
-        // pero lo tratamos aquí para DLQ explícito.
         await this.receiver.deadLetterMessage(message, {
           deadLetterReason: 'BLOCKED_CONTRACT',
           deadLetterErrorDescription:
-            'inventory.bulk.stock.adjust.requested está bloqueado por contrato pendiente.',
+            'inventory.bulk.stock.adjust.requested está bloqueado por contrato pendiente (R02).',
         });
         return 'dead-lettered';
       }
 
-      if (!ACCEPTED_EVENTS.has(eventName))
+      if (!ACCEPTED_EVENTS.has(eventName)) {
         throw new Error('UNKNOWN_EVENT_TYPE');
+      }
     } catch {
       await this.receiver.deadLetterMessage(message, {
         deadLetterReason: 'INVALID_INVENTORY_CONTRACT',
@@ -103,28 +134,26 @@ export class InventoryServiceBusHandler {
       });
       return 'dead-lettered';
     }
+
     try {
       await this.commands.process(payload);
     } catch (error) {
-      // InventoryMessageError con reason INVALID_MESSAGE o FEATURE_DISABLED → DLQ.
-      if (
-        error &&
-        typeof error === 'object' &&
-        'reason' in error &&
-        ((error as any).reason === 'INVALID_MESSAGE' ||
-          (error as any).reason === 'BLOCKED_CONTRACT')
-      ) {
+      if (error instanceof InventoryMessageError) {
+        // INVALID_MESSAGE, BLOCKED_CONTRACT o FEATURE_DISABLED van a DLQ
+        // FEATURE_DISABLED no debe provocar un bucle de reintentos
         await this.receiver.deadLetterMessage(message, {
-          deadLetterReason: (error as any).reason,
-          deadLetterErrorDescription: String(error),
+          deadLetterReason: error.reason,
+          deadLetterErrorDescription: `Rechazado por InventoryCommandService: ${error.reason}`,
         });
         return 'dead-lettered';
       }
-      // Error transitorio (DB, red): abandonar para reintento.
+
+      // Error transitorio (DB, deadlock, red): abandonar mensaje para reintento con backoff
       await this.receiver.abandonMessage(message);
       return 'abandoned';
     }
-    // Completar sólo después del commit de la transacción.
+
+    // Completar únicamente tras persistencia y commit exitoso
     await this.receiver.completeMessage(message);
     return 'completed';
   }
@@ -136,10 +165,10 @@ export class InventoryServiceBusConsumerRuntime
 {
   available = false;
   private client?: ServiceBusClient;
-  private receivers: ServiceBusReceiver[] = [];
-  private subscriptions: Array<{ close(): Promise<void> }> = [];
-  private openings: Promise<void>[] = [];
-  private timers: ReturnType<typeof setTimeout>[] = [];
+  private receiver?: ServiceBusReceiver;
+  private subscription?: { close(): Promise<void> };
+  private reconnectTimer?: ReturnType<typeof setTimeout>;
+  private isOpening = false;
   private stopped = false;
   private readonly active = new Set<Promise<unknown>>();
   private readonly logger = new Logger(InventoryServiceBusConsumerRuntime.name);
@@ -147,20 +176,14 @@ export class InventoryServiceBusConsumerRuntime
   constructor(private readonly commands: InventoryCommandService) {}
 
   onApplicationBootstrap(): void {
-    let config: ReturnType<typeof readInventoryServiceBus>;
-    try {
-      config = readInventoryServiceBus(process.env);
-    } catch {
-      this.logger.warn('INVENTORY_SERVICE_BUS_CONSUMER_CONFIGURATION_REJECTED');
-      return;
-    }
-    if (!config) return;
+    const config = loadInventoryConfig();
+    if (!config.serviceBus || !config.serviceBus.consumeEnabled) return;
 
     this.client = new ServiceBusClient(
-      config.namespace,
-      config.managedIdentityClientId
+      config.serviceBus.namespace,
+      config.serviceBus.managedIdentityClientId
         ? new ManagedIdentityCredential({
-            clientId: config.managedIdentityClientId,
+            clientId: config.serviceBus.managedIdentityClientId,
           })
         : new DefaultAzureCredential(),
       {
@@ -168,78 +191,98 @@ export class InventoryServiceBusConsumerRuntime
       },
     );
 
-    // Cola principal: catalog → inventory.
-    this.startReceiver(QUEUE_CATALOG);
-    // Cola bulk: bloqueada por contrato, pero escuchamos para DLQ explícito.
-    this.startReceiver(QUEUE_BULK);
+    // Solo se suscribe al flujo R06 (Catalog → Inventory); Bulk (R02) permanece bloqueado.
+    void this.open();
   }
 
-  private startReceiver(queue: string): void {
-    if (!this.client) return;
-    const receiver = this.client.createReceiver(queue, {
-      receiveMode: 'peekLock',
-      skipParsingBodyAsJson: true,
-      maxAutoLockRenewalDurationInMs: 60_000,
-    });
-    this.receivers.push(receiver);
-    const handler = new InventoryServiceBusHandler(this.commands, receiver);
+  private async open(): Promise<void> {
+    if (this.stopped || this.isOpening || !this.client) return;
+    this.isOpening = true;
 
-    const open = () => {
-      const opening = receiver
-        .peekMessages(1)
-        .then(() => {
-          if (this.stopped) return;
-          const sub = receiver.subscribe(
-            {
-              processMessage: async (msg) => {
-                const task = handler.handle(msg);
-                this.active.add(task);
-                try {
-                  await task;
-                  this.available = true;
-                } catch (error) {
-                  this.available = false;
-                  throw error;
-                } finally {
-                  this.active.delete(task);
-                }
-              },
-              processError: async () => {
-                this.available = false;
-                this.logger.warn(
-                  `SERVICE_BUS_INVENTORY_CONSUMER_RECOVERY_PENDING [${queue}]`,
-                );
-                if (!this.stopped)
-                  this.timers.push(setTimeout(open, 2000));
-              },
-            },
-            { autoCompleteMessages: false, maxConcurrentCalls: 1 },
-          );
-          this.subscriptions.push(sub);
-          this.available = true;
-        })
-        .catch(() => {
-          this.available = false;
-          if (!this.stopped) this.timers.push(setTimeout(open, 2000));
-        });
-      this.openings.push(opening);
-    };
-    open();
+    try {
+      // Garantizar que no existan suscripciones previas duplicadas
+      if (this.subscription) {
+        await this.subscription.close().catch(() => undefined);
+        this.subscription = undefined;
+      }
+
+      this.receiver ??= this.client.createReceiver(QUEUE_CATALOG, {
+        receiveMode: 'peekLock',
+        skipParsingBodyAsJson: true,
+        maxAutoLockRenewalDurationInMs: 60_000,
+      });
+
+      await this.receiver.peekMessages(1);
+      if (this.stopped) return;
+
+      const handler = new InventoryServiceBusHandler(
+        this.commands,
+        this.receiver,
+      );
+
+      this.subscription = this.receiver.subscribe(
+        {
+          processMessage: async (msg) => {
+            const task = handler.handle(msg);
+            this.active.add(task);
+            try {
+              await task;
+              this.available = true;
+            } catch (error) {
+              this.available = false;
+              throw error;
+            } finally {
+              this.active.delete(task);
+            }
+          },
+          processError: async () => {
+            this.available = false;
+            this.logger.warn(
+              `SERVICE_BUS_INVENTORY_CONSUMER_RECOVERY_PENDING [${QUEUE_CATALOG}]`,
+            );
+            if (!this.stopped && !this.reconnectTimer) {
+              this.reconnectTimer = setTimeout(() => {
+                this.reconnectTimer = undefined;
+                void this.open();
+              }, 2000);
+            }
+          },
+        },
+        { autoCompleteMessages: false, maxConcurrentCalls: 1 },
+      );
+
+      this.available = true;
+    } catch {
+      this.available = false;
+      if (!this.stopped && !this.reconnectTimer) {
+        this.reconnectTimer = setTimeout(() => {
+          this.reconnectTimer = undefined;
+          void this.open();
+        }, 2000);
+      }
+    } finally {
+      this.isOpening = false;
+    }
   }
 
   async onModuleDestroy(): Promise<void> {
     this.stopped = true;
-    for (const timer of this.timers) clearTimeout(timer);
-    await Promise.allSettled(this.openings);
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = undefined;
+    }
     try {
-      await Promise.allSettled(this.subscriptions.map((s) => s.close()));
+      if (this.subscription) {
+        await this.subscription.close().catch(() => undefined);
+        this.subscription = undefined;
+      }
       await Promise.allSettled(this.active);
     } finally {
       this.available = false;
       try {
-        await Promise.allSettled(this.receivers.map((r) => r.close()));
+        await this.receiver?.close().catch(() => undefined);
       } finally {
-        await this.client?.close();
+        await this.client?.close().catch(() => undefined);
       }
     }
   }

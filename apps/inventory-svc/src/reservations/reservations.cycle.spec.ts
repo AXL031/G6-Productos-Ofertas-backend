@@ -737,8 +737,42 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
       }
 
       try {
-        await reservationsService.consultarEstadoReserva(reserva.reservation_id, 'PED-OTRO');
+        await reservationsService.consultarEstadoReserva(
+          reserva.reservation_id,
+          'PED-OTRO',
+        );
         expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(400);
+        expect(pde.problem.code).toBe('VALIDACION');
+        expect(pde.problem.detail).toContain('no corresponde');
+      }
+    });
+
+    it('responde 400 VALIDACION si reservation.order_id en base de datos es nulo o vacio', async () => {
+      const orderId = 'PED-H5-NULL-DB';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      reserva.order_id = null;
+
+      try {
+        await reservationsService.consultarEstadoReserva(
+          reserva.reservation_id,
+          orderId,
+        );
+        expect.unreachable('Debe lanzar error 400');
       } catch (err) {
         const pde = err as ProblemDetailsException;
         expect(pde.problem.status).toBe(400);
@@ -749,7 +783,10 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
 
     it('responde 404 si la reserva no existe', async () => {
       try {
-        await reservationsService.consultarEstadoReserva(randomUUID(), 'PED-INEXISTENTE');
+        await reservationsService.consultarEstadoReserva(
+          randomUUID(),
+          'PED-INEXISTENTE',
+        );
         expect.unreachable('Debe lanzar error');
       } catch (err) {
         const pde = err as ProblemDetailsException;

@@ -1,6 +1,10 @@
 import { trustedJwksUrl } from '../auth/trusted-jwks.js';
 import { PHASE1_PUBLIC_OPERATION_IDS } from '../phase1-public-reads.js';
 import { isIP } from 'node:net';
+import {
+  readInventoryServiceBus,
+  type InventoryServiceBusConfig,
+} from '../messaging/service-bus-config.js';
 
 export interface InventoryConfig {
   securityMode: 'PUBLIC_READ_ONLY' | 'SIMULATED_AUTH' | 'G7_AUTHENTICATED';
@@ -15,6 +19,7 @@ export interface InventoryConfig {
   pgSslRootCert?: string;
   catalogSkuDeactivationEnabled: boolean;
   rabbitMqUrl?: string;
+  serviceBus?: InventoryServiceBusConfig;
   port: number;
   reservationTtlSeconds: number;
   defaultLowStockThreshold: number;
@@ -171,6 +176,8 @@ export function loadInventoryConfig(): InventoryConfig {
     );
   }
 
+  const serviceBus = readInventoryServiceBus(process.env);
+
   return {
     securityMode: securityMode as InventoryConfig['securityMode'],
     publicOperations: Object.freeze(publicOperations),
@@ -184,6 +191,7 @@ export function loadInventoryConfig(): InventoryConfig {
     pgSslRootCert: process.env.PGSSLROOTCERT,
     catalogSkuDeactivationEnabled: skuDeactivationGate === 'true',
     rabbitMqUrl: process.env.RABBITMQ_URL,
+    serviceBus,
     port,
     reservationTtlSeconds,
     defaultLowStockThreshold,

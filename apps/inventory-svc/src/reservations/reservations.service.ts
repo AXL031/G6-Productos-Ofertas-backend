@@ -1855,14 +1855,22 @@ export class ReservationsService {
   ): Promise<ConsultaEstadoReservaResponse> {
     const corrId = correlationId || randomUUID();
 
-    if (!reservaId || typeof reservaId !== 'string' || !UUID_REGEX.test(reservaId.trim())) {
+    if (
+      !reservaId ||
+      typeof reservaId !== 'string' ||
+      !UUID_REGEX.test(reservaId.trim())
+    ) {
       throw ProblemDetailsException.validation(
         'El identificador de reserva debe ser un UUID válido',
         corrId,
       );
     }
 
-    if (!orderId || typeof orderId !== 'string' || orderId.trim().length === 0) {
+    if (
+      !orderId ||
+      typeof orderId !== 'string' ||
+      orderId.trim().length === 0
+    ) {
       throw ProblemDetailsException.validation(
         'El order_id es obligatorio para consultar el estado de la reserva',
         corrId,
@@ -1872,7 +1880,8 @@ export class ReservationsService {
     const cleanReservaId = reservaId.trim();
     const cleanOrderId = orderId.trim();
 
-    const reservation = await this.reservationsRepo.findByReservationId(cleanReservaId);
+    const reservation =
+      await this.reservationsRepo.findByReservationId(cleanReservaId);
 
     if (!reservation) {
       throw ProblemDetailsException.reservaNoEncontrada(
@@ -1881,7 +1890,7 @@ export class ReservationsService {
       );
     }
 
-    if (reservation.order_id && reservation.order_id !== cleanOrderId) {
+    if (!reservation.order_id || reservation.order_id !== cleanOrderId) {
       throw ProblemDetailsException.validation(
         `El order_id '${cleanOrderId}' no corresponde a la reserva '${cleanReservaId}'`,
         corrId,
@@ -1894,7 +1903,8 @@ export class ReservationsService {
 
     let vigenciaEfectiva: 'VIGENTE' | 'VENCIDA';
     if (reservation.status === 'ACTIVA') {
-      vigenciaEfectiva = expiresAtDate.getTime() > now.getTime() ? 'VIGENTE' : 'VENCIDA';
+      vigenciaEfectiva =
+        expiresAtDate.getTime() > now.getTime() ? 'VIGENTE' : 'VENCIDA';
     } else {
       vigenciaEfectiva = 'VENCIDA';
     }

@@ -1,45 +1,38 @@
 /**
  * Tabla outbox_delivery y store de entrega para Azure Service Bus (H5).
  *
- * Patrón idéntico al de pricing-svc: cada outbox row que debe ir a Service Bus
- * tiene una fila en outbox_delivery con destino, intento y lease.
+ * Registra las entregas punto a punto en inventory.outbox_delivery dentro
+ * de la misma transacción en que se inserta el evento en inventory.outbox.
  *
- * Destinos autorizados para inventory-svc:
- *   g6.catalog.from.inventory   → initialization completed/rejected
- *   g6.combos.from.inventory    → stock.changed
- *   g6.promotions.from.inventory → stock.changed
+ * Destinos aprobados (G6 Basic):
+ *   R11: g6.catalog.from.inventory   → inventory.sku.initialization.completed / rejected
+ *   R12: g6.combos.from.inventory    → inventory.stock.changed
+ *   R13: g6.promotions.from.inventory → inventory.stock.changed
  */
 
 import { randomUUID } from 'node:crypto';
 import type { IDatabaseClient } from '../database/database.interface.js';
 import type { OutboxEntity } from '../repositories/interfaces/outbox.repository.interface.js';
-import { readInventoryServiceBus } from './service-bus-config.js';
 
-// Colas H5 point-to-point (Basic tier — sin topics/subscriptions).
 export const INVENTORY_QUEUES = {
   CATALOG: 'g6.catalog.from.inventory',
   COMBOS: 'g6.combos.from.inventory',
   PROMOTIONS: 'g6.promotions.from.inventory',
-  BULK: 'g6.bulk.from.inventory',
 } as const;
 
 export type InventoryQueue =
   (typeof INVENTORY_QUEUES)[keyof typeof INVENTORY_QUEUES];
 
-const APPROVED_ROUTES: ReadonlyMap<string, readonly InventoryQueue[]> = new Map([
+const APPROVED_ROUTES: ReadonlyMap<string, readonly InventoryQueue[]> = new Map(
   [
-    'inventory.sku.initialization.completed',
-    [INVENTORY_QUEUES.CATALOG],
+    ['inventory.sku.initialization.completed', [INVENTORY_QUEUES.CATALOG]],
+    ['inventory.sku.initialization.rejected', [INVENTORY_QUEUES.CATALOG]],
+    [
+      'inventory.stock.changed',
+      [INVENTORY_QUEUES.COMBOS, INVENTORY_QUEUES.PROMOTIONS],
+    ],
   ],
-  [
-    'inventory.sku.initialization.rejected',
-    [INVENTORY_QUEUES.CATALOG],
-  ],
-  [
-    'inventory.stock.changed',
-    [INVENTORY_QUEUES.COMBOS, INVENTORY_QUEUES.PROMOTIONS],
-  ],
-]);
+);
 
 export interface InventoryDeliveryClaim {
   token: string;
@@ -47,23 +40,22 @@ export interface InventoryDeliveryClaim {
   row: OutboxEntity;
 }
 
+export type DeliveryOutcome = 'confirmed' | 'failed' | 'terminal_too_large';
+
 /**
- * Registra las entregas pendientes para un outbox row (mismo tx que el negocio).
+ * Registra las entregas pendientes para un outbox row en la misma transacción de DB.
+ * Con H5 seleccionado (MESSAGING_PROVIDER=AZURE_SERVICE_BUS), registra las entregas
+ * aprobadas incluso si el relay worker está pausado por configuración.
  */
 export async function insertInventoryDeliveries(
   client: IDatabaseClient,
   row: { event_id: string; event_type: string },
 ): Promise<void> {
-  let sbConfig: ReturnType<typeof readInventoryServiceBus>;
-  try {
-    sbConfig = readInventoryServiceBus(process.env);
-  } catch {
-    sbConfig = undefined;
-  }
-  if (!sbConfig) return;
+  if (process.env.MESSAGING_PROVIDER !== 'AZURE_SERVICE_BUS') return;
 
   const destinations = APPROVED_ROUTES.get(row.event_type);
   if (!destinations || destinations.length === 0) return;
+
   for (const destination of destinations) {
     await client.query(
       `INSERT INTO inventory.outbox_delivery
@@ -76,7 +68,7 @@ export async function insertInventoryDeliveries(
 }
 
 /**
- * Store transaccional para reclamar y confirmar entregas.
+ * Store transaccional para reclamar y confirmar entregas con FOR UPDATE SKIP LOCKED y leases.
  */
 export class InventoryDeliveryStore {
   constructor(
@@ -120,10 +112,8 @@ export class InventoryDeliveryStore {
         [candidate.message_id],
       );
       const row = outboxResult.rows[0];
-      if (!row)
-        throw new Error('INVENTORY_SERVICE_BUS_FACT_MISSING');
+      if (!row) throw new Error('INVENTORY_SERVICE_BUS_FACT_MISSING');
 
-      // Normalizar payload
       if (typeof row.payload === 'string') {
         row.payload = JSON.parse(row.payload);
       }
@@ -143,26 +133,51 @@ export class InventoryDeliveryStore {
 
   async finish(
     claim: InventoryDeliveryClaim,
-    confirmed: boolean,
+    outcome: DeliveryOutcome | boolean,
   ): Promise<boolean> {
+    const status: DeliveryOutcome =
+      typeof outcome === 'boolean'
+        ? outcome
+          ? 'confirmed'
+          : 'failed'
+        : outcome;
+
     return this.txRunner.transaction(async (client) => {
+      const isConfirmed = status === 'confirmed';
+      const isTooLarge = status === 'terminal_too_large';
+
+      const lastError = isConfirmed
+        ? null
+        : isTooLarge
+          ? 'MESSAGE_EXCEEDS_256KB'
+          : 'SEND_NOT_CONFIRMED';
+
+      const nextAttemptSql = isConfirmed
+        ? `clock_timestamp()`
+        : isTooLarge
+          ? `'infinity'::timestamptz`
+          : `clock_timestamp() + make_interval(secs => least(60, power(2, least(attempts, 6))::int))`;
+
       const { rows } = await client.query<{ message_id: string }>(
         `UPDATE inventory.outbox_delivery
          SET lease_token = NULL,
              lease_until = NULL,
              sent_at = CASE WHEN $1 THEN clock_timestamp() ELSE NULL END,
-             last_error = CASE WHEN $1 THEN NULL ELSE 'SEND_NOT_CONFIRMED' END,
-             next_attempt_at = CASE WHEN $1
-               THEN clock_timestamp()
-               ELSE clock_timestamp() + make_interval(secs => least(60, power(2, least(attempts, 6))::int))
-             END
-         WHERE message_id = $2
-           AND destination = $3
-           AND lease_token = $4
+             last_error = $2,
+             next_attempt_at = ${nextAttemptSql}
+         WHERE message_id = $3
+           AND destination = $4
+           AND lease_token = $5
            AND lease_until > clock_timestamp()
            AND sent_at IS NULL
          RETURNING message_id`,
-        [confirmed, claim.row.event_id, claim.destination, claim.token],
+        [
+          isConfirmed,
+          lastError,
+          claim.row.event_id,
+          claim.destination,
+          claim.token,
+        ],
       );
       return rows.length === 1;
     });
