@@ -16,6 +16,16 @@ import amqp, {
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
 import { BulkPersistenceRepository } from '../persistence/bulk.repository.js';
 import { BULK_AMQP_URL } from './bulk-rabbitmq.js';
+import {
+  DefaultAzureCredential,
+  ManagedIdentityCredential,
+} from '@azure/identity';
+import {
+  ServiceBusClient,
+  type ServiceBusReceivedMessage,
+  type ServiceBusReceiver,
+} from '@azure/service-bus';
+import { bulkFromCatalog, readBulkCatalogBus } from './bulk-service-bus.js';
 
 const QUEUE = 'po.masivos.q';
 export type CatalogResultConsumerState =
@@ -77,7 +87,16 @@ function record(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function validateEnvelope(value: unknown, message: ConsumeMessage): Envelope {
+function validateEnvelope(
+  value: unknown,
+  message: {
+    properties: Pick<
+      ConsumeMessage['properties'],
+      'type' | 'messageId' | 'contentType'
+    >;
+    fields: Pick<ConsumeMessage['fields'], 'routingKey'>;
+  },
+): Envelope {
   if (!record(value)) throw new Error('INVALID_ENVELOPE');
   const required = [
     'message_id',
@@ -217,6 +236,9 @@ export class CatalogBulkResultConsumer
   private replayTimer: NodeJS.Timeout | null = null;
   private replaying = false;
   private replayRequested = false;
+  private azureClient?: ServiceBusClient;
+  private azureReceiver?: ServiceBusReceiver;
+  private azureSubscription?: { close(): Promise<void> };
 
   constructor(
     private readonly repository: BulkPersistenceRepository,
@@ -227,12 +249,146 @@ export class CatalogBulkResultConsumer
   ) {}
 
   async onModuleInit(): Promise<void> {
+    const azure = readBulkCatalogBus(process.env);
+    if (azure) {
+      if (this.amqpUrl)
+        throw new Error('BULK_SERVICE_BUS_REQUIRES_EXCLUSIVE_TRANSPORT');
+      if (azure.enabled) await this.connectAzure(azure);
+      return;
+    }
     if (!this.amqpUrl) return;
     await this.connectConsumer();
   }
 
   getOperationalState(): CatalogResultConsumerState {
     return this.state;
+  }
+
+  private async connectAzure(
+    config: NonNullable<ReturnType<typeof readBulkCatalogBus>>,
+  ): Promise<void> {
+    this.state = 'CONNECTING';
+    const client = new ServiceBusClient(
+      config.namespace,
+      config.clientId
+        ? new ManagedIdentityCredential({ clientId: config.clientId })
+        : new DefaultAzureCredential(),
+      { retryOptions: { maxRetries: 0, timeoutInMs: 5000 } },
+    );
+    this.azureClient = client;
+    try {
+      const receiver = client.createReceiver(bulkFromCatalog, {
+        receiveMode: 'peekLock',
+        skipParsingBodyAsJson: true,
+        maxAutoLockRenewalDurationInMs: 60_000,
+      });
+      this.azureReceiver = receiver;
+      await receiver.peekMessages(1, {
+        abortSignal: AbortSignal.timeout(5000),
+      });
+      this.azureSubscription = receiver.subscribe(
+        {
+          processMessage: (message) => {
+            const task = this.handleAzure(message, receiver)
+              .then(() => {
+                if (!this.stopping) this.state = 'READY';
+              })
+              .catch(() => {
+                this.state = 'RECOVERING';
+              });
+            this.processingTail = task;
+            return task;
+          },
+          processError: async () => {
+            this.state = 'RECOVERING';
+          },
+        },
+        { autoCompleteMessages: false, maxConcurrentCalls: 1 },
+      );
+      this.state = 'READY';
+      void this.replayPendingContractResults();
+    } catch {
+      await this.azureReceiver?.close().catch(() => undefined);
+      await client.close().catch(() => undefined);
+      throw new Error('BULK_SERVICE_BUS_CATALOG_UNAVAILABLE');
+    }
+  }
+
+  async handleAzure(
+    message: ServiceBusReceivedMessage,
+    receiver: Pick<
+      ServiceBusReceiver,
+      'completeMessage' | 'abandonMessage' | 'deadLetterMessage'
+    >,
+  ): Promise<void> {
+    let envelope: Envelope;
+    try {
+      if (
+        !(message.body instanceof Uint8Array) ||
+        message.body.byteLength > 256 * 1024 ||
+        typeof message.subject !== 'string' ||
+        typeof message.messageId !== 'string'
+      )
+        throw new Error('INVALID_CATALOG_RESULT');
+      envelope = validateEnvelope(
+        JSON.parse(
+          new TextDecoder('utf-8', { fatal: true }).decode(message.body),
+        ),
+        {
+          fields: { routingKey: message.subject },
+          properties: {
+            type: message.subject,
+            messageId: message.messageId,
+            contentType: message.contentType,
+          },
+        },
+      );
+      const tags = message.applicationProperties ?? {};
+      if (
+        message.correlationId !== envelope.correlation_id ||
+        (Object.hasOwn(tags, 'producer') &&
+          tags.producer !== envelope.producer) ||
+        (Object.hasOwn(tags, 'schema_version') &&
+          tags.schema_version !== envelope.schema_version) ||
+        (Object.hasOwn(tags, 'route_version') && tags.route_version !== 1)
+      )
+        throw new Error('INVALID_CATALOG_RESULT');
+    } catch {
+      await receiver.deadLetterMessage(message, {
+        deadLetterReason: 'INVALID_BULK_CATALOG_RESULT',
+        deadLetterErrorDescription: 'Contract or queue validation failed',
+      });
+      return;
+    }
+    const payload = envelope as unknown as Record<string, unknown>;
+    let replay = false;
+    try {
+      try {
+        await this.repository.recordCatalogBulkResult({
+          messageId: envelope.message_id,
+          operationId: envelope.operation_id,
+          causationId: envelope.causation_id,
+          eventName: envelope.name as
+            'catalog.bulk.upsert.completed' | 'catalog.bulk.upsert.rejected',
+          correlationId: envelope.correlation_id,
+          payload,
+        });
+      } catch (error) {
+        if (!(error instanceof BulkDomainError)) throw error;
+        await this.repository.persistPendingContractResult({
+          messageId: envelope.message_id,
+          eventName: envelope.name,
+          correlationId: envelope.correlation_id,
+          payload,
+        });
+        replay = true;
+      }
+    } catch {
+      await receiver.abandonMessage(message);
+      return;
+    }
+    await receiver.completeMessage(message);
+    if (replay) void this.replayPendingContractResults();
   }
 
   private async connectConsumer(): Promise<void> {
@@ -528,6 +684,7 @@ export class CatalogBulkResultConsumer
 
   async onModuleDestroy(): Promise<void> {
     this.stopping = true;
+    await this.azureSubscription?.close().catch(() => undefined);
     if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
     this.reconnectTimer = null;
     if (this.replayTimer) clearTimeout(this.replayTimer);
@@ -536,6 +693,8 @@ export class CatalogBulkResultConsumer
     if (this.channel && this.consumerTag)
       await this.channel.cancel(this.consumerTag).catch(() => undefined);
     await this.processingTail.catch(() => undefined);
+    await this.azureReceiver?.close().catch(() => undefined);
+    await this.azureClient?.close().catch(() => undefined);
     await this.closeTransport();
     this.state = 'NOT_CONFIGURED';
   }
