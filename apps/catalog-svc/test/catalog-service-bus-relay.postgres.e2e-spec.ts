@@ -3,15 +3,27 @@ import { sql } from 'drizzle-orm';
 import { Database } from '../src/database.js';
 import { outbox } from '../src/catalog.schema.js';
 import type { CatalogEnvelope } from '../src/catalog-messages.js';
-import {
-  enqueueCatalogDeliveries,
-  relayCatalogDelivery,
-} from '../src/catalog-service-bus-relay.js';
+import { relayCatalogDelivery } from '../src/catalog-service-bus-relay.js';
 
 describe.runIf(process.env.CATALOG_H4_NATIVE_POSTGRES === '1')(
   'H5 independent deliveries on disposable PostgreSQL',
   () => {
     const database = new Database();
+    const previousProvider = process.env.MESSAGING_PROVIDER;
+    const previousDestinations = process.env.CATALOG_H5_DESTINATIONS;
+    beforeEach(() => {
+      process.env.MESSAGING_PROVIDER = 'AZURE_SERVICE_BUS';
+      process.env.CATALOG_H5_DESTINATIONS =
+        'g6.combos.from.catalog,g6.promotions.from.catalog';
+    });
+    afterEach(() => {
+      if (previousProvider === undefined)
+        delete process.env.MESSAGING_PROVIDER;
+      else process.env.MESSAGING_PROVIDER = previousProvider;
+      if (previousDestinations === undefined)
+        delete process.env.CATALOG_H5_DESTINATIONS;
+      else process.env.CATALOG_H5_DESTINATIONS = previousDestinations;
+    });
     beforeAll(() => {
       if (
         process.env.PGDATABASE !== 'h4_catalog_isolated' ||
@@ -50,9 +62,18 @@ describe.runIf(process.env.CATALOG_H4_NATIVE_POSTGRES === '1')(
           occurred_at: new Date(timestamp),
           payload: event.data,
         });
-        await enqueueCatalogDeliveries(tx, event);
-        await enqueueCatalogDeliveries(tx, event);
       });
+      const deliveries = await database.read((db) =>
+        db.execute<{ destination: string }>(sql`
+          SELECT destination FROM catalog.outbox_delivery
+          WHERE message_id = ${event.message_id}
+          ORDER BY destination
+        `),
+      );
+      expect(deliveries.rows.map((row) => row.destination)).toEqual([
+        'g6.combos.from.catalog',
+        'g6.promotions.from.catalog',
+      ]);
       const publish = vi.fn().mockRejectedValueOnce(new Error('ambiguous'));
       const bus = { publish };
       expect(await relayCatalogDelivery(database, bus)).toBe('RETRY');
