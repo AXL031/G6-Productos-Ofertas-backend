@@ -66,6 +66,18 @@ export class OutboxPublisherService {
       Math.max(1, Math.floor(Number.isFinite(limit) ? limit : 1)),
     );
 
+    if (config.serviceBus && !this.customPublisher) {
+      this.logger.debug(
+        'Transporte Azure Service Bus seleccionado; la publicación por RabbitMQ está inactiva.',
+      );
+      return {
+        dispatched: 0,
+        failed: 0,
+        skipped: true,
+        reason: 'NOT_CONFIGURED',
+      };
+    }
+
     if (!config.rabbitMqUrl && !this.customPublisher) {
       this.logger.debug(
         'RABBITMQ_URL no configurado; los eventos outbox permanecen durables en estado PENDING.',

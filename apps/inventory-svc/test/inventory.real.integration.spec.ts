@@ -45,6 +45,12 @@ import { DrizzleStockBalanceRepository } from '../src/repositories/drizzle/drizz
 import { DrizzleSkuLifecycleRepository } from '../src/repositories/drizzle/drizzle-sku-lifecycle.repository.js';
 import { DisponibilidadService } from '../src/disponibilidad/disponibilidad.service.js';
 import { catalogPr185SkuDeactivatedEvent } from './catalog-pr185.fixture.js';
+import {
+  insertInventoryDeliveries,
+  InventoryDeliveryStore,
+  INVENTORY_QUEUES,
+} from '../src/messaging/service-bus-deliveries.js';
+import { InventoryServiceBusRelay } from '../src/messaging/service-bus-relay.js';
 
 const enabled = Boolean(process.env.INVENTORY_REAL_INTEGRATION === '1');
 const suite = enabled ? describe : describe.skip;
@@ -444,6 +450,57 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
           'inventory_it',
         ],
         inventoryCandidateMigration,
+      );
+      const h5CandidateMigration = await readFile(
+        new URL(
+          '../migrations-candidate/h5/0001_outbox_delivery.sql',
+          import.meta.url,
+        ),
+        'utf8',
+      );
+      docker(
+        [
+          'exec',
+          '-i',
+          pgContainer,
+          'psql',
+          '-v',
+          'ON_ERROR_STOP=1',
+          '-U',
+          'inventory_test',
+          '-d',
+          'inventory_it',
+        ],
+        `DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'po_inventory_owner') THEN
+    CREATE ROLE po_inventory_owner WITH LOGIN SUPERUSER;
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'inventory_app') THEN
+    CREATE ROLE inventory_app WITH LOGIN;
+  END IF;
+END
+$$;
+ALTER SCHEMA inventory OWNER TO po_inventory_owner;
+GRANT ALL ON SCHEMA inventory TO po_inventory_owner;
+GRANT USAGE ON SCHEMA inventory TO inventory_app;
+GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA inventory TO inventory_app;
+GRANT inventory_app TO inventory_test;`,
+      );
+      docker(
+        [
+          'exec',
+          '-i',
+          pgContainer,
+          'psql',
+          '-v',
+          'ON_ERROR_STOP=1',
+          '-U',
+          'po_inventory_owner',
+          '-d',
+          'inventory_it',
+        ],
+        h5CandidateMigration,
       );
       docker([
         'exec',
@@ -3336,6 +3393,514 @@ suite('inventory-svc integración real PostgreSQL + RabbitMQ', () => {
       } finally {
         await client.end();
       }
+    });
+  });
+
+  describe('Azure Service Bus H5 — outbox_delivery y Store con PostgreSQL desechable', () => {
+    const deliveryStore = new InventoryDeliveryStore(database);
+
+    beforeAll(() => {
+      process.env.MESSAGING_PROVIDER = 'AZURE_SERVICE_BUS';
+    });
+
+    afterAll(() => {
+      delete process.env.MESSAGING_PROVIDER;
+    });
+
+    it('Outbox y Delivery se confirman o revierten en la misma transacción', async () => {
+      const committedEventId = randomUUID();
+      const abortedEventId = randomUUID();
+
+      // Transacción confirmada (COMMIT)
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.stock.changed', 'stock', 'SKU-H5-01', '{}', 'PENDING', now())`,
+          [committedEventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: committedEventId,
+          event_type: 'inventory.stock.changed',
+        });
+      });
+
+      const committedOutbox = await database.query(
+        `SELECT event_id FROM inventory.outbox WHERE event_id = $1`,
+        [committedEventId],
+      );
+      const committedDeliveries = await database.query(
+        `SELECT message_id, destination FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [committedEventId],
+      );
+      expect(committedOutbox.rowCount).toBe(1);
+      expect(committedDeliveries.rowCount).toBe(2);
+
+      // Transacción revertida (ROLLBACK)
+      await expect(
+        database.transaction(async (tx) => {
+          await tx.query(
+            `INSERT INTO inventory.outbox
+               (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+             VALUES ($1, 'inventory.stock.changed', 'stock', 'SKU-H5-01', '{}', 'PENDING', now())`,
+            [abortedEventId],
+          );
+          await insertInventoryDeliveries(tx, {
+            event_id: abortedEventId,
+            event_type: 'inventory.stock.changed',
+          });
+          throw new Error('Fallo simulado en la transacción de negocio');
+        }),
+      ).rejects.toThrow('Fallo simulado en la transacción de negocio');
+
+      const abortedOutbox = await database.query(
+        `SELECT event_id FROM inventory.outbox WHERE event_id = $1`,
+        [abortedEventId],
+      );
+      const abortedDeliveries = await database.query(
+        `SELECT message_id FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [abortedEventId],
+      );
+      expect(abortedOutbox.rowCount).toBe(0);
+      expect(abortedDeliveries.rowCount).toBe(0);
+    });
+
+    it('un evento inventory.stock.changed genera exactamente dos entregas: Combos y Promotions', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.stock.changed', 'stock', 'SKU-H5-02', '{}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.stock.changed',
+        });
+      });
+
+      const deliveries = await database.query<{ destination: string }>(
+        `SELECT destination FROM inventory.outbox_delivery WHERE message_id = $1 ORDER BY destination`,
+        [eventId],
+      );
+      expect(deliveries.rowCount).toBe(2);
+      expect(deliveries.rows.map((r) => r.destination)).toEqual([
+        INVENTORY_QUEUES.COMBOS,
+        INVENTORY_QUEUES.PROMOTIONS,
+      ]);
+    });
+
+    it('dos workers concurrentes no pueden reclamar simultáneamente la misma entrega vigente', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-03', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      const worker1 = new InventoryDeliveryStore(database);
+      const worker2 = new InventoryDeliveryStore(database);
+
+      // Limpiar otras entregas pendientes para aislar este test
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      const [claim1, claim2] = await Promise.all([
+        worker1.claim(),
+        worker2.claim(),
+      ]);
+
+      // Exactamente uno gana el claim y el otro obtiene undefined (FOR UPDATE SKIP LOCKED)
+      const claims = [claim1, claim2].filter(Boolean);
+      expect(claims.length).toBe(1);
+      expect(claims[0]?.row.event_id).toBe(eventId);
+      expect(claims[0]?.token).toBeDefined();
+    });
+
+    it('un lease vencido permite recuperar la entrega', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-04', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      // Reclamar la entrega
+      const claim1 = await deliveryStore.claim();
+      expect(claim1).toBeDefined();
+      expect(claim1?.row.event_id).toBe(eventId);
+
+      // Segundo intento inmediato no la puede reclamar porque el lease está vigente
+      const immediate = await deliveryStore.claim();
+      expect(immediate).toBeUndefined();
+
+      // Forzar expiración del lease en PostgreSQL
+      await database.query(
+        `UPDATE inventory.outbox_delivery
+         SET lease_until = clock_timestamp() - interval '1 second'
+         WHERE message_id = $1`,
+        [eventId],
+      );
+
+      // Ahora el lease vencido permite recuperarla
+      const reclaimed = await deliveryStore.claim();
+      expect(reclaimed).toBeDefined();
+      expect(reclaimed?.row.event_id).toBe(eventId);
+      expect(reclaimed?.token).not.toBe(claim1?.token);
+    });
+
+    it('un token incorrecto o vencido no puede confirmar el envío', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-05', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      const claim = await deliveryStore.claim();
+      expect(claim).toBeDefined();
+
+      // 1. Token incorrecto
+      const wrongTokenResult = await deliveryStore.finish(
+        { ...claim!, token: randomUUID() },
+        'confirmed',
+      );
+      expect(wrongTokenResult).toBe(false);
+
+      const checkUnsent = await database.query<{ sent_at: string | null }>(
+        `SELECT sent_at FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [eventId],
+      );
+      expect(checkUnsent.rows[0].sent_at).toBeNull();
+
+      // 2. Token vencido (lease_until expiró)
+      await database.query(
+        `UPDATE inventory.outbox_delivery
+         SET lease_until = clock_timestamp() - interval '1 second'
+         WHERE message_id = $1`,
+        [eventId],
+      );
+
+      const expiredTokenResult = await deliveryStore.finish(
+        claim!,
+        'confirmed',
+      );
+      expect(expiredTokenResult).toBe(false);
+
+      const checkStillUnsent = await database.query<{ sent_at: string | null }>(
+        `SELECT sent_at FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [eventId],
+      );
+      expect(checkStillUnsent.rows[0].sent_at).toBeNull();
+    });
+
+    it('el fallo de un destino no confirma ni bloquea permanentemente el otro', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.stock.changed', 'stock', 'SKU-H5-06', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.stock.changed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      // Reclamar primera entrega y fallar
+      const claim1 = await deliveryStore.claim();
+      expect(claim1).toBeDefined();
+      const fail1 = await deliveryStore.finish(claim1!, 'failed');
+      expect(fail1).toBe(true);
+
+      // Reclamar segunda entrega y confirmar
+      const claim2 = await deliveryStore.claim();
+      expect(claim2).toBeDefined();
+      expect(claim2?.destination).not.toBe(claim1?.destination);
+      const confirm2 = await deliveryStore.finish(claim2!, 'confirmed');
+      expect(confirm2).toBe(true);
+
+      const rows = await database.query<{
+        destination: string;
+        sent_at: string | null;
+        last_error: string | null;
+      }>(
+        `SELECT destination, sent_at, last_error
+         FROM inventory.outbox_delivery
+         WHERE message_id = $1
+         ORDER BY destination`,
+        [eventId],
+      );
+
+      const failedDest = rows.rows.find(
+        (r) => r.destination === claim1?.destination,
+      );
+      const confirmedDest = rows.rows.find(
+        (r) => r.destination === claim2?.destination,
+      );
+
+      expect(failedDest?.sent_at).toBeNull();
+      expect(failedDest?.last_error).toBe('SEND_NOT_CONFIRMED');
+
+      expect(confirmedDest?.sent_at).not.toBeNull();
+      expect(confirmedDest?.last_error).toBeNull();
+    });
+
+    it('un envío no confirmado conserva la entrega pendiente', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-07', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      const claim = await deliveryStore.claim();
+      expect(claim).toBeDefined();
+
+      await deliveryStore.finish(claim!, 'failed');
+
+      const check = await database.query<{
+        sent_at: string | null;
+        attempts: number;
+        next_attempt_at: string;
+      }>(
+        `SELECT sent_at, attempts, next_attempt_at FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [eventId],
+      );
+      expect(check.rows[0].sent_at).toBeNull();
+      expect(check.rows[0].attempts).toBe(1);
+      expect(new Date(check.rows[0].next_attempt_at).getTime()).toBeGreaterThan(
+        Date.now() - 5000,
+      );
+    });
+
+    it('una entrega confirmada no vuelve a reclamarse', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-08', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      const claim = await deliveryStore.claim();
+      expect(claim).toBeDefined();
+
+      await deliveryStore.finish(claim!, 'confirmed');
+
+      const nextClaim = await deliveryStore.claim();
+      expect(nextClaim).toBeUndefined();
+    });
+
+    it('una entrega terminal por tamaño excesivo no se reintenta automáticamente', async () => {
+      const eventId = randomUUID();
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-09', '{"schema_version":2}', 'PENDING', now())`,
+          [eventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: eventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id <> $1 AND sent_at IS NULL`,
+        [eventId],
+      );
+
+      const claim = await deliveryStore.claim();
+      expect(claim).toBeDefined();
+
+      const finished = await deliveryStore.finish(claim!, 'terminal_too_large');
+      expect(finished).toBe(true);
+
+      const row = await database.query<{
+        sent_at: string | null;
+        last_error: string | null;
+        next_attempt_at: string;
+      }>(
+        `SELECT sent_at, last_error, next_attempt_at::text FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [eventId],
+      );
+      expect(row.rows[0].sent_at).toBeNull();
+      expect(row.rows[0].last_error).toBe('MESSAGE_EXCEEDS_256KB');
+      expect(row.rows[0].next_attempt_at).toBe('infinity');
+
+      // No se vuelve a reclamar automáticamente
+      const reclaimed = await deliveryStore.claim();
+      expect(reclaimed).toBeUndefined();
+    });
+
+    it('una entrega con payload inválido (cadena no interpretable como envelope) se marca terminal y permite procesar entregas válidas posteriores', async () => {
+      const invalidEventId = randomUUID();
+      const validEventId = randomUUID();
+      const validCanonicalMessageId = randomUUID();
+
+      // 1. Insertar evento con payload inválido: una cadena JSONB que no puede interpretarse como envelope válido
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-INV', '"cadena-invalida-no-envelope"', 'PENDING', now())`,
+          [invalidEventId],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: invalidEventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      // 2. Insertar evento válido posterior
+      await database.transaction(async (tx) => {
+        await tx.query(
+          `INSERT INTO inventory.outbox
+             (event_id, event_type, aggregate_type, aggregate_id, payload, status, created_at)
+           VALUES ($1, 'inventory.sku.initialization.completed', 'stock', 'SKU-H5-VAL', $2::jsonb, 'PENDING', now())`,
+          [
+            validEventId,
+            JSON.stringify({
+              message_id: validCanonicalMessageId,
+              name: 'inventory.sku.initialization.completed',
+              producer: 'inventory-svc',
+              schema_version: 2,
+            }),
+          ],
+        );
+        await insertInventoryDeliveries(tx, {
+          event_id: validEventId,
+          event_type: 'inventory.sku.initialization.completed',
+        });
+      });
+
+      // Limpiar otras entregas pendientes para aislar este test
+      await database.query(
+        `UPDATE inventory.outbox_delivery SET sent_at = now() WHERE message_id NOT IN ($1, $2) AND sent_at IS NULL`,
+        [invalidEventId, validEventId],
+      );
+
+      // Crear sender mock para el relay
+      const sentMessages: any[] = [];
+      const mockSender = {
+        createMessageBatch: vi.fn(async () => ({
+          count: 1,
+          sizeInBytes: 100,
+          maxSizeInBytes: 256 * 1024,
+          tryAddMessage: (msg: any) => {
+            sentMessages.push(msg);
+            return true;
+          },
+        })),
+        sendMessages: vi.fn(async () => undefined),
+      };
+      const senders = new Map([
+        [INVENTORY_QUEUES.CATALOG, mockSender as any],
+        [INVENTORY_QUEUES.COMBOS, mockSender as any],
+        [INVENTORY_QUEUES.PROMOTIONS, mockSender as any],
+      ]);
+      const relay = new InventoryServiceBusRelay(deliveryStore, senders);
+
+      // Primer publishOne: debe reclamar invalidEventId, rechazarlo contractualmente y marcarlo terminal
+      const res1 = await relay.publishOne();
+      expect(res1).toBe('terminal-failure');
+
+      const invalidRow = await database.query<{
+        sent_at: string | null;
+        last_error: string | null;
+        next_attempt_at: string;
+      }>(
+        `SELECT sent_at, last_error, next_attempt_at::text FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [invalidEventId],
+      );
+      expect(invalidRow.rows[0].sent_at).toBeNull();
+      expect(invalidRow.rows[0].last_error).toBe('INVALID_OUTBOX_CONTRACT');
+      expect(invalidRow.rows[0].next_attempt_at).toBe('infinity');
+
+      // Segundo publishOne: la entrega inválida ya no bloquea; debe procesar la entrega válida posterior
+      const res2 = await relay.publishOne();
+      expect(res2).toBe('sent');
+
+      const validRow = await database.query<{
+        sent_at: string | null;
+        last_error: string | null;
+      }>(
+        `SELECT sent_at, last_error FROM inventory.outbox_delivery WHERE message_id = $1`,
+        [validEventId],
+      );
+      expect(validRow.rows[0].sent_at).not.toBeNull();
+      expect(validRow.rows[0].last_error).toBeNull();
+      expect(sentMessages[0].messageId).toBe(validCanonicalMessageId);
+
+      // Tercer publishOne: no quedan entregas pendientes
+      const res3 = await relay.publishOne();
+      expect(res3).toBe('empty');
     });
   });
 });

@@ -1,0 +1,101 @@
+/**
+ * Configuración de Azure Service Bus para inventory-svc (H5).
+ *
+ * Sigue el patrón fail-closed: se valida al iniciar el servicio (bootstrap).
+ *
+ * Reglas de selección:
+ * - Acepta MESSAGING_PROVIDER ausente o RABBITMQ como modo heredado H4.
+ * - Acepta AZURE_SERVICE_BUS únicamente como selección explícita H5.
+ * - Rechaza cualquier otro valor de MESSAGING_PROVIDER.
+ * - Cuando H5 esté seleccionado, exige la presencia de ambos flags:
+ *     INVENTORY_SERVICE_BUS_PUBLISH_ENABLED y INVENTORY_SERVICE_BUS_CONSUME_ENABLED.
+ *   Cada flag debe valer literalmente 'true' o 'false' (no acepta ausentes).
+ * - Si H5 no está seleccionado, retorna undefined conservando H4 (RabbitMQ) intacto.
+ */
+
+export interface InventoryServiceBusConfig {
+  namespace: string;
+  publishEnabled: boolean;
+  consumeEnabled: boolean;
+  managedIdentityClientId?: string;
+}
+
+export function readInventoryServiceBus(
+  env: NodeJS.ProcessEnv,
+): InventoryServiceBusConfig | undefined {
+  const provider = env.MESSAGING_PROVIDER;
+
+  // Rechazar cualquier valor no reconocido
+  if (
+    provider !== undefined &&
+    provider !== 'RABBITMQ' &&
+    provider !== 'AZURE_SERVICE_BUS'
+  ) {
+    throw new Error('INVENTORY_SERVICE_BUS_CONFIGURATION_INVALID');
+  }
+
+  const isH5 = provider === 'AZURE_SERVICE_BUS';
+
+  // Modo heredado H4 (MESSAGING_PROVIDER ausente o RABBITMQ)
+  if (!isH5) {
+    // Si se especificaron variables de Service Bus sin seleccionar el transporte, configuración inválida.
+    if (
+      env.G6_SERVICE_BUS_PILOT_ENABLED === 'true' ||
+      env.SERVICE_BUS_NAMESPACE_FQDN !== undefined ||
+      env.INVENTORY_SERVICE_BUS_PUBLISH_ENABLED !== undefined ||
+      env.INVENTORY_SERVICE_BUS_CONSUME_ENABLED !== undefined
+    ) {
+      throw new Error('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+    }
+    return undefined;
+  }
+
+  // Selección explícita H5 (AZURE_SERVICE_BUS):
+  // Exige la presencia obligatoria de ambos flags con valor literal 'true' o 'false'
+  const publishFlag = env.INVENTORY_SERVICE_BUS_PUBLISH_ENABLED;
+  const consumeFlag = env.INVENTORY_SERVICE_BUS_CONSUME_ENABLED;
+
+  if (
+    (publishFlag !== 'true' && publishFlag !== 'false') ||
+    (consumeFlag !== 'true' && consumeFlag !== 'false')
+  ) {
+    throw new Error('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+  }
+
+  if (
+    env.G6_SERVICE_BUS_PILOT_ENABLED !== 'true' ||
+    !['test', 'development', 'production'].includes(env.NODE_ENV ?? '') ||
+    env.RABBITMQ_URL !== undefined ||
+    !/^[a-z][a-z0-9-]{4,48}[a-z0-9]\.servicebus\.windows\.net$/.test(
+      env.SERVICE_BUS_NAMESPACE_FQDN ?? '',
+    )
+  ) {
+    throw new Error('INVENTORY_SERVICE_BUS_PILOT_CONFIGURATION_INVALID');
+  }
+
+  const identity = env.AZURE_CLIENT_ID;
+  if (
+    (identity !== undefined &&
+      (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        identity,
+      ) ||
+        identity === '00000000-0000-0000-0000-000000000000')) ||
+    (env.G6_SERVICE_BUS_PRODUCTION_ENABLED !== undefined &&
+      !['true', 'false'].includes(env.G6_SERVICE_BUS_PRODUCTION_ENABLED)) ||
+    (env.NODE_ENV === 'production' &&
+      (env.G6_SERVICE_BUS_PRODUCTION_ENABLED !== 'true' ||
+        env.G6_SECURITY_MODE !== 'G7_AUTHENTICATED' ||
+        !identity)) ||
+    (env.NODE_ENV !== 'production' &&
+      env.G6_SERVICE_BUS_PRODUCTION_ENABLED === 'true')
+  ) {
+    throw new Error('INVENTORY_SERVICE_BUS_PRODUCTION_CONFIGURATION_INVALID');
+  }
+
+  return {
+    namespace: env.SERVICE_BUS_NAMESPACE_FQDN!,
+    publishEnabled: publishFlag === 'true',
+    consumeEnabled: consumeFlag === 'true',
+    ...(identity ? { managedIdentityClientId: identity } : {}),
+  };
+}

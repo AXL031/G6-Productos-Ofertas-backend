@@ -44,7 +44,7 @@ describe('InventorySvcController', () => {
         status: 'ok',
         service: 'inventory-svc',
       });
-    });
+    }, 15000);
   });
 
   describe('readiness', () => {

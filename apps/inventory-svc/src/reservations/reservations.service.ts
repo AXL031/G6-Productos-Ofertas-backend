@@ -11,6 +11,8 @@ import {
   OperacionReservaRequest,
   LiberarReservaRequest,
   OperacionInventarioAceptada,
+  ConsultaEstadoReservaResponse,
+  VigenciaEfectivaReserva,
 } from '../types/inventory.dto.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
@@ -1845,5 +1847,82 @@ export class ReservationsService {
         correlationId,
       );
     }
+  }
+
+  async consultarEstadoReserva(
+    reservaId: string,
+    orderId: string,
+    correlationId?: string,
+  ): Promise<ConsultaEstadoReservaResponse> {
+    const corrId = correlationId || randomUUID();
+
+    if (
+      !reservaId ||
+      typeof reservaId !== 'string' ||
+      !UUID_REGEX.test(reservaId.trim())
+    ) {
+      throw ProblemDetailsException.validation(
+        'El identificador de reserva debe ser un UUID válido',
+        corrId,
+      );
+    }
+
+    if (typeof orderId !== 'string' || orderId.length === 0) {
+      throw ProblemDetailsException.validation(
+        'El order_id es obligatorio para consultar el estado de la reserva',
+        corrId,
+      );
+    }
+
+    const cleanReservaId = reservaId.trim();
+
+    const reservation =
+      await this.reservationsRepo.findByReservationId(cleanReservaId);
+
+    if (
+      !reservation ||
+      !reservation.order_id ||
+      reservation.order_id !== orderId
+    ) {
+      throw ProblemDetailsException.reservaNoEncontrada(
+        'Reserva no encontrada',
+        corrId,
+      );
+    }
+
+    const observedAt = new Date();
+    const observedAtIso = observedAt.toISOString();
+    const expiresAt = new Date(reservation.expires_at);
+
+    let vigenciaEfectiva: VigenciaEfectivaReserva;
+    let permitePago: boolean;
+    let permiteConsumoCupon: boolean;
+
+    if (reservation.status === 'ACTIVA') {
+      if (expiresAt.getTime() > observedAt.getTime()) {
+        vigenciaEfectiva = 'VIGENTE';
+        permitePago = true;
+        permiteConsumoCupon = true;
+      } else {
+        vigenciaEfectiva = 'VENCIDA';
+        permitePago = false;
+        permiteConsumoCupon = false;
+      }
+    } else {
+      vigenciaEfectiva = 'NO_APLICA';
+      permitePago = false;
+      permiteConsumoCupon = false;
+    }
+
+    return {
+      reservation_id: reservation.reservation_id,
+      order_id: reservation.order_id,
+      estado_persistido: reservation.status,
+      expires_at: reservation.expires_at,
+      observed_at: observedAtIso,
+      vigencia_efectiva: vigenciaEfectiva,
+      permite_pago: permitePago,
+      permite_consumo_cupon: permiteConsumoCupon,
+    };
   }
 }
