@@ -11,6 +11,7 @@ import {
   OperacionReservaRequest,
   LiberarReservaRequest,
   OperacionInventarioAceptada,
+  ConsultaEstadoReservaResponse,
 } from '../types/inventory.dto.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
@@ -1845,5 +1846,69 @@ export class ReservationsService {
         correlationId,
       );
     }
+  }
+
+  async consultarEstadoReserva(
+    reservaId: string,
+    orderId: string,
+    correlationId?: string,
+  ): Promise<ConsultaEstadoReservaResponse> {
+    const corrId = correlationId || randomUUID();
+
+    if (!reservaId || typeof reservaId !== 'string' || !UUID_REGEX.test(reservaId.trim())) {
+      throw ProblemDetailsException.validation(
+        'El identificador de reserva debe ser un UUID válido',
+        corrId,
+      );
+    }
+
+    if (!orderId || typeof orderId !== 'string' || orderId.trim().length === 0) {
+      throw ProblemDetailsException.validation(
+        'El order_id es obligatorio para consultar el estado de la reserva',
+        corrId,
+      );
+    }
+
+    const cleanReservaId = reservaId.trim();
+    const cleanOrderId = orderId.trim();
+
+    const reservation = await this.reservationsRepo.findByReservationId(cleanReservaId);
+
+    if (!reservation) {
+      throw ProblemDetailsException.reservaNoEncontrada(
+        `Reserva '${cleanReservaId}' no encontrada`,
+        corrId,
+      );
+    }
+
+    if (reservation.order_id && reservation.order_id !== cleanOrderId) {
+      throw ProblemDetailsException.validation(
+        `El order_id '${cleanOrderId}' no corresponde a la reserva '${cleanReservaId}'`,
+        corrId,
+      );
+    }
+
+    const now = new Date();
+    const expiresAtDate = new Date(reservation.expires_at);
+    const serverTimeIso = now.toISOString();
+
+    let vigenciaEfectiva: 'VIGENTE' | 'VENCIDA';
+    if (reservation.status === 'ACTIVA') {
+      vigenciaEfectiva = expiresAtDate.getTime() > now.getTime() ? 'VIGENTE' : 'VENCIDA';
+    } else {
+      vigenciaEfectiva = 'VENCIDA';
+    }
+
+    return {
+      reservation_id: reservation.reservation_id,
+      order_id: cleanOrderId,
+      estado_persistido: reservation.status,
+      vigencia_efectiva: vigenciaEfectiva,
+      expires_at: reservation.expires_at,
+      consumed_at: reservation.consumed_at ?? null,
+      released_at: reservation.released_at ?? null,
+      expired_at: reservation.expired_at ?? null,
+      server_time: serverTimeIso,
+    };
   }
 }

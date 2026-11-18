@@ -64,6 +64,21 @@ export interface ConsultaOperacionInventario {
   completed_at?: string | null;
 }
 
+export type EstadoPersistidoReserva = 'ACTIVA' | 'CONSUMIDA' | 'LIBERADA' | 'EXPIRADA';
+export type VigenciaEfectivaReserva = 'VIGENTE' | 'VENCIDA';
+
+export interface ConsultaEstadoReservaResponse {
+  reservation_id: string;
+  order_id: string;
+  estado_persistido: EstadoPersistidoReserva;
+  vigencia_efectiva: VigenciaEfectivaReserva;
+  expires_at: string;
+  consumed_at?: string | null;
+  released_at?: string | null;
+  expired_at?: string | null;
+  server_time: string;
+}
+
 export interface DisponibilidadStock {
   sku: string;
   location_id?: string | null;

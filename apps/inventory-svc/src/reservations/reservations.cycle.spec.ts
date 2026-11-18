@@ -620,4 +620,142 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
       }
     });
   });
+
+  describe('Consulta de estado y vigencia efectiva de reserva (H5 / G5)', () => {
+    it('retorna ACTIVA y VIGENTE para una reserva recién creada', async () => {
+      const orderId = 'PED-H5-VIGENTE';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      const estado = await reservationsService.consultarEstadoReserva(
+        reserva.reservation_id,
+        orderId,
+      );
+
+      expect(estado.reservation_id).toBe(reserva.reservation_id);
+      expect(estado.order_id).toBe(orderId);
+      expect(estado.estado_persistido).toBe('ACTIVA');
+      expect(estado.vigencia_efectiva).toBe('VIGENTE');
+      expect(estado.expires_at).toBe(reserva.expires_at);
+      expect(estado.server_time).toBeDefined();
+    });
+
+    it('retorna ACTIVA pero VENCIDA si expires_at ya se cumplió, sin esperar al worker', async () => {
+      const orderId = 'PED-H5-VENCIDA';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      // Simulamos que el tiempo pasó y expires_at quedó en el pasado, pero el worker aún no corrió
+      reserva.expires_at = new Date(Date.now() - 5000).toISOString();
+
+      const estado = await reservationsService.consultarEstadoReserva(
+        reserva.reservation_id,
+        orderId,
+      );
+
+      expect(estado.estado_persistido).toBe('ACTIVA');
+      expect(estado.vigencia_efectiva).toBe('VENCIDA');
+    });
+
+    it('retorna CONSUMIDA y VENCIDA tras confirmación de venta', async () => {
+      const orderId = 'PED-H5-CONSUMIDA';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      const opConfirmar = randomUUID();
+      await reservationsService.confirmarReserva(
+        reserva.reservation_id,
+        { order_id: orderId, operation_id: opConfirmar },
+        undefined,
+        opConfirmar,
+      );
+
+      const estado = await reservationsService.consultarEstadoReserva(
+        reserva.reservation_id,
+        orderId,
+      );
+
+      expect(estado.estado_persistido).toBe('CONSUMIDA');
+      expect(estado.vigencia_efectiva).toBe('VENCIDA');
+      expect(estado.consumed_at).toBeDefined();
+    });
+
+    it('rechaza 400 si reservaId no es UUID o si order_id no coincide', async () => {
+      const orderId = 'PED-H5-MISMATCH';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+
+      try {
+        await reservationsService.consultarEstadoReserva('no-uuid', orderId);
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(400);
+        expect(pde.problem.code).toBe('VALIDACION');
+        expect(pde.problem.detail).toContain('UUID válido');
+      }
+
+      try {
+        await reservationsService.consultarEstadoReserva(reserva.reservation_id, 'PED-OTRO');
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(400);
+        expect(pde.problem.code).toBe('VALIDACION');
+        expect(pde.problem.detail).toContain('no corresponde');
+      }
+    });
+
+    it('responde 404 si la reserva no existe', async () => {
+      try {
+        await reservationsService.consultarEstadoReserva(randomUUID(), 'PED-INEXISTENTE');
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(404);
+        expect(pde.problem.code).toBe('RESERVA_NO_ENCONTRADA');
+      }
+    });
+  });
 });

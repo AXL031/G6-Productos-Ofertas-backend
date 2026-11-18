@@ -231,6 +231,51 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
     expect(state()).toEqual(before);
   });
 
+  it('permite a modulo-ventas consultar el estado de reserva con su vigencia efectiva', async () => {
+    const resId = randomUUID();
+    const orderId = 'PED-HTTP-G5-TEST';
+    db.reservations.push({
+      id: resId,
+      reservation_id: resId,
+      status: 'ACTIVA',
+      expires_at: new Date(Date.now() + 60000).toISOString(),
+      idempotency_key: 'idemp-test-g5',
+      intention: 'RESERVA',
+      order_id: orderId,
+    });
+
+    const res = await request(app.getHttpServer())
+      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
+      .set('Authorization', `Bearer ${service()}`)
+      .expect(200);
+
+    expect(res.body).toMatchObject({
+      reservation_id: resId,
+      order_id: orderId,
+      estado_persistido: 'ACTIVA',
+      vigencia_efectiva: 'VIGENTE',
+    });
+    expect(res.body.server_time).toBeDefined();
+  });
+
+  it('rechaza la consulta de estado de reserva si el cliente no es modulo-ventas o no tiene scope', async () => {
+    const resId = randomUUID();
+    const orderId = 'PED-HTTP-G5-REJECT';
+
+    // Humano: 401 (espera servicio)
+    await request(app.getHttpServer())
+      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
+      .set('Authorization', `Bearer ${human()}`)
+      .expect(401);
+
+    // Otro servicio: 403
+    const otherService = createCryptographicJwt({ clientId: 'modulo-marketplace' });
+    await request(app.getHttpServer())
+      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
+      .set('Authorization', `Bearer ${otherService}`)
+      .expect(403);
+  });
+
   it('mantiene traslados cerrados en G7 hasta definir los grants locales, incluso con un claim adicional', async () => {
     await request(app.getHttpServer())
       .get('/api/v1/inventario/traslados')

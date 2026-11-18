@@ -29,6 +29,7 @@ import {
   VerificarCantidadComercialResponse,
   ReintegroInventarioRequest,
   ReintegroInventarioResponse,
+  ConsultaEstadoReservaResponse,
   CrearIncidenciaInventarioRequest,
   IncidenciaInventarioResponse,
   ResolverIncidenciaInventarioRequest,
@@ -252,6 +253,21 @@ export class InventoryController {
   ): Promise<ConsultaOperacionInventario> {
     return this.operationsService.consultarOperacion(
       operationId,
+      correlationId,
+    );
+  }
+
+  @Get('reservas/:reservaId/estado')
+  @RequireScope(INVENTORY_SCOPES.RESERVAR)
+  @AllowedClients([KNOWN_CLIENTS.VENTAS])
+  async consultarEstadoReserva(
+    @Param('reservaId') reservaId: string,
+    @Query('order_id') orderId: string,
+    @Headers('x-correlation-id') correlationId?: string,
+  ): Promise<ConsultaEstadoReservaResponse> {
+    return this.reservationsService.consultarEstadoReserva(
+      reservaId,
+      orderId,
       correlationId,
     );
   }
