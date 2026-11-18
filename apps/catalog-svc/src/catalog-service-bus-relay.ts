@@ -1,26 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import type { CatalogEnvelope } from './catalog-messages.js';
-import {
-  destinationsFor,
-  type CatalogServiceBus,
-} from './catalog-service-bus.js';
-import type { CatalogTransaction, Database } from './database.js';
-
-/** Called in the same transaction as the outbox insert, only by the H5 writer. */
-export async function enqueueCatalogDeliveries(
-  tx: CatalogTransaction,
-  message: CatalogEnvelope,
-) {
-  const values = destinationsFor(message).map(
-    (destination) => sql`(${message.message_id}, ${destination})`,
-  );
-  await tx.execute(sql`
-    INSERT INTO catalog.outbox_delivery (message_id, destination)
-    VALUES ${sql.join(values, sql`, `)}
-    ON CONFLICT (message_id, destination) DO NOTHING
-  `);
-}
+import type { CatalogServiceBus } from './catalog-service-bus.js';
+import type { Database } from './database.js';
 
 export async function relayCatalogDelivery(
   database: Pick<Database, 'transaction'>,

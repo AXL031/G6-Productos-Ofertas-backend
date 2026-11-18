@@ -19,6 +19,7 @@ import {
   outbox,
   productIdentifyingCharacteristics,
   products,
+  skuIdentity,
   variants,
 } from './catalog.schema.js';
 import type { CatalogTransaction } from './database.js';
@@ -840,7 +841,29 @@ export class CatalogMutationService {
           .where(eq(products.id, aggregate.id))
           .returning();
         if (!parent) throw new ServiceUnavailableException();
-        if (action === 'deactivate' && !child)
+        if (action === 'deactivate' && !child) {
+          if (!parent.tiene_variantes) {
+            const [sellableSku] = await tx
+              .select({ sku: skuIdentity.sku })
+              .from(skuIdentity)
+              .where(eq(skuIdentity.product_id, parent.id))
+              .limit(1);
+            if (!sellableSku) throw new ServiceUnavailableException();
+            await this.emit(
+              tx,
+              envelope(
+                'catalog.sku.deactivated',
+                {
+                  product_id: parent.id,
+                  sku: sellableSku.sku,
+                  sku_version: transitionVersion(parent.catalog_version),
+                  changed_at: transitionTimestamp(parent.updated_at),
+                },
+                actor.correlationId,
+                randomUUID(),
+              ),
+            );
+          }
           await this.emit(
             tx,
             envelope(
@@ -854,6 +877,7 @@ export class CatalogMutationService {
               randomUUID(),
             ),
           );
+        }
         if (
           action === 'deactivate' &&
           child &&

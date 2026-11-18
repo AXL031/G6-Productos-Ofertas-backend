@@ -246,6 +246,8 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
     !object(value) ||
     !UUID.test(String(value.message_id)) ||
     !UUID.test(String(value.correlation_id)) ||
+    (value.causation_id !== null && !UUID.test(String(value.causation_id))) ||
+    (value.operation_id !== null && !UUID.test(String(value.operation_id))) ||
     (value.schema_version !== 1 &&
       !(
         (value.name === 'catalog.bulk.upsert.requested' ||

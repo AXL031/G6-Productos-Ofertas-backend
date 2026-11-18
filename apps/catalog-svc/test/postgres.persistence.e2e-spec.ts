@@ -6678,7 +6678,33 @@ GRANT USAGE ON SCHEMA bulk TO bulk_fixture_app; GRANT SELECT,INSERT,UPDATE,DELET
         product_version: Number(persisted!.catalog_version),
         changed_at: persisted!.updated_at.toISOString(),
       });
+      const [identity] = await database.read((db) =>
+        db
+          .select({ sku: skuIdentity.sku })
+          .from(skuIdentity)
+          .where(eq(skuIdentity.product_id, product.product_id)),
+      );
+      expect(identity).toBeDefined();
+      const skuEvents = await database.read((db) =>
+        db
+          .select()
+          .from(outbox)
+          .where(
+            and(
+              eq(outbox.event_name, 'catalog.sku.deactivated'),
+              sql`${outbox.payload}->>'product_id' = ${product.product_id}`,
+            ),
+          ),
+      );
+      expect(skuEvents).toHaveLength(1);
+      expect(skuEvents[0]!.payload).toEqual({
+        product_id: product.product_id,
+        sku: identity!.sku,
+        sku_version: Number(persisted!.catalog_version),
+        changed_at: persisted!.updated_at.toISOString(),
+      });
       expect(events[0]!.correlation_id).toBe(actor.correlationId);
+      expect(skuEvents[0]!.correlation_id).toBe(actor.correlationId);
     });
 
     it('serializes last-variant deactivation and preserves independent parent/child reactivation', async () => {

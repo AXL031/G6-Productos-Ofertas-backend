@@ -3,6 +3,7 @@ import { ReadinessController } from './readiness.controller.js';
 import type { Database } from './database.js';
 import type { PostgresCatalogRepository } from './postgres-catalog.repository.js';
 import type { CatalogAmqpRuntime } from './catalog-amqp.js';
+import type { CatalogServiceBusRuntime } from './catalog-service-bus.runtime.js';
 
 describe('Catalog technical readiness', () => {
   const database = { verifyIdentity: vi.fn() } as unknown as Database;
@@ -50,6 +51,16 @@ describe('Catalog technical readiness', () => {
         required: true,
         ready: false,
       } as CatalogAmqpRuntime).ready(),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(repository.checkReadinessAccess).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when selected H5 runtime is not ready', async () => {
+    await expect(
+      new ReadinessController(database, repository, amqp, {
+        required: true,
+        ready: false,
+      } as CatalogServiceBusRuntime).ready(),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
     expect(repository.checkReadinessAccess).not.toHaveBeenCalled();
   });

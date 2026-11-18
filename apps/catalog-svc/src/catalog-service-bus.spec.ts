@@ -4,6 +4,8 @@ import type { CatalogEnvelope } from './catalog-messages.js';
 import {
   CatalogServiceBus,
   createCatalogServiceBus,
+  normalizeCatalogServiceBusBody,
+  readCatalogH5Destinations,
 } from './catalog-service-bus.js';
 
 function outgoing(): CatalogEnvelope {
@@ -27,6 +29,17 @@ function outgoing(): CatalogEnvelope {
 }
 
 describe('Catalog Service Bus candidate', () => {
+  it('normalizes supported SDK body representations without changing JSON values', () => {
+    const value = { message_id: 'stable', data: { sku: 'SKU-1' } };
+    const bytes = Buffer.from(JSON.stringify(value));
+    expect(normalizeCatalogServiceBusBody(bytes)).toEqual(value);
+    expect(normalizeCatalogServiceBusBody(bytes.toString('utf8'))).toEqual(value);
+    expect(normalizeCatalogServiceBusBody(value)).toBe(value);
+    expect(() => normalizeCatalogServiceBusBody('{invalid')).toThrow();
+    expect(() => normalizeCatalogServiceBusBody(new Uint8Array([0xff]))).toThrow();
+    expect(() => normalizeCatalogServiceBusBody([])).toThrow();
+    expect(() => normalizeCatalogServiceBusBody('x'.repeat(256 * 1024 + 1))).toThrow();
+  });
   it('defaults to the existing provider and refuses simultaneous activation', () => {
     expect(createCatalogServiceBus({})).toBeUndefined();
     expect(() =>
@@ -35,6 +48,23 @@ describe('Catalog Service Bus candidate', () => {
         CATALOG_AMQP_ENABLED: 'true',
       }),
     ).toThrow('RabbitMQ habilitado');
+  });
+
+  it('leaves H5 destinations disabled by default and validates explicit queue gates', () => {
+    expect(readCatalogH5Destinations({})).toEqual([]);
+    expect(
+      readCatalogH5Destinations({
+        CATALOG_H5_DESTINATIONS: 'g6.pricing.from.catalog, g6.bulk.from.catalog',
+      }),
+    ).toEqual(['g6.pricing.from.catalog', 'g6.bulk.from.catalog']);
+    expect(() =>
+      readCatalogH5Destinations({ CATALOG_H5_DESTINATIONS: 'g6.invalid' }),
+    ).toThrow('CATALOG_H5_DESTINATIONS inválido');
+    expect(() =>
+      readCatalogH5Destinations({
+        CATALOG_H5_DESTINATIONS: 'g6.bulk.from.catalog,g6.bulk.from.catalog',
+      }),
+    ).toThrow('CATALOG_H5_DESTINATIONS inválido');
   });
 
   it('keeps identity across ambiguous sends and reuses the queue sender', async () => {
@@ -127,6 +157,16 @@ describe('Catalog Service Bus candidate', () => {
     consume.mockResolvedValueOnce('DUPLICATE');
     await handlers.processMessage(delivery(event));
     expect(completeMessage).toHaveBeenCalledTimes(2);
+    await handlers.processMessage({
+      ...delivery(event),
+      body: JSON.stringify(event),
+    } as Delivery);
+    await handlers.processMessage({
+      ...delivery(event),
+      body: event,
+    } as Delivery);
+    expect(completeMessage).toHaveBeenCalledTimes(4);
+    expect(consume).toHaveBeenCalledTimes(4);
     consume.mockRejectedValueOnce(new Error('SQL unavailable'));
     await handlers.processMessage(delivery(event));
     expect(abandonMessage).toHaveBeenCalledTimes(1);
@@ -134,5 +174,10 @@ describe('Catalog Service Bus candidate', () => {
       delivery({ ...event, producer: 'pricing-svc' }),
     );
     expect(deadLetterMessage).toHaveBeenCalledTimes(1);
+    await handlers.processMessage({
+      ...delivery(event),
+      contentType: 'text/plain',
+    } as Delivery);
+    expect(deadLetterMessage).toHaveBeenCalledTimes(2);
   });
 });
