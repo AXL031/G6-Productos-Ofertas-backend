@@ -1,4 +1,6 @@
 export interface ContractSchema {
+  $schema?: string;
+  $id?: string;
   type?: string | string[];
   properties?: Record<string, ContractSchema>;
   required?: string[];
@@ -11,6 +13,7 @@ export interface ContractSchema {
   minLength?: number;
   maxLength?: number;
   minimum?: number;
+  maximum?: number;
   pattern?: string;
   format?: string;
   description?: string;
@@ -120,5 +123,12 @@ export function matchesSchema(value: unknown, schema: ContractSchema): boolean {
     )
       return false;
   }
+  // JSON Schema numeric bounds also apply to the candidate Problem schema.
+  if (
+    typeof value === 'number' &&
+    schema.maximum !== undefined &&
+    value > schema.maximum
+  )
+    return false;
   return true;
 }

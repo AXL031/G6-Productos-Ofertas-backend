@@ -25,6 +25,7 @@ interface ProbeConnection {
 // Every check owns its connections. Never creates topology, consumes or publishes.
 export function nativePromotionsDependencyProbes(
   config: PromotionsConfigService,
+  events?: { assertAvailable(): void },
 ): PromotionsDependencyProbes {
   if (!config.settings.dependencyProbesEnabled)
     return Object.freeze({ database: 'disabled', broker: 'disabled' });
@@ -80,6 +81,11 @@ export function nativePromotionsDependencyProbes(
     broker: {
       async check(signal) {
         signal.throwIfAborted();
+        if (config.settings.serviceBus) {
+          if (!events) throw new Error('PROMOTIONS_SERVICE_BUS_NOT_READY');
+          events.assertAvailable();
+          return;
+        }
         const amqp: unknown = require('amqplib');
         if (
           typeof amqp !== 'object' ||

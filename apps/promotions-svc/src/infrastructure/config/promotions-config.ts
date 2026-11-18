@@ -4,6 +4,10 @@ import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isAbsolute, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 import { internalOrigin, type Upstream } from '../http/internal-http.js';
+import {
+  readPromotionsServiceBus,
+  type PromotionsServiceBusConfig,
+} from '../../coupons/service-bus-config.js';
 const upstreamVariables = {
   catalog: 'GATEWAY_CATALOG_SVC_URL',
   pricing: 'GATEWAY_PRICING_SVC_URL',
@@ -71,6 +75,7 @@ export interface PromotionsConfiguration {
     readonly connectionMode: 'session';
   };
   readonly rabbitmqUrl?: string;
+  readonly serviceBus?: PromotionsServiceBusConfig;
   readonly dependencyProbesEnabled: boolean;
   readonly couponRuntimeEnabled: boolean;
   readonly localDemoEnabled: boolean;
@@ -198,6 +203,7 @@ export function validatePromotionsConfiguration(
     'PROMOTIONS_DEPENDENCY_PROBES_ENABLED',
   );
   const couponRuntimeEnabled = enabled('PROMOTIONS_COUPON_RUNTIME_ENABLED');
+  const serviceBus = readPromotionsServiceBus(environment);
   const localDemoEnabled = enabled('GATEWAY_DEMO_NO_AUTH_ENABLED');
   if (localDemoEnabled) invalid.add('GATEWAY_DEMO_NO_AUTH_ENABLED');
   const upstreams: Partial<Record<Upstream, string>> = {};
@@ -217,7 +223,8 @@ export function validatePromotionsConfiguration(
     requiredVariables.map((name) => {
       const value = environment[name] ?? '';
       if (
-        (!value.trim() && !(httpOnly && name === 'RABBITMQ_URL')) ||
+        (!value.trim() &&
+          !((httpOnly || serviceBus) && name === 'RABBITMQ_URL')) ||
         value.includes('\0')
       )
         invalid.add(name);
@@ -261,7 +268,7 @@ export function validatePromotionsConfiguration(
   } catch {
     invalid.add('PGSSLROOTCERT');
   }
-  if (required.RABBITMQ_URL || !httpOnly)
+  if (!serviceBus && (required.RABBITMQ_URL || !httpOnly))
     try {
       const broker = new URL(required.RABBITMQ_URL);
       if (
@@ -297,6 +304,7 @@ export function validatePromotionsConfiguration(
       connectionMode: 'session' as const,
     }),
     rabbitmqUrl: required.RABBITMQ_URL || undefined,
+    serviceBus,
     dependencyProbesEnabled,
     couponRuntimeEnabled,
     localDemoEnabled: false,

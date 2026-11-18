@@ -2,6 +2,7 @@ import { connectPrivateAmqps } from '../private-amqps.js';
 import type { Provider } from '@nestjs/common';
 import { h4EventAdapters } from './h4-event-adapters.js';
 import { assignedH4Contracts } from './assigned-h4-contract.generated.js';
+import { PromotionsServiceBusEvents } from './service-bus-events.js';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import type { Pool as PgPool, PoolConfig } from 'pg';
@@ -195,6 +196,14 @@ export function nativeCouponResources(
 }
 
 export const couponProviders: Provider[] = [
+  {
+    provide: PromotionsServiceBusEvents,
+    inject: [PromotionsConfigService, PromotionsAssignedEventDispatcher],
+    useFactory: (
+      config: PromotionsConfigService,
+      dispatcher: PromotionsAssignedEventDispatcher,
+    ) => new PromotionsServiceBusEvents(config.settings.serviceBus, dispatcher),
+  },
   { provide: ASSIGNED_EVENT_ADAPTERS, useValue: h4EventAdapters },
   { provide: PROMOTIONS_BROKER_IDENTITY, useValue: blockedBrokerIdentity },
   {

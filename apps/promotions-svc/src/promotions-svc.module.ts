@@ -16,6 +16,7 @@ import {
 } from './infrastructure/http/integration-providers.js';
 import { promotionsServiceTokens } from './infrastructure/http/service-tokens.js';
 import { couponProviders } from './coupons/coupon-providers.js';
+import { PromotionsServiceBusEvents } from './coupons/service-bus-events.js';
 import {
   PromotionsConfigService,
   readPromotionsEnvironment,
@@ -92,7 +93,7 @@ import {
     },
     {
       provide: PROMOTIONS_DEPENDENCY_PROBES,
-      inject: [PromotionsConfigService],
+      inject: [PromotionsConfigService, PromotionsServiceBusEvents],
       useFactory: nativePromotionsDependencyProbes,
     },
     PromotionsReadinessService,

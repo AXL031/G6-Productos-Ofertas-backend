@@ -35,7 +35,8 @@ export class PromotionsReadinessMonitor {
   private async sample(): Promise<void> {
     try {
       const state = await this.readiness.check(
-        this.config.settings.couponRuntimeEnabled,
+        this.config.settings.couponRuntimeEnabled ||
+          !!this.config.settings.serviceBus,
       );
       if (this.stopped) return;
       const snapshot = JSON.stringify(state);
