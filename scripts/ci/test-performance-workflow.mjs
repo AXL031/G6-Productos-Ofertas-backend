@@ -26,7 +26,7 @@ assert.match(ci, /^  automatizacion:/m, 'normal CI jobs remain present');
 assert.match(ci, /mode:[\s\S]*?options: \[ci, benchmark\]/);
 assert.match(
   ci,
-  /component:[\s\S]*?options: \[catalog, pricing, combos, promotions, price-audit, bulk\]/,
+  /component:[\s\S]*?options: \[catalog, pricing, combos, promotions, price-audit, bulk, inventory-gateway, taxonomy\]/,
   'the existing manual entry point exposes the requested component benchmarks',
 );
 assert.match(

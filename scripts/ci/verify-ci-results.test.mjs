@@ -4,31 +4,20 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const checker = fileURLToPath(new URL('./verify-ci-results.mjs', import.meta.url));
-const required = ['tipos', 'unitarias', 'combos_catalogo'];
-
+const required = ['tipos', 'unitarias', 'combos_catalogo', 'azure_cd_h5', 'seguridad_dependencias'];
+const allSuccessful = () => Object.fromEntries(required.map((job) => [job, { result: 'success' }]));
 function run(results) {
-  return spawnSync(process.execPath, [checker, JSON.stringify(results), ...required], {
-    encoding: 'utf8',
-  });
+  return spawnSync(process.execPath, [checker, JSON.stringify(results), ...required], { encoding: 'utf8' });
 }
 
-test('el agregador acepta solo cuando todas las verificaciones terminan correctamente', () => {
-  const result = run({
-    tipos: { result: 'success' },
-    unitarias: { result: 'success' },
-    combos_catalogo: { result: 'success' },
-  });
-  assert.equal(result.status, 0);
+test('los agregadores aceptan solo los resultados exitosos requeridos', () => {
+  assert.equal(run(allSuccessful()).status, 0);
 });
 
-for (const job of ['unitarias', 'combos_catalogo']) {
+for (const job of required) {
   for (const status of ['failure', 'cancelled', 'skipped']) {
-    test(`el agregador rechaza ${job} con estado ${status}`, () => {
-      const results = {
-        tipos: { result: 'success' },
-        unitarias: { result: 'success' },
-        combos_catalogo: { result: 'success' },
-      };
+    test(`los agregadores rechazan ${job} con estado ${status}`, () => {
+      const results = allSuccessful();
       results[job] = { result: status };
       const result = run(results);
       assert.equal(result.status, 1);
@@ -36,12 +25,8 @@ for (const job of ['unitarias', 'combos_catalogo']) {
     });
   }
 
-  test(`el agregador rechaza ${job} ausente`, () => {
-    const results = {
-      tipos: { result: 'success' },
-      unitarias: { result: 'success' },
-      combos_catalogo: { result: 'success' },
-    };
+  test(`los agregadores rechazan ${job} ausente`, () => {
+    const results = allSuccessful();
     delete results[job];
     const result = run(results);
     assert.equal(result.status, 1);

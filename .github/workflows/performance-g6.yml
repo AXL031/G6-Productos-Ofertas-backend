@@ -10,6 +10,11 @@ name: Benchmarks focalizados G6
         - catalog
         - pricing
         - combos
+        - promotions
+        - price-audit
+        - bulk
+        - inventory-gateway
+        - taxonomy
       baseline_sha:
         description: SHA Git completo (40 caracteres) de la revisión base
         required: true

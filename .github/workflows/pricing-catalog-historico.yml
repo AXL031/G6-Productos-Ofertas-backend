@@ -3,12 +3,18 @@ name: Integración histórica Pricing y Catalog
 on:
   pull_request:
     branches: [master]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, edited]
+
+concurrency:
+  group: pricing-catalog-historico-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
 
 jobs:
   historica:
+    if: github.event_name == 'pull_request' && github.event.pull_request.draft == false
     name: Catalog A1/A2 con HEAD de Pricing
     runs-on: ubuntu-latest
     timeout-minutes: 15
