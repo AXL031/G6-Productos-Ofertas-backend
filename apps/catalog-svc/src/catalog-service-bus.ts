@@ -37,6 +37,61 @@ const producerByQueue = {
 } as const;
 
 type IncomingQueue = keyof typeof producerByQueue;
+const MAX_SERVICE_BUS_MESSAGE_BYTES = 256 * 1024;
+export const catalogDestinationQueues = [
+  'g6.pricing.from.catalog',
+  'g6.inventory.from.catalog',
+  'g6.promotions.from.catalog',
+  'g6.combos.from.catalog',
+  'g6.taxonomy.from.catalog',
+  'g6.bulk.from.catalog',
+] as const;
+
+export function readCatalogH5Destinations(
+  env: Record<string, string | undefined> = process.env,
+): readonly string[] {
+  const configured = env.CATALOG_H5_DESTINATIONS;
+  if (configured === undefined || configured.trim() === '') return [];
+  const destinations = configured.split(',').map((value) => value.trim());
+  if (
+    destinations.some(
+      (destination) =>
+        !catalogDestinationQueues.includes(
+          destination as (typeof catalogDestinationQueues)[number],
+        ),
+    ) || new Set(destinations).size !== destinations.length
+  )
+    throw new Error('CATALOG_H5_DESTINATIONS inválido.');
+  return destinations;
+}
+
+export function normalizeCatalogServiceBusBody(body: unknown): unknown {
+  let json: string;
+  try {
+    if (typeof body === 'string') {
+      json = body;
+    } else if (body instanceof Uint8Array) {
+      json = new TextDecoder('utf-8', { fatal: true }).decode(body);
+    } else if (
+      body !== null &&
+      typeof body === 'object' &&
+      !Array.isArray(body)
+    ) {
+      json = JSON.stringify(body);
+    } else {
+      throw new InvalidCatalogMessage();
+    }
+    if (Buffer.byteLength(json, 'utf8') > MAX_SERVICE_BUS_MESSAGE_BYTES)
+      throw new InvalidCatalogMessage();
+    return typeof body === 'string' || body instanceof Uint8Array
+      ? JSON.parse(json)
+      : body;
+  } catch (error) {
+    if (error instanceof InvalidCatalogMessage || error instanceof SyntaxError)
+      throw error;
+    throw new InvalidCatalogMessage();
+  }
+}
 
 export function destinationsFor(message: CatalogEnvelope): readonly string[] {
   assertCatalogPublication(message);
@@ -100,13 +155,10 @@ export class CatalogServiceBus {
       {
         processMessage: async (received: ServiceBusReceivedMessage) => {
           try {
-            if (
-              received.contentType !== 'application/json' ||
-              !Buffer.isBuffer(received.body)
-            )
+            if (received.contentType !== 'application/json')
               throw new InvalidCatalogMessage();
             const envelope = parseCatalogMessage(
-              JSON.parse(received.body.toString('utf8')),
+              normalizeCatalogServiceBusBody(received.body),
             );
             if (
               envelope.producer !== producerByQueue[queue] ||
@@ -165,6 +217,12 @@ export function createCatalogServiceBus(
     throw new Error(
       'Proveedor H5 inválido o RabbitMQ habilitado en el mismo proceso.',
     );
+  if (
+    env.NODE_ENV === 'production' &&
+    env.G6_SECURITY_MODE !== 'G7_AUTHENTICATED'
+  )
+    throw new Error('H5 en producción requiere G6_SECURITY_MODE autorizado.');
+  readCatalogH5Destinations(env);
   const namespace = env.SERVICE_BUS_NAMESPACE_FQDN;
   if (
     !namespace ||

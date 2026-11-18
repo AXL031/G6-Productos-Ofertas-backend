@@ -42,6 +42,11 @@ export function readCatalogAmqpConfig(
   env: Record<string, string | undefined> = process.env,
 ): CatalogAmqpConfig | undefined {
   const enabled = env.CATALOG_AMQP_ENABLED;
+  if (env.MESSAGING_PROVIDER === 'AZURE_SERVICE_BUS') {
+    if (enabled === 'true')
+      throw new Error('RabbitMQ y Service Bus no pueden activarse juntos.');
+    return undefined;
+  }
   if (enabled === undefined || enabled === 'false') return undefined;
   if (enabled !== 'true')
     throw new Error('CATALOG_AMQP_ENABLED debe ser true o false.');
