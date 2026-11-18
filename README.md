@@ -121,3 +121,9 @@ Para colaborar en este repositorio, revisa la guía de contribución en [CONTRIB
 ## Integración G1 Marketplace — Hito 4
 
 El punto obligatorio de entrada para cambios Backend relacionados con G1 es [`integraciones/g1-marketplace/README.md`](integraciones/g1-marketplace/README.md). Incluye M-01–M-09 aceptados por G6 y comunicados a G1, matriz operación/owner/estado, pruebas y evidencia. La autoridad contractual permanece en Docs [Acuerdo H4](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/a8d89296b0eac37315ef30a9390f1e4e30933136/integraciones/ACUERDO_G1_G6_H4_2026-10-20.md) y [OpenAPI](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/http/openapi.yaml). Los servicios no deben describirse como únicamente scaffolds: cada capacidad se califica por operación y por SHA, con límites documentados en su ficha.
+
+## Mensajería H5
+
+Hito 5 adopta Azure Service Bus Basic para mensajería **interna G6**; las integraciones G1–G5 usan HTTP autenticado por APIM/Gateway y G7 gobierna identidad y grants. Para desarrollar o revisar mensajería H5 sigue el orden obligatorio y las fuentes normativas de [AGENTS.md](AGENTS.md#mensajería-h5--norma-obligatoria-para-nuevas-integraciones), incluida la [matriz ejecutable de flujos](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ-IMPLEMENTACION-SERVICE-BUS-H5.md). RabbitMQ/Oracle se mantienen como referencia operativa y de regresión H4 durante la compatibilidad transitoria; no son instrucciones para nuevas integraciones H5.
+
+El piloto #234 Pricing → Price Audit es parcial. Su [cierre](docs/hito-5/CIERRE_PILOTO_234.md) y [ejecución Azure](docs/hito-5/EJECUCION_AZURE_SERVICE_BUS.md) acreditan solo el alcance y ambiente descritos allí, no activación general, despliegue productivo ni migración completa.
