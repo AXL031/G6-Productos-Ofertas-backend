@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type {
   ServiceBusMessage,
+  ServiceBusClient,
   ServiceBusReceivedMessage,
 } from '@azure/service-bus';
 import { Pool } from 'pg';
@@ -19,9 +20,10 @@ import {
   type EventReceiver,
 } from '../../apps/promotions-svc/src/coupons/service-bus-events.js';
 import { officialMigrations } from '../../apps/promotions-svc/test/support/official-migrations.mjs';
+import { CatalogServiceBus } from '../../apps/catalog-svc/src/catalog-service-bus.js';
 
 describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
-  'Inventory to Promotions H5 over the SDK message boundary',
+  'Catalog and Inventory to Promotions H5 over the SDK message boundary',
   () => {
     let pool: Pool;
 
@@ -57,6 +59,106 @@ describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
     }, 30_000);
 
     afterAll(async () => pool?.end());
+
+    it('persists Catalog SKU deactivation and does not roll back its source version on redelivery', async () => {
+      const destination = 'g6.promotions.from.catalog';
+      const wire: ServiceBusReceivedMessage[] = [];
+      const client = {
+        createSender: vi.fn(() => ({
+          createMessageBatch: async () => ({
+            tryAddMessage: (m: ServiceBusMessage) => {
+              wire.push(m as ServiceBusReceivedMessage);
+              return true;
+            },
+          }),
+          sendMessages: async () => undefined,
+        })),
+        close: async () => undefined,
+      } as unknown as ServiceBusClient;
+      const producer = new CatalogServiceBus(client);
+      const sku = 'H5-R08-FIXTURE';
+      const product = randomUUID();
+      for (const version of [3, 2]) {
+        const occurred = new Date(
+          Date.UTC(2026, 10, 18, 0, 0, version),
+        ).toISOString();
+        await producer.publish(destination, {
+          message_id: randomUUID(),
+          schema_version: 1,
+          occurred_at: occurred,
+          correlation_id: randomUUID(),
+          causation_id: null,
+          operation_id: null,
+          producer: 'catalog-svc',
+          kind: 'event',
+          name: 'catalog.sku.deactivated',
+          data: {
+            sku,
+            product_id: product,
+            sku_version: version,
+            changed_at: occurred,
+          },
+        });
+      }
+      expect(wire).toHaveLength(2);
+      expect(wire[0].applicationProperties).toBeUndefined();
+      let handlers: Parameters<EventReceiver['subscribe']>[0] | undefined;
+      const completeMessage = vi.fn(async () => undefined);
+      const abandonMessage = vi.fn(async () => undefined);
+      const deadLetterMessage = vi.fn(async () => undefined);
+      const runtime = new PromotionsServiceBusEvents(
+        {
+          namespace: 'test-h5.servicebus.windows.net',
+          eventsEnabled: true,
+          eventQueues: [destination],
+        },
+        new PromotionsAssignedEventDispatcher(
+          pool,
+          h4EventAdapters,
+          assignedH4Contracts,
+          true,
+        ),
+        () => ({
+          receiver: (queue) => {
+            expect(queue).toBe(destination);
+            return {
+              subscribe: (h) => {
+                handlers = h;
+                return { close: async () => undefined };
+              },
+              peekMessages: async () => [],
+              completeMessage,
+              abandonMessage,
+              deadLetterMessage,
+              close: async () => undefined,
+            };
+          },
+          close: async () => undefined,
+        }),
+      );
+      try {
+        await runtime.onApplicationBootstrap();
+        for (const delivery of [wire[0], wire[1], wire[0]])
+          await handlers!.processMessage(delivery);
+        const projection = await pool.query(
+          'SELECT active, source_version, source_message_id FROM promotions.catalog_projection WHERE reference_type=$1 AND reference_id=$2',
+          ['SKU', sku],
+        );
+        expect(projection.rows).toEqual([
+          {
+            active: false,
+            source_version: '3',
+            source_message_id: wire[0].messageId,
+          },
+        ]);
+        expect(completeMessage).toHaveBeenCalledTimes(3);
+        expect(abandonMessage).not.toHaveBeenCalled();
+        expect(deadLetterMessage).not.toHaveBeenCalled();
+      } finally {
+        await runtime.onModuleDestroy();
+        await producer.close();
+      }
+    });
 
     it('handles the real Inventory envelope and replays it after settlement loss', async () => {
       const rows: OutboxRecord[] = [];

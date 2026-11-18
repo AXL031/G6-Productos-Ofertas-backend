@@ -5,7 +5,7 @@ Base oficial b1edcf7fe70e98354239290fb5847c49c75d9107. Contratos OpenAPI y Async
 ## Evidencia local
 
 - R13 usa el emisor `InventoryServiceBusRelay` con un evento generado por `OutboxService.stockChanged` y el receptor de Promotions. La prueba conecta ambos extremos en la frontera del SDK y aplica las migraciones históricas verificadas de Promotions en PostgreSQL descartable. Cubre resultado de invalidación, pérdida de confirmación y reentrega después de reiniciar el receptor. El transporte SDK de esta prueba es un doble.
-- R08 puede aceptar el formato de Catalog #243 sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. Falta ejecutar las bajas emitidas por Catalog en un entorno de integración con los permisos definitivos.
+- R08 acepta el formato del publicador Catalog sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. La prueba local con publicación de Catalog y persistencia Promotions verificó la baja SKU, el orden de versión y el replay. Falta repetir con el runtime del #243 y los permisos Azure.
 - R17 añade una entrega independiente por destino para `pricing.price.changed`. Si falla la entrega de Promotions, Price Audit aún puede confirmar la suya. Se proponen una migración aditiva y configuración separada del piloto R16. Falta aplicar la migración en un entorno autorizado y probar ambos destinos con Azure y los dos consumidores.
 - R05/R12 tienen un receptor H5 de Combos que reutiliza el handler y la identidad de Inbox de H4, con complete después del commit. Verificar en Azure ambas colas y el permiso HTTP de lectura de Catalog que usa la baja por producto.
 - N01 usa los schemas de OpenAPI actuales y valida igualdad de snapshot ref con order_id. El controlador y el worker de producción siguen detrás del cierre de G5/G7 y de una fuente autorizada de las evidencias.
@@ -15,9 +15,11 @@ npm test -- --maxWorkers=2 apps/promotions-svc apps/inventory-svc/src/messaging 
 npm test -- --maxWorkers=2 apps/combos-svc
 node apps/promotions-svc/test/run-h5-postgres.mjs inventory
 node apps/promotions-svc/test/run-h5-postgres.mjs
+$env:G6_SERVICE_BUS_POSTGRES_TESTS='1'
+npm run test:e2e -- --maxWorkers=1 tests/h5/pricing-fanout.postgres.e2e-spec.ts ops/azure/service-bus/pilot.postgres.e2e-spec.ts
 ```
 
-En esta base pasaron las suites focalizadas de Promotions, Inventory y Pricing, 77 unitarias de Combos, 19 E2E de Promotions, 3 pruebas de SQL de cupones y R13 contra PostgreSQL descartable. Pasaron typecheck, builds de Pricing/Promotions/Combos y lint con cuatro avisos preexistentes. La plantilla compiló y el listado de 19 colas coincide con el AsyncAPI de la revisión fijada. Azure real y los flujos de G5/G7 requieren evidencia propia.
+En esta base pasaron las suites focalizadas de Promotions, Inventory y Pricing, 77 unitarias de Combos, 19 E2E de Promotions, 3 pruebas de SQL de cupones y 2 pruebas R08/R13 contra PostgreSQL descartable. Los 9 casos de SQL de Pricing incluyeron el fan-out y la regresión del piloto. Pasaron typecheck, builds de Pricing/Promotions/Combos y lint con cuatro avisos preexistentes. La plantilla compiló y el listado de 19 colas coincide con el AsyncAPI de la revisión fijada. Azure real y los flujos de G5/G7 requieren evidencia propia.
 
 ## Laboratorio Azure
 
