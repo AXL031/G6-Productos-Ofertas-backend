@@ -203,11 +203,12 @@ export class Database implements OnModuleDestroy {
             set_config('catalog.messaging_provider', 'AZURE_SERVICE_BUS', true),
             set_config(
               'catalog.messaging_destinations',
-              ${process.env.CATALOG_H5_DESTINATIONS
-                ?.split(',')
-                .map((value) => value.trim())
-                .filter(Boolean)
-                .join(',') ?? ''},
+              ${
+                process.env.CATALOG_H5_DESTINATIONS?.split(',')
+                  .map((value) => value.trim())
+                  .filter(Boolean)
+                  .join(',') ?? ''
+              },
               true
             )`);
         const result = await work(tx);

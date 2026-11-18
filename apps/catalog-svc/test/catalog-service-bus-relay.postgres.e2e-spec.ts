@@ -17,8 +17,7 @@ describe.runIf(process.env.CATALOG_H4_NATIVE_POSTGRES === '1')(
         'g6.combos.from.catalog,g6.promotions.from.catalog';
     });
     afterEach(() => {
-      if (previousProvider === undefined)
-        delete process.env.MESSAGING_PROVIDER;
+      if (previousProvider === undefined) delete process.env.MESSAGING_PROVIDER;
       else process.env.MESSAGING_PROVIDER = previousProvider;
       if (previousDestinations === undefined)
         delete process.env.CATALOG_H5_DESTINATIONS;

@@ -33,12 +33,18 @@ describe('Catalog Service Bus candidate', () => {
     const value = { message_id: 'stable', data: { sku: 'SKU-1' } };
     const bytes = Buffer.from(JSON.stringify(value));
     expect(normalizeCatalogServiceBusBody(bytes)).toEqual(value);
-    expect(normalizeCatalogServiceBusBody(bytes.toString('utf8'))).toEqual(value);
+    expect(normalizeCatalogServiceBusBody(bytes.toString('utf8'))).toEqual(
+      value,
+    );
     expect(normalizeCatalogServiceBusBody(value)).toBe(value);
     expect(() => normalizeCatalogServiceBusBody('{invalid')).toThrow();
-    expect(() => normalizeCatalogServiceBusBody(new Uint8Array([0xff]))).toThrow();
+    expect(() =>
+      normalizeCatalogServiceBusBody(new Uint8Array([0xff])),
+    ).toThrow();
     expect(() => normalizeCatalogServiceBusBody([])).toThrow();
-    expect(() => normalizeCatalogServiceBusBody('x'.repeat(256 * 1024 + 1))).toThrow();
+    expect(() =>
+      normalizeCatalogServiceBusBody('x'.repeat(256 * 1024 + 1)),
+    ).toThrow();
   });
   it('defaults to the existing provider and refuses simultaneous activation', () => {
     expect(createCatalogServiceBus({})).toBeUndefined();
@@ -54,7 +60,8 @@ describe('Catalog Service Bus candidate', () => {
     expect(readCatalogH5Destinations({})).toEqual([]);
     expect(
       readCatalogH5Destinations({
-        CATALOG_H5_DESTINATIONS: 'g6.pricing.from.catalog, g6.bulk.from.catalog',
+        CATALOG_H5_DESTINATIONS:
+          'g6.pricing.from.catalog, g6.bulk.from.catalog',
       }),
     ).toEqual(['g6.pricing.from.catalog', 'g6.bulk.from.catalog']);
     expect(() =>
@@ -65,6 +72,35 @@ describe('Catalog Service Bus candidate', () => {
         CATALOG_H5_DESTINATIONS: 'g6.bulk.from.catalog,g6.bulk.from.catalog',
       }),
     ).toThrow('CATALOG_H5_DESTINATIONS inválido');
+  });
+
+  it('requires an assigned managed identity and explicit production enablement', async () => {
+    const production = {
+      NODE_ENV: 'production',
+      MESSAGING_PROVIDER: 'AZURE_SERVICE_BUS',
+      SERVICE_BUS_NAMESPACE_FQDN: 'test-h5.servicebus.windows.net',
+      G6_SECURITY_MODE: 'G7_AUTHENTICATED',
+      G6_SERVICE_BUS_PRODUCTION_ENABLED: 'true',
+      AZURE_CLIENT_ID: randomUUID(),
+    };
+    expect(() =>
+      createCatalogServiceBus({ ...production, AZURE_CLIENT_ID: undefined }),
+    ).toThrow('identidad administrada');
+    expect(() =>
+      createCatalogServiceBus({
+        ...production,
+        G6_SERVICE_BUS_PRODUCTION_ENABLED: undefined,
+      }),
+    ).toThrow('habilitación');
+    expect(() =>
+      createCatalogServiceBus({
+        ...production,
+        RABBITMQ_URL: 'amqps://example.invalid',
+      }),
+    ).toThrow('RabbitMQ');
+    const bus = createCatalogServiceBus(production);
+    expect(bus).toBeDefined();
+    await bus?.close();
   });
 
   it('keeps identity across ambiguous sends and reuses the queue sender', async () => {

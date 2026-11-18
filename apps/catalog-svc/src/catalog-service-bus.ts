@@ -59,7 +59,8 @@ export function readCatalogH5Destinations(
         !catalogDestinationQueues.includes(
           destination as (typeof catalogDestinationQueues)[number],
         ),
-    ) || new Set(destinations).size !== destinations.length
+    ) ||
+    new Set(destinations).size !== destinations.length
   )
     throw new Error('CATALOG_H5_DESTINATIONS inválido.');
   return destinations;
@@ -213,15 +214,29 @@ export function createCatalogServiceBus(
 ): CatalogServiceBus | undefined {
   const provider = env.MESSAGING_PROVIDER;
   if (!provider || provider === 'RABBITMQ') return undefined;
-  if (provider !== 'AZURE_SERVICE_BUS' || env.CATALOG_AMQP_ENABLED === 'true')
+  if (
+    provider !== 'AZURE_SERVICE_BUS' ||
+    env.CATALOG_AMQP_ENABLED === 'true' ||
+    env.RABBITMQ_URL !== undefined
+  )
     throw new Error(
       'Proveedor H5 inválido o RabbitMQ habilitado en el mismo proceso.',
     );
+  const clientId = env.AZURE_CLIENT_ID;
+  const assignedIdentity =
+    clientId &&
+    /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(clientId) &&
+    clientId !== '00000000-0000-0000-0000-000000000000';
   if (
-    env.NODE_ENV === 'production' &&
-    env.G6_SECURITY_MODE !== 'G7_AUTHENTICATED'
+    (clientId !== undefined && !assignedIdentity) ||
+    (env.NODE_ENV === 'production' &&
+      (env.G6_SECURITY_MODE !== 'G7_AUTHENTICATED' ||
+        env.G6_SERVICE_BUS_PRODUCTION_ENABLED !== 'true' ||
+        !assignedIdentity))
   )
-    throw new Error('H5 en producción requiere G6_SECURITY_MODE autorizado.');
+    throw new Error(
+      'H5 en producción requiere habilitación, G7 e identidad administrada asignada.',
+    );
   readCatalogH5Destinations(env);
   const namespace = env.SERVICE_BUS_NAMESPACE_FQDN;
   if (
@@ -230,6 +245,11 @@ export function createCatalogServiceBus(
   )
     throw new Error('SERVICE_BUS_NAMESPACE_FQDN inválido.');
   return new CatalogServiceBus(
-    new ServiceBusClient(namespace, new ManagedIdentityCredential()),
+    new ServiceBusClient(
+      namespace,
+      clientId
+        ? new ManagedIdentityCredential({ clientId })
+        : new ManagedIdentityCredential(),
+    ),
   );
 }
