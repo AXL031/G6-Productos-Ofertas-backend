@@ -129,6 +129,7 @@ export class PricingMutations {
               occurredAt: now,
             })),
             this.config?.serviceBus !== undefined,
+            this.config?.serviceBus?.fanoutEnabled,
           );
         return {
           definition,
@@ -311,6 +312,7 @@ export class PricingMutations {
             occurredAt: now,
           })),
           this.config?.serviceBus !== undefined,
+          this.config?.serviceBus?.fanoutEnabled,
         );
     }
     return stored;

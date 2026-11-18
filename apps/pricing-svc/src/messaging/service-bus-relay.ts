@@ -15,6 +15,8 @@ import { PricingRepository } from '../persistence/pricing.repository.js';
 import {
   PricingDeliveryStore,
   AUDIT_PILOT_QUEUE,
+  PROMOTIONS_PRICE_QUEUE,
+  type PricingPriceChangedQueue,
 } from './service-bus-deliveries.js';
 import { pricingEnvelope } from './outbox-relay.js';
 
@@ -25,6 +27,7 @@ export class PricingServiceBusRelay {
       ServiceBusSender,
       'createMessageBatch' | 'sendMessages'
     >,
+    private readonly destination: PricingPriceChangedQueue = AUDIT_PILOT_QUEUE,
   ) {}
 
   async publishOne(): Promise<'empty' | 'sent' | 'pending' | 'lease-lost'> {
@@ -32,7 +35,7 @@ export class PricingServiceBusRelay {
     if (!claim) return 'empty';
     let confirmed = false;
     try {
-      if (claim.destination !== AUDIT_PILOT_QUEUE)
+      if (claim.destination !== this.destination)
         throw new Error('SERVICE_BUS_PILOT_ROUTE_NOT_APPROVED');
       // The SDK JSON-serializes non-binary bodies. Send canonical UTF-8 bytes
       // to avoid wrapping the envelope in a second JSON string.
@@ -74,7 +77,7 @@ export class PricingServiceBusRuntime
 {
   available = false;
   private client?: ServiceBusClient;
-  private sender?: ServiceBusSender;
+  private readonly senders: ServiceBusSender[] = [];
   private timer?: ReturnType<typeof setTimeout>;
   private active?: Promise<void>;
   private stopped = false;
@@ -98,18 +101,35 @@ export class PricingServiceBusRuntime
         retryOptions: { maxRetries: 0, timeoutInMs: 5000 },
       },
     );
-    this.sender = this.client.createSender(AUDIT_PILOT_QUEUE);
-    const sender = this.sender;
-    const relay = new PricingServiceBusRelay(
-      new PricingDeliveryStore(this.repository),
-      sender,
-    );
+    const destinations: PricingPriceChangedQueue[] = [AUDIT_PILOT_QUEUE];
+    if (this.config.serviceBus.fanoutEnabled)
+      destinations.push(PROMOTIONS_PRICE_QUEUE);
+    const workers = destinations.map((destination) => {
+      const sender = this.client!.createSender(destination);
+      this.senders.push(sender);
+      return {
+        sender,
+        relay: new PricingServiceBusRelay(
+          new PricingDeliveryStore(this.repository, destination),
+          sender,
+          destination,
+        ),
+      };
+    });
     const tick = () => {
       this.active = (async () => {
-        // Establish the link and check sender authorization even with no pending rows.
-        await sender.createMessageBatch({ maxSizeInBytes: 256 * 1024 });
-        const result = await relay.publishOne();
-        this.available = result === 'empty' || result === 'sent';
+        const results = await Promise.allSettled(
+          workers.map(async ({ sender, relay }) => {
+            // Establish the link even when there are no pending deliveries.
+            await sender.createMessageBatch({ maxSizeInBytes: 256 * 1024 });
+            return relay.publishOne();
+          }),
+        );
+        this.available = results.every(
+          (result) =>
+            result.status === 'fulfilled' &&
+            (result.value === 'empty' || result.value === 'sent'),
+        );
       })()
         .catch(() => {
           this.available = false;
@@ -128,7 +148,7 @@ export class PricingServiceBusRuntime
     await this.active;
     this.available = false;
     try {
-      await this.sender?.close();
+      await Promise.allSettled(this.senders.map((sender) => sender.close()));
     } finally {
       await this.client?.close();
     }

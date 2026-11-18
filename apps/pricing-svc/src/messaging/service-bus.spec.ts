@@ -8,8 +8,11 @@ import { readPricingServiceBus } from './service-bus-config.js';
 import { PricingServiceBusRelay } from './service-bus-relay.js';
 import {
   AUDIT_PILOT_QUEUE,
+  PROMOTIONS_PRICE_QUEUE,
+  insertPricingFacts,
   type PricingDeliveryClaim,
 } from './service-bus-deliveries.js';
+import type { PricingTransaction } from '../persistence/pricing.database.js';
 
 const env = {
   NODE_ENV: 'test',
@@ -58,6 +61,46 @@ function claim(): PricingDeliveryClaim {
 }
 
 describe('Pricing Service Bus pilot safety and send confirmation', () => {
+  it('separates the shared fan-out from the isolated pilot', () => {
+    const fanout = { ...env, PRICING_SERVICE_BUS_FANOUT_ENABLED: 'true' };
+    expect(() => readPricingServiceBus(fanout)).toThrow();
+    expect(
+      readPricingServiceBus({
+        ...fanout,
+        G6_SERVICE_BUS_PILOT_ENABLED: 'false',
+      }),
+    ).toMatchObject({ fanoutEnabled: true });
+  });
+
+  it('records one delivery per destination for the same committed fact', async () => {
+    const row = claim().row;
+    const storeDelivery = vi.fn(async () => undefined);
+    const insert = vi
+      .fn()
+      .mockReturnValueOnce({ values: () => ({ returning: async () => [row] }) })
+      .mockReturnValueOnce({ values: storeDelivery });
+    await insertPricingFacts(
+      { insert } as unknown as PricingTransaction,
+      [row],
+      true,
+      true,
+    );
+    expect(storeDelivery).toHaveBeenCalledExactlyOnceWith([
+      {
+        messageId: row.messageId,
+        destination: AUDIT_PILOT_QUEUE,
+        routeVersion: 1,
+        transport: 'AZURE_SERVICE_BUS',
+      },
+      {
+        messageId: row.messageId,
+        destination: PROMOTIONS_PRICE_QUEUE,
+        routeVersion: 1,
+        transport: 'AZURE_SERVICE_BUS',
+      },
+    ]);
+  });
+
   it('allows production only with explicit activation, G7 and an assigned identity', () => {
     const clientId = randomUUID();
     const production = {
@@ -185,5 +228,27 @@ describe('Pricing Service Bus pilot safety and send confirmation', () => {
     const f = fixture();
     f.store.finish.mockResolvedValueOnce(false);
     expect(await f.relay.publishOne()).toBe('lease-lost');
+  });
+
+  it('does not let a Promotions send failure consume or block the Audit delivery', async () => {
+    const audit = fixture();
+    const promotions = fixture();
+    promotions.selected.destination = PROMOTIONS_PRICE_QUEUE;
+    promotions.selected.row = audit.selected.row;
+    promotions.sender.sendMessages.mockRejectedValueOnce(new Error('timeout'));
+    const fanoutRelay = new PricingServiceBusRelay(
+      promotions.store,
+      promotions.sender,
+      PROMOTIONS_PRICE_QUEUE,
+    );
+    await expect(
+      Promise.all([audit.relay.publishOne(), fanoutRelay.publishOne()]),
+    ).resolves.toEqual(['sent', 'pending']);
+    expect(audit.store.finish).toHaveBeenCalledWith(audit.selected, true);
+    expect(promotions.store.finish).toHaveBeenCalledWith(
+      promotions.selected,
+      false,
+    );
+    expect(audit.added[0].messageId).toBe(promotions.added[0].messageId);
   });
 });

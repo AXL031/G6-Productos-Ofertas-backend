@@ -475,6 +475,7 @@ export class PricingProductInitialization {
             occurredAt: new Date(message.occurred_at),
           })),
           this.config?.serviceBus !== undefined,
+          this.config?.serviceBus?.fanoutEnabled,
         );
         await this.insertInbox(tx, message, savedPayload, 'APPLIED');
         await this.insertResult(

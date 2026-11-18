@@ -351,6 +351,7 @@ export class PricingScheduleReconciler
               occurredAt: now,
             })),
             this.config.serviceBus !== undefined,
+            this.config.serviceBus?.fanoutEnabled,
           );
         activated++;
       }

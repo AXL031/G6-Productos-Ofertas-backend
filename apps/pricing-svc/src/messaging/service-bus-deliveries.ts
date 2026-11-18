@@ -16,6 +16,9 @@ import type { PricingTransaction } from '../persistence/pricing.database.js';
 import { PricingRepository } from '../persistence/pricing.repository.js';
 
 export const AUDIT_PILOT_QUEUE = 'g6.price-audit.from.pricing';
+export const PROMOTIONS_PRICE_QUEUE = 'g6.promotions.from.pricing';
+export type PricingPriceChangedQueue =
+  typeof AUDIT_PILOT_QUEUE | typeof PROMOTIONS_PRICE_QUEUE;
 const schema = pgSchema('pricing');
 export const outboxDeliveries = schema.table(
   'outbox_delivery',
@@ -48,7 +51,7 @@ export const outboxDeliveries = schema.table(
     }),
     check(
       'ck_delivery_route',
-      sql`${t.routeVersion} = 1 AND ${t.destination} = 'g6.price-audit.from.pricing' AND ${t.transport} = 'AZURE_SERVICE_BUS'`,
+      sql`${t.routeVersion} = 1 AND ${t.destination} IN ('g6.price-audit.from.pricing', 'g6.promotions.from.pricing') AND ${t.transport} = 'AZURE_SERVICE_BUS'`,
     ),
     check('ck_delivery_attempts', sql`${t.attempts} >= 0`),
     check(
@@ -65,10 +68,11 @@ export const outboxDeliveries = schema.table(
 export async function insertPricingFacts(
   tx: PricingTransaction,
   facts: (typeof outbox.$inferInsert)[],
-  pilot = false,
+  serviceBus = false,
+  fanout = false,
 ): Promise<void> {
   if (!facts.length) return;
-  if (!pilot) {
+  if (!serviceBus) {
     await tx.insert(outbox).values(facts);
     return;
   }
@@ -80,13 +84,18 @@ export async function insertPricingFacts(
   )
     throw new Error('SERVICE_BUS_PILOT_ROUTE_NOT_APPROVED');
   const stored = await tx.insert(outbox).values(facts).returning();
+  const destinations = fanout
+    ? [AUDIT_PILOT_QUEUE, PROMOTIONS_PRICE_QUEUE]
+    : [AUDIT_PILOT_QUEUE];
   await tx.insert(outboxDeliveries).values(
-    stored.map((fact) => ({
-      messageId: fact.messageId,
-      destination: AUDIT_PILOT_QUEUE,
-      routeVersion: 1,
-      transport: 'AZURE_SERVICE_BUS',
-    })),
+    stored.flatMap((fact) =>
+      destinations.map((destination) => ({
+        messageId: fact.messageId,
+        destination,
+        routeVersion: 1,
+        transport: 'AZURE_SERVICE_BUS',
+      })),
+    ),
   );
 }
 
@@ -97,7 +106,10 @@ export type PricingDeliveryClaim = {
 };
 
 export class PricingDeliveryStore {
-  constructor(private readonly repository: PricingRepository) {}
+  constructor(
+    private readonly repository: PricingRepository,
+    private readonly destination: PricingPriceChangedQueue = AUDIT_PILOT_QUEUE,
+  ) {}
 
   claim(): Promise<PricingDeliveryClaim | undefined> {
     return this.repository.transaction(async (tx) => {
@@ -106,6 +118,7 @@ export class PricingDeliveryStore {
         .from(outboxDeliveries)
         .where(
           and(
+            eq(outboxDeliveries.destination, this.destination),
             isNull(outboxDeliveries.sentAt),
             lte(outboxDeliveries.nextAttemptAt, sql`clock_timestamp()`),
             or(
@@ -123,7 +136,7 @@ export class PricingDeliveryStore {
         .for('update', { skipLocked: true });
       if (!candidate) return undefined;
       if (
-        candidate.destination !== AUDIT_PILOT_QUEUE ||
+        candidate.destination !== this.destination ||
         candidate.routeVersion !== 1 ||
         candidate.transport !== 'AZURE_SERVICE_BUS'
       )

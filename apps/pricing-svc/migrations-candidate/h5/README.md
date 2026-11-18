@@ -7,3 +7,7 @@ Aplicar con `po_pricing_owner` y el proceso de datos correspondiente a una base 
 El writer de Pricing inserta hecho y entrega usando la misma transacción. El relay confirma por token/lease después del envío y no altera `pricing.outbox.published_at`. Retener tabla, mensajes e Inbox durante cualquier reversión. El proceso autorizado debe revisar la derivación física oficial de Pricing antes de aplicar esta candidata en una base compartida.
 
 La prueba `ops/azure/service-bus/pilot.postgres.e2e-spec.ts` aplica esta candidata solo en un PostgreSQL descartable. Su éxito no afirma migración en Supabase ni otro ambiente remoto.
+
+## Segundo destino para cambios de precio
+
+`0002_price_changed_promotions.sql` amplía la restricción de destinos de `0001` sin reescribir filas ni crear entregas antiguas. Después de revisar y aplicar la migración en el entorno autorizado, `PRICING_SERVICE_BUS_FANOUT_ENABLED=true` selecciona Audit y Promotions. El modo es excluyente con `G6_SERVICE_BUS_PILOT_ENABLED=true`, que conserva solo Audit. Cada store reclama su destino y cada sender confirma su propia entrega. Antes de habilitar el modo compartido, acreditar ambos consumidores, las colas y sus permisos; para revertir el código, retener las filas pendientes y reconciliarlas.

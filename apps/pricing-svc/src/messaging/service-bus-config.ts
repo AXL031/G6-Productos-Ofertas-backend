@@ -1,17 +1,20 @@
 export interface PricingServiceBusConfig {
   namespace: string;
   managedIdentityClientId?: string;
+  fanoutEnabled?: true;
 }
 
 // H5 is selected explicitly; production uses only the assigned workload identity.
 export function readPricingServiceBus(
   env: NodeJS.ProcessEnv,
 ): PricingServiceBusConfig | undefined {
+  const pilot = env.G6_SERVICE_BUS_PILOT_ENABLED;
+  const fanout = env.PRICING_SERVICE_BUS_FANOUT_ENABLED;
   if (
     (env.MESSAGING_PROVIDER === undefined ||
       env.MESSAGING_PROVIDER === 'RABBITMQ') &&
-    (env.G6_SERVICE_BUS_PILOT_ENABLED === undefined ||
-      env.G6_SERVICE_BUS_PILOT_ENABLED === 'false') &&
+    (pilot === undefined || pilot === 'false') &&
+    (fanout === undefined || fanout === 'false') &&
     (env.G6_SERVICE_BUS_PRODUCTION_ENABLED === undefined ||
       env.G6_SERVICE_BUS_PRODUCTION_ENABLED === 'false') &&
     env.SERVICE_BUS_NAMESPACE_FQDN === undefined
@@ -19,7 +22,9 @@ export function readPricingServiceBus(
     return undefined;
   if (
     env.MESSAGING_PROVIDER !== 'AZURE_SERVICE_BUS' ||
-    env.G6_SERVICE_BUS_PILOT_ENABLED !== 'true' ||
+    ![undefined, 'true', 'false'].includes(pilot) ||
+    ![undefined, 'true', 'false'].includes(fanout) ||
+    (pilot === 'true') === (fanout === 'true') ||
     env.PRICING_PRICE_CHANGED_PUBLISH_ENABLED !== 'true' ||
     !['test', 'development', 'production'].includes(env.NODE_ENV ?? '') ||
     env.PRICING_AMQP_URL !== undefined ||
@@ -48,5 +53,6 @@ export function readPricingServiceBus(
   return {
     namespace: env.SERVICE_BUS_NAMESPACE_FQDN!,
     ...(identity ? { managedIdentityClientId: identity } : {}),
+    ...(fanout === 'true' ? { fanoutEnabled: true } : {}),
   };
 }
