@@ -32,6 +32,22 @@ Antes de modificar un microservicio, además de leer `AGENTS.md` y comprender la
 
 Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas a su SHA que demuestren el cumplimiento de todos los requisitos aplicables de compilación, configuración, persistencia, mensajería, seguridad, contratos, Docker y readiness. Un bloqueo específico de AMQP no debe impedir el desarrollo independiente de funcionalidades HTTP o de persistencia dentro del alcance autorizado.
 
+### Mensajería H5 — norma obligatoria para nuevas integraciones
+
+Para tareas de mensajería Hito 5, la arquitectura vigente es **Azure Service Bus Basic para comunicación interna entre bounded contexts G6**. G1–G5 se integran con G6 mediante HTTP autenticado a través de APIM/Gateway; G7 conserva la autoridad de identidad y grants. **No añadas dependencias, colas, handlers ni configuración RabbitMQ/AMQP para implementar H5.** No publiques el mismo efecto comercial por ambos brokers salvo que una estrategia de transición explícita haya sido aprobada y probada. Basic no tiene topics/subscriptions: modela una entrega independiente por destinatario con Outbox, Inbox e idempotencia durables.
+
+RabbitMQ, AsyncAPI H4, Oracle y sus procedimientos siguen siendo necesarios para mantener, operar, recuperar y probar regresiones del runtime heredado durante la compatibilidad transitoria. No son la topología física H5 ni autorizan inferir colas, routing keys, variables de entorno o handlers Service Bus. Conserva intactos los contratos y fixtures H4 salvo autorización explícita de contrato.
+
+#### Orden obligatorio de lectura para tareas H5
+
+1. Esta sección y la tarea/Issue; identifica servicio owner, alcance y PR solapados.
+2. Docs [ADR-H5-SERVICE-BUS-BASIC.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/arquitectura/decisiones/ADR-H5-SERVICE-BUS-BASIC.md) y [TOPOLOGIA-SERVICE-BUS-BASIC-H5.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/TOPOLOGIA-SERVICE-BUS-BASIC-H5.md).
+3. Docs [PLAN-MIGRACION-MENSAJERIA-H5.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/PLAN-MIGRACION-MENSAJERIA-H5.md), [MATRIZ-EXTERNOS-ASYNCAPI-H5.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ-EXTERNOS-ASYNCAPI-H5.md), [INVENTARIO-40-MENSAJES-H5.md](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/contratos/eventos/INVENTARIO-40-MENSAJES-H5.md) y la [matriz ejecutable H5](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/master/integraciones/MATRIZ-IMPLEMENTACION-SERVICE-BUS-H5.md).
+4. Las SPEC, DEC-F, modelo/persistencia, pruebas y contratos HTTP/AsyncAPI aplicables. AsyncAPI H4 es referencia semántica histórica, no diseño de transporte H5.
+5. Si la tarea toca el runtime H4/Oracle, consulta además las guías Oracle y RabbitMQ de esta sección; para H5 no las uses para diseñar transporte.
+
+La matriz H5 es la fuente única de seguimiento por flujo. Contrasta cada fila con el SHA actual del Backend y evidencia reproducible antes de cambiar su estado; una propuesta, fixture o piloto aislado no equivale a habilitación general. El piloto #234 Pricing → Service Bus Basic → Price Audit está documentado en `docs/hito-5/CIERRE_PILOTO_234.md` y `docs/hito-5/EJECUCION_AZURE_SERVICE_BUS.md`: es evidencia parcial de ese recorrido/ambiente y no demuestra migración global, aprovisionamiento compartido, producción, homologación G5, autorización G7 ni retiro de RabbitMQ.
+
 ---
 
 ## 2. Política de colaboración y ramas
