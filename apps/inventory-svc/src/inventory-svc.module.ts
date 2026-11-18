@@ -20,6 +20,8 @@ import { TrasladosService } from './traslados/traslados.service.js';
 import { InventoryCommandService } from './inbox/inventory-command.service.js';
 import { InventoryConsumerService } from './inbox/inventory-consumer.service.js';
 import { DrizzleInboxRepository } from './repositories/drizzle/drizzle-inbox.repository.js';
+import { InventoryServiceBusRuntime } from './messaging/service-bus-relay.js';
+import { InventoryServiceBusConsumerRuntime } from './messaging/service-bus-consumer.js';
 
 import { DrizzleLocationsRepository } from './repositories/drizzle/drizzle-locations.repository.js';
 import { DrizzleCommercialRoutesRepository } from './repositories/drizzle/drizzle-commercial-routes.repository.js';
@@ -82,6 +84,8 @@ import { OfflineReconciliationService } from './conciliacion/offline-reconciliat
     InventoryWorkersService,
     InventoryCommandService,
     InventoryConsumerService,
+    InventoryServiceBusRuntime,
+    InventoryServiceBusConsumerRuntime,
     AbsoluteStockAdjustmentService,
     OfflineReconciliationService,
     { provide: INBOX_REPOSITORY, useClass: DrizzleInboxRepository },

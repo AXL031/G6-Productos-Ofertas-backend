@@ -4,6 +4,7 @@ import { IDatabaseClient } from '../database/database.interface.js';
 import { OUTBOX_REPOSITORY } from '../repositories/interfaces/repository.tokens.js';
 import type { IOutboxRepository } from '../repositories/interfaces/outbox.repository.interface.js';
 import { loadInventoryConfig } from '../config/inventory.config.js';
+import { insertInventoryDeliveries } from '../messaging/service-bus-deliveries.js';
 
 export interface OutboxRecord {
   event_id: string;
@@ -59,6 +60,7 @@ export class OutboxService {
    */
   async enqueue(client: IDatabaseClient, record: OutboxRecord): Promise<void> {
     await this.outboxRepository.enqueue(client, record);
+    await insertInventoryDeliveries(client, record);
   }
 
   /** Snapshot autoritativo completo, persistido en la misma transacción que el saldo. */
