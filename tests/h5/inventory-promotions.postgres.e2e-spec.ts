@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { setTimeout as delay } from 'node:timers/promises';
+import { ManagedIdentityCredential } from '@azure/identity';
+import { ServiceBusClient } from '@azure/service-bus';
 import type {
   ServiceBusMessage,
-  ServiceBusClient,
   ServiceBusReceivedMessage,
 } from '@azure/service-bus';
 import { Pool } from 'pg';
@@ -17,6 +19,7 @@ import { assignedH4Contracts } from '../../apps/promotions-svc/src/coupons/assig
 import { h4EventAdapters } from '../../apps/promotions-svc/src/coupons/h4-event-adapters.js';
 import {
   PromotionsServiceBusEvents,
+  nativePromotionsEventBus,
   type EventReceiver,
 } from '../../apps/promotions-svc/src/coupons/service-bus-events.js';
 import { officialMigrations } from '../../apps/promotions-svc/test/support/official-migrations.mjs';
@@ -59,6 +62,173 @@ describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
     }, 30_000);
 
     afterAll(async () => pool?.end());
+
+    it.skipIf(process.env.G6_H5_R13_REAL_AZURE !== '1')(
+      'R13 uses the laboratory broker and the two assigned managed identities',
+      async () => {
+        const namespace = process.env.G6_H5_LAB_NAMESPACE_FQDN ?? '';
+        const inventoryId = process.env.G6_H5_LAB_INVENTORY_CLIENT_ID ?? '';
+        const promotionsId = process.env.G6_H5_LAB_PROMOTIONS_CLIENT_ID ?? '';
+        const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+        if (
+          !/^g6-sb-h5-int-[a-z0-9]{13}\.servicebus\.windows\.net$/.test(
+            namespace,
+          ) ||
+          !uuid.test(inventoryId) ||
+          !uuid.test(promotionsId) ||
+          inventoryId.toLowerCase() === promotionsId.toLowerCase()
+        ) {
+          throw new Error(
+            'DEDICATED_H5_LAB_AND_DISTINCT_MANAGED_IDENTITIES_REQUIRED',
+          );
+        }
+        const destination = INVENTORY_QUEUES.PROMOTIONS;
+        const completed: string[] = [];
+        const inventory = new ServiceBusClient(
+          namespace,
+          new ManagedIdentityCredential({ clientId: inventoryId }),
+          {
+            retryOptions: { maxRetries: 0, timeoutInMs: 8000 },
+          },
+        );
+        const promotions = new PromotionsServiceBusEvents(
+          {
+            namespace,
+            eventsEnabled: true,
+            eventQueues: [destination],
+            managedIdentityClientId: promotionsId,
+          },
+          new PromotionsAssignedEventDispatcher(
+            pool,
+            h4EventAdapters,
+            assignedH4Contracts,
+            true,
+          ),
+          (config) => {
+            const bus = nativePromotionsEventBus(config);
+            return {
+              close: () => bus.close(),
+              receiver: (queue) => {
+                const receiver = bus.receiver(queue);
+                return {
+                  peekMessages: receiver.peekMessages.bind(receiver),
+                  subscribe: receiver.subscribe.bind(receiver),
+                  abandonMessage: receiver.abandonMessage.bind(receiver),
+                  deadLetterMessage: receiver.deadLetterMessage.bind(receiver),
+                  close: receiver.close.bind(receiver),
+                  completeMessage: async (message) => {
+                    await receiver.completeMessage(message);
+                    completed.push(String(message.messageId));
+                  },
+                };
+              },
+            };
+          },
+        );
+        const sku = 'H5-REAL-' + randomUUID();
+        const location_id = randomUUID();
+        try {
+          await promotions.onApplicationBootstrap();
+          const unexpectedReceiver = inventory.createReceiver(destination);
+          try {
+            await expect(
+              unexpectedReceiver.peekMessages(1, {
+                abortSignal: AbortSignal.timeout(8000),
+              }),
+            ).rejects.toMatchObject({ code: 'UnauthorizedAccess' });
+          } finally {
+            await unexpectedReceiver.close().catch(() => undefined);
+          }
+          const rows: OutboxRecord[] = [];
+          const record = new OutboxService({
+            enqueue: async (_client, fact) => {
+              rows.push(fact);
+            },
+            findPendingForUpdateSkipLocked: async () => [],
+            findPending: async () => [],
+            markAsPublished: async () => undefined,
+          });
+          const query: IDatabaseClient['query'] = async () => ({
+            rows: [],
+            rowCount: 0,
+          });
+          await record.stockChanged(
+            { query },
+            {
+              sku,
+              location_id,
+              on_hand: 7,
+              reserved: 1,
+              blocked: 0,
+              stock_version: 2,
+              operationId: randomUUID(),
+              correlationId: randomUUID(),
+            },
+          );
+          const fact = rows[0];
+          const claim = {
+            token: randomUUID(),
+            destination,
+            row: { ...fact, id: randomUUID(), status: 'PENDING' as const },
+          };
+          const sender = inventory.createSender(destination);
+          const relay = new InventoryServiceBusRelay(
+            {
+              claim: async () => claim,
+              finish: async (_claim, outcome) => outcome === 'confirmed',
+            },
+            new Map([[destination, sender]]),
+          );
+          try {
+            expect(await relay.publishOne()).toBe('sent');
+            expect(await relay.publishOne()).toBe('sent');
+            const deadline = Date.now() + 20_000;
+            let inbox: Record<string, unknown>[] = [];
+            while (Date.now() < deadline) {
+              inbox = (
+                await pool.query(
+                  'SELECT completed_at, result FROM promotions.inbox WHERE message_id=$1 AND completed_at IS NOT NULL',
+                  [fact.payload.message_id],
+                )
+              ).rows;
+              if (
+                inbox.length &&
+                completed.filter((id) => id === fact.payload.message_id)
+                  .length >= 2
+              )
+                break;
+              await delay(200);
+            }
+            expect(inbox).toEqual([
+              {
+                completed_at: expect.any(Date),
+                result: {
+                  handled: true,
+                  invalidation: {
+                    domain: 'stock',
+                    targetType: 'SKU',
+                    targetId: sku,
+                    locationId: location_id,
+                    sourceVersion: '2',
+                  },
+                },
+              },
+            ]);
+            expect(
+              completed.filter((id) => id === fact.payload.message_id),
+            ).toHaveLength(2);
+          } finally {
+            await sender.close();
+          }
+        } finally {
+          await Promise.allSettled([
+            promotions.onModuleDestroy(),
+            inventory.close(),
+          ]);
+        }
+      },
+      75_000,
+    );
 
     it('persists Catalog SKU deactivation and does not roll back its source version on redelivery', async () => {
       const destination = 'g6.promotions.from.catalog';
