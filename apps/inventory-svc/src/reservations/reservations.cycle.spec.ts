@@ -622,7 +622,7 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
   });
 
   describe('Consulta de estado y vigencia efectiva de reserva (H5 / G5)', () => {
-    it('retorna ACTIVA y VIGENTE para una reserva recién creada', async () => {
+    it('escenario 1: ACTIVA y expires_at > observed_at -> VIGENTE con permite_pago y permite_consumo_cupon en true', async () => {
       const orderId = 'PED-H5-VIGENTE';
       const opReserva = randomUUID();
       await reservationsService.solicitarReserva(
@@ -637,20 +637,53 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
       );
 
       const reserva = mockDb.reservations[0];
+      const before = structuredClone({
+        stock: mockDb.stockBalance,
+        reservations: mockDb.reservations,
+        operations: mockDb.operations,
+        kardex: mockDb.kardex,
+        outbox: mockDb.outbox,
+      });
+
       const estado = await reservationsService.consultarEstadoReserva(
         reserva.reservation_id,
         orderId,
       );
 
+      // Cero mutaciones en BD durante el GET
+      expect({
+        stock: mockDb.stockBalance,
+        reservations: mockDb.reservations,
+        operations: mockDb.operations,
+        kardex: mockDb.kardex,
+        outbox: mockDb.outbox,
+      }).toEqual(before);
+
+      // Exactamente las ocho propiedades del schema
+      expect(Object.keys(estado).sort()).toEqual([
+        'estado_persistido',
+        'expires_at',
+        'observed_at',
+        'order_id',
+        'permite_consumo_cupon',
+        'permite_pago',
+        'reservation_id',
+        'vigencia_efectiva',
+      ]);
+
       expect(estado.reservation_id).toBe(reserva.reservation_id);
       expect(estado.order_id).toBe(orderId);
       expect(estado.estado_persistido).toBe('ACTIVA');
       expect(estado.vigencia_efectiva).toBe('VIGENTE');
+      expect(estado.permite_pago).toBe(true);
+      expect(estado.permite_consumo_cupon).toBe(true);
       expect(estado.expires_at).toBe(reserva.expires_at);
-      expect(estado.server_time).toBeDefined();
+      expect(new Date(estado.observed_at).getTime()).toBeLessThan(
+        new Date(estado.expires_at).getTime(),
+      );
     });
 
-    it('retorna ACTIVA pero VENCIDA si expires_at ya se cumplió, sin esperar al worker', async () => {
+    it('escenario 2: ACTIVA y expires_at <= observed_at -> VENCIDA con permite_pago y permite_consumo_cupon en false', async () => {
       const orderId = 'PED-H5-VENCIDA';
       const opReserva = randomUUID();
       await reservationsService.solicitarReserva(
@@ -665,7 +698,6 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
       );
 
       const reserva = mockDb.reservations[0];
-      // Simulamos que el tiempo pasó y expires_at quedó en el pasado, pero el worker aún no corrió
       reserva.expires_at = new Date(Date.now() - 5000).toISOString();
 
       const estado = await reservationsService.consultarEstadoReserva(
@@ -675,9 +707,14 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
 
       expect(estado.estado_persistido).toBe('ACTIVA');
       expect(estado.vigencia_efectiva).toBe('VENCIDA');
+      expect(estado.permite_pago).toBe(false);
+      expect(estado.permite_consumo_cupon).toBe(false);
+      expect(new Date(estado.expires_at).getTime()).toBeLessThanOrEqual(
+        new Date(estado.observed_at).getTime(),
+      );
     });
 
-    it('retorna CONSUMIDA y VENCIDA tras confirmación de venta', async () => {
+    it('escenario 3: CONSUMIDA -> NO_APLICA con permite_pago y permite_consumo_cupon en false', async () => {
       const orderId = 'PED-H5-CONSUMIDA';
       const opReserva = randomUUID();
       await reservationsService.solicitarReserva(
@@ -706,12 +743,76 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
       );
 
       expect(estado.estado_persistido).toBe('CONSUMIDA');
-      expect(estado.vigencia_efectiva).toBe('VENCIDA');
-      expect(estado.consumed_at).toBeDefined();
+      expect(estado.vigencia_efectiva).toBe('NO_APLICA');
+      expect(estado.permite_pago).toBe(false);
+      expect(estado.permite_consumo_cupon).toBe(false);
     });
 
-    it('rechaza 400 si reservaId no es UUID o si order_id no coincide', async () => {
-      const orderId = 'PED-H5-MISMATCH';
+    it('escenario 4: LIBERADA -> NO_APLICA con permite_pago y permite_consumo_cupon en false', async () => {
+      const orderId = 'PED-H5-LIBERADA';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      const opLiberar = randomUUID();
+      await reservationsService.liberarReserva(
+        reserva.reservation_id,
+        { order_id: orderId, operation_id: opLiberar, reason: 'ANULACION' },
+        undefined,
+        opLiberar,
+      );
+
+      const estado = await reservationsService.consultarEstadoReserva(
+        reserva.reservation_id,
+        orderId,
+      );
+
+      expect(estado.estado_persistido).toBe('LIBERADA');
+      expect(estado.vigencia_efectiva).toBe('NO_APLICA');
+      expect(estado.permite_pago).toBe(false);
+      expect(estado.permite_consumo_cupon).toBe(false);
+    });
+
+    it('escenario 5: EXPIRADA -> NO_APLICA con permite_pago y permite_consumo_cupon en false', async () => {
+      const orderId = 'PED-H5-EXPIRADA';
+      const opReserva = randomUUID();
+      await reservationsService.solicitarReserva(
+        {
+          order_id: orderId,
+          operation_id: opReserva,
+          channel_id: 'MARKETPLACE',
+          lines: [{ sku, quantity: 1, location_id: locLurin }],
+        },
+        undefined,
+        opReserva,
+      );
+
+      const reserva = mockDb.reservations[0];
+      reserva.expires_at = new Date(Date.now() - 60000).toISOString();
+      await reservationsService.expirarReservaDurable(reserva.reservation_id);
+
+      const estado = await reservationsService.consultarEstadoReserva(
+        reserva.reservation_id,
+        orderId,
+      );
+
+      expect(estado.estado_persistido).toBe('EXPIRADA');
+      expect(estado.vigencia_efectiva).toBe('NO_APLICA');
+      expect(estado.permite_pago).toBe(false);
+      expect(estado.permite_consumo_cupon).toBe(false);
+    });
+
+    it('responde 404 RESERVA_NO_ENCONTRADA idéntico para reserva inexistente, pedido diferente y order_id nulo en BD (sin IDs en detail)', async () => {
+      const orderId = 'PED-H5-404-CHECK';
       const opReserva = randomUUID();
       await reservationsService.solicitarReserva(
         {
@@ -726,62 +827,7 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
 
       const reserva = mockDb.reservations[0];
 
-      try {
-        await reservationsService.consultarEstadoReserva('no-uuid', orderId);
-        expect.unreachable('Debe lanzar error');
-      } catch (err) {
-        const pde = err as ProblemDetailsException;
-        expect(pde.problem.status).toBe(400);
-        expect(pde.problem.code).toBe('VALIDACION');
-        expect(pde.problem.detail).toContain('UUID válido');
-      }
-
-      try {
-        await reservationsService.consultarEstadoReserva(
-          reserva.reservation_id,
-          'PED-OTRO',
-        );
-        expect.unreachable('Debe lanzar error');
-      } catch (err) {
-        const pde = err as ProblemDetailsException;
-        expect(pde.problem.status).toBe(400);
-        expect(pde.problem.code).toBe('VALIDACION');
-        expect(pde.problem.detail).toContain('no corresponde');
-      }
-    });
-
-    it('responde 400 VALIDACION si reservation.order_id en base de datos es nulo o vacio', async () => {
-      const orderId = 'PED-H5-NULL-DB';
-      const opReserva = randomUUID();
-      await reservationsService.solicitarReserva(
-        {
-          order_id: orderId,
-          operation_id: opReserva,
-          channel_id: 'MARKETPLACE',
-          lines: [{ sku, quantity: 1, location_id: locLurin }],
-        },
-        undefined,
-        opReserva,
-      );
-
-      const reserva = mockDb.reservations[0];
-      reserva.order_id = null;
-
-      try {
-        await reservationsService.consultarEstadoReserva(
-          reserva.reservation_id,
-          orderId,
-        );
-        expect.unreachable('Debe lanzar error 400');
-      } catch (err) {
-        const pde = err as ProblemDetailsException;
-        expect(pde.problem.status).toBe(400);
-        expect(pde.problem.code).toBe('VALIDACION');
-        expect(pde.problem.detail).toContain('no corresponde');
-      }
-    });
-
-    it('responde 404 si la reserva no existe', async () => {
+      // 1. Reserva inexistente
       try {
         await reservationsService.consultarEstadoReserva(
           randomUUID(),
@@ -792,6 +838,58 @@ describe('ReservationsService — Ciclo Completo G5 (Confirmación y Liberación
         const pde = err as ProblemDetailsException;
         expect(pde.problem.status).toBe(404);
         expect(pde.problem.code).toBe('RESERVA_NO_ENCONTRADA');
+        expect(pde.problem.detail).toBe('Reserva no encontrada');
+      }
+
+      // 2. Pedido diferente (order_id no coincide)
+      try {
+        await reservationsService.consultarEstadoReserva(
+          reserva.reservation_id,
+          'PED-OTRO-DIFERENTE',
+        );
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(404);
+        expect(pde.problem.code).toBe('RESERVA_NO_ENCONTRADA');
+        expect(pde.problem.detail).toBe('Reserva no encontrada');
+      }
+
+      // 3. order_id nulo en BD
+      reserva.order_id = null;
+      try {
+        await reservationsService.consultarEstadoReserva(
+          reserva.reservation_id,
+          orderId,
+        );
+        expect.unreachable('Debe lanzar error 404');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(404);
+        expect(pde.problem.code).toBe('RESERVA_NO_ENCONTRADA');
+        expect(pde.problem.detail).toBe('Reserva no encontrada');
+      }
+    });
+
+    it('rechaza 400 VALIDACION si reservaId no es UUID o si order_id es inválido o vacío', async () => {
+      try {
+        await reservationsService.consultarEstadoReserva('no-uuid', 'PED-1');
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(400);
+        expect(pde.problem.code).toBe('VALIDACION');
+        expect(pde.problem.detail).toContain('UUID válido');
+      }
+
+      try {
+        await reservationsService.consultarEstadoReserva(randomUUID(), '');
+        expect.unreachable('Debe lanzar error');
+      } catch (err) {
+        const pde = err as ProblemDetailsException;
+        expect(pde.problem.status).toBe(400);
+        expect(pde.problem.code).toBe('VALIDACION');
+        expect(pde.problem.detail).toContain('obligatorio');
       }
     });
   });

@@ -14,6 +14,7 @@ export function getConfiguredIssuer(): string | null {
 
 export const INVENTORY_SCOPES = {
   RESERVAR: 'inventario:reservar',
+  RESERVAS_ESTADO_LEER: 'inventario:reservas:estado:leer',
   CONSUMIR: 'inventario:consumir',
   LIBERAR: 'inventario:liberar',
   OPERACIONES_LEER: 'inventario:operaciones:leer',

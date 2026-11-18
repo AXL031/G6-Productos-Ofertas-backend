@@ -231,51 +231,282 @@ describe('Inventory — contrato HTTP de consultas y escrituras (#99/#100/#101)'
     expect(state()).toEqual(before);
   });
 
-  it('permite a modulo-ventas consultar el estado de reserva con su vigencia efectiva', async () => {
-    const resId = randomUUID();
-    const orderId = 'PED-HTTP-G5-TEST';
-    db.reservations.push({
-      id: resId,
-      reservation_id: resId,
-      status: 'ACTIVA',
-      expires_at: new Date(Date.now() + 60000).toISOString(),
-      idempotency_key: 'idemp-test-g5',
-      intention: 'RESERVA',
-      order_id: orderId,
+  describe('GET /reservas/:reservaId/estado — Consulta de estado OpenAPI 0.7.0-rc.1 (#240)', () => {
+    const estadoScope = 'inventario:reservas:estado:leer';
+    const ventasEstadoToken = () =>
+      createCryptographicJwt({
+        clientId: 'modulo-ventas',
+        scope: estadoScope,
+      });
+
+    it('responde 200 con exactamente las ocho propiedades del schema para modulo-ventas con scope nuevo', async () => {
+      const resId = randomUUID();
+      const orderId = 'PED-HTTP-G5-SCHEMA';
+      const expiresAtIso = new Date(Date.now() + 60000).toISOString();
+      db.reservations.push({
+        id: resId,
+        reservation_id: resId,
+        status: 'ACTIVA',
+        expires_at: expiresAtIso,
+        idempotency_key: 'idemp-schema-test',
+        intention: 'RESERVA',
+        order_id: orderId,
+      });
+
+      const before = state();
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+
+      // Cero mutaciones en BD durante el GET
+      expect(state()).toEqual(before);
+
+      // Exactamente las ocho propiedades del schema OpenAPI 0.7.0-rc.1
+      expect(Object.keys(res.body).sort()).toEqual([
+        'estado_persistido',
+        'expires_at',
+        'observed_at',
+        'order_id',
+        'permite_consumo_cupon',
+        'permite_pago',
+        'reservation_id',
+        'vigencia_efectiva',
+      ]);
+
+      expect(res.body.server_time).toBeUndefined();
+      expect(res.body.consumed_at).toBeUndefined();
+      expect(res.body.released_at).toBeUndefined();
+      expect(res.body.expired_at).toBeUndefined();
+
+      expect(res.body.reservation_id).toBe(resId);
+      expect(res.body.order_id).toBe(orderId);
+      expect(res.body.estado_persistido).toBe('ACTIVA');
+      expect(res.body.vigencia_efectiva).toBe('VIGENTE');
+      expect(res.body.permite_pago).toBe(true);
+      expect(res.body.permite_consumo_cupon).toBe(true);
+      expect(res.body.expires_at).toBe(expiresAtIso);
+      expect(new Date(res.body.observed_at).getTime()).toBeLessThan(
+        new Date(expiresAtIso).getTime(),
+      );
     });
 
-    const res = await request(app.getHttpServer())
-      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
-      .set('Authorization', `Bearer ${service()}`)
-      .expect(200);
+    it('verifica los cinco escenarios de estado y vigencia efectiva', async () => {
+      // 1. ACTIVA y expires_at > observed_at -> VIGENTE (permite_pago: true, permite_consumo_cupon: true)
+      const r1 = randomUUID();
+      db.reservations.push({
+        id: r1,
+        reservation_id: r1,
+        status: 'ACTIVA',
+        expires_at: new Date(Date.now() + 30000).toISOString(),
+        idempotency_key: 'idemp-1',
+        intention: 'RESERVA',
+        order_id: 'PED-1',
+      });
+      const res1 = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${r1}/estado?order_id=PED-1`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+      expect(res1.body.estado_persistido).toBe('ACTIVA');
+      expect(res1.body.vigencia_efectiva).toBe('VIGENTE');
+      expect(res1.body.permite_pago).toBe(true);
+      expect(res1.body.permite_consumo_cupon).toBe(true);
 
-    expect(res.body).toMatchObject({
-      reservation_id: resId,
-      order_id: orderId,
-      estado_persistido: 'ACTIVA',
-      vigencia_efectiva: 'VIGENTE',
+      // 2. ACTIVA y expires_at <= observed_at -> VENCIDA (permite_pago: false, permite_consumo_cupon: false)
+      const r2 = randomUUID();
+      db.reservations.push({
+        id: r2,
+        reservation_id: r2,
+        status: 'ACTIVA',
+        expires_at: new Date(Date.now() - 10000).toISOString(),
+        idempotency_key: 'idemp-2',
+        intention: 'RESERVA',
+        order_id: 'PED-2',
+      });
+      const res2 = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${r2}/estado?order_id=PED-2`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+      expect(res2.body.estado_persistido).toBe('ACTIVA');
+      expect(res2.body.vigencia_efectiva).toBe('VENCIDA');
+      expect(res2.body.permite_pago).toBe(false);
+      expect(res2.body.permite_consumo_cupon).toBe(false);
+
+      // 3. CONSUMIDA -> NO_APLICA (permite_pago: false, permite_consumo_cupon: false)
+      const r3 = randomUUID();
+      db.reservations.push({
+        id: r3,
+        reservation_id: r3,
+        status: 'CONSUMIDA',
+        expires_at: new Date(Date.now() + 30000).toISOString(),
+        idempotency_key: 'idemp-3',
+        intention: 'RESERVA',
+        order_id: 'PED-3',
+      });
+      const res3 = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${r3}/estado?order_id=PED-3`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+      expect(res3.body.estado_persistido).toBe('CONSUMIDA');
+      expect(res3.body.vigencia_efectiva).toBe('NO_APLICA');
+      expect(res3.body.permite_pago).toBe(false);
+      expect(res3.body.permite_consumo_cupon).toBe(false);
+
+      // 4. LIBERADA -> NO_APLICA (permite_pago: false, permite_consumo_cupon: false)
+      const r4 = randomUUID();
+      db.reservations.push({
+        id: r4,
+        reservation_id: r4,
+        status: 'LIBERADA',
+        expires_at: new Date(Date.now() + 30000).toISOString(),
+        idempotency_key: 'idemp-4',
+        intention: 'RESERVA',
+        order_id: 'PED-4',
+      });
+      const res4 = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${r4}/estado?order_id=PED-4`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+      expect(res4.body.estado_persistido).toBe('LIBERADA');
+      expect(res4.body.vigencia_efectiva).toBe('NO_APLICA');
+      expect(res4.body.permite_pago).toBe(false);
+      expect(res4.body.permite_consumo_cupon).toBe(false);
+
+      // 5. EXPIRADA -> NO_APLICA (permite_pago: false, permite_consumo_cupon: false)
+      const r5 = randomUUID();
+      db.reservations.push({
+        id: r5,
+        reservation_id: r5,
+        status: 'EXPIRADA',
+        expires_at: new Date(Date.now() - 30000).toISOString(),
+        idempotency_key: 'idemp-5',
+        intention: 'RESERVA',
+        order_id: 'PED-5',
+      });
+      const res5 = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${r5}/estado?order_id=PED-5`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(200);
+      expect(res5.body.estado_persistido).toBe('EXPIRADA');
+      expect(res5.body.vigencia_efectiva).toBe('NO_APLICA');
+      expect(res5.body.permite_pago).toBe(false);
+      expect(res5.body.permite_consumo_cupon).toBe(false);
     });
-    expect(res.body.server_time).toBeDefined();
-  });
 
-  it('rechaza la consulta de estado de reserva si el cliente no es modulo-ventas o no tiene scope', async () => {
-    const resId = randomUUID();
-    const orderId = 'PED-HTTP-G5-REJECT';
+    it('responde 404 RESERVA_NO_ENCONTRADA idéntico para inexistente, pedido diferente y order_id nulo en BD (sin IDs en detail)', async () => {
+      const resId = randomUUID();
+      const orderId = 'PED-404-CHECK';
+      db.reservations.push({
+        id: resId,
+        reservation_id: resId,
+        status: 'ACTIVA',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        idempotency_key: 'idemp-404-check',
+        intention: 'RESERVA',
+        order_id: orderId,
+      });
 
-    // Humano: 401 (espera servicio)
-    await request(app.getHttpServer())
-      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
-      .set('Authorization', `Bearer ${human()}`)
-      .expect(401);
+      // 1. Reserva inexistente
+      const resInexistente = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/reservas/${randomUUID()}/estado?order_id=${orderId}`,
+        )
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(404);
+      expect(resInexistente.body.code).toBe('RESERVA_NO_ENCONTRADA');
+      expect(resInexistente.body.detail).toBe('Reserva no encontrada');
 
-    // Otro servicio: 403
-    const otherService = createCryptographicJwt({
-      clientId: 'modulo-marketplace',
+      // 2. Pedido diferente (order_id no coincide)
+      const resPedidoDif = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/reservas/${resId}/estado?order_id=PED-OTRO-DIFERENTE`,
+        )
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(404);
+      expect(resPedidoDif.body.code).toBe('RESERVA_NO_ENCONTRADA');
+      expect(resPedidoDif.body.detail).toBe('Reserva no encontrada');
+
+      // 3. order_id nulo en base de datos
+      const resIdNull = randomUUID();
+      db.reservations.push({
+        id: resIdNull,
+        reservation_id: resIdNull,
+        status: 'ACTIVA',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        idempotency_key: 'idemp-404-null',
+        intention: 'RESERVA',
+        order_id: null as any,
+      });
+      const resOrderIdNull = await request(app.getHttpServer())
+        .get(
+          `/api/v1/inventario/reservas/${resIdNull}/estado?order_id=${orderId}`,
+        )
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(404);
+      expect(resOrderIdNull.body.code).toBe('RESERVA_NO_ENCONTRADA');
+      expect(resOrderIdNull.body.detail).toBe('Reserva no encontrada');
     });
-    await request(app.getHttpServer())
-      .get(`/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`)
-      .set('Authorization', `Bearer ${otherService}`)
-      .expect(403);
+
+    it('responde 400 VALIDACION ante parámetros ausentes o inválidos', async () => {
+      // reservaId no es UUID
+      const resBadId = await request(app.getHttpServer())
+        .get('/api/v1/inventario/reservas/no-es-uuid/estado?order_id=PED-1')
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(400);
+      expect(resBadId.body.code).toBe('VALIDACION');
+
+      // order_id vacío o ausente
+      const resBadOrder = await request(app.getHttpServer())
+        .get(`/api/v1/inventario/reservas/${randomUUID()}/estado?order_id=`)
+        .set('Authorization', `Bearer ${ventasEstadoToken()}`)
+        .expect(400);
+      expect(resBadOrder.body.code).toBe('VALIDACION');
+    });
+
+    it('control de autorización estricto: 401 sin credenciales, 403 con scope anterior, 403 para otro cliente', async () => {
+      const resId = randomUUID();
+      const orderId = 'PED-AUTH-CHECK';
+      db.reservations.push({
+        id: resId,
+        reservation_id: resId,
+        status: 'ACTIVA',
+        expires_at: new Date(Date.now() + 60000).toISOString(),
+        idempotency_key: 'idemp-auth-check',
+        intention: 'RESERVA',
+        order_id: orderId,
+      });
+
+      const url = `/api/v1/inventario/reservas/${resId}/estado?order_id=${orderId}`;
+
+      // 1. 401 sin credenciales válidas (sin Authorization header)
+      await request(app.getHttpServer()).get(url).expect(401);
+
+      // 401 para token humano (no es tipo servicio)
+      await request(app.getHttpServer())
+        .get(url)
+        .set('Authorization', `Bearer ${human()}`)
+        .expect(401);
+
+      // 2. 403 para token que únicamente tiene inventario:reservar (scope anterior no admitido)
+      const tokenScopeAnterior = createCryptographicJwt({
+        clientId: 'modulo-ventas',
+        scope: 'inventario:reservar',
+      });
+      await request(app.getHttpServer())
+        .get(url)
+        .set('Authorization', `Bearer ${tokenScopeAnterior}`)
+        .expect(403);
+
+      // 3. 403 para otro cliente (modulo-marketplace) aunque posea el scope nuevo
+      const otherClientToken = createCryptographicJwt({
+        clientId: 'modulo-marketplace',
+        scope: estadoScope,
+      });
+      await request(app.getHttpServer())
+        .get(url)
+        .set('Authorization', `Bearer ${otherClientToken}`)
+        .expect(403);
+    });
   });
 
   it('mantiene traslados cerrados en G7 hasta definir los grants locales, incluso con un claim adicional', async () => {

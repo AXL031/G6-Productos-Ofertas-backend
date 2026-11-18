@@ -12,6 +12,7 @@ import {
   LiberarReservaRequest,
   OperacionInventarioAceptada,
   ConsultaEstadoReservaResponse,
+  VigenciaEfectivaReserva,
 } from '../types/inventory.dto.js';
 import { ProblemDetailsException } from '../errors/inventory.errors.js';
 import {
@@ -1866,11 +1867,7 @@ export class ReservationsService {
       );
     }
 
-    if (
-      !orderId ||
-      typeof orderId !== 'string' ||
-      orderId.trim().length === 0
-    ) {
+    if (typeof orderId !== 'string' || orderId.length === 0) {
       throw ProblemDetailsException.validation(
         'El order_id es obligatorio para consultar el estado de la reserva',
         corrId,
@@ -1878,47 +1875,54 @@ export class ReservationsService {
     }
 
     const cleanReservaId = reservaId.trim();
-    const cleanOrderId = orderId.trim();
 
     const reservation =
       await this.reservationsRepo.findByReservationId(cleanReservaId);
 
-    if (!reservation) {
+    if (
+      !reservation ||
+      !reservation.order_id ||
+      reservation.order_id !== orderId
+    ) {
       throw ProblemDetailsException.reservaNoEncontrada(
-        `Reserva '${cleanReservaId}' no encontrada`,
+        'Reserva no encontrada',
         corrId,
       );
     }
 
-    if (!reservation.order_id || reservation.order_id !== cleanOrderId) {
-      throw ProblemDetailsException.validation(
-        `El order_id '${cleanOrderId}' no corresponde a la reserva '${cleanReservaId}'`,
-        corrId,
-      );
-    }
+    const observedAt = new Date();
+    const observedAtIso = observedAt.toISOString();
+    const expiresAt = new Date(reservation.expires_at);
 
-    const now = new Date();
-    const expiresAtDate = new Date(reservation.expires_at);
-    const serverTimeIso = now.toISOString();
+    let vigenciaEfectiva: VigenciaEfectivaReserva;
+    let permitePago: boolean;
+    let permiteConsumoCupon: boolean;
 
-    let vigenciaEfectiva: 'VIGENTE' | 'VENCIDA';
     if (reservation.status === 'ACTIVA') {
-      vigenciaEfectiva =
-        expiresAtDate.getTime() > now.getTime() ? 'VIGENTE' : 'VENCIDA';
+      if (expiresAt.getTime() > observedAt.getTime()) {
+        vigenciaEfectiva = 'VIGENTE';
+        permitePago = true;
+        permiteConsumoCupon = true;
+      } else {
+        vigenciaEfectiva = 'VENCIDA';
+        permitePago = false;
+        permiteConsumoCupon = false;
+      }
     } else {
-      vigenciaEfectiva = 'VENCIDA';
+      vigenciaEfectiva = 'NO_APLICA';
+      permitePago = false;
+      permiteConsumoCupon = false;
     }
 
     return {
       reservation_id: reservation.reservation_id,
-      order_id: cleanOrderId,
+      order_id: reservation.order_id,
       estado_persistido: reservation.status,
-      vigencia_efectiva: vigenciaEfectiva,
       expires_at: reservation.expires_at,
-      consumed_at: reservation.consumed_at ?? null,
-      released_at: reservation.released_at ?? null,
-      expired_at: reservation.expired_at ?? null,
-      server_time: serverTimeIso,
+      observed_at: observedAtIso,
+      vigencia_efectiva: vigenciaEfectiva,
+      permite_pago: permitePago,
+      permite_consumo_cupon: permiteConsumoCupon,
     };
   }
 }

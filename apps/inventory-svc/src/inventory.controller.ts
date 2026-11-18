@@ -258,7 +258,7 @@ export class InventoryController {
   }
 
   @Get('reservas/:reservaId/estado')
-  @RequireScope(INVENTORY_SCOPES.RESERVAR)
+  @RequireScope(INVENTORY_SCOPES.RESERVAS_ESTADO_LEER)
   @AllowedClients([KNOWN_CLIENTS.VENTAS])
   async consultarEstadoReserva(
     @Param('reservaId') reservaId: string,

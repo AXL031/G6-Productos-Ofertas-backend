@@ -66,18 +66,17 @@ export interface ConsultaOperacionInventario {
 
 export type EstadoPersistidoReserva =
   'ACTIVA' | 'CONSUMIDA' | 'LIBERADA' | 'EXPIRADA';
-export type VigenciaEfectivaReserva = 'VIGENTE' | 'VENCIDA';
+export type VigenciaEfectivaReserva = 'VIGENTE' | 'VENCIDA' | 'NO_APLICA';
 
 export interface ConsultaEstadoReservaResponse {
   reservation_id: string;
   order_id: string;
   estado_persistido: EstadoPersistidoReserva;
-  vigencia_efectiva: VigenciaEfectivaReserva;
   expires_at: string;
-  consumed_at?: string | null;
-  released_at?: string | null;
-  expired_at?: string | null;
-  server_time: string;
+  observed_at: string;
+  vigencia_efectiva: VigenciaEfectivaReserva;
+  permite_pago: boolean;
+  permite_consumo_cupon: boolean;
 }
 
 export interface DisponibilidadStock {
