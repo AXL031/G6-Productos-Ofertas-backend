@@ -88,14 +88,18 @@ export class InventoryServiceBusHandler {
               ? Buffer.from(JSON.stringify(body), 'utf8')
               : undefined;
 
-      if (!content || content.byteLength > 256 * 1024) {
+      if (
+        !content ||
+        content.byteLength > 256 * 1024 ||
+        message.contentType !== 'application/json'
+      ) {
         throw new Error('INVALID_ENVELOPE_CONTENT');
       }
 
       // Validar message.messageId como UUID válido
       if (
         typeof message.messageId !== 'string' ||
-        !UUID_REGEX.test(message.messageId.trim())
+        !UUID_REGEX.test(message.messageId)
       ) {
         throw new Error('INVALID_BROKER_MESSAGE_ID');
       }
@@ -108,7 +112,9 @@ export class InventoryServiceBusHandler {
         throw new Error('INVALID_BROKER_SUBJECT');
       }
 
-      payload = JSON.parse(content.toString('utf8'));
+      payload = JSON.parse(
+        new TextDecoder('utf-8', { fatal: true }).decode(content),
+      );
 
       if (
         !payload ||
@@ -130,10 +136,17 @@ export class InventoryServiceBusHandler {
       // Validación de payload.message_id como UUID válido y coincidencia exacta con message.messageId
       if (
         typeof p.message_id !== 'string' ||
-        !UUID_REGEX.test(p.message_id.trim()) ||
+        !UUID_REGEX.test(p.message_id) ||
         message.messageId !== p.message_id
       ) {
         throw new Error('MESSAGE_ID_MISMATCH');
+      }
+
+      if (
+        typeof p.correlation_id !== 'string' ||
+        message.correlationId !== p.correlation_id
+      ) {
+        throw new Error('CORRELATION_ID_MISMATCH');
       }
 
       // Validación de emisor legítimo para R06

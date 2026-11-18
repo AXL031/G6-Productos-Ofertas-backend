@@ -158,7 +158,10 @@ export class InventoryCommandService {
             locationId,
           );
           result = this.result(message, 'INITIALIZED', null);
-          if (created)
+          // An initial zero balance has version 0 in the storage contract.
+          // H5 reports it through the correlated initialization result; the
+          // stock.changed envelope requires the first positive balance version.
+          if (created && process.env.MESSAGING_PROVIDER !== 'AZURE_SERVICE_BUS')
             await this.outbox.stockChanged(client, {
               sku: message.data.sku,
               location_id: locationId,

@@ -484,6 +484,21 @@ describe('Inventory Service Bus Consumer — Recepción en PeekLock e Idempotenc
     expect(settlement.deadLetterMessage).not.toHaveBeenCalled();
   });
 
+  it('rechaza correlación alterada y acepta la entrega binaria del SDK', async () => {
+    const msg = createReceivedMessage('inventory.sku.initialization.requested');
+    expect(await handler.handle({ ...msg, correlationId: randomUUID() })).toBe(
+      'dead-lettered',
+    );
+    expect(mockCommands.process).not.toHaveBeenCalled();
+    expect(
+      await handler.handle({
+        ...msg,
+        body: Uint8Array.from(Buffer.from(String(msg.body))),
+      }),
+    ).toBe('completed');
+    expect(mockCommands.process).toHaveBeenCalledOnce();
+  });
+
   it('procesa catalog.sku.deactivated y completa el mensaje', async () => {
     const msg = createReceivedMessage('catalog.sku.deactivated', {
       sku: 'SKU-001',

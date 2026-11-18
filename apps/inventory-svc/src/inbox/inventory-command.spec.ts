@@ -101,6 +101,28 @@ describe('Inicialización SKU — Inbox/operación/Outbox atómicos (#102)', () 
     expect(db.kardex).toHaveLength(0); // No movimiento artificial de cantidad cero.
   });
 
+  it('H5 conserva la versión inicial 0 y devuelve solo el resultado contractual', async () => {
+    vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+    try {
+      const command = message();
+      expect(await service.process(command)).toMatchObject({
+        status: 'INITIALIZED',
+      });
+      expect(
+        db.stockBalance.find((row) => row.sku_id === command.data.sku)
+          ?.stock_version,
+      ).toBe(0);
+      expect(db.outbox.map((row) => row.event_type)).toEqual([
+        'inventory.sku.initialization.completed',
+      ]);
+      expect(db.outboxDeliveries.map((row) => row.destination)).toEqual([
+        'g6.catalog.from.inventory',
+      ]);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it('el mismo message_id no repite efectos ni resultados', async () => {
     const command = message();
     await service.process(command);
