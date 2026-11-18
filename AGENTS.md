@@ -9,9 +9,9 @@
 Prohibido escribir código antes de completar los pasos 1 a 6:
 
 1. **LEER `AGENTS.md` COMPLETO** antes de editar cualquier archivo.
-2. **Identificar la rama actual:** debe ser tu rama personal asignada.
-3. **Leer el Issue asignado** y comprender todos sus criterios de aceptación.
-4. **Identificar microservicio, owner y archivos autorizados:** verificar matriz de ownership.
+2. **Identificar la rama actual:** debe ser una rama personal permanente o una rama temporal conforme a esta política.
+3. **Identificar el Issue o tarea concreta:** si existe un Issue, revisar sus criterios; si no existe, documentar objetivo, motivación, alcance, criterios de aceptación, pruebas e impactos en el PR.
+4. **Identificar microservicio, responsables primarios y archivos afectados:** consultar la matriz como guía de conocimiento y contacto, no como permiso exclusivo.
 5. **Consultar los contratos normativos correspondientes** en el repositorio de documentación.
 6. Para toda implementación o modificación del modo demo, antes de cambiar código es obligatorio leer `ops/oracle/H4-MODO-DEMO-AUTH-REVERSIBLE.md` y Backend [#144](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-backend/issues/144).
 7. **Realizar únicamente los cambios solicitados:** sin refactors extra ni archivos fuera de scope.
@@ -21,7 +21,7 @@ Prohibido escribir código antes de completar los pasos 1 a 6:
 
 ### Lectura obligatoria para preparación Oracle
 
-Antes de modificar un microservicio, además de leer `AGENTS.md` y el Issue asignado, consulta los contratos OpenAPI, AsyncAPI y DEC-F aplicables, y estas guías de despliegue:
+Antes de modificar un microservicio, además de leer `AGENTS.md` y comprender la tarea (con Issue cuando exista), consulta los contratos OpenAPI, AsyncAPI y DEC-F aplicables, y estas guías de despliegue:
 
 1. `ops/oracle/GUIA_DEVTEAM.md`.
 2. `ops/oracle/CONTRATO_DESPLIEGUE.md`.
@@ -34,7 +34,7 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
 
 ---
 
-## 2. Política definitiva de ramas
+## 2. Política de colaboración y ramas
 
 - **Ramas personales permanentes:**
   - `castilla`
@@ -43,18 +43,34 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
   - `lopez`
   - `vera`
   - `taco`
-- Cada desarrollador trabaja y continúa trabajando exclusivamente en su rama personal.
-- Puede implementar múltiples Issues y abrir sucesivos PRs hacia `master` desde ella.
-- **PROHIBIDO:** crear ramas `feat/...`, `fix/...` o ramas nuevas automáticas.
-- **PROHIBIDO:** sincronizaciones masivas automáticas desde `master`, `rebase`, `git push --force`, `git reset --hard` o merges destructivos.
-- `infra/foundation` es una excepción temporal ya existente para la Foundation inicial (PR #2), **no** una convención para desarrolladores.
-- Los PRs deben mantener alcance pequeño, atómico y específico.
+- Son el espacio preferente de desarrollo de cada integrante. No se eliminan en la limpieza ordinaria de PRs y pueden usarse para PRs sucesivos a `master`.
+- Antes de comenzar otro trabajo en una rama personal, sincronízala de forma segura con `master`. Mantén cada PR cohesivo: no acumules ni mezcles cambios independientes.
+
+### Ramas temporales
+
+La convención obligatoria para ramas nuevas de trabajo es `trabajo/<desarrollador>/<descripcion-en-kebab-case>`, por ejemplo `trabajo/poma/correccion-azure-service-bus` o `trabajo/vera/optimizar-consultas-pricing`.
+
+- Cualquier desarrollador puede crear varias ramas temporales y no necesita un Issue asignado para hacerlo.
+- Parte del `master` actualizado, salvo que exista una dependencia explícita y documentada.
+- Cada rama representa un propósito identificable y cada trabajo independiente tiene su propio PR, preferentemente hacia `master`.
+- Se permite `git worktree` para desarrollar en paralelo.
+- No crees ramas con prefijos de herramientas o agentes como `codex/`, `claude/`, `gemini/` o `antigravity/`.
+- Esta convención rige ramas nuevas; no renombres ramas históricas ni alteres PRs existentes automáticamente.
+- No uses `git push --force`, `git reset --hard` ni merges destructivos, ni sobrescribas trabajo ajeno. Sincroniza de forma segura y respeta CI y protecciones de `master`.
+
+### Issues y tareas
+
+Todo desarrollador puede atender cualquier Issue, incluso si está asignado a otra persona o no tiene asignación. También puede ayudar a un compañero o iniciar una corrección, optimización, refactorización justificada o mejora sin Issue previo. Puede mantener varios PRs independientes abiertos. Si no existe Issue, documenta en el PR el objetivo, motivación, alcance, criterios de aceptación, pruebas e impactos posibles. Crear una rama o abrir un PR no autoriza su aprobación, merge ni despliegue.
+
+### Limpieza de ramas
+
+Tras fusionar un PR temporal, confirma el merge y que la rama no sea necesaria para otro PR abierto o trabajo dependiente; luego elimina la rama temporal local y remota cuando corresponda. Las ramas temporales abandonadas pueden eliminarse tras comprobar que no contienen cambios pendientes por conservar. Nunca elimines ramas personales permanentes mediante esta limpieza ni configures una eliminación automática indiscriminada que las afecte.
 
 ---
 
 ## 3. Matriz de ownership de aplicaciones
 
-| Rama | Aplicaciones propias autorizadas |
+| Rama | Aplicaciones de responsabilidad primaria y conocimiento técnico |
 |---|---|
 | `castilla` | `apps/bulk-svc`, `apps/combos-svc` |
 | `poma` | `apps/catalog-svc` |
@@ -63,10 +79,11 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
 | `vera` | `apps/pricing-svc`, `apps/price-audit-svc` |
 | `taco` | `apps/inventory-svc` |
 
-- **`apps/api-gateway`:** componente transversal; NO debe ser modificado libremente. Requiere Issue explícito y coordinación con arquitectura e integración.
-- **Archivos globales:** `libs/`, `.github/`, dependencias en `package.json`, scripts y configuración del monorepo (`nest-cli.json`, `tsconfig*.json`) son compartidos y requieren autorización expresa en el Issue.
-- **Límite estricto:** un agente no puede modificar otra aplicación para resolver un problema de la propia.
-- Si detectas necesidad de modificar archivos fuera de tu ownership, detén esa parte, repórtala como dependencia y continúa solo las partes autorizadas e independientes.
+- Esta matriz identifica responsables primarios, experiencia y puntos de contacto; no concede ni limita permisos exclusivos de edición. Cualquier desarrollador puede colaborar transversalmente en esos servicios.
+- Antes de iniciar trabajo que pueda solaparse, comprueba Issues y PRs existentes y comunica la intervención cuando corresponda. No se requiere autorización general del responsable primario para comenzar.
+- **`apps/api-gateway`:** componente transversal de alto impacto; su modificación requiere coordinación y revisión proporcional con arquitectura e integración, pero no exige crear previamente un Issue.
+- **Archivos globales:** `libs/`, `.github/`, dependencias en `package.json`, scripts y configuración del monorepo (`nest-cli.json`, `tsconfig*.json`) son compartidos; requieren revisión de los responsables pertinentes según el impacto y controles del repositorio, no una asignación exclusiva.
+- La colaboración no autoriza modificar unilateralmente contratos normativos, decisiones arquitectónicas aceptadas, permisos de seguridad, secretos, infraestructura productiva ni responsabilidades de otros módulos. Conserva la revisión, aprobación y homologación aplicables.
 
 ---
 
@@ -88,7 +105,7 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
 
 - Las DEC-F-001 a DEC-F-015 adoptadas por G6 son obligatorias para la implementación interna en el bounded context al que corresponda cada regla o invariante. Consulta el [registro DEC-F](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/942bf7322eb388fe5b0fcc9c5a565152e1099139/arquitectura/decisiones/REGISTRO_DEC_F.md), su [matriz de trazabilidad](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/942bf7322eb388fe5b0fcc9c5a565152e1099139/arquitectura/decisiones/MATRIZ_TRAZABILIDAD_DEC_F.md) y la [matriz intermodular de backend](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/942bf7322eb388fe5b0fcc9c5a565152e1099139/integraciones/MATRIZ_INTERMODULAR_BACKEND.md). Antes de cambiar código, identifica las decisiones aplicables y sus fuentes normativas; no amplíes su contenido por inferencia ni crees DEC-F-016 o posteriores sin aprobación expresa de Marco.
 - Clasifica cada alcance de trabajo con un estado operativo:
-  - **`IMPLEMENTAR_AHORA`:** lógica, invariantes, persistencia y pruebas internas de G6 están definidas y pueden desarrollarse dentro del ownership autorizado.
+  - **`IMPLEMENTAR_AHORA`:** lógica, invariantes, persistencia y pruebas internas de G6 están definidas y pueden desarrollarse dentro del bounded context, con la revisión aplicable.
   - **`IMPLEMENTAR_PARCIAL`:** implementa lo interno ya definido y mantén aislada la frontera de integración que depende de una resolución externa.
   - **`BLOQUEADO_ESPECÍFICO`:** detén solo la operación, autorización, contrato compartido o secuencia que depende de la respuesta externa. Registra el owner que debe responder, la operación afectada y la condición exacta que permitirá desbloquearla.
 - Una discrepancia intermodular que afecte una integración no paraliza el microservicio completo. Continúa el trabajo autónomo de G6 y no atribuyas ownership, aceptación externa, permisos ni homologación a otro módulo.
@@ -101,7 +118,7 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
 
 ## 5. Protocolo para agentes de menor capacidad
 
-1. Resolver una tarea concreta cada vez; no abarcar múltiples objetivos en paralelo.
+1. Mantener cada rama y PR enfocados en una tarea cohesiva; se permiten varias tareas y PRs independientes en paralelo.
 2. Leer solo los archivos estrictamente necesarios para el cambio.
 3. No reconstruir archivos completos si basta una edición localizada.
 4. No realizar refactors adicionales ni actualizar dependencias sin autorización.
@@ -126,7 +143,7 @@ Un microservicio no puede declararse `READY_FOR_DEPLOY` sin evidencias asociadas
 Todo agente debe estructurar su respuesta final con:
 
 ```text
-RAMA Y ISSUE: <rama> | <issue>
+RAMA Y ISSUE: <rama> | <issue o SIN ISSUE>
 ARCHIVOS MODIFICADOS: <lista de rutas>
 CAMBIOS REALIZADOS: <resumen conciso de cambios>
 COMANDOS EJECUTADOS: <comando y resultado real: PASS/FAIL/NO EJECUTADO>
