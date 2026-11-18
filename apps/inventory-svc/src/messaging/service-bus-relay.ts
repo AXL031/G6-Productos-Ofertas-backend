@@ -38,11 +38,22 @@ import {
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+interface InventoryOutboxPayload {
+  message_id?: string;
+  name?: string;
+  producer?: string;
+  correlation_id?: string | null;
+  operation_id?: string | null;
+  causation_id?: string | null;
+  schema_version?: number;
+  [key: string]: unknown;
+}
+
 function inventoryEnvelope(row: {
   event_id: string;
   event_type: string;
   correlation_id?: string | null;
-  payload: any;
+  payload: unknown;
 }): Buffer {
   const payload =
     typeof row.payload === 'string' ? JSON.parse(row.payload) : row.payload;
@@ -65,10 +76,16 @@ export class InventoryServiceBusRelay {
     if (!claim) return 'empty';
 
     try {
-      const payload =
-        typeof claim.row.payload === 'string'
-          ? JSON.parse(claim.row.payload)
-          : claim.row.payload;
+      let payload: InventoryOutboxPayload | null = null;
+      if (typeof claim.row.payload === 'string') {
+        try {
+          payload = JSON.parse(claim.row.payload) as InventoryOutboxPayload;
+        } catch {
+          payload = null;
+        }
+      } else if (claim.row.payload && typeof claim.row.payload === 'object') {
+        payload = claim.row.payload as InventoryOutboxPayload;
+      }
 
       // Validación estricta del contrato del outbox
       const validMessageId =
@@ -79,10 +96,11 @@ export class InventoryServiceBusRelay {
       const approvedDestinations = APPROVED_ROUTES.get(claim.row.event_type);
       const validDestination = Boolean(
         approvedDestinations &&
-        approvedDestinations.includes(claim.destination as any),
+        (approvedDestinations as readonly string[]).includes(claim.destination),
       );
 
       if (
+        !payload ||
         !validMessageId ||
         !validName ||
         !validProducer ||
@@ -108,7 +126,7 @@ export class InventoryServiceBusRelay {
       });
 
       // El messageId enviado al broker debe ser exactamente payload.message_id (sin fallback a event_id)
-      const contractualMessageId = payload.message_id;
+      const contractualMessageId = payload.message_id as string;
       const correlationId =
         payload.correlation_id || claim.row.correlation_id || undefined;
       const operationId = payload.operation_id || undefined;
@@ -136,9 +154,15 @@ export class InventoryServiceBusRelay {
         return finished ? 'terminal-failure' : 'lease-lost';
       }
 
-      await sender.sendMessages(batch, {
-        abortSignal: AbortSignal.timeout(10_000),
-      });
+      const abortController = new AbortController();
+      const abortTimer = setTimeout(() => abortController.abort(), 10_000);
+      try {
+        await sender.sendMessages(batch, {
+          abortSignal: abortController.signal,
+        });
+      } finally {
+        clearTimeout(abortTimer);
+      }
 
       const updated = await this.store.finish(claim, 'confirmed');
       return !updated ? 'lease-lost' : 'sent';
