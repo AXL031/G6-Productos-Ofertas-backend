@@ -17,6 +17,8 @@ import { bulkRepositoryProvider } from './persistence/bulk.repository.js';
 import { BulkStorageService } from './storage/bulk-storage.service.js';
 import { BulkUserBearerGuard } from './auth/bulk-user-bearer.guard.js';
 import { BulkOutboxRelay } from './messaging/bulk-outbox-relay.js';
+import { BulkCatalogBusPublisher } from './messaging/bulk-catalog-bus-publisher.js';
+import { BulkCatalogContentController } from './http/bulk-catalog-content.controller.js';
 import {
   BULK_AMQP_URL,
   configuredBulkAmqpUrl,
@@ -26,7 +28,7 @@ import { BULK_EXPORT_SOURCE } from './export/bulk-export-source.js';
 
 @Module({
   imports: [],
-  controllers: [BulkSvcController],
+  controllers: [BulkSvcController, BulkCatalogContentController],
   providers: [
     BulkSvcService,
     BulkImportService,
@@ -35,6 +37,7 @@ import { BULK_EXPORT_SOURCE } from './export/bulk-export-source.js';
     BulkStorageService,
     BulkUserBearerGuard,
     BulkOutboxRelay,
+    BulkCatalogBusPublisher,
     CatalogBulkResultConsumer,
     BulkReadinessService,
     bulkDatabaseProvider,

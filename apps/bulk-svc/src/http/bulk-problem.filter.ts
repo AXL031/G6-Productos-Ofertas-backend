@@ -40,6 +40,9 @@ export class BulkProblemFilter implements ExceptionFilter {
         typeof body === 'string' ? body : Reflect.get(body, 'message');
       if (status === 401) code = 'TOKEN_INVALIDO';
       else if (status === 403) code = 'SCOPE_INSUFICIENTE';
+      else if (status === 404 && message === 'ARCHIVO_NO_ENCONTRADO')
+        code = message;
+      else if (status === 503) code = 'SERVICIO_NO_DISPONIBLE';
       else if (status === 413) code = 'ARCHIVO_EXCEDE_LIMITE';
       else if (
         typeof message === 'string' &&

@@ -68,7 +68,11 @@ export class BulkOutboxRelay implements OnModuleInit, OnModuleDestroy {
     try {
       const userId = bulkAmqpUserId(this.amqpUrl);
       const channel = await this.getChannel();
-      const pending = await this.repository.findPendingOutbox(50, true);
+      const pending = await this.repository.findPendingOutbox(
+        50,
+        true,
+        'LEGACY',
+      );
       for (const item of pending) {
         const payload = Buffer.from(JSON.stringify(item.payload), 'utf8');
         this.returned.delete(item.messageId);

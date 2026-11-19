@@ -54,16 +54,22 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
   protected get scope(): string {
     return 'precios:leer';
   }
+  protected get clientId(): string {
+    return 'modulo-productos';
+  }
+  protected get credentials() {
+    return this.config?.serviceCredentials;
+  }
   private cached?: { authorization: string; expiresAt: number };
   private loading?: Promise<{ authorization: string; expiresAt: number }>;
   constructor(
     @Optional()
     @Inject(CatalogConfig)
-    private readonly config: CatalogConfig | undefined,
+    protected readonly config: CatalogConfig | undefined,
     private readonly verifier: CatalogTokenVerifier,
   ) {}
   private async issue() {
-    const credentials = this.config?.serviceCredentials;
+    const credentials = this.credentials;
     if (!credentials || !this.config?.security)
       throw new ServiceUnavailableException();
     const signal = AbortSignal.timeout(5000);
@@ -78,7 +84,7 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
         },
         body: new URLSearchParams({
           grant_type: 'client_credentials',
-          client_id: 'modulo-productos',
+          client_id: this.clientId,
           client_secret: credentials.clientSecret,
           scope: this.scope,
         }).toString(),
@@ -99,7 +105,7 @@ export class CatalogPricingIdentityProvider implements CatalogPricingIdentity {
       const grantedScopes = body.scopes;
       if (
         principal.kind !== 'service' ||
-        principal.subject !== 'modulo-productos' ||
+        principal.subject !== this.clientId ||
         !principal.audiences.includes('api-productos') ||
         !principal.scopes.includes(this.scope) ||
         principal.scopes.length !== body.scopes.length ||

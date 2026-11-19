@@ -73,6 +73,10 @@ import {
 } from './historical-recovery.service.js';
 import { readHistoricalPricingContract } from './historical-pricing.contract.js';
 import { CatalogServiceBusRuntime } from './catalog-service-bus.runtime.js';
+import {
+  CatalogBulkContentIdentity,
+  CatalogBulkContentReader,
+} from './catalog-bulk-content.js';
 
 @Module({
   imports: [],
@@ -122,6 +126,8 @@ import { CatalogServiceBusRuntime } from './catalog-service-bus.runtime.js';
     CatalogBulkService,
     { provide: CATALOG_BULK_HANDLER, useExisting: CatalogBulkService },
     CatalogBulkIdentity,
+    CatalogBulkContentIdentity,
+    CatalogBulkContentReader,
     { provide: CATALOG_TAXONOMY_IDENTITY, useExisting: CatalogBulkIdentity },
     CatalogTelemetry,
     CatalogAmqpRuntime,

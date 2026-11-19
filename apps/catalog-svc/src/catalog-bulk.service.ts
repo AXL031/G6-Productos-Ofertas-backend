@@ -7,7 +7,11 @@ import {
 } from '@nestjs/common';
 import { and, eq, sql } from 'drizzle-orm';
 import { translatePostgresFailure } from './database-errors.js';
-import { Database, type CatalogTransaction } from './database.js';
+import {
+  Database,
+  type CatalogDatabase,
+  type CatalogTransaction,
+} from './database.js';
 import { inbox, outbox, products, variants } from './catalog.schema.js';
 import { CatalogMutationService } from './catalog-mutation.service.js';
 import {
@@ -24,6 +28,7 @@ import {
 import { CatalogPricingIdentityProvider } from './catalog-pricing-identity.js';
 import { CatalogConfig } from './config.js';
 import { CatalogTokenVerifier } from './catalog-auth.js';
+import { CatalogBulkContentReader } from './catalog-bulk-content.js';
 
 /** Existing G7 flow, with only the scope already published for Taxonomy reads. */
 @Injectable()
@@ -228,13 +233,18 @@ export class CatalogBulkService {
     private readonly database: Database,
     private readonly mutations: CatalogMutationService,
     private readonly identity: CatalogBulkIdentity,
+    @Optional() private readonly contentReader?: CatalogBulkContentReader,
   ) {}
   private async lock(tx: CatalogTransaction, key: string) {
     await tx.execute(
       sql`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`,
     );
   }
-  private async previous(tx: CatalogTransaction, id: string, handler: string) {
+  private async previous(
+    tx: CatalogTransaction | CatalogDatabase,
+    id: string,
+    handler: string,
+  ) {
     return (
       await tx
         .select()
@@ -394,6 +404,31 @@ export class CatalogBulkService {
       !UUID.test(String(message.operation_id))
     )
       throw new InvalidCatalogMessage();
+    let requestMessage = message;
+    if (message.schema_version === 3) {
+      const known = await this.database.read(async (db) => {
+        const delivered = await this.previous(db, message.message_id, DELIVERY);
+        if (
+          delivered &&
+          canonicalBulk(delivered.payload) !== canonicalBulk(message)
+        )
+          throw new InvalidCatalogMessage();
+        return (
+          delivered ??
+          this.previous(db, String(message.data.batch_operation_id), COMMAND)
+        );
+      });
+      if (!known) {
+        if (!this.contentReader) throw new ServiceUnavailableException();
+        const rows = await this.contentReader.rows(message);
+        const { content_ref: _reference, ...data } = message.data;
+        requestMessage = {
+          ...message,
+          schema_version: 2,
+          data: { ...data, rows },
+        };
+      }
+    }
     return this.database.transaction(async (tx) => {
       await this.lock(tx, 'bulk-delivery:' + message.message_id.toLowerCase());
       await this.lock(
@@ -429,7 +464,7 @@ export class CatalogBulkService {
       } else {
         let request: BulkRequest | undefined;
         try {
-          request = parseBulkRequest(message);
+          request = parseBulkRequest(requestMessage);
         } catch (error) {
           if (!businessCode(error)) throw error;
         }

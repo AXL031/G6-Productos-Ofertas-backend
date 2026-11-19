@@ -160,6 +160,7 @@ export class CatalogServiceBus {
               throw new InvalidCatalogMessage();
             const envelope = parseCatalogMessage(
               normalizeCatalogServiceBusBody(received.body),
+              queue === 'g6.catalog.from.bulk',
             );
             if (
               envelope.producer !== producerByQueue[queue] ||

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 export const CATALOG_BULK_UPSERT_MAX_ENVELOPE_BYTES = 1_048_576;
 export const CATALOG_BULK_UPSERT_ROUTING_KEY = 'catalog.bulk.upsert.requested';
@@ -38,6 +38,32 @@ export interface CatalogBulkCommand {
   serialized: string;
 }
 
+export interface CatalogBulkContent {
+  content_id: string;
+  sha256: string;
+  byte_length: number;
+  content_type: 'application/json';
+}
+
+export function toCatalogBulkClaimCheck(command: CatalogBulkCommand) {
+  const { rows, ...data } = command.envelope.data;
+  const document = JSON.stringify({ rows });
+  const content_ref: CatalogBulkContent = {
+    content_id: randomUUID(),
+    sha256: createHash('sha256').update(document, 'utf8').digest('hex'),
+    byte_length: Buffer.byteLength(document, 'utf8'),
+    content_type: 'application/json',
+  };
+  return {
+    document,
+    envelope: {
+      ...command.envelope,
+      schema_version: 3,
+      data: { ...data, content_ref },
+    },
+  };
+}
+
 export function stableUuid(seed: string): string {
   const bytes = createHash('sha256').update(seed).digest().subarray(0, 16);
   bytes[6] = (bytes[6]! & 0x0f) | 0x50;
@@ -54,10 +80,18 @@ function encode(envelope: CatalogBulkEnvelope): string {
   return JSON.stringify(envelope);
 }
 
-function fits(envelope: CatalogBulkEnvelope): boolean {
+function fits(envelope: CatalogBulkEnvelope, limitResult: boolean): boolean {
   return (
     Buffer.byteLength(encode(envelope), 'utf8') <=
-    CATALOG_BULK_UPSERT_MAX_ENVELOPE_BYTES
+      CATALOG_BULK_UPSERT_MAX_ENVELOPE_BYTES &&
+    (!limitResult ||
+      // R04 retains inline results. Reserve space for the envelope and metadata.
+      envelope.data.rows.reduce(
+        (bytes, row) =>
+          bytes + 256 + Buffer.byteLength(JSON.stringify(row.sku_base), 'utf8'),
+        0,
+      ) <=
+        250 * 1024)
   );
 }
 
@@ -68,6 +102,7 @@ export function buildCatalogBulkCommands(input: {
   rows: CatalogBulkRow[];
   schemaVersion?: 1 | 2;
   occurredAt?: Date;
+  limitResult?: boolean;
 }): CatalogBulkCommand[] {
   if (input.rows.length === 0) return [];
   const commandInput = {
@@ -88,7 +123,10 @@ export function buildCatalogBulkCommands(input: {
     const candidate = [...current, ...family];
     if (
       current.length > 0 &&
-      !fits(makeEnvelope(commandInput, candidate, chunks.length))
+      !fits(
+        makeEnvelope(commandInput, candidate, chunks.length),
+        !!input.limitResult,
+      )
     ) {
       chunks.push(current);
       current = [];
@@ -98,9 +136,11 @@ export function buildCatalogBulkCommands(input: {
       [...current, ...family],
       chunks.length,
     );
-    if (!fits(familyEnvelope))
+    if (!fits(familyEnvelope, !!input.limitResult))
       throw new Error(
-        'Una familia sku_base excede el máximo contractual de 1 MiB.',
+        input.limitResult
+          ? 'Una familia sku_base excede el límite de contenido o resultado H5.'
+          : 'Una familia sku_base excede el máximo contractual de 1 MiB.',
       );
     current.push(...family);
   }

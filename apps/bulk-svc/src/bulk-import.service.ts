@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   buildCatalogBulkCommands,
   stableUuid,
+  toCatalogBulkClaimCheck,
   type CatalogBulkCommand,
   type CatalogBulkRow,
 } from './messaging/catalog-bulk-upsert.js';
@@ -19,6 +20,7 @@ import {
   type NormalizedBulkRow,
 } from './domain/bulk.validation.js';
 import { BulkPersistenceError } from './persistence/bulk.persistence.errors.js';
+import { readBulkCatalogBus } from './messaging/bulk-service-bus.js';
 import {
   BulkPersistenceRepository,
   type DomainResultInput,
@@ -151,20 +153,41 @@ export class BulkImportService {
     const persistedCommands = Array.isArray(priorAdmission?.catalogCommands)
       ? priorAdmission.catalogCommands
       : null;
-    const commands: CatalogBulkCommand[] = persistedCommands
-      ? persistedCommands.map((value) => {
-          const envelope = value as CatalogBulkCommand['envelope'];
-          return { envelope, serialized: JSON.stringify(envelope) };
-        })
-      : catalogRows.length
-        ? buildCatalogBulkCommands({
-            batchId: input.batchId,
-            correlationId: input.correlationId,
-            rows: catalogRows,
-            schemaVersion: input.catalogCommandVersion ?? 1,
-            occurredAt: new Date(),
-          })
-        : [];
+    const azure = readBulkCatalogBus(process.env);
+    if (
+      !persistedCommands &&
+      azure &&
+      catalogRows.length &&
+      (!azure.send || normalized.some((row) => row.requiredDomains.length > 1))
+    ) {
+      throw new BulkDomainError(
+        'DEPENDENCY_PENDING',
+        'La importación requiere un flujo de carga masiva que aún no está habilitado en H5.',
+      );
+    }
+    const useClaimCheck = !persistedCommands && azure?.send === true;
+    let inline: CatalogBulkCommand[] = [];
+    if (!persistedCommands && catalogRows.length) {
+      try {
+        inline = buildCatalogBulkCommands({
+          batchId: input.batchId,
+          correlationId: input.correlationId,
+          rows: catalogRows,
+          schemaVersion: input.catalogCommandVersion ?? 1,
+          limitResult: useClaimCheck,
+        });
+      } catch (error) {
+        if (!useClaimCheck) throw error;
+        throw new BulkDomainError(
+          'INVALID_INPUT',
+          error instanceof Error ? error.message : 'Contenido inválido.',
+        );
+      }
+    }
+    const content = useClaimCheck ? inline.map(toCatalogBulkClaimCheck) : [];
+    const envelopes = persistedCommands
+      ? (persistedCommands as CatalogBulkCommand['envelope'][])
+      : (useClaimCheck ? content : inline).map(({ envelope }) => envelope);
     try {
       return await this.repository.createImportBatch({
         batchId: input.batchId,
@@ -175,7 +198,7 @@ export class BulkImportService {
           contentRef: input.contentRef,
         },
         rows: persistedRows,
-        catalogCommands: commands.map(({ envelope }) => ({
+        catalogCommands: envelopes.map((envelope) => ({
           messageId: envelope.message_id,
           eventName: envelope.name,
           kind: envelope.kind,
@@ -185,12 +208,21 @@ export class BulkImportService {
           occurredAt: new Date(envelope.occurred_at),
           payload: envelope as unknown as Record<string, unknown>,
         })),
+        ...(content.length
+          ? {
+              catalogContents: content.map(({ envelope, document }) => ({
+                reference: envelope.data.content_ref,
+                messageId: envelope.message_id,
+                document,
+              })),
+            }
+          : {}),
         admissionIntent: {
           format: input.format,
           templateVersion: input.templateVersion,
           contentRef: input.contentRef,
           rows: input.intentRows ?? normalized,
-          catalogCommands: commands.map(({ envelope }) => envelope),
+          catalogCommands: envelopes,
         },
       });
     } catch (error) {

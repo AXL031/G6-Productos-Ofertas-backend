@@ -241,7 +241,10 @@ export function envelope(
   assertCatalogPublication(message);
   return message;
 }
-export function parseCatalogMessage(value: unknown): CatalogEnvelope {
+export function parseCatalogMessage(
+  value: unknown,
+  allowBulkClaimCheck = false,
+): CatalogEnvelope {
   if (
     !object(value) ||
     !UUID.test(String(value.message_id)) ||
@@ -256,6 +259,11 @@ export function parseCatalogMessage(value: unknown): CatalogEnvelope {
           value.name === 'inventory.sku.initialization.completed' ||
           value.name === 'inventory.sku.initialization.rejected') &&
         value.schema_version === 2
+      ) &&
+      !(
+        allowBulkClaimCheck &&
+        value.name === 'catalog.bulk.upsert.requested' &&
+        value.schema_version === 3
       )) ||
     typeof value.occurred_at !== 'string' ||
     !Number.isFinite(Date.parse(value.occurred_at)) ||

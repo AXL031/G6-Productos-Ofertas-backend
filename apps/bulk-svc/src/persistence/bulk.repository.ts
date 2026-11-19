@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray, sql } from 'drizzle-orm';
 import {
   batchJobs,
@@ -17,6 +17,31 @@ import {
 } from './bulk.persistence.errors.js';
 import { BulkDomainError } from '../domain/bulk.domain-error.js';
 import { matchesBulkStorageReference } from '../storage/bulk-storage-reference.js';
+import type { CatalogBulkContent } from '../messaging/catalog-bulk-upsert.js';
+
+const CATALOG_CONTENT_HANDLER = 'bulk.catalog.content.v3';
+
+interface CatalogContentInput {
+  reference: CatalogBulkContent;
+  messageId: string;
+  document: string;
+}
+
+function storedCatalogContent(payload?: Record<string, unknown>) {
+  if (
+    !payload ||
+    typeof payload.document !== 'string' ||
+    typeof payload.sha256 !== 'string'
+  )
+    throw new BulkPersistenceError('CHECK_VIOLATION');
+  const bytes = Buffer.from(payload.document, 'utf8');
+  if (
+    bytes.length !== payload.byteLength ||
+    createHash('sha256').update(bytes).digest('hex') !== payload.sha256
+  )
+    throw new BulkPersistenceError('CHECK_VIOLATION');
+  return { bytes, sha256: payload.sha256 };
+}
 
 export type BulkDomain = 'CATALOGO' | 'PRICING' | 'INVENTARIO';
 export type BulkFileFormat = 'CSV' | 'XLSX';
@@ -44,6 +69,7 @@ export interface CreateImportBatchInput {
   rows: ImportRowInput[];
   admissionIntent?: Record<string, unknown>;
   catalogCommands?: OutboxInput[];
+  catalogContents?: CatalogContentInput[];
 }
 export interface CreateImportBatchResult {
   manifest: typeof fileManifests.$inferSelect;
@@ -156,7 +182,7 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
-function admissionIntentWithoutCommandTimes(
+function comparableAdmissionIntent(
   value: Record<string, unknown>,
 ): Record<string, unknown> {
   const commands = Array.isArray(value.catalogCommands)
@@ -165,6 +191,15 @@ function admissionIntentWithoutCommandTimes(
         const command = structuredClone(item) as Record<string, unknown>;
         if (typeof command.occurred_at === 'string')
           command.occurred_at = '<persisted-at-first-admission>';
+        if (
+          command.schema_version === 3 &&
+          command.data &&
+          typeof command.data === 'object'
+        ) {
+          const reference: unknown = Reflect.get(command.data, 'content_ref');
+          if (reference && typeof reference === 'object')
+            Reflect.deleteProperty(reference, 'content_id');
+        }
         return command;
       })
     : value.catalogCommands;
@@ -222,13 +257,11 @@ export class BulkPersistenceRepository {
           const sameIntent =
             intentReceipt && input.admissionIntent
               ? canonicalJson(
-                  admissionIntentWithoutCommandTimes(
+                  comparableAdmissionIntent(
                     intentReceipt.payload as Record<string, unknown>,
                   ),
                 ) ===
-                canonicalJson(
-                  admissionIntentWithoutCommandTimes(input.admissionIntent),
-                )
+                canonicalJson(comparableAdmissionIntent(input.admissionIntent))
               : false;
           if (!sameIntent) {
             throw new BulkPersistenceError('UNIQUE_CONFLICT');
@@ -351,6 +384,26 @@ export class BulkPersistenceRepository {
             result: 'ADMITTED',
           });
         }
+        for (const {
+          reference,
+          messageId,
+          document,
+        } of input.catalogContents ?? []) {
+          await tx.insert(inbox).values({
+            messageId: reference.content_id,
+            handler: CATALOG_CONTENT_HANDLER,
+            eventName: CATALOG_CONTENT_HANDLER,
+            correlationId: input.correlationId,
+            payload: {
+              batchId: input.batchId,
+              commandMessageId: messageId,
+              document,
+              sha256: reference.sha256,
+              byteLength: reference.byte_length,
+            },
+            result: 'ADMITTED',
+          });
+        }
         for (const command of input.catalogCommands ?? []) {
           await tx.insert(outbox).values({
             messageId: command.messageId,
@@ -366,6 +419,24 @@ export class BulkPersistenceRepository {
         }
         return { manifest, batch, rows: createdRows };
       });
+    } catch (error) {
+      throw persistenceError(error);
+    }
+  }
+
+  async findCatalogContent(contentId: string) {
+    try {
+      const [entry] = await this.db
+        .select({ payload: inbox.payload })
+        .from(inbox)
+        .where(
+          and(
+            eq(inbox.messageId, contentId),
+            eq(inbox.handler, CATALOG_CONTENT_HANDLER),
+          ),
+        )
+        .limit(1);
+      return entry ? storedCatalogContent(entry.payload) : null;
     } catch (error) {
       throw persistenceError(error);
     }
@@ -930,9 +1001,39 @@ export class BulkPersistenceRepository {
             'INVALID_INPUT',
             'Catalog result batch_operation_id does not match its admitted chunk.',
           );
-        const commandRows = Array.isArray(commandData?.rows)
+        let commandRows = Array.isArray(commandData?.rows)
           ? commandData.rows
           : [];
+        if (matchingCommand?.schema_version === 3) {
+          const reference: unknown = commandData?.content_ref;
+          const contentId: unknown =
+            reference &&
+            typeof reference === 'object' &&
+            Reflect.get(reference, 'content_id');
+          if (typeof contentId !== 'string')
+            throw new BulkPersistenceError('CHECK_VIOLATION');
+          const [entry] = await tx
+            .select({ payload: inbox.payload })
+            .from(inbox)
+            .where(
+              and(
+                eq(inbox.messageId, contentId),
+                eq(inbox.handler, CATALOG_CONTENT_HANDLER),
+              ),
+            )
+            .limit(1);
+          const stored = entry?.payload;
+          if (
+            stored?.batchId !== batchId ||
+            stored.commandMessageId !== input.causationId
+          )
+            throw new BulkPersistenceError('CHECK_VIOLATION');
+          const { bytes } = storedCatalogContent(stored);
+          const document = JSON.parse(bytes.toString('utf8')) as {
+            rows: unknown[];
+          };
+          commandRows = document.rows;
+        }
         const admittedRows = Array.isArray(admissionPayload.rows)
           ? admissionPayload.rows
           : [];
@@ -1806,15 +1907,26 @@ export class BulkPersistenceRepository {
   async findPendingOutbox(
     limit = 100,
     onlyDue = false,
+    transport?: 'LEGACY' | 'CATALOG_SERVICE_BUS',
   ): Promise<Array<typeof outbox.$inferSelect>> {
     try {
       return await this.db
         .select()
         .from(outbox)
         .where(
-          onlyDue
-            ? sql`${outbox.publishedAt} IS NULL AND ${outbox.lastError} IS DISTINCT FROM 'CATALOG_ROUTE_REVIEW_REQUIRED' AND (coalesce(${outbox.lastError}, '') NOT LIKE 'AWAITING_CATALOG_RESULT:%' OR substring(${outbox.lastError} from 25)::timestamptz <= now())`
-            : sql`${outbox.publishedAt} IS NULL`,
+          and(
+            onlyDue
+              ? sql`${outbox.publishedAt} IS NULL AND ${outbox.lastError} IS DISTINCT FROM 'CATALOG_ROUTE_REVIEW_REQUIRED' AND (coalesce(${outbox.lastError}, '') NOT LIKE 'AWAITING_CATALOG_RESULT:%' OR substring(${outbox.lastError} from 25)::timestamptz <= now())`
+              : sql`${outbox.publishedAt} IS NULL`,
+            transport === 'LEGACY'
+              ? sql`NOT (${outbox.eventName} = 'catalog.bulk.upsert.requested' AND ${outbox.schemaVersion} = 3)`
+              : transport === 'CATALOG_SERVICE_BUS'
+                ? and(
+                    eq(outbox.eventName, 'catalog.bulk.upsert.requested'),
+                    eq(outbox.schemaVersion, 3),
+                  )
+                : undefined,
+          ),
         )
         .orderBy(asc(outbox.occurredAt), asc(outbox.id))
         .limit(Math.max(1, Math.min(limit, 1000)));

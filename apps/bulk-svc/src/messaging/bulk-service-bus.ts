@@ -1,14 +1,26 @@
 export const bulkFromCatalog = 'g6.bulk.from.catalog';
+export const catalogFromBulk = 'g6.catalog.from.bulk';
 
 export function readBulkCatalogBus(env: Readonly<NodeJS.ProcessEnv>) {
   const selected = env.MESSAGING_PROVIDER === 'AZURE_SERVICE_BUS';
   const flag = env.BULK_SERVICE_BUS_CATALOG_RESULTS_ENABLED;
-  if (!selected && (flag === undefined || flag === 'false')) return undefined;
+  const send = env.BULK_SERVICE_BUS_CATALOG_COMMANDS_ENABLED;
+  if (
+    !selected &&
+    (flag === undefined || flag === 'false') &&
+    (send === undefined || send === 'false')
+  )
+    return undefined;
   const namespace = env.SERVICE_BUS_NAMESPACE_FQDN;
   const clientId = env.AZURE_CLIENT_ID;
   if (
     !selected ||
     (flag !== 'true' && flag !== 'false') ||
+    (send !== undefined && send !== 'true' && send !== 'false') ||
+    (send === 'true' &&
+      (flag !== 'true' ||
+        env.BULK_CATALOG_CONTENT_ENABLED !== 'true' ||
+        env.G6_SECURITY_MODE !== 'G7_AUTHENTICATED')) ||
     env.BULK_AMQP_URL !== undefined ||
     (env.BULK_AMQP_ENABLED !== undefined &&
       env.BULK_AMQP_ENABLED !== 'false') ||
@@ -24,5 +36,10 @@ export function readBulkCatalogBus(env: Readonly<NodeJS.ProcessEnv>) {
         !clientId))
   )
     throw new Error('BULK_SERVICE_BUS_CONFIGURATION_INVALID');
-  return { namespace: namespace!, clientId, enabled: flag === 'true' };
+  return {
+    namespace: namespace!,
+    clientId,
+    enabled: flag === 'true',
+    send: send === 'true',
+  };
 }
