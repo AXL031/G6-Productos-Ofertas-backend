@@ -10,6 +10,7 @@ case "$LAB_SUITE" in
   price-fanout) G6_H5_LAB_SPEC='tests/h5/pricing-fanout.azure.e2e-spec.ts' ;;
   combos) G6_H5_LAB_SPEC='tests/h5/combos-events.azure.e2e-spec.ts' ;;
   bulk-result) G6_H5_LAB_SPEC='tests/h5/bulk-result.azure.e2e-spec.ts' ;;
+  claim-check) G6_H5_LAB_SPEC='tests/h5/bulk-claim-check.postgres.e2e-spec.ts' ;;
   *) exit 1 ;;
 esac
 export G6_H5_LAB_SPEC
@@ -92,5 +93,9 @@ case "$LAB_SUITE" in
   bulk-result)
     G6_H5_BULK_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
     printf 'G6_H5_BULK_AZURE_PASS source=%s flows=R04\n' "$G6_SOURCE_SHA"
+    ;;
+  claim-check)
+    G6_H5_R01_PG_URL="$G6_H5_INIT_PG_URL" G6_H5_R01_REAL_AZURE=1 +      npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
+    printf 'G6_H5_R01_R04_AZURE_PASS source=%s flows=R01,R04\n' "$G6_SOURCE_SHA"
     ;;
 esac

@@ -9,7 +9,7 @@ type Workload = {
 
 param containerGroupName string
 param namespaceFqdn string
-param suite 'initialization' | 'price-fanout' | 'combos' | 'bulk-result' = 'initialization'
+param suite 'initialization' | 'price-fanout' | 'combos' | 'bulk-result' | 'claim-check' = 'initialization'
 @minLength(2)
 @maxLength(4)
 param workloads Workload[]

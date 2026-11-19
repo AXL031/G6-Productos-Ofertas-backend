@@ -1,8 +1,11 @@
 import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
 import { Test } from '@nestjs/testing';
-import type {
-  ServiceBusReceivedMessage,
-  ServiceBusMessage,
+import { ManagedIdentityCredential } from '@azure/identity';
+import {
+  ServiceBusClient,
+  type ServiceBusReceivedMessage,
+  type ServiceBusMessage,
+  type ServiceBusReceiver,
 } from '@azure/service-bus';
 import { sql } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/node-postgres';
@@ -24,6 +27,10 @@ import {
 import { parseCatalogMessage } from '../../apps/catalog-svc/src/catalog-messages.js';
 import { CatalogMutationService } from '../../apps/catalog-svc/src/catalog-mutation.service.js';
 import { relayCatalogDelivery } from '../../apps/catalog-svc/src/catalog-service-bus-relay.js';
+import {
+  CatalogServiceBus,
+  normalizeCatalogServiceBusBody,
+} from '../../apps/catalog-svc/src/catalog-service-bus.js';
 import { CatalogTransactionManager } from '../../apps/catalog-svc/src/catalog-transaction.js';
 import { Database } from '../../apps/catalog-svc/src/database.js';
 import { PostgresCatalogWriteRepository } from '../../apps/catalog-svc/src/postgres-catalog-write.repository.js';
@@ -31,10 +38,45 @@ import type { CatalogMasterClient } from '../../apps/catalog-svc/src/catalog-mas
 import { prepareInitializationDatabases } from './initialization-lab-postgres.js';
 
 const pgUrl = process.env.G6_H5_R01_PG_URL;
+const realAzure = process.env.G6_H5_R01_REAL_AZURE === '1';
+const commandQueue = 'g6.catalog.from.bulk';
+const resultQueue = 'g6.bulk.from.catalog';
+
+function azureClients() {
+  if (!realAzure) return;
+  const namespace = process.env.G6_H5_LAB_NAMESPACE_FQDN ?? '';
+  const bulkId = process.env.G6_H5_LAB_BULK_CLIENT_ID ?? '';
+  const catalogId = process.env.G6_H5_LAB_CATALOG_CLIENT_ID ?? '';
+  if (
+    !/^g6-sb-h5-int-[a-z0-9]{13}\.servicebus\.windows\.net$/.test(namespace) ||
+    ![bulkId, catalogId].every((id) =>
+      /^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(id),
+    ) ||
+    bulkId.toLowerCase() === catalogId.toLowerCase()
+  )
+    throw new Error('DEDICATED_H5_LAB_AND_DISTINCT_IDENTITIES_REQUIRED');
+  const client = (id: string) =>
+    new ServiceBusClient(
+      namespace,
+      new ManagedIdentityCredential({ clientId: id }),
+      { retryOptions: { maxRetries: 0, timeoutInMs: 8000 } },
+    );
+  return { namespace, bulk: client(bulkId), catalog: client(catalogId) };
+}
+
+async function receive(receiver: ServiceBusReceiver, messageId: string) {
+  const [message] = await receiver.receiveMessages(1, {
+    maxWaitTimeInMs: 12_000,
+    abortSignal: AbortSignal.timeout(15_000),
+  });
+  expect(message?.messageId).toBe(messageId);
+  return message;
+}
 
 it.skipIf(!pgUrl)(
   'reconciles an admitted R01 claim-check and R04 against real PostgreSQL',
   async () => {
+    const azure = azureClients();
     const lab = await prepareInitializationDatabases(pgUrl!);
     const bulkDb = await lab.prepareBulk();
     const pool = new Pool({ connectionString: bulkDb.runtimeUrl.href });
@@ -55,7 +97,8 @@ it.skipIf(!pgUrl)(
     });
     for (const [key, value] of Object.entries({
       MESSAGING_PROVIDER: 'AZURE_SERVICE_BUS',
-      SERVICE_BUS_NAMESPACE_FQDN: 'claimcheck-fixture.servicebus.windows.net',
+      SERVICE_BUS_NAMESPACE_FQDN:
+        azure?.namespace ?? 'claimcheck-fixture.servicebus.windows.net',
       BULK_SERVICE_BUS_CATALOG_RESULTS_ENABLED: 'true',
       BULK_SERVICE_BUS_CATALOG_COMMANDS_ENABLED: 'true',
       BULK_CATALOG_CONTENT_ENABLED: 'true',
@@ -64,7 +107,7 @@ it.skipIf(!pgUrl)(
       G7_JWT_PUBLIC_KEY: publicKey
         .export({ type: 'spki', format: 'pem' })
         .toString(),
-      CATALOG_H5_DESTINATIONS: 'g6.bulk.from.catalog',
+      CATALOG_H5_DESTINATIONS: resultQueue,
     }))
       vi.stubEnv(key, value);
     vi.stubEnv('G7_JWT_JWKS_URL', undefined);
@@ -163,47 +206,103 @@ it.skipIf(!pgUrl)(
         ],
       });
       expect(await bulk.findPendingOutbox(10, true, 'LEGACY')).toHaveLength(0);
-      expect(
-        await bulk.findPendingOutbox(10, true, 'CATALOG_SERVICE_BUS'),
-      ).toHaveLength(1);
-      let transportMessage: ServiceBusMessage | undefined;
-      const sender = {
-        createMessageBatch: vi.fn(async () => ({
-          tryAddMessage: (message: ServiceBusMessage) => {
-            transportMessage = message;
-            return (
-              Buffer.isBuffer(message.body) &&
-              message.body.byteLength < 256 * 1024
-            );
-          },
-        })),
-        sendMessages: vi.fn(async () => {
-          const request = parseCatalogMessage(
-            JSON.parse(transportMessage!.body.toString('utf8')),
-            true,
-          );
-          expect(request).toMatchObject({
-            message_id: transportMessage?.messageId,
-            schema_version: 3,
-            data: { mode: 'ACTUALIZACION' },
-          });
-          expect(request.data).not.toHaveProperty('rows');
-          expect(await handler.consume(request)).toBe('APPLIED');
-          expect(await handler.consume(request)).toBe('DUPLICATE');
-        }),
-      };
-      await new BulkCatalogBusPublisher(bulk).flush(
-        sender as unknown as Parameters<BulkCatalogBusPublisher['flush']>[0],
+      const pending = await bulk.findPendingOutbox(
+        10,
+        true,
+        'CATALOG_SERVICE_BUS',
       );
+      expect(pending).toHaveLength(1);
+      const { messageId } = pending[0];
+      const publisher = new BulkCatalogBusPublisher(bulk);
+      const consume = async (transport: ServiceBusMessage) => {
+        const command = parseCatalogMessage(
+          normalizeCatalogServiceBusBody(transport.body),
+          true,
+        );
+        expect(command).toMatchObject({
+          message_id: transport.messageId,
+          correlation_id: transport.correlationId,
+          name: transport.subject,
+          schema_version: 3,
+          data: { mode: 'ACTUALIZACION' },
+        });
+        expect(transport.contentType).toBe('application/json');
+        expect(command.data).not.toHaveProperty('rows');
+        return handler.consume(command);
+      };
+      if (azure) {
+        const receiver = azure.catalog.createReceiver(commandQueue, {
+          skipParsingBodyAsJson: true,
+        });
+        const sender = azure.bulk.createSender(commandQueue);
+        await publisher.flush(sender);
+        const first = await receive(receiver, messageId);
+        expect(await consume(first)).toBe('APPLIED');
+        await receiver.abandonMessage(first);
+        const redelivery = await receive(receiver, messageId);
+        expect(redelivery.deliveryCount).toBeGreaterThan(
+          first.deliveryCount ?? 0,
+        );
+        expect(await consume(redelivery)).toBe('DUPLICATE');
+        await receiver.completeMessage(redelivery);
+      } else {
+        let transportMessage: ServiceBusMessage | undefined;
+        const sender = {
+          createMessageBatch: vi.fn(async () => ({
+            tryAddMessage: (message: ServiceBusMessage) => {
+              transportMessage = message;
+              return (
+                Buffer.isBuffer(message.body) &&
+                message.body.byteLength < 256 * 1024
+              );
+            },
+          })),
+          sendMessages: vi.fn(async () => {
+            expect(await consume(transportMessage!)).toBe('APPLIED');
+            expect(await consume(transportMessage!)).toBe('DUPLICATE');
+          }),
+        };
+        await publisher.flush(
+          sender as unknown as Parameters<BulkCatalogBusPublisher['flush']>[0],
+        );
+      }
       expect(authenticateContent).toHaveBeenCalledTimes(1);
       expect(
         await relayCatalogDelivery(catalog, {
           publish: async (queue, envelope) => {
-            expect(queue).toBe('g6.bulk.from.catalog');
+            expect(queue).toBe(resultQueue);
             expect(envelope).toMatchObject({
               name: 'catalog.bulk.upsert.completed',
-              causation_id: transportMessage?.messageId,
+              causation_id: messageId,
             });
+            const completed = async () => {
+              expect((await bulk.findBatchByBatchId(batchId))?.status).toBe(
+                'COMPLETED',
+              );
+            };
+            if (azure) {
+              const bus = new CatalogServiceBus(azure.catalog);
+              const receiver = azure.bulk.createReceiver(resultQueue, {
+                skipParsingBodyAsJson: true,
+              });
+              await bus.publish(queue, envelope, AbortSignal.timeout(8000));
+              const first = await receive(receiver, envelope.message_id);
+              await results.handleAzure(first, {
+                completeMessage: async (message) => {
+                  await completed();
+                  await receiver.abandonMessage(message);
+                },
+                abandonMessage: receiver.abandonMessage.bind(receiver),
+                deadLetterMessage: receiver.deadLetterMessage.bind(receiver),
+              });
+              const replay = await receive(receiver, envelope.message_id);
+              expect(replay.deliveryCount).toBeGreaterThan(
+                first.deliveryCount ?? 0,
+              );
+              await results.handleAzure(replay, receiver);
+              await completed();
+              return;
+            }
             const result = {
               body: Buffer.from(JSON.stringify(envelope)),
               contentType: 'application/json',
@@ -212,11 +311,7 @@ it.skipIf(!pgUrl)(
               correlationId: envelope.correlation_id,
             } as ServiceBusReceivedMessage;
             const receiver = {
-              completeMessage: vi.fn(async () => {
-                expect((await bulk.findBatchByBatchId(batchId))?.status).toBe(
-                  'COMPLETED',
-                );
-              }),
+              completeMessage: vi.fn(completed),
               abandonMessage: vi.fn(),
               deadLetterMessage: vi.fn(),
             };
@@ -249,6 +344,8 @@ it.skipIf(!pgUrl)(
         catalog.onModuleDestroy(),
         pool.end(),
         lab.close(),
+        azure?.bulk.close(),
+        azure?.catalog.close(),
       ]);
     }
   },
