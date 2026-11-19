@@ -95,7 +95,7 @@ case "$LAB_SUITE" in
     printf 'G6_H5_BULK_AZURE_PASS source=%s flows=R04\n' "$G6_SOURCE_SHA"
     ;;
   claim-check)
-    G6_H5_R01_PG_URL="$G6_H5_INIT_PG_URL" G6_H5_R01_REAL_AZURE=1 +      npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
+    G6_H5_R01_PG_URL="$G6_H5_INIT_PG_URL" G6_H5_R01_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
     printf 'G6_H5_R01_R04_AZURE_PASS source=%s flows=R01,R04\n' "$G6_SOURCE_SHA"
     ;;
 esac
