@@ -1,0 +1,119 @@
+name: Publicar imágenes H5 del fork
+
+on:
+  push:
+    branches: [trabajo/cueva/integracion-service-bus-h5]
+    paths: [.github/workflows/publish-fork-h5-images.yml]
+
+permissions: {}
+
+env:
+  SOURCE_SHA: 827476c97e37cf8a5c9a196e287c3d3b4f2acdd9
+  CI_RUN_ID: '44393762229'
+
+jobs:
+  source:
+    if: >-
+      github.repository == 'AXL031/G6-Productos-Ofertas-backend' &&
+      github.ref == 'refs/heads/trabajo/cueva/integracion-service-bus-h5' &&
+      github.actor == 'AXL031' && github.triggering_actor == 'AXL031'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validar automatización y CI del candidato
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" |
+            jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$SOURCE_SHA" '
+              .repository.full_name == $repo and .head_sha == $sha and
+              .head_branch == "trabajo/cueva/integracion-service-bus-h5" and
+              .path == ".github/workflows/ci.yml" and .event == "workflow_dispatch" and
+              .status == "completed" and .conclusion == "success"' >/dev/null
+
+  publish:
+    name: Publicar ${{ matrix.service }}
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        service:
+          - bulk-svc
+          - catalog-svc
+          - combos-svc
+          - inventory-svc
+          - price-audit-svc
+          - pricing-svc
+          - promotions-svc
+          - taxonomy-svc
+    concurrency:
+      group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+      - name: Comprobar procedencia y etiqueta SHA
+        id: existing
+        env:
+          SERVICE: ${{ matrix.service }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          [[ "$(git rev-parse HEAD)" == "$SOURCE_SHA" ]]
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$GITHUB_OUTPUT"
+      - name: Construir imagen del candidato
+        if: steps.existing.outputs.exists == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: Dockerfile.service
+          build-args: SERVICE_NAME=${{ matrix.service }}
+          load: true
+          tags: ${{ steps.existing.outputs.image }}
+          labels: |
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ env.SOURCE_SHA }}
+            org.opencontainers.image.title=${{ matrix.service }}
+      - name: Publicar sin sobrescribir y verificar digest
+        env:
+          SERVICE: ${{ matrix.service }}
+          IMAGE: ${{ steps.existing.outputs.image }}
+          WAS_EXISTING: ${{ steps.existing.outputs.exists }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          verification="$(mktemp)"
+          trap 'rm -f "$verification"' EXIT
+          if [[ "$WAS_EXISTING" == false ]]; then
+            bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$verification"
+            grep -Fxq 'exists=false' "$verification"
+            docker push "$IMAGE"
+          fi
+          : > "$verification"
+          bash ops/shared/ensure-ghcr-sha-image.sh "$GITHUB_REPOSITORY" "$SERVICE" "$SOURCE_SHA" "$verification"
+          digest="$(sed -n 's/^digest=//p' "$verification")"
+          [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]
+          printf 'Imagen verificada: `%s@%s`\nSHA de origen: `%s`\n' "$IMAGE" "$digest" "$SOURCE_SHA" >> "$GITHUB_STEP_SUMMARY"
+          printf 'GHCR_IMAGE_VERIFIED=%s@%s\n' "$IMAGE" "$digest"
