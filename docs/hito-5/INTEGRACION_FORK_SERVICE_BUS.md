@@ -8,11 +8,11 @@ El fork incorpora el borrador Catalog #243 en el SHA 9c448044d9903b79a823e30a74d
 
 - R13 usa el emisor `InventoryServiceBusRelay` con un evento generado por `OutboxService.stockChanged` y el receptor de Promotions. La prueba conecta ambos extremos en la frontera del SDK y aplica las migraciones históricas verificadas de Promotions en PostgreSQL descartable. Cubre resultado de invalidación, pérdida de confirmación y reentrega después de reiniciar el receptor. El transporte SDK de esta prueba es un doble.
 - R08 acepta el formato del publicador Catalog sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. La prueba local y la prueba Azure descrita abajo verificaron baja de SKU, orden de versión y replay.
-- R17 añade una entrega independiente por destino para `pricing.price.changed`. Si falla la entrega de Promotions, Price Audit aún puede confirmar la suya. Se proponen una migración aditiva y configuración separada del piloto R16. Falta aplicar la migración en un entorno autorizado y probar ambos destinos con Azure y los dos consumidores.
-- R05/R12 tienen un receptor H5 de Combos que reutiliza el handler y la identidad de Inbox de H4, con complete después del commit. Verificar en Azure ambas colas y el permiso HTTP de lectura de Catalog que usa la baja por producto.
+- R17 añade una entrega independiente por destino para `pricing.price.changed`. Si falla la entrega de Promotions, Price Audit aún puede confirmar la suya. Este comportamiento se comprobó en el laboratorio con ambos consumidores y la migración aditiva en PostgreSQL descartable.
+- R05/R12 tienen un receptor H5 de Combos que reutiliza el handler y la identidad de Inbox de H4, con complete después del commit. Azure validó baja de SKU y cambio de stock. La baja por producto depende además de la lectura HTTP autenticada de Catalog.
 - R07/R15 usan el receptor Azure de Pricing para inicialización y baja de SKU. El resultado tiene una entrega durable hacia Catalog. Una prueba en PostgreSQL envía el sobre producido por Catalog, repite su entrega y valida con el parser oficial de Catalog un único resultado con la correlación y la causación originales.
 - R06/R11 conservan la versión inicial de saldo 0 definida por el modelo de Inventory. El resultado de inicialización se entrega a Catalog. En H5 la inicialización en cero no publica `inventory.stock.changed`, cuyo contrato exige una versión positiva. Las mutaciones posteriores conservan su publicación por destino. La recepción R06 valida también correlación exacta y UTF-8.
-- R04 tiene receptor candidato en Bulk para resultados de Catalog. Se selecciona con `MESSAGING_PROVIDER=AZURE_SERVICE_BUS` y `BULK_SERVICE_BUS_CATALOG_RESULTS_ENABLED=true`, con su identidad Receiver en `g6.bulk.from.catalog`. Usa la persistencia y conciliación que ya existen. La admisión de importaciones en H5 permanece cerrada hasta resolver R01 y comprobar la ruta privada de contenido y los resultados correlacionados.
+- R04 tiene receptor candidato en Bulk para resultados de Catalog. Se selecciona con `MESSAGING_PROVIDER=AZURE_SERVICE_BUS` y `BULK_SERVICE_BUS_CATALOG_RESULTS_ENABLED=true`, con su identidad Receiver en `g6.bulk.from.catalog`. El laboratorio comprobó la persistencia y conciliación de resultados de lotes previamente admitidos. La admisión de importaciones en H5 permanece detrás de R01 y de la aprobación de la ruta privada de contenido.
 - R09/R18 tienen runtime H5 del lado Taxonomy. El receptor conserva la correlación y la barrera del handler existente. La migración candidata marca el transporte al crear el hecho y registra la entrega durable al mismo tiempo. El relay H5 envía fuera de la transacción y retiene el MessageId ante un timeout. H4 conserva sus pendientes propios y excluye las filas de H5.
 - N01 usa los schemas de OpenAPI actuales y valida igualdad de snapshot ref con order_id. El controlador y el worker de producción siguen detrás del cierre de G5/G7 y de una fuente autorizada de las evidencias.
 
@@ -68,24 +68,49 @@ La ejecución conjunta usó la suite `fdc554eb30425dd109e5a35e90bf1b595403c094` 
 
 Estas pruebas ejecutan los componentes de mensajería compilados de Catalog, Inventory y Promotions. Quedan pendientes el arranque completo de las aplicaciones en el ambiente destino, la disponibilidad de sus dependencias autenticadas y el corte operativo.
 
-Un `what-if` posterior validó que las diez colas de R05/R06/R07/R09/R11/R12/R15/R16/R17/R18 se crearían dentro del mismo grupo de laboratorio. La vista previa terminó sin eliminaciones ni reemplazos. Esas colas quedan pendientes de despliegue y de pruebas funcionales.
+Un `what-if` posterior validó que las diez colas de R05/R06/R07/R09/R11/R12/R15/R16/R17/R18 se crearían dentro del mismo grupo de laboratorio. La vista previa terminó sin eliminaciones ni reemplazos. Esta verificación precedió a los despliegues y las pruebas registradas abajo.
+
+### Inicializaciones, baja maestra y entregas de Pricing
+
+La primera prueba de inicializaciones reprodujo un error real de arranque de Inventory con `inventory_app`. La vista `information_schema.constraint_column_usage` oculta las tablas de otro propietario. El commit `c3cb185dbd488084f8101535a3b30fc0eb19461f` comprueba la clave foránea exacta en el catálogo de PostgreSQL, sin ampliar el rol y sin cambiar migraciones. El CI aprobó el SHA y la regresión arrancó con `inventory_app` sin membresía del propietario. Se publicó solo Inventory. [CI de la corrección](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44557493168) · [Publicación de Inventory](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44558413410)
+
+El digest vigente de Inventory para estas pruebas es `sha256:f419fb7d762d98ff15a53fc9b6d293ed61e8f38e6ca33679316ce926e3cf2915`. Catalog, Pricing, Taxonomy, Price Audit y Promotions se fijaron por los digests de la publicación original.
+
+R08 y R13 volvieron a pasar con el digest vigente de Inventory, los digests originales de Catalog y Promotions y la suite `fdc554eb30425dd109e5a35e90bf1b595403c094`. El runner reprodujo el rechazo RBAC y las comprobaciones de Inbox y versión descritas arriba.
+
+| Flujos | Evidencia en Azure |
+| --- | --- |
+| R06/R11 · Catalog ↔ Inventory | Saldo inicial en cero con ubicación válida y rechazo durable por ubicación inexistente. Reentregas inducidas tras commit en Inventory y Catalog. Un resultado correlacionado por solicitud y baja de SKU aplicada una vez. |
+| R07/R15 · Catalog ↔ Pricing | Precio inicial persistido y rechazo durable de una recuperación histórica sin vigencia. Reentrega después del commit en ambos extremos, un resultado de inicialización por solicitud y baja SKU deduplicada. |
+| R09/R18 · Catalog ↔ Taxonomy | Categorías `CLEAR` e `IN_USE` con estado terminal durable. Reentrega del resultado de Catalog sin duplicar el efecto. La barrera siguió activa hasta el evento terminal correlacionado. |
+| R16/R17 · Pricing → Price Audit y Promotions | Un solo hecho con dos entregas. Al interrumpir el envío a Promotions, Audit confirmó el suyo. El reintento confirmó Promotions y ambas reentregas dejaron un solo efecto persistido por consumidor. |
+| R05/R12 · Catalog e Inventory → Combos | R05 baja de SKU y R12 invalidación del stock proyectado, con reentrega después del commit, un Inbox por evento y conservación de la marca de baja tras el cambio de stock. |
+| R04 · Catalog → Bulk | Resultados de éxito y rechazo correlacionados con lotes sintéticos previamente admitidos. Reentrega después del commit y una sola fila de Inbox por resultado. Ninguna orden de importación publicada. |
+
+La suite bilateral `4031bb2884349eb9bc50d15ae85200a6a9b1d6cc` aprobó cuatro casos en Azure, incluidos dos casos de preparación y readiness. El ensayo anterior dejó un único comando sintético de Pricing, que se identificó y completó por su MessageId antes de la corrida final. La suite de fan-out `2a0983245ef2bdf39c2cec38eb11715349243e6a` aprobó dos casos en Azure, incluido el fixture SQL. Los runners quedaron retirados y las colas terminaron con cero mensajes activos y cero en DLQ.
+
+La suite de Combos `9eb420163d513b8346173b2d374fe186bd8872be` aprobó dos casos en Azure. El fixture creó un combo con dos componentes en una transacción, como exige la migración oficial. Las dos entregas de negocio fueron confirmadas tras su reentrega y conservaron una sola fila de Inbox por evento.
+
+La suite R04 del commit `d511e04b51db19477e6a413d5802a2fbd8e0e5ca` aprobó dos casos en Azure con Catalog y Bulk fijados por digest. Usó el emisor de Catalog para el sobre canónico y el receptor de Bulk para aplicar y confirmar ambos resultados. El caso local adicional verificó la conciliación y deduplicación sobre PostgreSQL descartable.
+
+El laboratorio quedó con 13 colas, cero mensajes activos, cero en DLQ y cero contenedores de prueba. La prueba de tipos focalizada cubrió las cuatro suites nuevas. [CI del SHA final de pruebas](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44564412703)
 
 ## Dependencias para completar el corte
 
 | Flujo | Condición verificable |
 | --- | --- |
-| R06/R07/R11/R15 | Completar integración bilateral en Azure para inicializaciones, bajas y resultados durables. R07/R15 tienen evidencia de persistencia y compatibilidad de sobres local |
-| R05/R12 | Prueba bilateral de emisor y receptor en Azure, con efecto único ante una entrega repetida |
-| R09/R18 | Aplicar migración candidata del lado Taxonomy y probar ambos lados con el runtime Catalog, incluida la barrera de baja en Azure |
-| R16/R17 | Repetir el fan-out de Pricing con los digests candidatos y los dos consumidores en Azure. La evidencia previa de R16 corresponde al piloto aislado |
-| R01–R04/R10/R14 | Contratos Bulk pendientes, ruta de contenido privado aprobada y E2E por destino dentro de 256 KB de Basic |
+| R06/R07/R11/R15 | Trasladar al ambiente destino las migraciones y grants validados en el laboratorio y comprobar el arranque completo de los servicios |
+| R05/R12 | R05 baja de producto requiere comprobar Catalog HTTP autenticado y el grant efectivo `catalogo:leer` para Combos. R05 baja SKU y R12 ya se probaron en el laboratorio |
+| R09/R18 | Completar la cobertura en Azure de las demás entidades maestras y comprobar el arranque autenticado en el ambiente destino |
+| R16/R17 | Comprobar arranque, grants y activación del fan-out en el ambiente destino |
+| R01/R02/R03/R10/R14 | Owners de Bulk, Catalog, Inventory y Pricing deben cerrar los contratos de importación y entrega, aprobar la ruta privada de contenido R01 y validar E2E por destino dentro de 256 KB de Basic. R04 ya tiene evidencia del receptor con lotes preexistentes |
 | N01 y frontera externa | Homologación G5, grants verificados G7, evidencia reserva/snapshot, rutas autenticadas Gateway/APIM y conciliación durable G5 |
 | Corte y retiro H4 | CI del SHA candidato, migraciones y RBAC por ambiente, E2E Azure, recuperación, aprobación operativa y reconciliación de pendientes antes de retirar RabbitMQ |
 
 ## Orden para evaluar el corte
 
 1. Fijar los SHA del fork y de Docs. En el laboratorio, desplegar el plan de las colas seleccionadas con sus identidades, ejecutar el smoke de R13 y registrar el namespace y las evidencias de envío, rechazo por RBAC, Inbox y reentrega.
-2. Probar R06/R07/R11/R15 con Catalog, Inventory y Pricing. Incluir resultado de inicialización aceptada, rechazo, reentrega, correlación y caída después del commit. Después verificar R04, Combos y el ciclo de bajas de Taxonomy.
+2. Reproducir las pruebas de inicialización, R04, Combos, Taxonomy y fan-out según la evidencia anterior. Registrar las variantes y dependencias autenticadas pendientes para el ambiente destino.
 3. Para cada productor, conciliar Outbox e Inbox del transporte anterior antes de habilitar el nuevo. Para una reversión, detener el emisor nuevo y clasificar sus intenciones pendientes o ambiguas por MessageId, destino y estado de negocio. Cambiar proveedor solo después de reconciliar esos pendientes y acordar cómo aislar los hechos ya enviados. La reversión no es un replay automático del Outbox histórico.
 4. Mantener los flujos de Bulk dependientes de contratos y la frontera externa G5/G7 cerrados hasta su validación. La publicación a la principal, los grants y la retirada de RabbitMQ se hacen en una fase posterior al trabajo de esta rama.
 
