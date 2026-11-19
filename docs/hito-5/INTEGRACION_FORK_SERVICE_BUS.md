@@ -7,7 +7,7 @@ El fork incorpora el borrador Catalog #243 en el SHA 9c448044d9903b79a823e30a74d
 ## Evidencia local
 
 - R13 usa el emisor `InventoryServiceBusRelay` con un evento generado por `OutboxService.stockChanged` y el receptor de Promotions. La prueba conecta ambos extremos en la frontera del SDK y aplica las migraciones históricas verificadas de Promotions en PostgreSQL descartable. Cubre resultado de invalidación, pérdida de confirmación y reentrega después de reiniciar el receptor. El transporte SDK de esta prueba es un doble.
-- R08 acepta el formato del publicador Catalog sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. La prueba local con publicación de Catalog y persistencia Promotions verificó la baja SKU, el orden de versión y el replay. Falta repetir con el runtime del #243 y los permisos Azure.
+- R08 acepta el formato del publicador Catalog sin espejos AMQP de producer/schema_version/route_version. Si están presentes, se validan. La prueba local y la prueba Azure descrita abajo verificaron baja de SKU, orden de versión y replay.
 - R17 añade una entrega independiente por destino para `pricing.price.changed`. Si falla la entrega de Promotions, Price Audit aún puede confirmar la suya. Se proponen una migración aditiva y configuración separada del piloto R16. Falta aplicar la migración en un entorno autorizado y probar ambos destinos con Azure y los dos consumidores.
 - R05/R12 tienen un receptor H5 de Combos que reutiliza el handler y la identidad de Inbox de H4, con complete después del commit. Verificar en Azure ambas colas y el permiso HTTP de lectura de Catalog que usa la baja por producto.
 - R07/R15 usan el receptor Azure de Pricing para inicialización y baja de SKU. El resultado tiene una entrega durable hacia Catalog. Una prueba en PostgreSQL envía el sobre producido por Catalog, repite su entrega y valida con el parser oficial de Catalog un único resultado con la correlación y la causación originales.
@@ -34,6 +34,8 @@ Taxonomy añadió 344 pruebas unitarias y dos casos de integración aprobados. E
 Con Catalog #243 integrado, pasaron 91 pruebas focalizadas de Catalog, Inventory y Bulk. La prueba bilateral de Pricing más la regresión del piloto pasó 10 casos con PostgreSQL descartable. Pasaron también typecheck, formato, lint con las cuatro advertencias preexistentes y builds de Catalog, Pricing, Inventory y Bulk.
 
 El CI del fork sobre 45659be detectó que el parser de Catalog rechazaba eventos válidos de Taxonomy con causation_id u operation_id omitidos. La corrección conserva esos campos como opcionales en el sobre general y mantiene las comprobaciones obligatorias para los resultados de inicialización. Pasaron los 27 casos focalizados de Catalog y Taxonomy. La suite opcional de Inventory aprobó sus diez casos H5 con PostgreSQL y el SQL oficial fijado por SHA.
+
+En la validación del 19 de noviembre volvieron a pasar las 136 pruebas focalizadas de mensajería de Inventory y Bulk y del servicio Combos. Con PostgreSQL local descartable también pasaron diez pruebas de Pricing y la regresión del piloto, dos de Taxonomy y los dos casos locales de Catalog/Inventory hacia Promotions. Los dos casos opcionales con Service Bus se ejecutaron por separado en Azure.
 
 ## Publicación de imágenes del fork
 
@@ -62,7 +64,11 @@ El 19 de noviembre de 2026 se desplegó R13 en Azure for Students, región Chile
 
 La plantilla `ops/azure/service-bus/h5-promotions-runner.bicep` reproduce R13 y admite R08 al recibir la identidad y el digest de Catalog. Usa PostgreSQL 17 descartable, un límite de tiempo y ningún ingress. La ejecución registra `G6_H5_PROMOTIONS_AZURE_PASS`, el SHA de la suite y los casos Vitest aprobados. Fijar por separado los digests de las imágenes y el SHA del archivo fuente de las pruebas.
 
-Esta prueba ejecuta los componentes de mensajería compilados de Inventory y Promotions. Quedan pendientes el arranque completo de las aplicaciones en el ambiente destino, la disponibilidad de sus dependencias autenticadas y el corte operativo.
+La ejecución conjunta usó la suite `fdc554eb30425dd109e5a35e90bf1b595403c094` y los digests de Catalog, Inventory y Promotions del candidato `827476c`. En R08, tres entregas (versión 3, versión 2 y repetición de la versión 3) dejaron dos registros completos de Inbox y conservaron la proyección de versión 3. R13 volvió a pasar. Las colas `g6.promotions.from.catalog` y `g6.promotions.from.inventory` terminaron con cero mensajes activos y cero en DLQ. Se retiró el runner y se verificó que el grupo quedó sin contenedores. Quedaron el namespace Basic, las dos colas, las identidades de laboratorio y sus permisos. El CI de la suite y del runner aprobó 21 jobs. [CI del SHA de pruebas](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44542847846)
+
+Estas pruebas ejecutan los componentes de mensajería compilados de Catalog, Inventory y Promotions. Quedan pendientes el arranque completo de las aplicaciones en el ambiente destino, la disponibilidad de sus dependencias autenticadas y el corte operativo.
+
+Un `what-if` posterior validó que las diez colas de R05/R06/R07/R09/R11/R12/R15/R16/R17/R18 se crearían dentro del mismo grupo de laboratorio. La vista previa terminó sin eliminaciones ni reemplazos. Esas colas quedan pendientes de despliegue y de pruebas funcionales.
 
 ## Dependencias para completar el corte
 
@@ -71,6 +77,7 @@ Esta prueba ejecuta los componentes de mensajería compilados de Inventory y Pro
 | R06/R07/R11/R15 | Completar integración bilateral en Azure para inicializaciones, bajas y resultados durables. R07/R15 tienen evidencia de persistencia y compatibilidad de sobres local |
 | R05/R12 | Prueba bilateral de emisor y receptor en Azure, con efecto único ante una entrega repetida |
 | R09/R18 | Aplicar migración candidata del lado Taxonomy y probar ambos lados con el runtime Catalog, incluida la barrera de baja en Azure |
+| R16/R17 | Repetir el fan-out de Pricing con los digests candidatos y los dos consumidores en Azure. La evidencia previa de R16 corresponde al piloto aislado |
 | R01–R04/R10/R14 | Contratos Bulk pendientes, ruta de contenido privado aprobada y E2E por destino dentro de 256 KB de Basic |
 | N01 y frontera externa | Homologación G5, grants verificados G7, evidencia reserva/snapshot, rutas autenticadas Gateway/APIM y conciliación durable G5 |
 | Corte y retiro H4 | CI del SHA candidato, migraciones y RBAC por ambiente, E2E Azure, recuperación, aprobación operativa y reconciliación de pendientes antes de retirar RabbitMQ |
