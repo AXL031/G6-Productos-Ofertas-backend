@@ -284,6 +284,7 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
           expect(await relayCatalogDelivery(catalogDb, catalog)).toBe(
             'CONFIRMED',
           );
+          console.log('H5_INITIALIZATION_REQUEST', dependency, msg.message_id);
           const first = await receive(receiver, msg.message_id);
           let abandonedAfterCommit = false;
           const settle = {
@@ -293,9 +294,9 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
                   dependency === 'INVENTORY' ? 'inventory' : 'pricing'
                 ].pool.query(
                   dependency === 'INVENTORY'
-                    ? "SELECT 1 FROM inventory.outbox WHERE payload->>'causation_id'=$1"
-                    : 'SELECT 1 FROM pricing.outbox WHERE causation_id=$1',
-                  [msg.message_id],
+                    ? "SELECT 1 FROM inventory.outbox o JOIN inventory.outbox_delivery d ON d.message_id=o.event_id WHERE o.payload->>'causation_id'=$1 AND o.payload->>'kind'='result' AND d.destination=$2"
+                    : "SELECT 1 FROM pricing.outbox o JOIN pricing.outbox_delivery d USING (message_id) WHERE o.causation_id=$1 AND o.kind='result' AND d.destination=$2",
+                  [msg.message_id, results[dependency]],
                 );
                 expect(pending.rowCount).toBe(1);
                 await receiver.abandonMessage(delivery);
@@ -401,11 +402,26 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
             'UBICACION_NO_ENCONTRADA',
           );
           await roundTrip('PRICING', priceRequest(25.3), sku, null);
+          const historicalProduct = randomUUID();
+          const historicalSku = 'H5-HISTORICAL-' + historicalProduct;
+          const historical = envelope(
+            'pricing.product.initialization.requested',
+            {
+              product_id: historicalProduct,
+              sku_base: historicalSku,
+              modalidad: 'RECUPERACION_HISTORICA',
+              moneda: 'PEN',
+              channel_id: null,
+              motivo_cambio: 'ALTA_PRODUCTO',
+            },
+            randomUUID(),
+            randomUUID(),
+          );
           await roundTrip(
             'PRICING',
-            priceRequest(40),
-            sku,
-            'PRODUCT_ALREADY_INITIALIZED',
+            historical,
+            historicalSku,
+            'HISTORICAL_PRICE_CONFLICT',
           );
 
           const balance = await db.inventory.pool.query(

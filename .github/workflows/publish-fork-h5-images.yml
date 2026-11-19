@@ -8,8 +8,8 @@ on:
 permissions: {}
 
 env:
-  SOURCE_SHA: 827476c97e37cf8a5c9a196e287c3d3b4f2acdd9
-  CI_RUN_ID: '44393762229'
+  SOURCE_SHA: c3cb185dbd488084f8101535a3b30fc0eb19461f
+  CI_RUN_ID: '44557493168'
 
 jobs:
   source:
@@ -32,12 +32,20 @@ jobs:
         run: |
           set -Eeuo pipefail
           go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12 -shellcheck=
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID" |
+          for attempt in $(seq 1 36); do
+            run="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID")"
             jq -e --arg repo "$GITHUB_REPOSITORY" --arg sha "$SOURCE_SHA" '
               .repository.full_name == $repo and .head_sha == $sha and
               .head_branch == "trabajo/cueva/integracion-service-bus-h5" and
-              .path == ".github/workflows/ci.yml" and .event == "workflow_dispatch" and
-              .status == "completed" and .conclusion == "success"' >/dev/null
+              .path == ".github/workflows/ci.yml" and .event == "workflow_dispatch"' <<< "$run" >/dev/null
+            if jq -e '.status == "completed"' <<< "$run" >/dev/null; then
+              jq -e '.conclusion == "success"' <<< "$run" >/dev/null
+              exit 0
+            fi
+            sleep 10
+          done
+          echo 'La CI del candidato sigue pendiente; no se publica.' >&2
+          exit 1
 
   publish:
     name: Publicar ${{ matrix.service }}
@@ -52,14 +60,7 @@ jobs:
       max-parallel: 4
       matrix:
         service:
-          - bulk-svc
-          - catalog-svc
-          - combos-svc
           - inventory-svc
-          - price-audit-svc
-          - pricing-svc
-          - promotions-svc
-          - taxonomy-svc
     concurrency:
       group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
       cancel-in-progress: false
