@@ -180,7 +180,9 @@ describe.skipIf(!process.env.G6_H5_COMBOS_PG_URL)('Combos H5 events', () => {
           );
           expect(committed).toBe(true);
           const replay = await receive();
-          expect(replay.deliveryCount).toBeGreaterThan(initial.deliveryCount);
+          expect(replay.deliveryCount).toBeGreaterThan(
+            initial.deliveryCount ?? 0,
+          );
           await consumer.processServiceBusDelivery(queue, receiver, replay);
           await assertInbox();
         }

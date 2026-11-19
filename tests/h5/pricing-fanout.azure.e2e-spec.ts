@@ -139,7 +139,7 @@ describe.skipIf(!process.env.G6_H5_FANOUT_PG_URL)('Pricing H5 fan-out', () => {
                   else await receiver.completeMessage(message);
                   promotionSettlements.push({
                     id: String(message.messageId),
-                    count: message.deliveryCount,
+                    count: message.deliveryCount ?? 0,
                   });
                 },
               };
@@ -185,6 +185,7 @@ describe.skipIf(!process.env.G6_H5_FANOUT_PG_URL)('Pricing H5 fan-out', () => {
             precioRegular: '123.45',
             currency: 'PEN',
             motivoCambio: 'H5_LAB',
+            accionPrecioOferta: 'CONSERVAR',
             usuarioId: null,
           },
           0n,
@@ -261,7 +262,7 @@ describe.skipIf(!process.env.G6_H5_FANOUT_PG_URL)('Pricing H5 fan-out', () => {
         });
         expect(await committed.handle(first)).toBe('completed');
         const replay = await readAudit();
-        expect(replay.deliveryCount).toBeGreaterThan(first.deliveryCount);
+        expect(replay.deliveryCount).toBeGreaterThan(first.deliveryCount ?? 0);
         expect(
           await new AuditServiceBusHandler(audit, auditReceiver).handle(replay),
         ).toBe('completed');

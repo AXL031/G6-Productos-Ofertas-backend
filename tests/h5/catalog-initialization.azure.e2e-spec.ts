@@ -349,7 +349,9 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
           await handler.handle(first);
           expect(abandonedAfterCommit).toBe(true);
           const replay = await receive(receiver, msg.message_id);
-          expect(replay.deliveryCount).toBeGreaterThan(first.deliveryCount);
+          expect(replay.deliveryCount).toBeGreaterThan(
+            first.deliveryCount ?? 0,
+          );
           await handler.handle(replay);
           const relay = dependency === 'INVENTORY' ? inventoryOut : pricingOut;
           expect(await relay.publishOne()).toBe('sent');
@@ -676,7 +678,7 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
             expect(firstCommit).toBe(true);
             const replay = await receive(taxonomyIn, checkedId);
             expect(replay.deliveryCount).toBeGreaterThan(
-              delivery.deliveryCount,
+              delivery.deliveryCount ?? 0,
             );
             await receiveTaxonomyDelivery(store, taxonomyIn, replay);
             expect((await barrier()).rows[0].is_blocking).toBe(true);

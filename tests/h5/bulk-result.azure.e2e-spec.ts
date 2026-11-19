@@ -11,12 +11,13 @@ import { bulkSchema } from '../../apps/bulk-svc/src/persistence/bulk.schema.js';
 import { prepareInitializationDatabases } from './initialization-lab-postgres.js';
 
 function fixture(rejected: boolean) {
+  const batchOperationId = randomUUID();
   return {
     rejected,
     batchId: randomUUID(),
     correlationId: randomUUID(),
-    operationId: randomUUID(),
-    batchOperationId: randomUUID(),
+    operationId: batchOperationId,
+    batchOperationId,
     commandId: randomUUID(),
     row: {
       rowId: randomUUID(),
@@ -25,6 +26,42 @@ function fixture(rejected: boolean) {
       skuBase: 'H5-BULK-' + randomUUID(),
     },
   };
+}
+
+function result(test: ReturnType<typeof fixture>) {
+  const {
+    batchId,
+    correlationId,
+    operationId,
+    batchOperationId,
+    commandId,
+    row,
+    rejected,
+  } = test;
+  return envelope(
+    rejected ? 'catalog.bulk.upsert.rejected' : 'catalog.bulk.upsert.completed',
+    {
+      batch_id: batchId,
+      batch_operation_id: batchOperationId,
+      ...(rejected
+        ? { code: 'VALIDACION', detail: 'Synthetic rejection' }
+        : {
+            results: [
+              {
+                row_number: row.rowNumber,
+                row_operation_id: row.rowOperationId,
+                product_id: randomUUID(),
+                sku_base: row.skuBase,
+                status: 'COMPLETED',
+                code: null,
+              },
+            ],
+          }),
+    },
+    correlationId,
+    operationId,
+    commandId,
+  );
 }
 
 describe.skipIf(!process.env.G6_H5_BULK_PG_URL)(
@@ -117,12 +154,47 @@ describe.skipIf(!process.env.G6_H5_BULK_PG_URL)(
     });
 
     it('loads two previously admitted disposable batches without publishing a command', async () => {
-      for (const { batchId, row } of cases) {
+      for (const test of cases) {
+        const { batchId, row } = test;
+        expect(result(test).operation_id).toBe(test.batchOperationId);
         expect(await bulk.listRowSteps(batchId, row.rowId)).toEqual([
           expect.objectContaining({ domain: 'CATALOGO', status: 'PENDING' }),
         ]);
       }
     });
+
+    it.skipIf(process.env.G6_H5_BULK_REAL_AZURE === '1')(
+      'reconciles the same contract results against PostgreSQL without transport',
+      async () => {
+        for (const test of cases) {
+          const reply = result(test);
+          const input = {
+            messageId: reply.message_id,
+            operationId: test.operationId,
+            causationId: test.commandId,
+            correlationId: test.correlationId,
+            eventName: test.rejected
+              ? ('catalog.bulk.upsert.rejected' as const)
+              : ('catalog.bulk.upsert.completed' as const),
+            payload: { ...reply },
+          };
+          expect((await bulk.recordCatalogBulkResult(input)).processed).toBe(
+            true,
+          );
+          expect((await bulk.recordCatalogBulkResult(input)).processed).toBe(
+            false,
+          );
+          expect(await bulk.listRowSteps(test.batchId, test.row.rowId)).toEqual(
+            [
+              expect.objectContaining({
+                domain: 'CATALOGO',
+                status: test.rejected ? 'FAILED' : 'COMPLETED',
+              }),
+            ],
+          );
+        }
+      },
+    );
 
     it.skipIf(process.env.G6_H5_BULK_REAL_AZURE !== '1')(
       'R04 reconciles accepted and rejected Catalog results once after redelivery',
@@ -161,41 +233,8 @@ describe.skipIf(!process.env.G6_H5_BULK_PG_URL)(
 
         try {
           for (const test of cases) {
-            const {
-              batchId,
-              correlationId,
-              operationId,
-              batchOperationId,
-              commandId,
-              row,
-              rejected,
-            } = test;
-            const reply = envelope(
-              rejected
-                ? 'catalog.bulk.upsert.rejected'
-                : 'catalog.bulk.upsert.completed',
-              {
-                batch_id: batchId,
-                batch_operation_id: batchOperationId,
-                ...(rejected
-                  ? { code: 'VALIDACION', detail: 'Synthetic rejection' }
-                  : {
-                      results: [
-                        {
-                          row_number: row.rowNumber,
-                          row_operation_id: row.rowOperationId,
-                          product_id: randomUUID(),
-                          sku_base: row.skuBase,
-                          status: 'COMPLETED',
-                          code: null,
-                        },
-                      ],
-                    }),
-              },
-              correlationId,
-              operationId,
-              commandId,
-            );
+            const { batchId, row, rejected } = test;
+            const reply = result(test);
             await catalog.publish(queue, reply, AbortSignal.timeout(10_000));
             const receive = async () => {
               const [message] = await receiver.receiveMessages(1, {
@@ -209,7 +248,7 @@ describe.skipIf(!process.env.G6_H5_BULK_PG_URL)(
               expect(await bulk.listRowSteps(batchId, row.rowId)).toEqual([
                 expect.objectContaining({
                   domain: 'CATALOGO',
-                  status: rejected ? 'REJECTED' : 'COMPLETED',
+                  status: rejected ? 'FAILED' : 'COMPLETED',
                 }),
               ]);
               const receipt = await db.pool.query(
@@ -231,7 +270,9 @@ describe.skipIf(!process.env.G6_H5_BULK_PG_URL)(
             });
             expect(committed).toBe(true);
             const replay = await receive();
-            expect(replay.deliveryCount).toBeGreaterThan(first.deliveryCount);
+            expect(replay.deliveryCount).toBeGreaterThan(
+              first.deliveryCount ?? 0,
+            );
             await consumer.handleAzure(replay, receiver);
             await assertDurable();
           }
