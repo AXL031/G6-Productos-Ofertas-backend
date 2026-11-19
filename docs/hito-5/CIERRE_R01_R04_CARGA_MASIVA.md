@@ -14,7 +14,18 @@ La ruta privada es `GET /api/v1/interno/carga-masiva/contenidos/{contentId}`. El
 4. Seleccionar `MESSAGING_PROVIDER=AZURE_SERVICE_BUS` y activar `BULK_SERVICE_BUS_CATALOG_RESULTS_ENABLED=true` en Bulk. Una vez probado el receptor R04 y el acceso privado, activar `BULK_SERVICE_BUS_CATALOG_COMMANDS_ENABLED=true` para importaciones de actualización que solo requieren Catalog. Las altas con dependencias de otros dominios quedan bloqueadas hasta cerrar los flujos correspondientes.
 5. Ejecutar una actualización sintética con las dos imágenes fijadas por digest, forzar la reentrega de R01 y R04 y comprobar una sola mutación y un resultado durable. Verificar con el broker el límite de 256 KiB, recuperación tras falla y revisión de DLQ. Registrar SHA, digests, namespace, resultado, grants y responsables.
 
-La prueba `tests/h5/bulk-claim-check.postgres.e2e-spec.ts` usa PostgreSQL desechable, la ruta HTTP real y tokens firmados de prueba. Simula las confirmaciones del SDK de Service Bus. La prueba con Azure real y token de G7 es un hito separado.
+## Evidencia del fork
+
+La CI de `1a6dcd6572aa0a744785006886e8ecc24e7dcff8` terminó correctamente. La prueba con PostgreSQL desechable, HTTP y JWT firmado de laboratorio pasó antes de publicar las imágenes del candidato. [CI](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44581488843) · [Verificación y publicación en GHCR](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44582001814)
+
+| Imagen del fork | Digest |
+| --- | --- |
+| `bulk-svc` | `sha256:c0bcbec35763408f4469173946a5010da6410817bd67f1ca1a5cb8d339984df5` |
+| `catalog-svc` | `sha256:917440ebd5ee7cfd3c475bf59ad743f0774a4171a12cb4d7da7102fe7c9e7c93` |
+
+El 19 de noviembre de 2026, la suite `1c2c9b837e823eb5867789c803d8b320c26d52b1` pasó en el namespace Basic `g6-sb-h5-int-32cdqgbnlk7ow` usando los binarios extraídos de ambos digests. La ejecución sin ingress usó las identidades Azure separadas de Bulk y Catalog, PostgreSQL real descartable y la ruta HTTP por loopback con un JWT firmado de laboratorio. El runner registró `G6_H5_R01_R04_AZURE_PASS` y un caso aprobado en Vitest. Se comprobó la reentrega de ambas colas después de persistir cada efecto, una sola mutación de Catalog y la conciliación durable en Bulk. Las 14 colas del laboratorio terminaron con cero mensajes activos y cero en DLQ.
+
+Queda pendiente comprobar en el ambiente destino el HTTPS privado con el token emitido por G7 y la configuración de exposición de Infra. La prueba Azure usó identidades administradas para el broker y un emisor de JWT de prueba para la descarga.
 
 ## Decisiones pendientes con los responsables
 

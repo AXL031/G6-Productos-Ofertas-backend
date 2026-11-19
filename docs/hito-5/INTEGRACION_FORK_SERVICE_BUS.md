@@ -94,7 +94,9 @@ La suite de Combos `9eb420163d513b8346173b2d374fe186bd8872be` aprobó dos casos 
 
 La suite R04 del commit `d511e04b51db19477e6a413d5802a2fbd8e0e5ca` aprobó dos casos en Azure con Catalog y Bulk fijados por digest. Usó el emisor de Catalog para el sobre canónico y el receptor de Bulk para aplicar y confirmar ambos resultados. El caso local adicional verificó la conciliación y deduplicación sobre PostgreSQL descartable.
 
-El laboratorio quedó con 13 colas, cero mensajes activos, cero en DLQ y cero contenedores de prueba. La prueba de tipos focalizada cubrió las cuatro suites nuevas. [CI del SHA final de pruebas](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44564412703)
+El laboratorio quedó con 13 colas, cero mensajes activos, cero en DLQ y cero contenedores de prueba al cerrar esas suites. La prueba de tipos focalizada cubrió las cuatro suites nuevas. [CI del SHA final de pruebas](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44564412703)
+
+La ejecución posterior de R01 y R04 añadió `g6.catalog.from.bulk` y dejó 14 colas de laboratorio. La actualización sintética pasó con ambas colas en Service Bus Basic, PostgreSQL descartable, JWT de prueba y los digests nuevos de Bulk y Catalog. Las dos reentregas conservaron un solo efecto por consumidor. [Evidencia de R01 y R04](CIERRE_R01_R04_CARGA_MASIVA.md)
 
 ## Dependencias para completar el corte
 
@@ -104,7 +106,8 @@ El laboratorio quedó con 13 colas, cero mensajes activos, cero en DLQ y cero co
 | R05/R12 | R05 baja de producto requiere comprobar Catalog HTTP autenticado y el grant efectivo `catalogo:leer` para Combos. R05 baja SKU y R12 ya se probaron en el laboratorio |
 | R09/R18 | Completar la cobertura en Azure de las demás entidades maestras y comprobar el arranque autenticado en el ambiente destino |
 | R16/R17 | Comprobar arranque, grants y activación del fan-out en el ambiente destino |
-| R01/R02/R03/R10/R14 | Owners de Bulk, Catalog, Inventory y Pricing deben cerrar los contratos de importación y entrega, aprobar la ruta privada de contenido R01 y validar E2E por destino dentro de 256 KB de Basic. R04 ya tiene evidencia del receptor con lotes preexistentes |
+| R01/R04 | Castilla y Poma revisan el candidato probado en Azure. G7 e Infra acreditan el grant y la ruta HTTPS privada en el destino, y la capacidad para los documentos y resultados del lote |
+| R02/R03/R10/R14 | Bulk, Inventory y Pricing deben versionar los payloads de comandos y resultados y validar el circuito completo por destino dentro del límite Basic |
 | N01 y frontera externa | Homologación G5, grants verificados G7, evidencia reserva/snapshot, rutas autenticadas Gateway/APIM y conciliación durable G5 |
 | Corte y retiro H4 | CI del SHA candidato, migraciones y RBAC por ambiente, E2E Azure, recuperación, aprobación operativa y reconciliación de pendientes antes de retirar RabbitMQ |
 
