@@ -1,0 +1,168 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Candidatos G6 para los payloads Bulk de Inventory y Pricing",
+  "description": "Propuesta schema_version 2 para revisión interna. El registro AsyncAPI oficial y los contratos H4 conservan su vigencia.",
+  "definitions": {
+    "Uuid": { "type": "string", "format": "uuid" },
+    "Identifier": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "StockUnits": { "type": "integer", "minimum": 0, "maximum": 2147483647 },
+    "Version": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "PriceVersion": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "InventoryRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "sku",
+        "location_id",
+        "expected_stock_version",
+        "target_on_hand"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "sku": { "$ref": "#/definitions/Identifier" },
+        "location_id": { "$ref": "#/definitions/Uuid" },
+        "expected_stock_version": { "$ref": "#/definitions/Version" },
+        "target_on_hand": { "$ref": "#/definitions/StockUnits" }
+      }
+    },
+    "InventoryApplied": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "sku",
+        "location_id",
+        "status",
+        "on_hand",
+        "reserved",
+        "blocked",
+        "available",
+        "stock_version"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "sku": { "$ref": "#/definitions/Identifier" },
+        "location_id": { "$ref": "#/definitions/Uuid" },
+        "status": { "const": "APPLIED" },
+        "on_hand": { "$ref": "#/definitions/StockUnits" },
+        "reserved": { "$ref": "#/definitions/StockUnits" },
+        "blocked": { "$ref": "#/definitions/StockUnits" },
+        "available": { "$ref": "#/definitions/StockUnits" },
+        "stock_version": { "$ref": "#/definitions/Version" }
+      }
+    },
+    "InventoryRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "sku",
+        "location_id",
+        "status",
+        "code"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "sku": { "$ref": "#/definitions/Identifier" },
+        "location_id": { "$ref": "#/definitions/Uuid" },
+        "status": { "const": "REJECTED" },
+        "code": {
+          "enum": [
+            "VERSION_STALE",
+            "SKU_LOCATION_NOT_FOUND",
+            "TARGET_BELOW_COMMITTED_UNITS"
+          ]
+        }
+      }
+    },
+    "PricingRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "product_id",
+        "channel_id",
+        "expected_price_version",
+        "precio_regular",
+        "moneda",
+        "motivo_cambio",
+        "actor_user_id"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "product_id": { "$ref": "#/definitions/Identifier" },
+        "channel_id": { "type": "null" },
+        "expected_price_version": { "$ref": "#/definitions/PriceVersion" },
+        "precio_regular": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "multipleOf": 0.01
+        },
+        "moneda": { "const": "PEN" },
+        "motivo_cambio": { "$ref": "#/definitions/Identifier" },
+        "actor_user_id": { "$ref": "#/definitions/Uuid" }
+      }
+    },
+    "PricingApplied": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "product_id",
+        "channel_id",
+        "status",
+        "price_version"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "product_id": { "$ref": "#/definitions/Identifier" },
+        "channel_id": { "type": "null" },
+        "status": { "const": "APPLIED" },
+        "price_version": { "$ref": "#/definitions/PriceVersion" }
+      }
+    },
+    "PricingRejected": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "batch_id",
+        "row_operation_id",
+        "product_id",
+        "channel_id",
+        "status",
+        "code"
+      ],
+      "properties": {
+        "batch_id": { "$ref": "#/definitions/Uuid" },
+        "row_operation_id": { "$ref": "#/definitions/Uuid" },
+        "product_id": { "$ref": "#/definitions/Identifier" },
+        "channel_id": { "type": "null" },
+        "status": { "const": "REJECTED" },
+        "code": {
+          "enum": [
+            "VERSION_CONFLICT",
+            "PRECIO_NO_ENCONTRADO",
+            "PRECIO_INVALIDO",
+            "OFERTA_INVALIDA",
+            "VIGENCIA_SUPERPUESTA"
+          ]
+        }
+      }
+    }
+  }
+}

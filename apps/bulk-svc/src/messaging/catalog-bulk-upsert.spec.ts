@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCatalogBulkCommands,
   CATALOG_BULK_UPSERT_MAX_ENVELOPE_BYTES,
+  toCatalogBulkClaimCheck,
 } from './catalog-bulk-upsert.js';
 
 const row = (n: number, sku: string, text = '') => ({
@@ -29,6 +30,37 @@ const updateSimple = (n: number, skuBase: string, text = '') => ({
 });
 
 describe('Catalog bulk upsert command construction', () => {
+  it('can reference a multi-byte document bigger than a Basic message', () => {
+    const [inline] = buildCatalogBulkCommands({
+      batchId: '3fab44ac-4064-4f73-a0c4-7daa65421be7',
+      correlationId: '6bd08702-7570-4664-8ebe-4b512bcb4b2f',
+      rows: [updateSimple(0, 'VOLUMEN', 'ñ'.repeat(145_000))],
+      limitResult: true,
+    });
+    const { envelope, document } = toCatalogBulkClaimCheck(inline);
+    expect(envelope.schema_version).toBe(3);
+    expect(envelope.data).not.toHaveProperty('rows');
+    expect(Buffer.byteLength(document)).toBe(
+      envelope.data.content_ref.byte_length,
+    );
+    expect(Buffer.byteLength(document)).toBeGreaterThan(256 * 1024);
+    expect(Buffer.byteLength(JSON.stringify(envelope))).toBeLessThan(1024);
+  });
+
+  it('chunks small rows that would otherwise overflow the inline R04 budget', () => {
+    const rows = Array.from({ length: 1200 }, (_, index) =>
+      updateSimple(index, 'VOL-' + index),
+    );
+    const limited = buildCatalogBulkCommands({
+      batchId: '3fab44ac-4064-4f73-a0c4-7daa65421be7',
+      correlationId: '6bd08702-7570-4664-8ebe-4b512bcb4b2f',
+      rows,
+      limitResult: true,
+    });
+    expect(limited).toHaveLength(2);
+    expect(limited.flatMap(({ envelope }) => envelope.data.rows)).toEqual(rows);
+  });
+
   it('keeps contiguous sku families in one chunk and identities stable on retry', () => {
     const input = {
       batchId: 'batch-1',

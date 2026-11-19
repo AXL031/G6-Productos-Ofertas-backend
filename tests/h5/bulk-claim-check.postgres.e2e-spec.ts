@@ -147,6 +147,7 @@ it.skipIf(!pgUrl)(
       rowId = randomUUID(),
       productId = randomUUID();
     const sku = 'R01-' + randomUUID();
+    const description = 'ñ'.repeat(145_000);
     try {
       await app.listen(0, '127.0.0.1');
       vi.stubEnv('CATALOG_BULK_CONTENT_ORIGIN', await app.getUrl());
@@ -187,6 +188,7 @@ it.skipIf(!pgUrl)(
             product: {
               catalogVersion: Number(before.catalog_version),
               nombre: 'Después ñ',
+              descripcion: description,
             },
             variant: null,
           },
@@ -201,6 +203,7 @@ it.skipIf(!pgUrl)(
       expect(pending).toHaveLength(1);
       const { messageId } = pending[0];
       const publisher = new BulkCatalogBusPublisher(bulk);
+      let contentId: string | undefined;
       const consume = async (transport: ServiceBusMessage) => {
         const command = parseCatalogMessage(
           normalizeCatalogServiceBusBody(transport.body),
@@ -215,6 +218,12 @@ it.skipIf(!pgUrl)(
         });
         expect(transport.contentType).toBe('application/json');
         expect(command.data).not.toHaveProperty('rows');
+        const reference = command.data.content_ref as {
+          content_id: string;
+          byte_length: number;
+        };
+        expect(reference.byte_length).toBeGreaterThan(256 * 1024);
+        contentId = reference.content_id;
         return handler.consume(command);
       };
       if (azure) {
@@ -313,17 +322,21 @@ it.skipIf(!pgUrl)(
       ).toBe('CONFIRMED');
       const product = (
         await lab.catalog.pool.query(
-          'SELECT nombre,catalog_version FROM catalog.products WHERE id=$1',
+          'SELECT nombre,catalog_version,octet_length(descripcion) AS description_bytes FROM catalog.products WHERE id=$1',
           [productId],
         )
       ).rows[0];
       expect(product.nombre).toBe('Después ñ');
+      expect(product.description_bytes).toBe(Buffer.byteLength(description));
       expect(Number(product.catalog_version)).toBe(
         Number(before.catalog_version) + 1,
       );
       expect(
         await bulk.findPendingOutbox(10, false, 'CATALOG_SERVICE_BUS'),
       ).toHaveLength(0);
+      expect(
+        (await bulk.findCatalogContent(contentId!))?.bytes.length,
+      ).toBeGreaterThan(256 * 1024);
     } finally {
       vi.unstubAllEnvs();
       await Promise.allSettled([
