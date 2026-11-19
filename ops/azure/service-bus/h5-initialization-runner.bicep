@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 type Workload = {
-  service: 'catalog-svc' | 'inventory-svc' | 'pricing-svc' | 'taxonomy-svc'
+  service: 'catalog-svc' | 'inventory-svc' | 'pricing-svc' | 'taxonomy-svc' | 'price-audit-svc' | 'promotions-svc'
   image: string
   identityId: string
   clientId: string
@@ -9,6 +9,7 @@ type Workload = {
 
 param containerGroupName string
 param namespaceFqdn string
+param suite 'initialization' | 'price-fanout' = 'initialization'
 @minLength(3)
 @maxLength(4)
 param workloads Workload[]
@@ -59,14 +60,14 @@ var containers = [for workload in workloads: {
   }
 }]
 var identities = [for workload in workloads: {
-  name: 'G6_H5_LAB_${toUpper(replace(workload.service, '-svc', ''))}_CLIENT_ID'
+  name: 'G6_H5_LAB_${toUpper(replace(replace(workload.service, '-svc', ''), '-', '_'))}_CLIENT_ID'
   value: workload.clientId
 }]
 
 resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: containerGroupName
   location: resourceGroup().location
-  tags: { purpose: 'g6-h5-fork-initialization', sourceSha: sourceSha, production: 'false' }
+  tags: { purpose: 'g6-h5-fork-${suite}', sourceSha: sourceSha, production: 'false' }
   identity: { type: 'UserAssigned', userAssignedIdentities: identityKeys }
   properties: {
     osType: 'Linux'
@@ -82,6 +83,8 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
           volumeMounts: statusMount
           environmentVariables: concat(identities, [
             { name: 'LAB_RUNNER', value: runner }
+            { name: 'LAB_SUITE', value: suite }
+            { name: 'G6_H5_INIT_SERVICES', value: join(map(workloads, workload => workload.service), ' ') }
             { name: 'G6_SOURCE_SHA', value: sourceSha }
             { name: 'G6_SOURCE_ARCHIVE_SHA256', value: archiveSha256 }
             { name: 'G6_H5_LAB_NAMESPACE_FQDN', value: namespaceFqdn }

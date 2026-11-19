@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
+import { officialMigrations as promotionsMigrations } from '../../apps/promotions-svc/test/support/official-migrations.mjs';
 
 const docsSha = 'df0b09c651fab7f8fcdc693211109573f5e39a12';
 const inventoryMigrations = [
@@ -14,7 +15,13 @@ const inventoryMigrations = [
   ],
 ];
 
-type Context = 'catalog' | 'inventory' | 'pricing' | 'taxonomy';
+type Context =
+  | 'catalog'
+  | 'inventory'
+  | 'pricing'
+  | 'taxonomy'
+  | 'price-audit'
+  | 'promotions';
 
 async function serviceSql(context: Context, path: string) {
   return readFile(
@@ -61,14 +68,15 @@ export async function prepareInitializationDatabases(source: string) {
   };
   try {
     const existing = await control.query(
-      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy')",
+      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy','g6_h5_price_audit','g6_h5_promotions')",
     );
     if (existing.rowCount) throw new Error('EMPTY_POSTGRES_INSTANCE_REQUIRED');
 
     async function prepare(context: Context) {
-      const name = 'g6_h5_' + context;
-      const owner = 'po_' + context + '_owner';
-      const user = context + '_app';
+      const schema = context.replace('-', '_');
+      const name = 'g6_h5_' + schema;
+      const owner = 'po_' + schema + '_owner';
+      const user = schema + '_app';
       const password = randomUUID();
       await control.query(
         `CREATE ROLE ${owner} NOLOGIN; CREATE ROLE ${user} LOGIN PASSWORD '${password}'`,
@@ -201,7 +209,48 @@ export async function prepareInitializationDatabases(source: string) {
       );
       return taxonomy;
     };
-    return { catalog, inventory, pricing, prepareTaxonomy, close };
+    const preparePriceConsumers = async () => {
+      const audit = await prepare('price-audit');
+      await audit.pool.query(
+        'CREATE ROLE price_audit_archiver NOLOGIN; CREATE SCHEMA price_audit AUTHORIZATION po_price_audit_owner',
+      );
+      const auditSql = await serviceSql(
+        'price-audit',
+        'test/fixtures/price-audit.sql',
+      );
+      if (
+        createHash('sha256')
+          .update(auditSql.replaceAll('\r\n', '\n'))
+          .digest('hex') !==
+        '7d890955717025572da03d258168d81e9b7fa38c797f1b697527f0d4cab89afc'
+      )
+        throw new Error('PRICE_AUDIT_SQL_HASH_MISMATCH');
+      await ownerSql(audit.pool, audit.owner, [
+        auditSql,
+        await serviceSql(
+          'price-audit',
+          'migrations/0002_typed_price_change.sql',
+        ),
+      ]);
+      const promotions = await prepare('promotions');
+      await promotions.pool.query(
+        'CREATE ROLE po_promotions_runtime NOLOGIN; GRANT po_promotions_runtime TO promotions_app; CREATE SCHEMA promotions AUTHORIZATION po_promotions_owner',
+      );
+      await ownerSql(
+        promotions.pool,
+        promotions.owner,
+        await promotionsMigrations(),
+      );
+      return { audit, promotions };
+    };
+    return {
+      catalog,
+      inventory,
+      pricing,
+      prepareTaxonomy,
+      preparePriceConsumers,
+      close,
+    };
   } catch (error) {
     await close();
     throw error;

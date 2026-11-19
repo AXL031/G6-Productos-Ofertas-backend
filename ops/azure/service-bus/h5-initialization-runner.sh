@@ -2,13 +2,16 @@
 set -eu
 trap 'touch /status/done' EXIT
 
-services='catalog-svc inventory-svc pricing-svc'
-if [ -n "${G6_H5_LAB_TAXONOMY_CLIENT_ID:-}" ]; then
-  services="$services taxonomy-svc"
-  export G6_H5_TAXONOMY_REAL_AZURE=1
-fi
-export G6_H5_INIT_SERVICES="$services"
-for service in $services; do
+case "$LAB_SUITE" in
+  initialization)
+    G6_H5_LAB_SPEC='tests/h5/catalog-initialization.azure.e2e-spec.ts'
+    if [ -n "${G6_H5_LAB_TAXONOMY_CLIENT_ID:-}" ]; then export G6_H5_TAXONOMY_REAL_AZURE=1; fi
+    ;;
+  price-fanout) G6_H5_LAB_SPEC='tests/h5/pricing-fanout.azure.e2e-spec.ts' ;;
+  *) exit 1 ;;
+esac
+export G6_H5_LAB_SPEC
+for service in $G6_H5_INIT_SERVICES; do
   mkdir -p "/status/artifacts/$service"
   chmod 0777 "/status/artifacts/$service"
 done
@@ -19,7 +22,7 @@ printf '%s  source.tgz\n' "$G6_SOURCE_ARCHIVE_SHA256" | sha256sum -c -
 tar -xzf source.tgz --strip-components 1
 npm ci --no-audit --no-fund
 
-for service in $services; do
+for service in $G6_H5_INIT_SERVICES; do
   i=0
   until [ -f "/status/artifacts/$service/ready" ]; do
     [ "$i" -lt 90 ] || { echo "IMAGE_ARTIFACT_UNAVAILABLE $service" >&2; exit 1; }
@@ -31,17 +34,18 @@ for service in $services; do
 done
 
 export G6_H5_INIT_PG_URL="postgresql://postgres:$G6_H5_POSTGRES_PASSWORD@127.0.0.1:5432/$G6_H5_POSTGRES_DATABASE"
+export G6_H5_FANOUT_PG_URL="$G6_H5_INIT_PG_URL"
 unset G6_H5_POSTGRES_PASSWORD
 node --input-type=module <<'NODE'
 import { readFileSync, writeFileSync } from 'node:fs';
 import { setTimeout } from 'node:timers/promises';
 import { Client } from 'pg';
 
-const spec = 'tests/h5/catalog-initialization.azure.e2e-spec.ts';
+const spec = process.env.G6_H5_LAB_SPEC;
 const found = new Set();
 const expected = process.env.G6_H5_INIT_SERVICES.split(' ');
 const rewritten = readFileSync(spec, 'utf8').replace(
-  /from '\.\.\/\.\.\/apps\/(catalog-svc|inventory-svc|pricing-svc|taxonomy-svc)\/src\//g,
+  /from '\.\.\/\.\.\/apps\/([a-z-]+-svc)\/src\//g,
   (original, service) => {
     if (!expected.includes(service)) return original;
     found.add(service);
@@ -65,8 +69,16 @@ for (let attempt = 0; attempt < 30; attempt++) {
   }
 }
 NODE
-G6_H5_INIT_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 tests/h5/catalog-initialization.azure.e2e-spec.ts
-printf 'G6_H5_INITIALIZATION_AZURE_PASS source=%s flows=R06,R07,R11,R15\n' "$G6_SOURCE_SHA"
-if [ "${G6_H5_TAXONOMY_REAL_AZURE:-0}" = 1 ]; then
-  printf 'G6_H5_TAXONOMY_AZURE_PASS source=%s flows=R09,R18\n' "$G6_SOURCE_SHA"
-fi
+case "$LAB_SUITE" in
+  initialization)
+    G6_H5_INIT_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
+    printf 'G6_H5_INITIALIZATION_AZURE_PASS source=%s flows=R06,R07,R11,R15\n' "$G6_SOURCE_SHA"
+    if [ "${G6_H5_TAXONOMY_REAL_AZURE:-0}" = 1 ]; then
+      printf 'G6_H5_TAXONOMY_AZURE_PASS source=%s flows=R09,R18\n' "$G6_SOURCE_SHA"
+    fi
+    ;;
+  price-fanout)
+    G6_H5_FANOUT_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
+    printf 'G6_H5_FANOUT_AZURE_PASS source=%s flows=R16,R17\n' "$G6_SOURCE_SHA"
+    ;;
+esac
