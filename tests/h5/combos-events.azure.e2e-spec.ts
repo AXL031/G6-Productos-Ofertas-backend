@@ -21,12 +21,34 @@ import { prepareInitializationDatabases } from './initialization-lab-postgres.js
 describe.skipIf(!process.env.G6_H5_COMBOS_PG_URL)('Combos H5 events', () => {
   let lab: Awaited<ReturnType<typeof prepareInitializationDatabases>>;
   let combos: Awaited<ReturnType<typeof lab.prepareCombos>>;
+  const sku = 'H5-COMBO-' + randomUUID();
+  const comboId = randomUUID();
+  const itemId = randomUUID();
 
   beforeAll(async () => {
     lab = await prepareInitializationDatabases(
       process.env.G6_H5_COMBOS_PG_URL!,
     );
     combos = await lab.prepareCombos();
+    const seed = await combos.pool.connect();
+    try {
+      await seed.query('BEGIN');
+      await seed.query(
+        "INSERT INTO combos.combos(id,name,combo_price,currency) VALUES ($1,'Synthetic combo',50,'PEN')",
+        [comboId],
+      );
+      await seed.query(
+        'INSERT INTO combos.combo_items(id,combo_id,sku,quantity) VALUES ($1,$2,$3,1),($4,$2,$5,1)',
+        [itemId, comboId, sku, randomUUID(), sku + '-SECOND'],
+      );
+      await seed.query(
+        "INSERT INTO combos.component_projection(combo_item_id,catalog_deactivated,projected_available,inventory_observed_at) VALUES ($1,false,4,'2000-01-01')",
+        [itemId],
+      );
+      await seed.query('COMMIT');
+    } finally {
+      seed.release(true);
+    }
   }, 75_000);
   afterAll(async () => {
     await lab?.close();
@@ -113,21 +135,6 @@ describe.skipIf(!process.env.G6_H5_COMBOS_PG_URL)('Combos H5 events', () => {
 
       try {
         await inventoryDb.onModuleInit();
-        const sku = 'H5-COMBO-' + randomUUID();
-        const comboId = randomUUID();
-        const itemId = randomUUID();
-        await combos.pool.query(
-          "INSERT INTO combos.combos(id,name,combo_price,currency) VALUES ($1,'Synthetic combo',50,'PEN')",
-          [comboId],
-        );
-        await combos.pool.query(
-          'INSERT INTO combos.combo_items(id,combo_id,sku,quantity) VALUES ($1,$2,$3,1)',
-          [itemId, comboId, sku],
-        );
-        await combos.pool.query(
-          "INSERT INTO combos.component_projection(combo_item_id,catalog_deactivated,projected_available,inventory_observed_at) VALUES ($1,false,4,'2000-01-01')",
-          [itemId],
-        );
         const projection = async () =>
           (
             await combos.pool.query(
