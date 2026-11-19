@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomUUID, sign } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { Test } from '@nestjs/testing';
 import { ManagedIdentityCredential } from '@azure/identity';
 import {
@@ -18,8 +18,10 @@ import { BulkPersistenceRepository } from '../../apps/bulk-svc/src/persistence/b
 import { bulkSchema } from '../../apps/bulk-svc/src/persistence/bulk.schema.js';
 import {
   CatalogBulkContentReader,
-  type CatalogBulkContentIdentity,
+  CatalogBulkContentIdentity,
 } from '../../apps/catalog-svc/src/catalog-bulk-content.js';
+import { CatalogTokenVerifier } from '../../apps/catalog-svc/src/catalog-auth.js';
+import type { CatalogConfig } from '../../apps/catalog-svc/src/config.js';
 import {
   CatalogBulkService,
   type CatalogBulkIdentity,
@@ -36,6 +38,7 @@ import { Database } from '../../apps/catalog-svc/src/database.js';
 import { PostgresCatalogWriteRepository } from '../../apps/catalog-svc/src/postgres-catalog-write.repository.js';
 import type { CatalogMasterClient } from '../../apps/catalog-svc/src/catalog-master.client.js';
 import { prepareInitializationDatabases } from './initialization-lab-postgres.js';
+import { claimCheckIdentityFixture } from './claim-check-https.js';
 
 const pgUrl = process.env.G6_H5_R01_PG_URL;
 const realAzure = process.env.G6_H5_R01_REAL_AZURE === '1';
@@ -91,10 +94,12 @@ it.skipIf(!pgUrl)(
       password: lab.catalog.password,
       mode: 'direct',
     });
-    const fixtureIssuer = 'https://g7-r01.fixture.test';
-    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
-      modulusLength: 2048,
-    });
+    const identity = await claimCheckIdentityFixture();
+    const security = {
+      issuer: identity.origin,
+      discoveryUrl: identity.origin + '/discovery',
+      jwksUrl: identity.origin + '/jwks',
+    };
     for (const [key, value] of Object.entries({
       MESSAGING_PROVIDER: 'AZURE_SERVICE_BUS',
       SERVICE_BUS_NAMESPACE_FQDN:
@@ -103,46 +108,26 @@ it.skipIf(!pgUrl)(
       BULK_SERVICE_BUS_CATALOG_COMMANDS_ENABLED: 'true',
       BULK_CATALOG_CONTENT_ENABLED: 'true',
       G6_SECURITY_MODE: 'G7_AUTHENTICATED',
-      G7_JWT_ISSUER: fixtureIssuer,
-      G7_JWT_PUBLIC_KEY: publicKey
-        .export({ type: 'spki', format: 'pem' })
-        .toString(),
+      G7_JWT_ISSUER: security.issuer,
+      G7_JWT_JWKS_URL: security.jwksUrl,
+      CATALOG_BULK_CONTENT_TOKEN_URL: identity.origin + '/api/v1/auth/token',
+      CATALOG_BULK_CONTENT_CLIENT_SECRET: identity.secret,
       CATALOG_H5_DESTINATIONS: resultQueue,
     }))
       vi.stubEnv(key, value);
-    vi.stubEnv('G7_JWT_JWKS_URL', undefined);
     const module = await Test.createTestingModule({
       controllers: [BulkCatalogContentController],
       providers: [{ provide: BulkPersistenceRepository, useValue: bulk }],
     }).compile();
-    const app = module.createNestApplication();
-    const now = Math.floor(Date.now() / 1000);
-    const encoded = [
-      { alg: 'RS256' },
-      {
-        tipo: 'servicio',
-        sub: 'catalog-svc',
-        scope: 'carga-masiva:contenidos:leer',
-        aud: 'api-productos',
-        iss: fixtureIssuer,
-        iat: now,
-        exp: now + 90,
-        jti: randomUUID(),
-      },
-    ]
-      .map((value) => Buffer.from(JSON.stringify(value)).toString('base64url'))
-      .join('.');
-    const authorization =
-      'Bearer ' +
-      encoded +
-      '.' +
-      sign('RSA-SHA256', Buffer.from(encoded), privateKey).toString(
-        'base64url',
-      );
-    const authenticateContent = vi.fn(async () => authorization);
-    const reader = new CatalogBulkContentReader({
-      authorization: authenticateContent,
-    } as unknown as CatalogBulkContentIdentity);
+    const app = module.createNestApplication({
+      httpsOptions: identity.httpsOptions,
+    });
+    const issuer = new CatalogBulkContentIdentity(
+      { security } as CatalogConfig,
+      new CatalogTokenVerifier(security),
+    );
+    const authorization = vi.spyOn(issuer, 'authorization');
+    const reader = new CatalogBulkContentReader(issuer);
     const mutations = new CatalogMutationService(
       new CatalogTransactionManager(catalog),
       new PostgresCatalogWriteRepository(),
@@ -165,6 +150,8 @@ it.skipIf(!pgUrl)(
     try {
       await app.listen(0, '127.0.0.1');
       vi.stubEnv('CATALOG_BULK_CONTENT_ORIGIN', await app.getUrl());
+      await expect(fetch(identity.origin + '/jwks')).rejects.toThrow();
+      identity.trust();
       const before = await catalog.transaction(
         async (tx) =>
           (
@@ -266,7 +253,8 @@ it.skipIf(!pgUrl)(
           sender as unknown as Parameters<BulkCatalogBusPublisher['flush']>[0],
         );
       }
-      expect(authenticateContent).toHaveBeenCalledTimes(1);
+      expect(authorization).toHaveBeenCalledTimes(1);
+      expect(identity.requests()).toBe(1);
       expect(
         await relayCatalogDelivery(catalog, {
           publish: async (queue, envelope) => {
@@ -346,6 +334,7 @@ it.skipIf(!pgUrl)(
         lab.close(),
         azure?.bulk.close(),
         azure?.catalog.close(),
+        identity.close(),
       ]);
     }
   },
