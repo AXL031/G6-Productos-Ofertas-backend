@@ -4,7 +4,7 @@
 
 Bulk admite un lote, conserva los documentos JSON exactos en su esquema privado y registra los comandos V3 en Outbox dentro de una transacción. Catalog obtiene cada documento por HTTPS desde Bulk, verifica longitud y SHA-256, y usa el procesamiento de filas existente. Bulk concilia el resultado V1 de R04 con las filas del comando admitido. Una reentrega conserva los identificadores de mensaje y de operación. Los comandos históricos conservan su payload y transporte.
 
-El documento se guarda como una cadena JSON UTF-8 en un registro de la tabla interna de Bulk, con un UUID opaco y un vínculo a su comando. Esta opción evita coordinar un bucket con la transacción de admisión. Se conserva mientras se acredita una política de borrado que respete el mínimo de 30 días desde la conciliación terminal. Castilla y Poma deben validar el volumen, la capacidad y la retención con Infra.
+El documento se guarda como una cadena JSON UTF-8 en un registro de la tabla interna de Bulk, con un UUID opaco y un vínculo a su comando. Esta opción evita coordinar un bucket con la transacción de admisión. La retención actual es indefinida. Cualquier política futura debe conservar el contenido mientras haya conciliación pendiente y al menos 30 días desde la conciliación terminal.
 
 La ruta privada es `GET /api/v1/interno/carga-masiva/contenidos/{contentId}`. El contrato fija consumidor `catalog-svc`, audiencia `api-productos`, scope `carga-masiva:contenidos:leer` y cabeceras `Content-Length` y `X-Content-SHA256`. G7 debe confirmar un token real de ese cliente y otorgar el scope. Infra debe acreditar que el DNS y HTTPS privados permiten a Catalog llegar a Bulk y que la ruta queda fuera del Gateway y APIM públicos. [OpenAPI](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/df0b09c651fab7f8fcdc693211109573f5e39a12/contratos/http/openapi.yaml) · [AsyncAPI](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/df0b09c651fab7f8fcdc693211109573f5e39a12/contratos/eventos/asyncapi.yaml)
 
@@ -25,16 +25,30 @@ La CI de `1a6dcd6572aa0a744785006886e8ecc24e7dcff8` terminó correctamente. La p
 
 El 19 de noviembre de 2026, la suite `1c2c9b837e823eb5867789c803d8b320c26d52b1` pasó en el namespace Basic `g6-sb-h5-int-32cdqgbnlk7ow` usando los binarios extraídos de ambos digests. La ejecución sin ingress usó las identidades Azure separadas de Bulk y Catalog, PostgreSQL real descartable y la ruta HTTP por loopback con un JWT firmado de laboratorio. El runner registró `G6_H5_R01_R04_AZURE_PASS` y un caso aprobado en Vitest. Se comprobó la reentrega de ambas colas después de persistir cada efecto, una sola mutación de Catalog y la conciliación durable en Bulk. Las 14 colas del laboratorio terminaron con cero mensajes activos y cero en DLQ.
 
-Queda pendiente comprobar en el ambiente destino el HTTPS privado con el token emitido por G7 y la configuración de exposición de Infra. La prueba Azure usó identidades administradas para el broker y un emisor de JWT de prueba para la descarga.
+### Verificación de HTTPS y exposición
 
-## Decisiones pendientes con los responsables
+El 19 de noviembre de 2026 se verificaron Bulk y Catalog en `env-g6-phase1-chile` con ingress interno y conexiones inseguras deshabilitadas. Un GET con UUID sintético a la ruta de contenido por el Gateway público devolvió 404. Estas observaciones son de solo lectura. La configuración observada permite usar el FQDN interno de Bulk como origen HTTPS de Catalog. [Comunicación interna de Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/connect-apps)
+
+La suite `285ddc6359c3e0a016f2c71f04fe7c2ce1e4b85b` reprodujo R01 y R04 con los digests de arriba, PostgreSQL real y un emisor HTTPS de laboratorio. El cliente real de Catalog hizo el intercambio `client_credentials`, consultó discovery y JWKS y verificó el JWT. Bulk validó ese token mediante JWKS antes de devolver los bytes. La prueba comprobó que la conexión rechazaba el certificado antes de confiar en la CA temporal. El runner emitió `G6_H5_R01_R04_HTTPS_PASS`. G7 conserva la emisión de credenciales y el grant del ambiente destino.
+
+La suite `006b17dabc1b537b1bd230a8afa522adaad081ee` repitió la prueba Azure con un documento superior a 256 KiB. El comando con `content_ref` y el resultado R04 pasaron por Basic. Después de reentregar ambos mensajes, Catalog conservó los caracteres multibyte y una sola actualización. La conciliación en Bulk dejó disponible el documento original. Las pruebas focalizadas comprobaron también que Bulk divide un conjunto grande en comandos que preservan las familias de SKU y respetan el presupuesto de tamaño de R04.
+
+Para dimensionar el almacenamiento, se puede consultar el volumen de documentos y el tamaño físico completo de Inbox con una consulta agregada del esquema de Bulk:
+
+```sql
+SELECT count(*) AS documents,
+       coalesce(sum(octet_length(payload->>'document')), 0) AS content_bytes,
+       pg_total_relation_size('bulk.inbox'::regclass) AS inbox_storage_bytes
+FROM bulk.inbox
+WHERE handler = 'bulk.catalog.content.v3';
+```
+
+## Pendientes de adopción e integración
 
 | Responsable | Operación | Evidencia para desbloquear |
 | --- | --- | --- |
-| Castilla y Poma | R01 y R04 | Revisar implementación, almacenamiento y compatibilidad histórica. Aceptar la actualización sintética por ambas colas con reentrega, resultado durable y resultado R04 dentro del límite Basic. |
-| G7 e Infra | Descarga de contenido R01 | Grant efectivo para `catalog-svc` y prueba positiva de JWT y alcance. Evidencia de ruta privada, permisos Sender/Receiver y ausencia de exposición pública. |
-| Castilla y Taco | R02 y R10 | Versionar el comando de ajuste de stock y sus resultados. Precisar identidad por SKU y ubicación, ajuste absoluto, causalidad, errores, reentrega y conciliación. Acordar qué papel tiene `inventory.stock.adjusted`. |
-| Castilla y Vera | R03 y R14 | Versionar el comando de aplicación de precio y sus resultados. Precisar producto, valores y moneda según la especificación, concurrencia, causalidad, errores y conciliación por operación. |
-| G5, G7 y Gateway | N01 consumo, restauración y consulta de cupón | Homologación HTTP, permisos por operación y prueba autenticada de reserva y snapshot, restauración ligada al consumo original y consulta de un resultado durable. |
+| G7 | Descarga de contenido R01 | Grant efectivo para `catalog-svc` y prueba autenticada con la identidad emitida por G7 en el destino. |
+| Equipo del fork G6 | R02/R10 y R03/R14 | Incorporar el contrato candidato al AsyncAPI oficial, implementar sus adaptadores y comprobar cada par con resultados reales y reentrega. [Propuesta de payloads](PROPUESTA_BULK_DOMINIOS_H5.md) |
+| G5 y G7 | N01 consumo, restauración y consulta de cupón | Ratificación del contrato HTTP y permisos por operación. El equipo del fork conserva la responsabilidad del montaje de Gateway y de las pruebas cuando estén disponibles los acuerdos. |
 
 Los comandos R02 y R03 y sus resultados todavía remiten a `GenericData` en AsyncAPI. Cada par requiere esquemas explícitos, ejemplos, versión y aceptación de productor y consumidor antes de activar la publicación. [Matriz H5](https://github.com/Taller-SW-Web/G6-Productos-Ofertas-docs/blob/df0b09c651fab7f8fcdc693211109573f5e39a12/integraciones/MATRIZ-IMPLEMENTACION-SERVICE-BUS-H5.md)
