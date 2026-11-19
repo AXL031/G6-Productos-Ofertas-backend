@@ -35,13 +35,32 @@ Con Catalog #243 integrado, pasaron 91 pruebas focalizadas de Catalog, Inventory
 
 El CI del fork sobre 45659be detectó que el parser de Catalog rechazaba eventos válidos de Taxonomy con causation_id u operation_id omitidos. La corrección conserva esos campos como opcionales en el sobre general y mantiene las comprobaciones obligatorias para los resultados de inicialización. Pasaron los 27 casos focalizados de Catalog y Taxonomy. La suite opcional de Inventory aprobó sus diez casos H5 con PostgreSQL y el SQL oficial fijado por SHA.
 
+## Publicación de imágenes del fork
+
+El [CI del candidato](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44393762229) aprobó 21 jobs para `827476c97e37cf8a5c9a196e287c3d3b4f2acdd9`. La [publicación del fork](https://github.com/AXL031/G6-Productos-Ofertas-backend/actions/runs/44540226297) construyó las ocho imágenes de mensajería con ese SHA como tag, verificó las etiquetas OCI y confirmó los siguientes digests en `ghcr.io/axl031/g6-productos-ofertas-backend/<servicio>`.
+
+| Servicio | Digest |
+| --- | --- |
+| Bulk | `sha256:1af60ae055d731926a48a31499e5e630cbc8faa016132cb98c1849ae030e24b6` |
+| Catalog | `sha256:7cae671db7d68ab42dd715a98aa0dfc812f298d43a71e996dc76ce08b076673d` |
+| Combos | `sha256:e43bfd904587fc37293e99679ffcb51b72bd87dd06058c686c74a8f25284c1cd` |
+| Inventory | `sha256:435643548a9498b8d47a144ba4502f6a63ba793081906efce8a08e331eb2dd73` |
+| Price Audit | `sha256:b9f7b7d973824fc996dad89c624c3397a9c1b0916c9a26e58f7baaf6393e34d7` |
+| Pricing | `sha256:6d25a8005effe2b834e8a48ebe9dddfc70214a9f25aa9d0f961350182a7923b5` |
+| Promotions | `sha256:3794c03bc16b4559dae7fe5b4f01a8e53d3f39fc8af5a96c23cef51647f6a9b1` |
+| Taxonomy | `sha256:5b492897991a28ae3796d92b46a76b8b0f0d61e89b47de401fa2c64413e722a2` |
+
 ## Laboratorio Azure
 
 `ops/azure/service-bus/h5-integration.bicep` define un namespace Basic independiente en el grupo de recursos de integración, colas escogidas por ID de flujo, identidades de workload y roles Sender/Receiver en cada cola. Usa autenticación Microsoft Entra, TLS 1.2 y métricas de backlog y DLQ. Infra revisa red, acceso del runner, retención, umbrales y destinatarios de alertas antes de desplegar. La salida de la plantilla contiene identificadores de identidad, no credenciales.
 
 Revisar el plan de Azure con el grupo de integración antes de crear recursos. Para R13, Inventory registra también la entrega a Combos por R12. Proveer esa cola si se usa el runtime emisor completo en laboratorio o usar el relay de prueba focalizado en R13. Mantener la activación compartida separada del laboratorio. Para R16/R17 seleccionar ambos flujos y ejecutar envíos independientes con sus roles.
 
-El smoke opt-in de R13 está en `tests/h5/inventory-promotions.postgres.e2e-spec.ts`. Desde un runner Azure autorizado con las dos identidades de laboratorio asignadas y acceso a PostgreSQL descartable, establecer `PROMOTIONS_H5_POSTGRES_TESTS=1`, `PROMOTIONS_H5_TEST_DATABASE_URL` con el nombre local exigido por el test y `G6_H5_R13_REAL_AZURE=1`. Introducir `G6_H5_LAB_NAMESPACE_FQDN` y los dos identificadores públicos de cliente `G6_H5_LAB_INVENTORY_CLIENT_ID` y `G6_H5_LAB_PROMOTIONS_CLIENT_ID` de la salida de la plantilla. Ejecutar `npm run test:e2e -- --maxWorkers=1 tests/h5/inventory-promotions.postgres.e2e-spec.ts`. El smoke rechaza el namespace del piloto y exige identidades diferentes. Comprueba acceso Sender/Receiver, denegación de Receiver con la identidad de Inventory y dos confirmaciones del broker con un solo Inbox. Utiliza datos sintéticos. Su estado en esta rama es preparado; la ejecución Azure queda pendiente del laboratorio.
+El smoke opt-in de R13 está en `tests/h5/inventory-promotions.postgres.e2e-spec.ts`. Desde un runner Azure autorizado con las dos identidades de laboratorio asignadas y acceso a PostgreSQL descartable, establecer `PROMOTIONS_H5_POSTGRES_TESTS=1`, `PROMOTIONS_H5_TEST_DATABASE_URL` con el nombre local exigido por el test y `G6_H5_R13_REAL_AZURE=1`. Introducir `G6_H5_LAB_NAMESPACE_FQDN` y los dos identificadores públicos de cliente `G6_H5_LAB_INVENTORY_CLIENT_ID` y `G6_H5_LAB_PROMOTIONS_CLIENT_ID` de la salida de la plantilla. Ejecutar `npm run test:e2e -- --maxWorkers=1 tests/h5/inventory-promotions.postgres.e2e-spec.ts -t 'R13 uses the laboratory broker'`. El smoke exige un namespace de laboratorio e identidades diferentes. Comprueba acceso Sender/Receiver, denegación de Receiver con la identidad de Inventory y dos confirmaciones del broker con un solo Inbox. Utiliza datos sintéticos.
+
+El 19 de noviembre de 2026 se desplegó R13 en Azure for Students, región Chile Central, grupo `rg-g6-sb-h5-int-fork`, namespace `g6-sb-h5-int-32cdqgbnlk7ow` y cola `g6.promotions.from.inventory`. La prueba pasó con el código fuente fijado y volvió a pasar con los binarios extraídos por Azure de los dos digests anteriores. `ops/azure/service-bus/h5-r13-runner.bicep` y su script reproducen la segunda ejecución con PostgreSQL 17 descartable, sin ingress y con límite de tiempo. Verificar el marcador `G6_H5_R13_AZURE_PASS` y un caso aprobado en el reporte de Vitest. La cuenta final de mensajes activos y en DLQ fue cero y se retiraron los dos runners temporales. El namespace, la cola y sus identidades quedan disponibles como laboratorio.
+
+Esta prueba ejecuta los componentes de mensajería compilados de Inventory y Promotions. Quedan pendientes el arranque completo de las aplicaciones en el ambiente destino, la disponibilidad de sus dependencias autenticadas y el corte operativo.
 
 ## Dependencias para completar el corte
 
