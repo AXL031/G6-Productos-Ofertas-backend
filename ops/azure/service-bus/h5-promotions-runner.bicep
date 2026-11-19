@@ -9,6 +9,9 @@ param promotionsIdentityId string
 param promotionsClientId string
 param inventoryImage string
 param promotionsImage string
+param catalogIdentityId string = ''
+param catalogClientId string = ''
+param catalogImage string = ''
 @minLength(40)
 @maxLength(40)
 param sourceSha string
@@ -20,11 +23,13 @@ param postgresPassword string
 
 var database = 'g6_promotions_h5_test_r13'
 var mount = [{ name: 'status', mountPath: '/status' }]
-var runner = loadTextContent('h5-r13-runner.sh')
+var runner = loadTextContent('h5-promotions-runner.sh')
+var runR08 = !empty(catalogIdentityId) && !empty(catalogClientId) && !empty(catalogImage)
 var publishedImages = [
   { service: 'inventory-svc', image: inventoryImage }
   { service: 'promotions-svc', image: promotionsImage }
 ]
+var selectedImages = concat(publishedImages, runR08 ? [{ service: 'catalog-svc', image: catalogImage }] : [])
 var stageCommand = '''
 set -eu
 destination="/status/artifacts/$G6_SERVICE"
@@ -47,7 +52,7 @@ while kill -0 "$pg" 2>/dev/null; do
 done
 wait "$pg"
 '''
-var artifactContainers = [for workload in publishedImages: {
+var artifactContainers = [for workload in selectedImages: {
   name: workload.service
   properties: {
     image: workload.image
@@ -62,16 +67,16 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
   name: containerGroupName
   location: location
   tags: {
-    purpose: 'g6-h5-fork-r13'
+    purpose: 'g6-h5-fork-promotions'
     sourceSha: sourceSha
     production: 'false'
   }
   identity: {
     type: 'UserAssigned'
-    userAssignedIdentities: {
+    userAssignedIdentities: union({
       '${inventoryIdentityId}': {}
       '${promotionsIdentityId}': {}
-    }
+    }, runR08 ? { '${catalogIdentityId}': {} } : {})
   }
   properties: {
     osType: 'Linux'
@@ -82,17 +87,19 @@ resource group 'Microsoft.ContainerInstance/containerGroups@2023-05-01' = {
         name: 'runner'
         properties: {
           image: 'node:24.15.0-alpine@sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f'
-          command: ['/bin/sh', '-c', 'timeout -s TERM 540 /bin/sh -c "$G6_R13_RUNNER"; result=$?; touch /status/done; exit "$result"']
+          command: ['/bin/sh', '-c', 'timeout -s TERM 540 /bin/sh -c "$G6_PROMOTIONS_RUNNER"; result=$?; touch /status/done; exit "$result"']
           resources: { requests: { cpu: 1, memoryInGB: 2 } }
           volumeMounts: mount
           environmentVariables: [
-            { name: 'G6_R13_RUNNER', value: runner }
+            { name: 'G6_PROMOTIONS_RUNNER', value: runner }
             { name: 'G6_SOURCE_SHA', value: sourceSha }
             { name: 'G6_SOURCE_ARCHIVE_SHA256', value: sourceArchiveSha256 }
             { name: 'G6_H5_R13_REAL_AZURE', value: '1' }
+            { name: 'G6_H5_R08_REAL_AZURE', value: runR08 ? '1' : '0' }
             { name: 'G6_H5_LAB_NAMESPACE_FQDN', value: namespaceFqdn }
             { name: 'G6_H5_LAB_INVENTORY_CLIENT_ID', value: inventoryClientId }
             { name: 'G6_H5_LAB_PROMOTIONS_CLIENT_ID', value: promotionsClientId }
+            { name: 'G6_H5_LAB_CATALOG_CLIENT_ID', value: catalogClientId }
             { name: 'PROMOTIONS_H5_POSTGRES_TESTS', value: '1' }
             { name: 'G6_H5_POSTGRES_DATABASE', value: database }
             { name: 'G6_H5_POSTGRES_PASSWORD', secureValue: postgresPassword }

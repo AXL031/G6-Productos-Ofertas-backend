@@ -24,6 +24,51 @@ import {
 } from '../../apps/promotions-svc/src/coupons/service-bus-events.js';
 import { officialMigrations } from '../../apps/promotions-svc/test/support/official-migrations.mjs';
 import { CatalogServiceBus } from '../../apps/catalog-svc/src/catalog-service-bus.js';
+import type { CatalogEnvelope } from '../../apps/catalog-svc/src/catalog-messages.js';
+
+function catalogDeactivation(
+  sku: string,
+  productId: string,
+  version: number,
+): CatalogEnvelope {
+  const occurred = new Date(
+    Date.UTC(2026, 10, 18, 0, 0, version),
+  ).toISOString();
+  return {
+    message_id: randomUUID(),
+    schema_version: 1,
+    occurred_at: occurred,
+    correlation_id: randomUUID(),
+    causation_id: null,
+    operation_id: null,
+    producer: 'catalog-svc',
+    kind: 'event',
+    name: 'catalog.sku.deactivated',
+    data: {
+      sku,
+      product_id: productId,
+      sku_version: version,
+      changed_at: occurred,
+    },
+  };
+}
+
+function trackReceiver(
+  receiver: EventReceiver,
+  completed: string[],
+): EventReceiver {
+  return {
+    peekMessages: receiver.peekMessages.bind(receiver),
+    subscribe: receiver.subscribe.bind(receiver),
+    abandonMessage: receiver.abandonMessage.bind(receiver),
+    deadLetterMessage: receiver.deadLetterMessage.bind(receiver),
+    close: receiver.close.bind(receiver),
+    completeMessage: async (message) => {
+      await receiver.completeMessage(message);
+      completed.push(String(message.messageId));
+    },
+  };
+}
 
 describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
   'Catalog and Inventory to Promotions H5 over the SDK message boundary',
@@ -108,20 +153,8 @@ describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
             const bus = nativePromotionsEventBus(config);
             return {
               close: () => bus.close(),
-              receiver: (queue) => {
-                const receiver = bus.receiver(queue);
-                return {
-                  peekMessages: receiver.peekMessages.bind(receiver),
-                  subscribe: receiver.subscribe.bind(receiver),
-                  abandonMessage: receiver.abandonMessage.bind(receiver),
-                  deadLetterMessage: receiver.deadLetterMessage.bind(receiver),
-                  close: receiver.close.bind(receiver),
-                  completeMessage: async (message) => {
-                    await receiver.completeMessage(message);
-                    completed.push(String(message.messageId));
-                  },
-                };
-              },
+              receiver: (queue) =>
+                trackReceiver(bus.receiver(queue), completed),
             };
           },
         );
@@ -230,6 +263,102 @@ describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
       75_000,
     );
 
+    it.skipIf(process.env.G6_H5_R08_REAL_AZURE !== '1')(
+      'R08 uses the laboratory broker to preserve the latest Catalog version',
+      async () => {
+        const namespace = process.env.G6_H5_LAB_NAMESPACE_FQDN ?? '';
+        const catalogId = process.env.G6_H5_LAB_CATALOG_CLIENT_ID ?? '';
+        const promotionsId = process.env.G6_H5_LAB_PROMOTIONS_CLIENT_ID ?? '';
+        const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+        if (
+          !/^g6-sb-h5-int-[a-z0-9]{13}\.servicebus\.windows\.net$/.test(
+            namespace,
+          ) ||
+          !uuid.test(catalogId) ||
+          !uuid.test(promotionsId) ||
+          catalogId.toLowerCase() === promotionsId.toLowerCase()
+        ) {
+          throw new Error(
+            'DEDICATED_H5_LAB_AND_DISTINCT_MANAGED_IDENTITIES_REQUIRED',
+          );
+        }
+        const destination = 'g6.promotions.from.catalog';
+        const completed: string[] = [];
+        const catalog = new CatalogServiceBus(
+          new ServiceBusClient(
+            namespace,
+            new ManagedIdentityCredential({
+              clientId: catalogId,
+            }),
+          ),
+        );
+        const promotions = new PromotionsServiceBusEvents(
+          {
+            namespace,
+            eventsEnabled: true,
+            eventQueues: [destination],
+            managedIdentityClientId: promotionsId,
+          },
+          new PromotionsAssignedEventDispatcher(
+            pool,
+            h4EventAdapters,
+            assignedH4Contracts,
+            true,
+          ),
+          (config) => {
+            const bus = nativePromotionsEventBus(config);
+            return {
+              close: () => bus.close(),
+              receiver: (queue) =>
+                trackReceiver(bus.receiver(queue), completed),
+            };
+          },
+        );
+        const sku = 'H5-R08-' + randomUUID();
+        const productId = randomUUID();
+        const latest = catalogDeactivation(sku, productId, 3);
+        const stale = catalogDeactivation(sku, productId, 2);
+        try {
+          await promotions.onApplicationBootstrap();
+          for (const envelope of [latest, stale, latest]) {
+            await catalog.publish(
+              destination,
+              envelope,
+              AbortSignal.timeout(8000),
+            );
+          }
+          const deadline = Date.now() + 20_000;
+          while (completed.length < 3 && Date.now() < deadline)
+            await delay(200);
+          expect(completed.toSorted()).toEqual(
+            [latest.message_id, stale.message_id, latest.message_id].toSorted(),
+          );
+          const projection = await pool.query(
+            'SELECT active, source_version, source_message_id FROM promotions.catalog_projection WHERE reference_type=$1 AND reference_id=$2',
+            ['SKU', sku],
+          );
+          expect(projection.rows).toEqual([
+            {
+              active: false,
+              source_version: '3',
+              source_message_id: latest.message_id,
+            },
+          ]);
+          const inbox = await pool.query(
+            'SELECT count(*)::int AS n FROM promotions.inbox WHERE message_id::text = ANY($1::text[]) AND completed_at IS NOT NULL',
+            [[latest.message_id, stale.message_id]],
+          );
+          expect(inbox.rows[0]?.n).toBe(2);
+        } finally {
+          await Promise.allSettled([
+            promotions.onModuleDestroy(),
+            catalog.close(),
+          ]);
+        }
+      },
+      75_000,
+    );
+
     it('persists Catalog SKU deactivation and does not roll back its source version on redelivery', async () => {
       const destination = 'g6.promotions.from.catalog';
       const wire: ServiceBusReceivedMessage[] = [];
@@ -249,26 +378,10 @@ describe.skipIf(process.env.PROMOTIONS_H5_POSTGRES_TESTS !== '1')(
       const sku = 'H5-R08-FIXTURE';
       const product = randomUUID();
       for (const version of [3, 2]) {
-        const occurred = new Date(
-          Date.UTC(2026, 10, 18, 0, 0, version),
-        ).toISOString();
-        await producer.publish(destination, {
-          message_id: randomUUID(),
-          schema_version: 1,
-          occurred_at: occurred,
-          correlation_id: randomUUID(),
-          causation_id: null,
-          operation_id: null,
-          producer: 'catalog-svc',
-          kind: 'event',
-          name: 'catalog.sku.deactivated',
-          data: {
-            sku,
-            product_id: product,
-            sku_version: version,
-            changed_at: occurred,
-          },
-        });
+        await producer.publish(
+          destination,
+          catalogDeactivation(sku, product, version),
+        );
       }
       expect(wire).toHaveLength(2);
       expect(wire[0].applicationProperties).toBeUndefined();

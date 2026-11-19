@@ -2,8 +2,12 @@
 set -eu
 
 trap 'touch /status/done' EXIT
-mkdir -p /status/artifacts/inventory-svc /status/artifacts/promotions-svc
-chmod 0777 /status/artifacts/inventory-svc /status/artifacts/promotions-svc
+services='inventory-svc promotions-svc'
+if [ "$G6_H5_R08_REAL_AZURE" = 1 ]; then services="$services catalog-svc"; fi
+for service in $services; do
+  mkdir -p "/status/artifacts/$service"
+  chmod 0777 "/status/artifacts/$service"
+done
 
 workdir="$(mktemp -d)"
 cd "$workdir"
@@ -12,7 +16,7 @@ printf '%s  source.tgz\n' "$G6_SOURCE_ARCHIVE_SHA256" | sha256sum -c -
 tar -xzf source.tgz --strip-components 1
 npm ci --no-audit --no-fund
 
-for service in inventory-svc promotions-svc; do
+for service in $services; do
   elapsed=0
   until [ -f "/status/artifacts/$service/ready" ]; do
     [ "$elapsed" -lt 90 ] || { printf 'IMAGE_ARTIFACT_UNAVAILABLE %s\n' "$service" >&2; exit 1; }
@@ -23,18 +27,22 @@ for service in inventory-svc promotions-svc; do
   cp -R "/status/artifacts/$service/." "dist/apps/$service/"
 done
 
-# Rewrite only the disposable suite's two service import prefixes.
+# Rewrite only the service imports backed by the downloaded images.
 node --input-type=module <<'NODE'
 import { readFileSync, writeFileSync } from 'node:fs';
 const spec = 'tests/h5/inventory-promotions.postgres.e2e-spec.ts';
 const source = readFileSync(spec, 'utf8');
-const imports = /from '\.\.\/\.\.\/apps\/(inventory-svc|promotions-svc)\/src\//g;
+const imports = /from '\.\.\/\.\.\/apps\/(inventory-svc|promotions-svc|catalog-svc)\/src\//g;
+const expected = process.env.G6_H5_R08_REAL_AZURE === '1'
+  ? ['inventory-svc', 'promotions-svc', 'catalog-svc']
+  : ['inventory-svc', 'promotions-svc'];
 const services = new Set();
-const compiled = source.replace(imports, (_, service) => {
+const compiled = source.replace(imports, (original, service) => {
+  if (!expected.includes(service)) return original;
   services.add(service);
   return "from '../../dist/apps/" + service + '/';
 });
-if (services.size !== 2) throw new Error('PUBLISHED_SERVICE_IMPORTS_REQUIRED');
+if (services.size !== expected.length) throw new Error('PUBLISHED_SERVICE_IMPORTS_REQUIRED');
 writeFileSync(spec, compiled);
 NODE
 
@@ -68,6 +76,7 @@ check().catch((error) => {
 });
 NODE
 
-npm run test:e2e -- --maxWorkers=1 tests/h5/inventory-promotions.postgres.e2e-spec.ts \
-  -t 'R13 uses the laboratory broker'
-printf 'G6_H5_R13_AZURE_PASS sha=%s\n' "$G6_SOURCE_SHA"
+cases='R13 uses the laboratory broker'
+if [ "$G6_H5_R08_REAL_AZURE" = 1 ]; then cases='R(08|13) uses the laboratory broker'; fi
+npm run test:e2e -- --maxWorkers=1 tests/h5/inventory-promotions.postgres.e2e-spec.ts -t "$cases"
+printf 'G6_H5_PROMOTIONS_AZURE_PASS source=%s r08=%s r13=1\n' "$G6_SOURCE_SHA" "$G6_H5_R08_REAL_AZURE"
