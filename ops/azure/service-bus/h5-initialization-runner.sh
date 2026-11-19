@@ -8,6 +8,7 @@ case "$LAB_SUITE" in
     if [ -n "${G6_H5_LAB_TAXONOMY_CLIENT_ID:-}" ]; then export G6_H5_TAXONOMY_REAL_AZURE=1; fi
     ;;
   price-fanout) G6_H5_LAB_SPEC='tests/h5/pricing-fanout.azure.e2e-spec.ts' ;;
+  combos) G6_H5_LAB_SPEC='tests/h5/combos-events.azure.e2e-spec.ts' ;;
   *) exit 1 ;;
 esac
 export G6_H5_LAB_SPEC
@@ -35,6 +36,7 @@ done
 
 export G6_H5_INIT_PG_URL="postgresql://postgres:$G6_H5_POSTGRES_PASSWORD@127.0.0.1:5432/$G6_H5_POSTGRES_DATABASE"
 export G6_H5_FANOUT_PG_URL="$G6_H5_INIT_PG_URL"
+export G6_H5_COMBOS_PG_URL="$G6_H5_INIT_PG_URL"
 unset G6_H5_POSTGRES_PASSWORD
 node --input-type=module <<'NODE'
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -80,5 +82,9 @@ case "$LAB_SUITE" in
   price-fanout)
     G6_H5_FANOUT_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
     printf 'G6_H5_FANOUT_AZURE_PASS source=%s flows=R16,R17\n' "$G6_SOURCE_SHA"
+    ;;
+  combos)
+    G6_H5_COMBOS_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 "$G6_H5_LAB_SPEC"
+    printf 'G6_H5_COMBOS_AZURE_PASS source=%s flows=R05-SKU,R12\n' "$G6_SOURCE_SHA"
     ;;
 esac

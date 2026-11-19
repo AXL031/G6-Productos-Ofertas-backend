@@ -21,7 +21,8 @@ type Context =
   | 'pricing'
   | 'taxonomy'
   | 'price-audit'
-  | 'promotions';
+  | 'promotions'
+  | 'combos';
 
 async function serviceSql(context: Context, path: string) {
   return readFile(
@@ -31,7 +32,7 @@ async function serviceSql(context: Context, path: string) {
 }
 
 async function officialSql(
-  context: 'inventory-svc' | 'taxonomy',
+  context: 'inventory-svc' | 'taxonomy' | 'combos',
   file: string,
   checksum: string,
 ) {
@@ -68,7 +69,7 @@ export async function prepareInitializationDatabases(source: string) {
   };
   try {
     const existing = await control.query(
-      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy','g6_h5_price_audit','g6_h5_promotions')",
+      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy','g6_h5_price_audit','g6_h5_promotions','g6_h5_combos')",
     );
     if (existing.rowCount) throw new Error('EMPTY_POSTGRES_INSTANCE_REQUIRED');
 
@@ -243,12 +244,30 @@ export async function prepareInitializationDatabases(source: string) {
       );
       return { audit, promotions };
     };
+    const prepareCombos = async () => {
+      const combos = await prepare('combos');
+      await combos.pool.query(
+        'CREATE SCHEMA combos AUTHORIZATION po_combos_owner',
+      );
+      await ownerSql(combos.pool, combos.owner, [
+        await officialSql(
+          'combos',
+          '0001_create_combos_persistence.sql',
+          'deca86e2768c949c4628c7601c186633029d6b29df5ce7d67aeed2db0c66a14c',
+        ),
+      ]);
+      await combos.pool.query(`GRANT USAGE ON SCHEMA combos TO combos_app;
+        GRANT SELECT, INSERT, UPDATE ON combos.inbox, combos.component_projection TO combos_app;
+        GRANT SELECT ON combos.combo_items TO combos_app`);
+      return combos;
+    };
     return {
       catalog,
       inventory,
       pricing,
       prepareTaxonomy,
       preparePriceConsumers,
+      prepareCombos,
       close,
     };
   } catch (error) {
