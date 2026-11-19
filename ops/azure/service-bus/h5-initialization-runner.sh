@@ -2,7 +2,13 @@
 set -eu
 trap 'touch /status/done' EXIT
 
-for service in catalog-svc inventory-svc pricing-svc; do
+services='catalog-svc inventory-svc pricing-svc'
+if [ -n "${G6_H5_LAB_TAXONOMY_CLIENT_ID:-}" ]; then
+  services="$services taxonomy-svc"
+  export G6_H5_TAXONOMY_REAL_AZURE=1
+fi
+export G6_H5_INIT_SERVICES="$services"
+for service in $services; do
   mkdir -p "/status/artifacts/$service"
   chmod 0777 "/status/artifacts/$service"
 done
@@ -13,7 +19,7 @@ printf '%s  source.tgz\n' "$G6_SOURCE_ARCHIVE_SHA256" | sha256sum -c -
 tar -xzf source.tgz --strip-components 1
 npm ci --no-audit --no-fund
 
-for service in catalog-svc inventory-svc pricing-svc; do
+for service in $services; do
   i=0
   until [ -f "/status/artifacts/$service/ready" ]; do
     [ "$i" -lt 90 ] || { echo "IMAGE_ARTIFACT_UNAVAILABLE $service" >&2; exit 1; }
@@ -33,14 +39,16 @@ import { Client } from 'pg';
 
 const spec = 'tests/h5/catalog-initialization.azure.e2e-spec.ts';
 const found = new Set();
+const expected = process.env.G6_H5_INIT_SERVICES.split(' ');
 const rewritten = readFileSync(spec, 'utf8').replace(
-  /from '\.\.\/\.\.\/apps\/(catalog-svc|inventory-svc|pricing-svc)\/src\//g,
-  (_, service) => {
+  /from '\.\.\/\.\.\/apps\/(catalog-svc|inventory-svc|pricing-svc|taxonomy-svc)\/src\//g,
+  (original, service) => {
+    if (!expected.includes(service)) return original;
     found.add(service);
     return "from '../../dist/apps/" + service + '/';
   },
 );
-if (found.size !== 3) throw new Error('PUBLISHED_SERVICE_IMPORTS_REQUIRED');
+if (found.size !== expected.length) throw new Error('PUBLISHED_SERVICE_IMPORTS_REQUIRED');
 writeFileSync(spec, rewritten);
 
 for (let attempt = 0; attempt < 30; attempt++) {
@@ -59,3 +67,6 @@ for (let attempt = 0; attempt < 30; attempt++) {
 NODE
 G6_H5_INIT_REAL_AZURE=1 npm run test:e2e -- --maxWorkers=1 tests/h5/catalog-initialization.azure.e2e-spec.ts
 printf 'G6_H5_INITIALIZATION_AZURE_PASS source=%s flows=R06,R07,R11,R15\n' "$G6_SOURCE_SHA"
+if [ "${G6_H5_TAXONOMY_REAL_AZURE:-0}" = 1 ]; then
+  printf 'G6_H5_TAXONOMY_AZURE_PASS source=%s flows=R09,R18\n' "$G6_SOURCE_SHA"
+fi

@@ -14,7 +14,7 @@ const inventoryMigrations = [
   ],
 ];
 
-type Context = 'catalog' | 'inventory' | 'pricing';
+type Context = 'catalog' | 'inventory' | 'pricing' | 'taxonomy';
 
 async function serviceSql(context: Context, path: string) {
   return readFile(
@@ -23,15 +23,19 @@ async function serviceSql(context: Context, path: string) {
   );
 }
 
-async function officialInventorySql(file: string, checksum: string) {
+async function officialSql(
+  context: 'inventory-svc' | 'taxonomy',
+  file: string,
+  checksum: string,
+) {
   const response = await fetch(
-    `https://raw.githubusercontent.com/Taller-SW-Web/G6-Productos-Ofertas-docs/${docsSha}/datos/inventory-svc/migrations/${file}`,
+    `https://raw.githubusercontent.com/Taller-SW-Web/G6-Productos-Ofertas-docs/${docsSha}/datos/${context}/migrations/${file}`,
     { signal: AbortSignal.timeout(15_000) },
   );
-  if (!response.ok) throw new Error('INVENTORY_OFFICIAL_SQL_UNAVAILABLE');
+  if (!response.ok) throw new Error('OFFICIAL_SQL_UNAVAILABLE_' + context);
   const sql = (await response.text()).replaceAll('\r\n', '\n');
   if (createHash('sha256').update(sql).digest('hex') !== checksum)
-    throw new Error('INVENTORY_OFFICIAL_SQL_HASH_MISMATCH');
+    throw new Error('OFFICIAL_SQL_HASH_MISMATCH_' + context);
   return sql;
 }
 
@@ -57,7 +61,7 @@ export async function prepareInitializationDatabases(source: string) {
   };
   try {
     const existing = await control.query(
-      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing')",
+      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy')",
     );
     if (existing.rowCount) throw new Error('EMPTY_POSTGRES_INSTANCE_REQUIRED');
 
@@ -113,7 +117,9 @@ export async function prepareInitializationDatabases(source: string) {
 
     const inventory = await prepare('inventory');
     for (const [file, checksum] of inventoryMigrations)
-      await inventory.pool.query(await officialInventorySql(file, checksum));
+      await inventory.pool.query(
+        await officialSql('inventory-svc', file, checksum),
+      );
     await inventory.pool.query(
       await serviceSql(
         'inventory',
@@ -165,7 +171,37 @@ export async function prepareInitializationDatabases(source: string) {
       ),
     );
 
-    return { catalog, inventory, pricing, close };
+    const prepareTaxonomy = async () => {
+      const taxonomy = await prepare('taxonomy');
+      await taxonomy.pool.query(
+        'CREATE SCHEMA taxonomy AUTHORIZATION po_taxonomy_owner',
+      );
+      await ownerSql(
+        taxonomy.pool,
+        taxonomy.owner,
+        await Promise.all([
+          officialSql(
+            'taxonomy',
+            '0001_create_taxonomy.sql',
+            '8c71c5b24c70aedacb59801a3403423a933dae83fdc3aaacc8970fe840c21072',
+          ),
+          serviceSql(
+            'taxonomy',
+            'migrations/0002_deactivation_source_version.sql',
+          ),
+          serviceSql(
+            'taxonomy',
+            'migrations/0003_deactivation_timeout_setting.sql',
+          ),
+          serviceSql(
+            'taxonomy',
+            'migrations-candidate/h5/0001_outbox_delivery.sql',
+          ),
+        ]),
+      );
+      return taxonomy;
+    };
+    return { catalog, inventory, pricing, prepareTaxonomy, close };
   } catch (error) {
     await close();
     throw error;

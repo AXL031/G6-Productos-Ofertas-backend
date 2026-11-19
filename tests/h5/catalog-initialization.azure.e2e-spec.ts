@@ -3,6 +3,8 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { ManagedIdentityCredential } from '@azure/identity';
 import { ServiceBusClient, type ServiceBusReceiver } from '@azure/service-bus';
 import { sql } from 'drizzle-orm';
+import { drizzle, type NodePgDatabase } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import { Database } from '../../apps/catalog-svc/src/database.js';
 import { CatalogServiceBus } from '../../apps/catalog-svc/src/catalog-service-bus.js';
 import { relayCatalogDelivery } from '../../apps/catalog-svc/src/catalog-service-bus-relay.js';
@@ -34,6 +36,13 @@ import {
 import { PricingServiceBusRelay } from '../../apps/pricing-svc/src/messaging/service-bus-relay.js';
 import { PricingDatabase } from '../../apps/pricing-svc/src/persistence/pricing.database.js';
 import { PricingRepository } from '../../apps/pricing-svc/src/persistence/pricing.repository.js';
+import type { Database as TaxonomyDatabase } from '../../apps/taxonomy-svc/src/database.js';
+import { DeactivationIntentService } from '../../apps/taxonomy-svc/src/domain/deactivation-intent.service.js';
+import {
+  publishTaxonomyDelivery,
+  receiveTaxonomyDelivery,
+} from '../../apps/taxonomy-svc/src/domain/taxonomy-service-bus.runtime.js';
+import { TaxonomyMessageStore } from '../../apps/taxonomy-svc/src/persistence/taxonomy-message.store.js';
 import { prepareInitializationDatabases } from './initialization-lab-postgres.js';
 
 const commands = {
@@ -105,13 +114,28 @@ function configureInventory(url: URL, namespace: string) {
     vi.stubEnv(name, undefined);
 }
 
+async function eventually(assertion: () => Promise<void>) {
+  const deadline = Date.now() + 15_000;
+  for (;;) {
+    try {
+      await assertion();
+      return;
+    } catch (error) {
+      if (Date.now() >= deadline) throw error;
+      await delay(150);
+    }
+  }
+}
+
 describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
-  'Catalog H5 bilateral initialization',
+  'Catalog H5 bilateral flows',
   () => {
     let db: Awaited<ReturnType<typeof prepareInitializationDatabases>>;
+    let taxonomy: Awaited<ReturnType<typeof db.prepareTaxonomy>>;
 
     beforeAll(async () => {
       db = await prepareInitializationDatabases(process.env.G6_H5_INIT_PG_URL!);
+      taxonomy = await db.prepareTaxonomy();
     }, 75_000);
     afterAll(async () => {
       await db?.close();
@@ -119,8 +143,14 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
     });
 
     it('prepares independent disposable databases with the H5 delivery tables', async () => {
-      for (const context of ['catalog', 'inventory', 'pricing'] as const) {
-        const result = await db[context].pool.query(
+      const databases = {
+        catalog: db.catalog,
+        inventory: db.inventory,
+        pricing: db.pricing,
+        taxonomy,
+      };
+      for (const [context, { pool }] of Object.entries(databases)) {
+        const result = await pool.query(
           'SELECT current_database() AS name, to_regclass($1)::text AS delivery',
           [context + '.outbox_delivery'],
         );
@@ -507,6 +537,197 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
         }
       },
       150_000,
+    );
+
+    it.skipIf(process.env.G6_H5_TAXONOMY_REAL_AZURE !== '1')(
+      'R09/R18 hold the Catalog barrier until the correlated terminal Taxonomy event',
+      async () => {
+        const bus = azureClients();
+        const taxonomyId = process.env.G6_H5_LAB_TAXONOMY_CLIENT_ID ?? '';
+        if (
+          !/^[a-f0-9]{8}-(?:[a-f0-9]{4}-){3}[a-f0-9]{12}$/i.test(taxonomyId) ||
+          ['CATALOG', 'INVENTORY', 'PRICING'].some(
+            (name) =>
+              process.env[`G6_H5_LAB_${name}_CLIENT_ID`]?.toLowerCase() ===
+              taxonomyId.toLowerCase(),
+          )
+        )
+          throw new Error('DISTINCT_TAXONOMY_LAB_IDENTITY_REQUIRED');
+        const catalogQueue = 'g6.catalog.from.taxonomy';
+        const taxonomyQueue = 'g6.taxonomy.from.catalog';
+        vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+        vi.stubEnv('CATALOG_H5_DESTINATIONS', taxonomyQueue);
+        const taxonomyRuntime = new Pool({
+          connectionString: taxonomy.runtimeUrl.href,
+          options: '-c g6.taxonomy_messaging=AZURE_SERVICE_BUS',
+        });
+        const drizzleTaxonomy = drizzle(taxonomyRuntime);
+        const taxDb = {
+          read: <T>(fn: (db: NodePgDatabase) => Promise<T>) =>
+            fn(drizzleTaxonomy),
+        } as TaxonomyDatabase;
+        const taxClient = new ServiceBusClient(
+          bus.namespace,
+          new ManagedIdentityCredential({ clientId: taxonomyId }),
+          { retryOptions: { maxRetries: 1, timeoutInMs: 8_000 } },
+        );
+        const taxonomyIn = taxClient.createReceiver(taxonomyQueue, {
+          receiveMode: 'peekLock',
+          skipParsingBodyAsJson: true,
+        });
+        const taxonomyOut = taxClient.createSender(catalogQueue);
+        const admission = new DeactivationIntentService(taxDb);
+        const store = new TaxonomyMessageStore(taxDb, admission);
+        const catalog = new CatalogServiceBus(bus.catalog);
+        const catalogDb = new Database({
+          pool: { connectionString: db.catalog.runtimeUrl.href },
+          expectedRole: db.catalog.user,
+          database: db.catalog.name,
+          user: db.catalog.user,
+          password: db.catalog.password,
+          mode: 'direct',
+        });
+        const catalogMessages = new CatalogMessageService(catalogDb);
+        const stop = catalog.subscribe(catalogQueue, catalogMessages, () => {});
+
+        try {
+          await store.verifyServiceBusStorage();
+          for (const inUse of [false, true]) {
+            const id = randomUUID();
+            const operation = randomUUID();
+            const correlation = randomUUID();
+            await taxonomy.pool.query(
+              "INSERT INTO taxonomy.categories(id,nombre,estado,taxonomy_version) VALUES ($1,$2,'ACTIVO',3)",
+              [id, 'Lab-' + id],
+            );
+            if (inUse) {
+              const sku = 'H5-TAXONOMY-' + randomUUID();
+              await catalogDb.transaction(async (tx) => {
+                const product = randomUUID();
+                await tx.execute(sql`INSERT INTO catalog.products(id,nombre,descripcion,categoria_id,tipo_producto_id,marca_id,sku_base,slug,tiene_variantes)
+                  VALUES (${product},'Lab','Synthetic',${id},'lab-type','lab-brand',${sku},${sku},false)`);
+                await tx.execute(
+                  sql`INSERT INTO catalog.product_images(product_id,url,principal) VALUES (${product},'https://example.test/h5',true)`,
+                );
+                await tx.execute(sql`INSERT INTO catalog.sku_physical_profiles(sku_identity_id,peso_kg,largo_cm,ancho_cm,alto_cm)
+                  SELECT id,1,1,1,1 FROM catalog.sku_identity WHERE product_id=${product}`);
+                for (const dependency of ['PRICING', 'INVENTORY'])
+                  await tx.execute(sql`INSERT INTO catalog.activation_checks(product_id,sku,dependency,operation_id,correlation_id,request_payload,state,result_payload,result_message_id)
+                    VALUES (${product},${sku},${dependency},${randomUUID()},${randomUUID()},'{}','COMPLETED','{}',${randomUUID()})`);
+                await tx.execute(
+                  sql`UPDATE catalog.products SET estado='ACTIVO' WHERE id=${product}`,
+                );
+              });
+            }
+            expect(
+              await admission.registrar({
+                operationId: operation,
+                correlationId: correlation,
+                entityType: 'CATEGORY',
+                entityId: id,
+                version: 3,
+              }),
+            ).toBe('REGISTRADA');
+            expect(await publishTaxonomyDelivery(store, taxonomyOut)).toBe(
+              true,
+            );
+            const barrier = () =>
+              db.catalog.pool.query(
+                "SELECT is_blocking, payload->>'result' AS verdict, payload->'final'->>'correlation_id' AS final_correlation FROM catalog.master_barriers WHERE operation_id=$1",
+                [operation],
+              );
+            await eventually(async () => {
+              expect((await barrier()).rows).toEqual([
+                {
+                  is_blocking: true,
+                  verdict: inUse ? 'IN_USE' : 'CLEAR',
+                  final_correlation: null,
+                },
+              ]);
+            });
+            const checked = await db.catalog.pool.query(
+              "SELECT message_id FROM catalog.outbox WHERE operation_id=$1 AND correlation_id=$2 AND event_name='catalog.master.deactivation.checked'",
+              [operation, correlation],
+            );
+            expect(checked.rowCount).toBe(1);
+            expect(await relayCatalogDelivery(catalogDb, catalog)).toBe(
+              'CONFIRMED',
+            );
+            const checkedId = checked.rows[0].message_id;
+            const delivery = await receive(taxonomyIn, checkedId);
+            let firstCommit = false;
+            await receiveTaxonomyDelivery(
+              store,
+              {
+                completeMessage: async (message) => {
+                  const outcome = await admission.obtenerOperacion(operation);
+                  expect(outcome?.status).toBe(
+                    inUse ? 'REJECTED' : 'COMPLETED',
+                  );
+                  firstCommit = true;
+                  await taxonomyIn.abandonMessage(message);
+                },
+                abandonMessage: taxonomyIn.abandonMessage.bind(taxonomyIn),
+                deadLetterMessage:
+                  taxonomyIn.deadLetterMessage.bind(taxonomyIn),
+              },
+              delivery,
+            );
+            expect(firstCommit).toBe(true);
+            const replay = await receive(taxonomyIn, checkedId);
+            expect(replay.deliveryCount).toBeGreaterThan(
+              delivery.deliveryCount,
+            );
+            await receiveTaxonomyDelivery(store, taxonomyIn, replay);
+            expect((await barrier()).rows[0].is_blocking).toBe(true);
+            expect(await publishTaxonomyDelivery(store, taxonomyOut)).toBe(
+              true,
+            );
+            await eventually(async () => {
+              expect((await barrier()).rows).toEqual([
+                {
+                  is_blocking: false,
+                  verdict: inUse ? 'IN_USE' : 'CLEAR',
+                  final_correlation: correlation,
+                },
+              ]);
+            });
+            const taxInbox = await taxonomy.pool.query(
+              'SELECT result FROM taxonomy.inbox WHERE message_id=$1',
+              [checkedId],
+            );
+            expect(taxInbox.rows).toEqual([{ result: 'PROCESSED' }]);
+            const category = await taxonomy.pool.query(
+              'SELECT estado FROM taxonomy.categories WHERE id=$1',
+              [id],
+            );
+            expect(category.rows).toEqual([
+              { estado: inUse ? 'ACTIVO' : 'INACTIVO' },
+            ]);
+            const published = await taxonomy.pool.query(
+              'SELECT o.event_name FROM taxonomy.outbox o JOIN taxonomy.outbox_delivery d USING(message_id) WHERE o.operation_id=$1 AND d.sent_at IS NOT NULL ORDER BY o.occurred_at',
+              [operation],
+            );
+            expect(published.rows.map((row) => row.event_name)).toEqual([
+              'taxonomy.master.deactivation.check.requested',
+              inUse
+                ? 'taxonomy.master.deactivation.rejected'
+                : 'taxonomy.master.deactivated',
+            ]);
+          }
+        } finally {
+          await stop();
+          await Promise.allSettled([
+            catalog.close(),
+            bus.inventory.close(),
+            bus.pricing.close(),
+            taxClient.close(),
+            taxonomyRuntime.end(),
+            catalogDb.onModuleDestroy(),
+          ]);
+        }
+      },
+      120_000,
     );
   },
 );
