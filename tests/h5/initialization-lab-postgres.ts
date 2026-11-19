@@ -22,7 +22,8 @@ type Context =
   | 'taxonomy'
   | 'price-audit'
   | 'promotions'
-  | 'combos';
+  | 'combos'
+  | 'bulk';
 
 async function serviceSql(context: Context, path: string) {
   return readFile(
@@ -32,7 +33,7 @@ async function serviceSql(context: Context, path: string) {
 }
 
 async function officialSql(
-  context: 'inventory-svc' | 'taxonomy' | 'combos',
+  context: 'inventory-svc' | 'taxonomy' | 'combos' | 'bulk',
   file: string,
   checksum: string,
 ) {
@@ -69,7 +70,7 @@ export async function prepareInitializationDatabases(source: string) {
   };
   try {
     const existing = await control.query(
-      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy','g6_h5_price_audit','g6_h5_promotions','g6_h5_combos')",
+      "SELECT 1 FROM pg_database WHERE datname IN ('g6_h5_catalog','g6_h5_inventory','g6_h5_pricing','g6_h5_taxonomy','g6_h5_price_audit','g6_h5_promotions','g6_h5_combos','g6_h5_bulk')",
     );
     if (existing.rowCount) throw new Error('EMPTY_POSTGRES_INSTANCE_REQUIRED');
 
@@ -261,6 +262,20 @@ export async function prepareInitializationDatabases(source: string) {
         GRANT SELECT ON combos.combo_items TO combos_app`);
       return combos;
     };
+    const prepareBulk = async () => {
+      const bulk = await prepare('bulk');
+      await bulk.pool.query('CREATE SCHEMA bulk AUTHORIZATION po_bulk_owner');
+      await ownerSql(bulk.pool, bulk.owner, [
+        await officialSql(
+          'bulk',
+          '0001_create_bulk_persistence.sql',
+          '26f461e99631f4126ad99f0811b605f29b7f50aad4c34414ad02b085a2454964',
+        ),
+      ]);
+      await bulk.pool.query(`GRANT USAGE ON SCHEMA bulk TO bulk_app;
+        GRANT SELECT, INSERT, UPDATE ON ALL TABLES IN SCHEMA bulk TO bulk_app`);
+      return bulk;
+    };
     return {
       catalog,
       inventory,
@@ -268,6 +283,7 @@ export async function prepareInitializationDatabases(source: string) {
       prepareTaxonomy,
       preparePriceConsumers,
       prepareCombos,
+      prepareBulk,
       close,
     };
   } catch (error) {

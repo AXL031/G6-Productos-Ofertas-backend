@@ -1,7 +1,7 @@
 targetScope = 'resourceGroup'
 
 type Workload = {
-  service: 'catalog-svc' | 'inventory-svc' | 'pricing-svc' | 'taxonomy-svc' | 'price-audit-svc' | 'promotions-svc' | 'combos-svc'
+  service: 'catalog-svc' | 'inventory-svc' | 'pricing-svc' | 'taxonomy-svc' | 'price-audit-svc' | 'promotions-svc' | 'combos-svc' | 'bulk-svc'
   image: string
   identityId: string
   clientId: string
@@ -9,8 +9,8 @@ type Workload = {
 
 param containerGroupName string
 param namespaceFqdn string
-param suite 'initialization' | 'price-fanout' | 'combos' = 'initialization'
-@minLength(3)
+param suite 'initialization' | 'price-fanout' | 'combos' | 'bulk-result' = 'initialization'
+@minLength(2)
 @maxLength(4)
 param workloads Workload[]
 @minLength(40)
