@@ -8,8 +8,8 @@ on:
 permissions: {}
 
 env:
-  SOURCE_SHA: c3cb185dbd488084f8101535a3b30fc0eb19461f
-  CI_RUN_ID: '44557493168'
+  SOURCE_SHA: 1a6dcd6572aa0a744785006886e8ecc24e7dcff8
+  CI_RUN_ID: '44581488843'
 
 jobs:
   source:
@@ -47,9 +47,45 @@ jobs:
           echo 'La CI del candidato sigue pendiente; no se publica.' >&2
           exit 1
 
+  claim_check:
+    name: Probar R01 y R04 con PostgreSQL desechable
+    if: >-
+      github.repository == 'AXL031/G6-Productos-Ofertas-backend' &&
+      github.ref == 'refs/heads/trabajo/cueva/integracion-service-bus-h5' &&
+      github.actor == 'AXL031' && github.triggering_actor == 'AXL031'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:17-alpine@sha256:526f86d93c6ea08fd3f1fe5605650cacc781b2c6013169a0ad8f42c7d3d84f32
+        env:
+          POSTGRES_DB: g6_init_h5_test_r01
+          POSTGRES_PASSWORD: g6-r01-test-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd 'pg_isready -U postgres -d g6_init_h5_test_r01'
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24.15.0
+          cache: npm
+      - run: npm ci
+      - name: Ejecutar la prueba de carga masiva
+        env:
+          G6_H5_R01_PG_URL: postgresql://postgres:g6-r01-test-only@127.0.0.1:5432/g6_init_h5_test_r01
+        run: npm run test:e2e -- --maxWorkers=1 tests/h5/bulk-claim-check.postgres.e2e-spec.ts
+
   publish:
     name: Publicar ${{ matrix.service }}
-    needs: source
+    needs: [source, claim_check]
     runs-on: ubuntu-latest
     timeout-minutes: 18
     permissions:
@@ -60,7 +96,8 @@ jobs:
       max-parallel: 4
       matrix:
         service:
-          - inventory-svc
+          - bulk-svc
+          - catalog-svc
     concurrency:
       group: publish-g6-ghcr-${{ github.repository }}-${{ matrix.service }}
       cancel-in-progress: false
