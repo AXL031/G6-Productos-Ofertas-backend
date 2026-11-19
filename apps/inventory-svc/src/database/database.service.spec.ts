@@ -270,7 +270,7 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
         rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
       });
       // FK ausente
-      client.query.mockResolvedValueOnce({ rows: [] });
+      client.query.mockResolvedValueOnce({ rows: [{ present: false }] });
 
       await expect(database.onModuleInit()).rejects.toThrow(
         /PostgreSQL o el esquema requerido/,
@@ -285,14 +285,7 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
         rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
       });
       client.query.mockResolvedValueOnce({
-        rows: [
-          {
-            column_name: 'message_id',
-            foreign_table_schema: 'inventory',
-            foreign_table_name: 'outbox',
-            foreign_column_name: 'event_id',
-          },
-        ],
+        rows: [{ present: true }],
       });
       // can_update: false
       client.query.mockResolvedValueOnce({
@@ -312,14 +305,7 @@ describe('DatabaseService — configuración y atomicidad (#97/#98)', () => {
         rows: [{ column_name: 'message_id' }, { column_name: 'destination' }],
       });
       client.query.mockResolvedValueOnce({
-        rows: [
-          {
-            column_name: 'message_id',
-            foreign_table_schema: 'inventory',
-            foreign_table_name: 'outbox',
-            foreign_column_name: 'event_id',
-          },
-        ],
+        rows: [{ present: true }],
       });
       client.query.mockResolvedValueOnce({
         rows: [{ can_select: true, can_insert: true, can_update: true }],

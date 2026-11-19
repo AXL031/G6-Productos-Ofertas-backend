@@ -84,6 +84,27 @@ async function receive(receiver: ServiceBusReceiver, id: string) {
   return message;
 }
 
+function configureInventory(url: URL, namespace: string) {
+  vi.stubEnv('NODE_ENV', 'test');
+  vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+  vi.stubEnv('SERVICE_BUS_NAMESPACE_FQDN', namespace);
+  vi.stubEnv('G6_SERVICE_BUS_PILOT_ENABLED', 'true');
+  vi.stubEnv('INVENTORY_SERVICE_BUS_PUBLISH_ENABLED', 'false');
+  vi.stubEnv('INVENTORY_SERVICE_BUS_CONSUME_ENABLED', 'false');
+  vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
+  vi.stubEnv('DATABASE_URL', url.href + '?sslmode=disable');
+  for (const name of [
+    'PGHOST',
+    'PGDATABASE',
+    'PGUSER',
+    'PGPASSWORD',
+    'PGSSLMODE',
+    'PGSSLROOTCERT',
+    'RABBITMQ_URL',
+  ])
+    vi.stubEnv(name, undefined);
+}
+
 describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
   'Catalog H5 bilateral initialization',
   () => {
@@ -109,24 +130,33 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
       }
     });
 
+    it('starts Inventory H5 with a runtime role that owns neither delivery table', async () => {
+      const inventory = new DatabaseService();
+      configureInventory(
+        db.inventory.runtimeUrl,
+        'g6-sb-h5-int-fixture000000.servicebus.windows.net',
+      );
+      try {
+        await inventory.onModuleInit();
+        const { rows } = await inventory.query(
+          "SELECT current_user AS role, pg_has_role(current_user, 'po_inventory_owner', 'MEMBER') AS owner",
+        );
+        expect(rows).toEqual([{ role: 'inventory_app', owner: false }]);
+      } finally {
+        await inventory.onModuleDestroy();
+        vi.unstubAllEnvs();
+      }
+    });
+
     it.skipIf(process.env.G6_H5_INIT_REAL_AZURE !== '1')(
       'commits and replays R06/R07/R11/R15 with Service Bus and all three databases',
       async () => {
         const bus = azureClients();
         const catalog = new CatalogServiceBus(bus.catalog);
-        vi.stubEnv('MESSAGING_PROVIDER', 'AZURE_SERVICE_BUS');
+        configureInventory(db.inventory.runtimeUrl, bus.namespace);
         vi.stubEnv(
           'CATALOG_H5_DESTINATIONS',
           Object.values(commands).join(','),
-        );
-        vi.stubEnv('SERVICE_BUS_NAMESPACE_FQDN', bus.namespace);
-        vi.stubEnv('G6_SERVICE_BUS_PILOT_ENABLED', 'true');
-        vi.stubEnv('INVENTORY_SERVICE_BUS_PUBLISH_ENABLED', 'false');
-        vi.stubEnv('INVENTORY_SERVICE_BUS_CONSUME_ENABLED', 'false');
-        vi.stubEnv('INVENTORY_CATALOG_SKU_DEACTIVATION_ENABLED', 'true');
-        vi.stubEnv(
-          'DATABASE_URL',
-          db.inventory.runtimeUrl.href + '?sslmode=disable',
         );
         const catalogDb = new Database({
           pool: { connectionString: db.catalog.runtimeUrl.href },
@@ -156,9 +186,11 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
         const catalogResults = new CatalogMessageService(catalogDb);
         const inventoryIn = bus.inventory.createReceiver(commands.INVENTORY, {
           receiveMode: 'peekLock',
+          skipParsingBodyAsJson: true,
         });
         const pricingIn = bus.pricing.createReceiver(commands.PRICING, {
           receiveMode: 'peekLock',
+          skipParsingBodyAsJson: true,
         });
         const inventoryOut = new InventoryServiceBusRelay(
           new InventoryDeliveryStore(inventoryDb),
@@ -377,7 +409,7 @@ describe.skipIf(!process.env.G6_H5_INIT_PG_URL)(
           );
 
           const balance = await db.inventory.pool.query(
-            'SELECT on_hand, reserved, blocked, version FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2',
+            'SELECT on_hand, reserved, blocked, stock_version::int AS version FROM inventory.stock_balance WHERE sku_id=$1 AND location_id=$2',
             [sku, location],
           );
           expect(balance.rows).toEqual([

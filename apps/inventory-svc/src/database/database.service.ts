@@ -191,38 +191,24 @@ export class DatabaseService
       );
     }
 
-    // 3. Validar FK contra inventory.outbox(event_id)
-    const fkResult = await client.query<{
-      column_name: string;
-      foreign_table_schema: string;
-      foreign_table_name: string;
-      foreign_column_name: string;
-    }>(
-      `SELECT kcu.column_name,
-              ccu.table_schema AS foreign_table_schema,
-              ccu.table_name AS foreign_table_name,
-              ccu.column_name AS foreign_column_name
-         FROM information_schema.table_constraints tc
-         JOIN information_schema.key_column_usage kcu
-           ON tc.constraint_name = kcu.constraint_name
-          AND tc.table_schema = kcu.table_schema
-         JOIN information_schema.constraint_column_usage ccu
-           ON ccu.constraint_name = tc.constraint_name
-          AND ccu.table_schema = tc.table_schema
-        WHERE tc.table_schema = 'inventory'
-          AND tc.table_name = 'outbox_delivery'
-          AND tc.constraint_type = 'FOREIGN KEY'`,
+    // information_schema.constraint_column_usage hides tables owned by another role.
+    const fkResult = await client.query<{ present: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1
+         FROM pg_catalog.pg_constraint fk
+         JOIN pg_catalog.pg_attribute source
+           ON source.attrelid = fk.conrelid AND source.attname = 'message_id'
+         JOIN pg_catalog.pg_attribute target
+           ON target.attrelid = fk.confrelid AND target.attname = 'event_id'
+         WHERE fk.contype = 'f'
+           AND fk.convalidated
+           AND fk.conrelid = pg_catalog.to_regclass('inventory.outbox_delivery')
+           AND fk.confrelid = pg_catalog.to_regclass('inventory.outbox')
+           AND fk.conkey = ARRAY[source.attnum]
+           AND fk.confkey = ARRAY[target.attnum]
+       ) AS present`,
     );
-
-    const hasFk = fkResult.rows.some(
-      (r) =>
-        r.column_name === 'message_id' &&
-        r.foreign_table_schema === 'inventory' &&
-        r.foreign_table_name === 'outbox' &&
-        r.foreign_column_name === 'event_id',
-    );
-
-    if (!hasFk) {
+    if (fkResult.rows[0]?.present !== true) {
       throw new Error(
         'Clave foránea contra inventory.outbox(event_id) no encontrada en inventory.outbox_delivery',
       );
